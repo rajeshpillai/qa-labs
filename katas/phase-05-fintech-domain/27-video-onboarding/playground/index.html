@@ -1,0 +1,407 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kata 27: Video Onboarding | QA Labs</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #1e293b; padding: 2rem; }
+    .header { background: #0f172a; color: white; padding: 1rem 2rem; margin: -2rem -2rem 2rem; }
+    .header h1 { font-size: 1.25rem; }
+    .kata-badge { display: inline-block; background: #38bdf8; color: #0f172a; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 4px; margin-right: 0.5rem; }
+
+    .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; max-width: 900px; }
+    .section { margin-bottom: 1.5rem; padding: 1.5rem; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    h2 { font-size: 1rem; color: #475569; margin-bottom: 1rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.5rem; }
+
+    button { padding: 0.5rem 1.25rem; border: none; border-radius: 6px; font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+    .btn-primary { background: #3b82f6; color: white; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-danger { background: #ef4444; color: white; }
+    .btn-danger:hover { background: #dc2626; }
+    .btn-secondary { background: #e2e8f0; color: #334155; }
+    .btn-secondary:hover { background: #cbd5e1; }
+    .btn-success { background: #16a34a; color: white; }
+    .btn-success:hover { background: #15803d; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .controls { display: flex; gap: 0.5rem; margin-bottom: 1rem; align-items: center; flex-wrap: wrap; }
+
+    .status-badge { display: inline-block; padding: 0.2rem 0.75rem; border-radius: 10px; font-size: 0.75rem; font-weight: 600; }
+    .status-idle { background: #e2e8f0; color: #475569; }
+    .status-connecting { background: #fef3c7; color: #92400e; }
+    .status-connected { background: #dcfce7; color: #166534; }
+    .status-disconnected { background: #fee2e2; color: #991b1b; }
+
+    canvas { border: 1px solid #e2e8f0; border-radius: 6px; background: #0f172a; display: block; margin-bottom: 1rem; }
+
+    .info-row { display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.85rem; }
+    .info-label { color: #64748b; }
+    .info-value { font-weight: 600; }
+
+    .otp-section { margin-top: 1rem; padding: 1rem; background: #f8fafc; border-radius: 6px; border: 1px solid #e2e8f0; }
+    .otp-inputs { display: flex; gap: 0.5rem; margin: 0.75rem 0; }
+    .otp-inputs input { width: 2.5rem; height: 2.5rem; text-align: center; font-size: 1.1rem; font-weight: 700; border: 1px solid #cbd5e1; border-radius: 6px; }
+    .otp-inputs input:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.2); }
+    .otp-error { color: #dc2626; font-size: 0.75rem; display: none; }
+    .otp-success { color: #16a34a; font-size: 0.75rem; display: none; }
+
+    .screenshot-area { margin-top: 1rem; padding: 1rem; background: #f8fafc; border-radius: 6px; border: 1px solid #e2e8f0; text-align: center; }
+    .screenshot-preview { max-width: 200px; border: 1px solid #cbd5e1; border-radius: 4px; margin-top: 0.5rem; display: none; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1><span class="kata-badge">KATA 27</span> Video Onboarding</h1>
+</div>
+
+<div class="layout">
+  <!-- Left column: Video feed and controls -->
+  <div>
+    <div class="section">
+      <h2>Video Call</h2>
+
+      <!-- Canvas element simulates a video feed by drawing colored rectangles -->
+      <canvas id="video-canvas" data-testid="video-canvas" width="400" height="300"></canvas>
+
+      <div class="controls">
+        <button class="btn-success" data-testid="btn-start-call" onclick="startCall()">Start Call</button>
+        <button class="btn-danger" data-testid="btn-end-call" onclick="endCall()" disabled>End Call</button>
+        <span class="status-badge status-idle" data-testid="connection-status">Idle</span>
+      </div>
+
+      <div class="info-row">
+        <span class="info-label">Call Duration:</span>
+        <span class="info-value" data-testid="call-duration">00:00</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Countdown Timer:</span>
+        <span class="info-value" data-testid="countdown-timer">--</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Frame Count:</span>
+        <span class="info-value" data-testid="frame-count">0</span>
+      </div>
+    </div>
+
+    <div class="section screenshot-area">
+      <h2>Screenshot Capture</h2>
+      <button class="btn-secondary" data-testid="btn-screenshot" onclick="captureScreenshot()" disabled>Capture Screenshot</button>
+      <p data-testid="screenshot-status" style="font-size:0.8rem;color:#64748b;margin-top:0.5rem;">No screenshot taken</p>
+      <img class="screenshot-preview" data-testid="screenshot-preview" alt="Screenshot">
+    </div>
+  </div>
+
+  <!-- Right column: OTP verification -->
+  <div>
+    <div class="section">
+      <h2>OTP Verification</h2>
+      <p style="font-size:0.85rem;color:#64748b;margin-bottom:0.75rem;">
+        Enter the 6-digit code displayed during the video call to verify your identity.
+      </p>
+
+      <div class="info-row">
+        <span class="info-label">OTP Code (shown in video):</span>
+        <span class="info-value" data-testid="otp-display">------</span>
+      </div>
+
+      <div class="otp-section">
+        <label style="font-size:0.85rem;font-weight:600;color:#475569;">Enter OTP</label>
+        <div class="otp-inputs" data-testid="otp-inputs">
+          <input type="text" maxlength="1" data-testid="otp-1" oninput="handleOtpInput(this, 1)">
+          <input type="text" maxlength="1" data-testid="otp-2" oninput="handleOtpInput(this, 2)">
+          <input type="text" maxlength="1" data-testid="otp-3" oninput="handleOtpInput(this, 3)">
+          <input type="text" maxlength="1" data-testid="otp-4" oninput="handleOtpInput(this, 4)">
+          <input type="text" maxlength="1" data-testid="otp-5" oninput="handleOtpInput(this, 5)">
+          <input type="text" maxlength="1" data-testid="otp-6" oninput="handleOtpInput(this, 6)">
+        </div>
+        <button class="btn-primary" data-testid="btn-verify-otp" onclick="verifyOtp()" disabled>Verify OTP</button>
+        <div class="otp-error" data-testid="otp-error">Invalid OTP code. Please try again.</div>
+        <div class="otp-success" data-testid="otp-success">OTP verified successfully!</div>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Onboarding Status</h2>
+      <div class="info-row">
+        <span class="info-label">Video Call:</span>
+        <span class="info-value" data-testid="status-video-call">Not Started</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">OTP Verified:</span>
+        <span class="info-value" data-testid="status-otp-verified">No</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Screenshot Taken:</span>
+        <span class="info-value" data-testid="status-screenshot">No</span>
+      </div>
+      <div class="info-row" style="margin-top:1rem;padding-top:0.75rem;border-top:1px solid #e2e8f0;">
+        <span class="info-label" style="font-weight:700;">Overall Status:</span>
+        <span class="info-value" data-testid="overall-status">Pending</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ─── State ─────────────────────────────────────────────────────────
+  // callActive: whether the video call is currently running.
+  let callActive = false;
+  // animationId: the requestAnimationFrame ID, used to cancel animation.
+  let animationId = null;
+  // durationInterval: setInterval ID for the call duration timer.
+  let durationInterval = null;
+  // countdownInterval: setInterval ID for the countdown timer.
+  let countdownInterval = null;
+  // callSeconds: total seconds the call has been running.
+  let callSeconds = 0;
+  // countdownSeconds: seconds remaining in the countdown (starts at 60).
+  let countdownSeconds = 60;
+  // frameCount: number of frames drawn on the canvas.
+  let frameCount = 0;
+  // otpCode: the generated 6-digit OTP code.
+  let otpCode = '';
+  // otpVerified: whether the OTP has been successfully verified.
+  let otpVerified = false;
+  // screenshotTaken: whether a screenshot has been captured.
+  let screenshotTaken = false;
+
+  // ─── Canvas setup ──────────────────────────────────────────────────
+  const canvas = document.getElementById('video-canvas');
+  // getContext('2d') returns a CanvasRenderingContext2D for drawing.
+  const ctx = canvas.getContext('2d');
+
+  // ─── generateOtp() ────────────────────────────────────────────────
+  // Creates a random 6-digit numeric OTP code.
+  function generateOtp() {
+    otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    document.querySelector('[data-testid="otp-display"]').textContent = otpCode;
+  }
+
+  // ─── drawFrame() ───────────────────────────────────────────────────
+  // Draws one frame of the simulated video feed on the canvas.
+  // Uses requestAnimationFrame to create smooth animation.
+  // Draws colored rectangles that move and change color each frame.
+  function drawFrame() {
+    if (!callActive) return;
+
+    frameCount++;
+
+    // Clear the canvas to black.
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Draw a moving colored rectangle (simulates a "face" region).
+    // Math.sin(frameCount * 0.02) creates smooth oscillation.
+    const x = 100 + Math.sin(frameCount * 0.02) * 50;
+    const y = 75 + Math.cos(frameCount * 0.015) * 30;
+
+    // Cycle through colors using hue rotation.
+    const hue = (frameCount * 2) % 360;
+    ctx.fillStyle = `hsl(${hue}, 70%, 50%)`;
+    ctx.fillRect(x, y, 200, 150);
+
+    // Draw a border (simulates video frame border).
+    ctx.strokeStyle = '#38bdf8';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(5, 5, canvas.width - 10, canvas.height - 10);
+
+    // Draw the OTP code in the video feed.
+    ctx.fillStyle = 'white';
+    ctx.font = 'bold 20px monospace';
+    ctx.fillText('OTP: ' + otpCode, 20, 30);
+
+    // Draw the call duration.
+    ctx.font = '14px sans-serif';
+    ctx.fillText('Duration: ' + formatTime(callSeconds), 20, canvas.height - 15);
+
+    // Update the frame count display.
+    document.querySelector('[data-testid="frame-count"]').textContent = frameCount.toString();
+
+    // requestAnimationFrame(callback) schedules the next frame draw.
+    // The browser calls drawFrame again before the next repaint (~60fps).
+    animationId = requestAnimationFrame(drawFrame);
+  }
+
+  // ─── formatTime(seconds) ──────────────────────────────────────────
+  // Converts a number of seconds into "MM:SS" format.
+  function formatTime(seconds) {
+    const m = Math.floor(seconds / 60).toString().padStart(2, '0');
+    const s = (seconds % 60).toString().padStart(2, '0');
+    return m + ':' + s;
+  }
+
+  // ─── startCall() ──────────────────────────────────────────────────
+  // Starts the video call simulation.
+  function startCall() {
+    // Show "Connecting..." status first.
+    const statusEl = document.querySelector('[data-testid="connection-status"]');
+    statusEl.textContent = 'Connecting...';
+    statusEl.className = 'status-badge status-connecting';
+    document.querySelector('[data-testid="status-video-call"]').textContent = 'Connecting...';
+    document.querySelector('[data-testid="btn-start-call"]').disabled = true;
+
+    // After 500ms delay, transition to "Connected" state.
+    setTimeout(() => {
+      callActive = true;
+      callSeconds = 0;
+      frameCount = 0;
+      countdownSeconds = 60;
+
+      // Generate a new OTP code for this call.
+      generateOtp();
+
+      // Update connection status to "Connected".
+      statusEl.textContent = 'Connected';
+      statusEl.className = 'status-badge status-connected';
+
+      // Enable/disable buttons.
+      document.querySelector('[data-testid="btn-start-call"]').disabled = true;
+      document.querySelector('[data-testid="btn-end-call"]').disabled = false;
+      document.querySelector('[data-testid="btn-screenshot"]').disabled = false;
+      document.querySelector('[data-testid="btn-verify-otp"]').disabled = false;
+
+      // Update status display.
+      document.querySelector('[data-testid="status-video-call"]').textContent = 'In Progress';
+
+      // Start the animation loop.
+      animationId = requestAnimationFrame(drawFrame);
+
+      // Start the call duration timer (increments every second).
+      // setInterval(callback, ms) calls callback every ms milliseconds.
+      durationInterval = setInterval(() => {
+        callSeconds++;
+        document.querySelector('[data-testid="call-duration"]').textContent = formatTime(callSeconds);
+      }, 1000);
+
+      // Start the countdown timer (decrements every second from 60).
+      document.querySelector('[data-testid="countdown-timer"]').textContent = formatTime(countdownSeconds);
+      countdownInterval = setInterval(() => {
+        countdownSeconds--;
+        document.querySelector('[data-testid="countdown-timer"]').textContent = formatTime(countdownSeconds);
+        if (countdownSeconds <= 0) {
+          clearInterval(countdownInterval);
+          endCall();
+        }
+      }, 1000);
+
+      // Update overall status.
+      updateOverallStatus();
+    }, 500);
+  }
+
+  // ─── endCall() ─────────────────────────────────────────────────────
+  // Ends the video call simulation.
+  function endCall() {
+    callActive = false;
+
+    // cancelAnimationFrame(id) stops the animation loop.
+    if (animationId) cancelAnimationFrame(animationId);
+    // clearInterval(id) stops a setInterval timer.
+    if (durationInterval) clearInterval(durationInterval);
+    if (countdownInterval) clearInterval(countdownInterval);
+
+    // Update connection status to "Disconnected".
+    const statusEl = document.querySelector('[data-testid="connection-status"]');
+    statusEl.textContent = 'Disconnected';
+    statusEl.className = 'status-badge status-disconnected';
+
+    // Update buttons.
+    document.querySelector('[data-testid="btn-start-call"]').disabled = false;
+    document.querySelector('[data-testid="btn-end-call"]').disabled = true;
+    document.querySelector('[data-testid="btn-screenshot"]').disabled = true;
+
+    // Update status display.
+    document.querySelector('[data-testid="status-video-call"]').textContent = 'Completed';
+
+    // Draw a static "Call Ended" frame on the canvas.
+    ctx.fillStyle = '#0f172a';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '18px sans-serif';
+    ctx.fillText('Call Ended', 150, 150);
+    ctx.font = '14px sans-serif';
+    ctx.fillText('Duration: ' + formatTime(callSeconds), 145, 175);
+
+    updateOverallStatus();
+  }
+
+  // ─── handleOtpInput(el, index) ─────────────────────────────────────
+  // Handles OTP input — auto-advances focus to the next input field.
+  function handleOtpInput(el, index) {
+    if (el.value.length === 1 && index < 6) {
+      // Focus the next OTP input field.
+      document.querySelector(`[data-testid="otp-${index + 1}"]`).focus();
+    }
+  }
+
+  // ─── verifyOtp() ───────────────────────────────────────────────────
+  // Collects digits from the OTP inputs and checks against the generated code.
+  function verifyOtp() {
+    let entered = '';
+    for (let i = 1; i <= 6; i++) {
+      entered += document.querySelector(`[data-testid="otp-${i}"]`).value;
+    }
+
+    const errorEl = document.querySelector('[data-testid="otp-error"]');
+    const successEl = document.querySelector('[data-testid="otp-success"]');
+
+    if (entered === otpCode) {
+      // OTP matches — show success.
+      otpVerified = true;
+      errorEl.style.display = 'none';
+      successEl.style.display = 'block';
+      document.querySelector('[data-testid="status-otp-verified"]').textContent = 'Yes';
+      document.querySelector('[data-testid="btn-verify-otp"]').disabled = true;
+    } else {
+      // OTP doesn't match — show error.
+      errorEl.style.display = 'block';
+      successEl.style.display = 'none';
+    }
+
+    updateOverallStatus();
+  }
+
+  // ─── captureScreenshot() ───────────────────────────────────────────
+  // Captures the current canvas content as a PNG image.
+  function captureScreenshot() {
+    if (!callActive) return;
+
+    // canvas.toDataURL('image/png') converts the canvas to a base64 PNG string.
+    const dataUrl = canvas.toDataURL('image/png');
+
+    // Show the screenshot preview.
+    const preview = document.querySelector('[data-testid="screenshot-preview"]');
+    preview.src = dataUrl;
+    preview.style.display = 'block';
+
+    // Update status.
+    screenshotTaken = true;
+    document.querySelector('[data-testid="screenshot-status"]').textContent = 'Screenshot captured';
+    document.querySelector('[data-testid="status-screenshot"]').textContent = 'Yes';
+
+    updateOverallStatus();
+  }
+
+  // ─── updateOverallStatus() ────────────────────────────────────────
+  // Checks all three conditions and updates the overall onboarding status.
+  function updateOverallStatus() {
+    const overall = document.querySelector('[data-testid="overall-status"]');
+    const videoStatus = document.querySelector('[data-testid="status-video-call"]').textContent;
+
+    if (videoStatus === 'Completed' && otpVerified && screenshotTaken) {
+      overall.textContent = 'Complete';
+      overall.style.color = '#16a34a';
+    } else if (callActive) {
+      overall.textContent = 'In Progress';
+      overall.style.color = '#d97706';
+    } else {
+      overall.textContent = 'Pending';
+      overall.style.color = '#64748b';
+    }
+  }
+</script>
+</body>
+</html>
