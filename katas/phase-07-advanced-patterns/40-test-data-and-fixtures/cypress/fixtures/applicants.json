@@ -1,0 +1,42 @@
+[
+  {
+    "name": "Aisha Patel",
+    "email": "aisha@example.com",
+    "country": "IN",
+    "docType": "passport",
+    "expectedRef": "KYC-2024-001",
+    "scenario": "valid-india"
+  },
+  {
+    "name": "Carlos Rivera",
+    "email": "carlos@example.com",
+    "country": "US",
+    "docType": "drivers-license",
+    "expectedRef": "KYC-2024-002",
+    "scenario": "valid-us"
+  },
+  {
+    "name": "Yuki Tanaka",
+    "email": "yuki@example.com",
+    "country": "GB",
+    "docType": "national-id",
+    "expectedRef": "KYC-2024-003",
+    "scenario": "valid-uk"
+  },
+  {
+    "name": "Fatima Al-Hassan",
+    "email": "fatima@example.com",
+    "country": "DE",
+    "docType": "passport",
+    "expectedRef": "KYC-2024-004",
+    "scenario": "valid-germany"
+  },
+  {
+    "name": "Olga Petrov",
+    "email": "olga@example.com",
+    "country": "US",
+    "docType": "national-id",
+    "expectedRef": "KYC-2024-005",
+    "scenario": "valid-us-national-id"
+  }
+]
