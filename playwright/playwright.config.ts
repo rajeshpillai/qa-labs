@@ -19,9 +19,12 @@ export default defineConfig({
       use: { ...devices['Desktop Chrome'] },
     },
   ],
-  webServer: {
-    command: 'npx serve ../katas -l 8080 --no-clipboard',
-    url: 'http://localhost:8080',
-    reuseExistingServer: !process.env.CI,
-  },
+  // Skip webServer when qa-labs server is already running (QA_LABS_SERVER=true)
+  ...(!process.env.QA_LABS_SERVER && {
+    webServer: {
+      command: 'npx serve ../katas -l 8080 --no-clipboard',
+      url: 'http://localhost:8080',
+      reuseExistingServer: !process.env.CI,
+    },
+  }),
 });

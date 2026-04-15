@@ -42,9 +42,16 @@ export function TestRunner({
   // Check server health on mount
   useEffect(() => {
     let cancelled = false;
-    fetch('/api/health')
-      .then((res) => {
-        if (!cancelled) setServerAvailable(res.ok);
+    fetch('/api/health/')
+      .then(async (res) => {
+        if (cancelled) return;
+        if (!res.ok) { setServerAvailable(false); return; }
+        try {
+          const data = await res.json();
+          setServerAvailable(data?.status === 'ok');
+        } catch {
+          setServerAvailable(false);
+        }
       })
       .catch(() => {
         if (!cancelled) setServerAvailable(false);
@@ -111,26 +118,18 @@ export function TestRunner({
             const data = JSON.parse(eventData);
 
             if (eventType === 'started') {
-              const exercises: ExerciseResult[] = (
-                data.exercises as string[]
-              ).map((name: string) => ({
-                exercise: name,
-                status: 'running' as const,
-              }));
-              setResults(exercises);
+              // Server started running tests — results will stream in
+              setResults([]);
             } else if (eventType === 'result') {
-              setResults((prev) =>
-                prev.map((r) =>
-                  r.exercise === data.exercise
-                    ? {
-                        ...r,
-                        status: data.status,
-                        duration: data.duration,
-                        error: data.error,
-                      }
-                    : r
-                )
-              );
+              setResults((prev) => [
+                ...prev,
+                {
+                  exercise: data.exercise as string,
+                  status: data.status as ExerciseResult['status'],
+                  duration: data.duration as number | undefined,
+                  error: data.error as string | undefined,
+                },
+              ]);
             } else if (eventType === 'done') {
               setSummary({
                 passed: data.passed,

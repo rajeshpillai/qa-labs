@@ -3,6 +3,7 @@ import path from 'path';
 import type { EmitFn, ExerciseResult, ExecutionSummary } from './types.js';
 
 const PLAYWRIGHT_CWD = path.join(process.cwd(), '..', 'playwright');
+const KATAS_DIR = path.join(process.cwd(), '..', 'katas');
 
 export async function runPlaywright(
   testFilePath: string,
@@ -10,18 +11,29 @@ export async function runPlaywright(
 ): Promise<void> {
   emit({
     type: 'started',
-    data: { framework: 'playwright', testFile: testFilePath },
+    data: { framework: 'playwright', testFile: path.basename(testFilePath) },
   });
 
-  return new Promise<void>((resolve, reject) => {
+  // Make the test path relative to the katas directory (testDir in playwright.config)
+  const relativeTestPath = path.relative(KATAS_DIR, testFilePath);
+
+  return new Promise<void>((resolve) => {
     const child = spawn(
       'npx',
-      ['playwright', 'test', testFilePath, '--reporter=json', '--project=chromium'],
+      [
+        'playwright', 'test',
+        relativeTestPath,
+        '--reporter=json',
+        '--project=chromium',
+      ],
       {
         cwd: PLAYWRIGHT_CWD,
         env: {
           ...process.env,
           PLAYWRIGHT_BASE_URL: 'http://localhost:8080',
+          QA_LABS_SERVER: 'true',
+          // Ensure test files can resolve @playwright/test from playwright/node_modules
+          NODE_PATH: path.join(PLAYWRIGHT_CWD, 'node_modules'),
         },
         stdio: ['ignore', 'pipe', 'pipe'],
       }
@@ -38,12 +50,12 @@ export async function runPlaywright(
       stderr += chunk.toString();
     });
 
-    child.on('close', (code) => {
+    child.on('close', () => {
       try {
         const report = JSON.parse(stdout);
         const results: ExerciseResult[] = [];
-        const startTime = Date.now();
 
+        // Playwright JSON reporter: suites contain specs
         const suites = report.suites ?? [];
         for (const suite of suites) {
           const specs = suite.specs ?? [];
@@ -75,17 +87,14 @@ export async function runPlaywright(
           failed: results.filter((r) => r.status === 'failed').length,
           skipped: results.filter((r) => r.status === 'skipped').length,
           total: results.length,
-          duration: Date.now() - startTime,
+          duration: report.stats?.duration ?? 0,
         };
 
         emit({ type: 'done', data: summary as unknown as Record<string, unknown> });
         resolve();
       } catch {
-        const errorMessage = stderr || `Playwright exited with code ${code}`;
-        emit({
-          type: 'error',
-          data: { message: errorMessage },
-        });
+        const errorMessage = stderr?.slice(0, 500) || 'Failed to parse test results';
+        emit({ type: 'error', data: { message: errorMessage } });
         resolve();
       }
     });

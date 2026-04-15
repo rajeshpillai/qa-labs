@@ -11,19 +11,24 @@ const PLAYGROUND_PORT = 8080;
 app.use(cors());
 app.use(express.json());
 
-// API routes
-app.use('/api', executeRouter);
-
+// Health check
 app.get('/api/health', (_req, res) => {
   res.json({ status: 'ok' });
 });
+
+// Execute API
+app.use('/api', executeRouter);
 
 // Serve website static files
 const websiteDir = path.join(process.cwd(), '..', 'website', 'out');
 app.use(express.static(websiteDir));
 
-// SPA fallback: serve index.html for any non-API, non-file route
-app.get('*', (_req, res) => {
+// SPA fallback for client-side routes
+app.get('*', (req, res) => {
+  if (req.path.startsWith('/api')) {
+    res.status(404).json({ error: 'Not found' });
+    return;
+  }
   res.sendFile(path.join(websiteDir, 'index.html'));
 });
 
@@ -32,11 +37,11 @@ app.listen(PORT, () => {
   console.log(`QA Labs server running at http://localhost:${PORT}`);
 });
 
-// Start internal playground server serving katas on port 8080
+// Internal playground server for test runners
 const playground = express();
 const katasDir = path.join(process.cwd(), '..', 'katas');
 playground.use(express.static(katasDir));
 
 playground.listen(PLAYGROUND_PORT, () => {
-  console.log(`Playground server running at http://localhost:${PLAYGROUND_PORT} (serving ${katasDir})`);
+  console.log(`Playground server running at http://localhost:${PLAYGROUND_PORT}`);
 });

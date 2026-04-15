@@ -9,6 +9,7 @@ import type { RunEvent } from '../runners/types.js';
 const semaphore = new Semaphore(2);
 const router = Router();
 
+
 router.post('/execute', async (req: Request, res: Response) => {
   const { framework, phaseSlug, kataSlug, testFile } = req.body as {
     framework?: string;
@@ -42,15 +43,13 @@ router.post('/execute', async (req: Request, res: Response) => {
   }
 
   // Set SSE headers
-  res.setHeaders(new Headers({
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    'Connection': 'keep-alive',
-  }));
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
   res.flushHeaders();
 
   const emit = (event: RunEvent) => {
-    res.write(`data: ${JSON.stringify(event)}\n\n`);
+    res.write(`event: ${event.type}\ndata: ${JSON.stringify(event.data)}\n\n`);
   };
 
   await semaphore.acquire();
