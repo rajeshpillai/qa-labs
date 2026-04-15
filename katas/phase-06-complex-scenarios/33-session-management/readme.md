@@ -94,3 +94,39 @@ A single-page app with login, session management, and timeout:
 6. **Verify token refresh** — Refresh the session and verify a new token is generated
 7. **Rapid interactions keep session alive** — Click Interact repeatedly before timeout
 8. **Verify session state across page reload** — Reload the page and verify session is restored
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Installing fake timers after page navigation | Fake timers must be installed before the page loads, otherwise real timers are already running | Call `page.clock.install()` (Playwright) or `cy.clock()` (Cypress) before visiting the page |
+| Advancing time without waiting for UI updates | `fastForward()` / `cy.tick()` triggers callbacks but the DOM update is asynchronous | After advancing time, wait for the expected UI element (warning banner, expiry overlay) to appear |
+| Forgetting to log in before testing session features | The dashboard is only visible after login; interacting with session controls before login fails | Always complete the login flow first, then test session behavior |
+| Comparing exact token strings without accounting for refresh | Each token refresh generates a new JWT; storing the old token and comparing with `toBe()` will pass only if you compare correctly | Store the token before refresh, then assert the new token is different (`not.toBe(oldToken)`) |
+| Not restoring real timers before page reload tests | Fake timers can interfere with page reload behavior and navigation timing | Restore real timers (`cy.clock().invoke('restore')`) before testing reload scenarios |
+
+## Quick Reference
+
+### Playwright Fake Timers
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Install fake timers | `page.clock.install()` | `await page.clock.install()` |
+| Fast-forward time | `page.clock.fastForward(ms)` | `await page.clock.fastForward(10000)` |
+| Set fixed time | `page.clock.setFixedTime()` | `await page.clock.setFixedTime(new Date('2025-01-01T00:00:15Z'))` |
+| Fill login form | `locator.fill()` | `await page.getByTestId('username').fill('admin')` |
+| Click button | `locator.click()` | `await page.getByTestId('login-btn').click()` |
+| Check text content | `expect().toHaveText()` | `await expect(status).toHaveText('Active')` |
+| Verify visibility | `expect().toBeVisible()` | `await expect(overlay).toBeVisible()` |
+
+### Cypress Fake Timers
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Install fake timers | `cy.clock()` | `cy.clock()` |
+| Advance time | `cy.tick(ms)` | `cy.tick(10000)` |
+| Restore real timers | `.invoke('restore')` | `cy.clock().invoke('restore')` |
+| Fill login form | `.type()` | `cy.get('[data-testid="username"]').type('admin')` |
+| Click button | `.click()` | `cy.get('[data-testid="login-btn"]').click()` |
+| Check text content | `.should('have.text')` | `cy.get(status).should('have.text', 'Active')` |
+| Verify visibility | `.should('be.visible')` | `cy.get(overlay).should('be.visible')` |

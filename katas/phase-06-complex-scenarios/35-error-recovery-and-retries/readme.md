@@ -90,3 +90,39 @@ Six cards demonstrating different error scenarios:
 6. **Verify error boundary UI** — Crash the component and verify the error boundary
 7. **Test timeout handling** — Force a timeout and verify the error message
 8. **Verify error does not lose form data** — Submit form, fail, verify inputs preserved
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Forgetting to set `window.__forceResult` before triggering the action | The action uses the flag at the moment it runs; setting it after has no effect | Use `page.evaluate()` or `cy.window()` to set the flag before clicking the action button |
+| Not resetting force flags between tests | A flag set in one test bleeds into the next, causing unexpected pass/fail | Reset flags (`window.__forceResult = null`) in a `beforeEach` or at the start of each test |
+| Asserting circuit breaker state after fewer than 3 failures | The circuit breaker opens after 3 consecutive failures, not 1 or 2 | Trigger exactly 3 failures before asserting the circuit is open |
+| Not waiting for the retry animation or delay to complete | Retry mechanisms often include a delay (e.g., 1-2 seconds) before the next attempt | Use appropriate timeouts when asserting on post-retry state |
+| Testing graceful degradation without triggering the error first | Cached data fallback only appears when the network request fails | Force the error state before checking for the cached data fallback UI |
+
+## Quick Reference
+
+### Playwright Error Testing
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Force failure | `page.evaluate()` | `await page.evaluate(() => { (window as any).__forceResult = 'error' })` |
+| Force success | `page.evaluate()` | `await page.evaluate(() => { (window as any).__forceResult = 'success' })` |
+| Force timeout | `page.evaluate()` | `await page.evaluate(() => { (window as any).__forceTimeout = true })` |
+| Force circuit failure | `page.evaluate()` | `await page.evaluate(() => { (window as any).__circuitForceFailure = true })` |
+| Check error text | `expect().toHaveText()` | `await expect(errorMsg).toHaveText('Something went wrong')` |
+| Click retry | `locator.click()` | `await page.getByTestId('retry-btn').click()` |
+| Verify recovery | `expect().toBeVisible()` | `await expect(successMsg).toBeVisible()` |
+
+### Cypress Error Testing
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Force failure | `cy.window()` | `cy.window().then(win => { (win as any).__forceResult = 'error' })` |
+| Force success | `cy.window()` | `cy.window().then(win => { (win as any).__forceResult = 'success' })` |
+| Force timeout | `cy.window()` | `cy.window().then(win => { (win as any).__forceTimeout = true })` |
+| Force circuit failure | `cy.window()` | `cy.window().then(win => { (win as any).__circuitForceFailure = true })` |
+| Check error text | `.should('have.text')` | `cy.get(errorMsg).should('have.text', 'Something went wrong')` |
+| Click retry | `.click()` | `cy.get('[data-testid="retry-btn"]').click()` |
+| Verify recovery | `.should('be.visible')` | `cy.get(successMsg).should('be.visible')` |

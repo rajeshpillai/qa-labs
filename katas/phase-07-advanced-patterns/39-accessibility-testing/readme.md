@@ -150,3 +150,49 @@ Fix a11y issues by injecting corrected HTML and re-scan to verify.
 - Fix the easy ones first: labels, alt text, contrast, focus indicators
 - Every fix makes the web usable for more people
 ```
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Forgetting to call `cy.injectAxe()` before `cy.checkA11y()` in Cypress | `checkA11y()` requires axe-core to be loaded in the page first; without injection it throws an error | Always call `cy.injectAxe()` after `cy.visit()` and before any `cy.checkA11y()` calls |
+| Running a11y scans before the page is fully rendered | Axe scans the current DOM; if elements have not loaded yet, violations will be missed | Wait for key elements to be visible before running the scan |
+| Assuming axe catches all accessibility issues | Automated tools detect only 30-40% of a11y problems; keyboard navigation, screen reader flow, and cognitive issues require manual testing | Use axe for automated checks but supplement with manual testing |
+| Ignoring violations with "moderate" or "minor" impact | Lower-impact violations still affect real users and can compound into serious barriers | Fix all violations; prioritize "critical" and "serious" first, but address all levels |
+| Not scoping scans to specific elements when debugging | Scanning the full page returns many violations at once, making it hard to isolate issues | Use `include`/`exclude` options to scan specific sections (e.g., just the form) |
+
+## Quick Reference
+
+### Playwright a11y Testing (@axe-core/playwright)
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Import AxeBuilder | `import` | `import AxeBuilder from '@axe-core/playwright'` |
+| Full page scan | `new AxeBuilder({ page }).analyze()` | `const results = await new AxeBuilder({ page }).analyze()` |
+| Check no violations | `expect().toEqual([])` | `expect(results.violations).toEqual([])` |
+| Scan specific element | `.include()` | `await new AxeBuilder({ page }).include('#form').analyze()` |
+| Exclude element | `.exclude()` | `await new AxeBuilder({ page }).exclude('#third-party').analyze()` |
+| Check specific rules | `.withRules()` | `await new AxeBuilder({ page }).withRules(['label', 'color-contrast']).analyze()` |
+| Filter by impact | `.options()` | `await new AxeBuilder({ page }).options({ resultTypes: ['violations'] }).analyze()` |
+
+### Cypress a11y Testing (cypress-axe)
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Inject axe-core | `cy.injectAxe()` | `cy.injectAxe()` |
+| Full page scan | `cy.checkA11y()` | `cy.checkA11y()` |
+| Scan specific element | `cy.checkA11y(selector)` | `cy.checkA11y('#form')` |
+| Exclude element | `cy.checkA11y(null, { exclude })` | `cy.checkA11y(null, { exclude: [['#third-party']] })` |
+| Check specific rules | `cy.checkA11y(null, { runOnly })` | `cy.checkA11y(null, { runOnly: ['label', 'color-contrast'] })` |
+| Custom violation handler | `cy.checkA11y(null, null, callback)` | `cy.checkA11y(null, null, (violations) => { cy.log(violations) })` |
+
+### Common WCAG Rules Checked by axe-core
+
+| Rule ID | What it checks | WCAG Level |
+|---------|---------------|------------|
+| `label` | Form inputs have associated labels | A |
+| `color-contrast` | Text has sufficient contrast ratio (4.5:1) | AA |
+| `image-alt` | Images have alt text | A |
+| `button-name` | Buttons have accessible names | A |
+| `link-name` | Links have discernible text | A |
+| `landmark-one-main` | Page has one main landmark | A |

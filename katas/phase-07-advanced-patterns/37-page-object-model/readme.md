@@ -152,3 +152,37 @@ the before/after readability.
 - Name methods from the user's perspective, not the DOM's perspective
 - Start simple — you don't need POM for 3 tests, but you will for 30
 ```
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Exposing selectors as public properties on the Page Object | This defeats the purpose of POM — tests become coupled to selectors again | Keep selectors private; expose only action methods (`fillName()`, `submit()`) |
+| Using Cypress classes with `async/await` | Cypress commands are chainable and do not return Promises; `await cy.get()` does not work | Use plain objects or factory functions for Cypress POM; reserve classes for Playwright |
+| Creating one giant Page Object for the entire app | A massive POM is hard to maintain and violates single-responsibility | Create one Page Object per page or major component (e.g., `KycFormPage`, `ReviewPage`) |
+| Putting assertions inside every POM method | POM methods should perform actions; mixing assertions in makes them less reusable | Keep assertions in the test file; only add verification methods (e.g., `verifySuccess()`) when truly reusable |
+| Not passing the `page` fixture to the Playwright POM constructor | Without the `page` reference, methods cannot interact with the browser | Always accept `page: Page` in the constructor and store it as a class field |
+
+## Quick Reference
+
+### Playwright POM Pattern
+
+| Concept | Syntax | Example |
+|---------|--------|---------|
+| Define POM class | `class PageName` | `class KycFormPage { constructor(private page: Page) {} }` |
+| Create action method | `async methodName()` | `async fillName(name: string) { await this.page.getByTestId('name').fill(name) }` |
+| Instantiate in test | `new PageName(page)` | `const kycForm = new KycFormPage(page)` |
+| Use in test | `await pom.method()` | `await kycForm.fillName('Aisha Patel')` |
+| Navigation method | `async goto()` | `async goto() { await this.page.goto('/kyc-form') }` |
+| Verification method | `async verifyX()` | `async verifySuccess() { await expect(this.page.getByTestId('status')).toHaveText('Approved') }` |
+
+### Cypress POM Pattern
+
+| Concept | Syntax | Example |
+|---------|--------|---------|
+| Define POM object | `const pageName = {}` | `const kycFormPage = { fillName(name) { cy.get('[data-testid="name"]').type(name) } }` |
+| Factory function | `function createPage()` | `function createKycForm() { return { fillName(n) { cy.get(...).type(n) } } }` |
+| Use in test | `pageName.method()` | `kycFormPage.fillName('Aisha Patel')` |
+| Export POM | `export const` | `export const kycFormPage = { ... }` |
+| Import POM | `import { pom }` | `import { kycFormPage } from '../pages/kyc-form.page'` |
+| Chain actions | sequential calls | `kycFormPage.fillName('Aisha'); kycFormPage.submit()` |
