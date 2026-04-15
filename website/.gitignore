@@ -42,3 +42,4 @@ next-env.d.ts
 
 # copied playgrounds (generated at build time)
 /public/playgrounds/
+bun.lock
