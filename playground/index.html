@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>QA Labs - Testing Katas Playground</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      min-height: 100vh;
+      padding: 2rem;
+    }
+    .container { max-width: 900px; margin: 0 auto; }
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 0.5rem;
+      background: linear-gradient(135deg, #38bdf8, #818cf8);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .subtitle { color: #94a3b8; margin-bottom: 2rem; }
+    .phase { margin-bottom: 2rem; }
+    .phase-title {
+      font-size: 1.1rem;
+      color: #38bdf8;
+      margin-bottom: 0.75rem;
+      padding-bottom: 0.25rem;
+      border-bottom: 1px solid #1e293b;
+    }
+    .kata-list { list-style: none; }
+    .kata-list li { margin-bottom: 0.4rem; }
+    .kata-list a {
+      color: #cbd5e1;
+      text-decoration: none;
+      padding: 0.4rem 0.75rem;
+      border-radius: 6px;
+      display: inline-block;
+      transition: background 0.2s, color 0.2s;
+    }
+    .kata-list a:hover {
+      background: #1e293b;
+      color: #38bdf8;
+    }
+    .kata-num { color: #64748b; margin-right: 0.5rem; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>QA Labs</h1>
+    <p class="subtitle">44 Testing Katas &mdash; Playwright & Cypress</p>
+
+    <div class="phase">
+      <h2 class="phase-title">Phase 0 &mdash; Foundations</h2>
+      <ul class="kata-list">
+        <li><a href="01-selectors-and-locators/"><span class="kata-num">01</span>Selectors and Locators</a></li>
+        <li><a href="02-assertions/"><span class="kata-num">02</span>Assertions</a></li>
+        <li><a href="03-waits-and-timing/"><span class="kata-num">03</span>Waits and Timing</a></li>
+        <li><a href="04-clicks-and-inputs/"><span class="kata-num">04</span>Clicks and Inputs</a></li>
+        <li><a href="05-keyboard-and-mouse/"><span class="kata-num">05</span>Keyboard and Mouse</a></li>
+        <li><a href="06-iframes-and-shadow-dom/"><span class="kata-num">06</span>Iframes and Shadow DOM</a></li>
+      </ul>
+    </div>
+
+    <div class="phase">
+      <h2 class="phase-title">Phase 1 &mdash; DOM, Interactions & Browser APIs</h2>
+      <ul class="kata-list">
+        <li><a href="07-drag-and-drop/"><span class="kata-num">07</span>Drag and Drop</a></li>
+        <li><a href="08-css-animations-and-transitions/"><span class="kata-num">08</span>CSS Animations and Transitions</a></li>
+        <li><a href="09-scroll-and-intersection/"><span class="kata-num">09</span>Scroll and Intersection</a></li>
+        <li><a href="10-canvas-and-svg/"><span class="kata-num">10</span>Canvas and SVG</a></li>
+        <li><a href="11-dom-mutations/"><span class="kata-num">11</span>DOM Mutations</a></li>
+        <li><a href="12-web-apis/"><span class="kata-num">12</span>Web APIs</a></li>
+      </ul>
+    </div>
+
+    <div class="phase">
+      <h2 class="phase-title">Phase 2 &mdash; Forms & Validation</h2>
+      <ul class="kata-list">
+        <li><a href="13-form-validation/"><span class="kata-num">13</span>Form Validation</a></li>
+        <li><a href="14-multi-step-forms/"><span class="kata-num">14</span>Multi-Step Forms</a></li>
+        <li><a href="15-file-upload/"><span class="kata-num">15</span>File Upload</a></li>
+        <li><a href="16-date-pickers-and-dropdowns/"><span class="kata-num">16</span>Date Pickers and Dropdowns</a></li>
+        <li><a href="17-dynamic-forms/"><span class="kata-num">17</span>Dynamic Forms</a></li>
+      </ul>
+    </div>
+
+    <div class="phase">
+      <h2 class="phase-title">Phase 3 &mdash; Navigation & State</h2>
+      <ul class="kata-list">
+        <li><a href="18-multi-page-navigation/"><span class="kata-num">18</span>Multi-Page Navigation</a></li>
+        <li><a href="19-local-storage-and-session/"><span class="kata-num">19</span>Local Storage and Session</a></li>
+        <li><a href="20-cookies-and-auth-state/"><span class="kata-num">20</span>Cookies and Auth State</a></li>
+        <li><a href="21-tabs-and-windows/"><span class="kata-num">21</span>Tabs and Windows</a></li>
+      </ul>
+    </div>
+
+    <div class="phase">
+      <h2 class="phase-title">Phase 4 &mdash; API & Real-Time</h2>
+      <ul class="kata-list">
+        <li><a href="22-network-interception/"><span class="kata-num">22</span>Network Interception</a></li>
+        <li><a href="23-api-mocking/"><span class="kata-num">23</span>API Mocking</a></li>
+        <li><a href="24-api-first-testing/"><span class="kata-num">24</span>API-First Testing</a></li>
+        <li><a href="25-websockets/"><span class="kata-num">25</span>WebSockets</a></li>
+      </ul>
+    </div>
+
+    <div class="phase">
+      <h2 class="phase-title">Phase 5 &mdash; Fintech Domain</h2>
+      <ul class="kata-list">
+        <li><a href="26-kyc-onboarding-flow/"><span class="kata-num">26</span>KYC Onboarding Flow</a></li>
+        <li><a href="27-video-onboarding/"><span class="kata-num">27</span>Video Onboarding</a></li>
+        <li><a href="28-document-verification/"><span class="kata-num">28</span>Document Verification</a></li>
+        <li><a href="29-background-verification/"><span class="kata-num">29</span>Background Verification</a></li>
+        <li><a href="30-risk-assessment/"><span class="kata-num">30</span>Risk Assessment</a></li>
+        <li><a href="31-approval-rejection-flows/"><span class="kata-num">31</span>Approval & Rejection Flows</a></li>
+      </ul>
+    </div>
+
+    <div class="phase">
+      <h2 class="phase-title">Phase 6 &mdash; Complex Scenarios</h2>
+      <ul class="kata-list">
+        <li><a href="32-multi-window-workflows/"><span class="kata-num">32</span>Multi-Window Workflows</a></li>
+        <li><a href="33-session-management/"><span class="kata-num">33</span>Session Management</a></li>
+        <li><a href="34-complex-multi-step-e2e/"><span class="kata-num">34</span>Complex Multi-Step E2E</a></li>
+        <li><a href="35-error-recovery-and-retries/"><span class="kata-num">35</span>Error Recovery and Retries</a></li>
+        <li><a href="36-notifications-and-toasts/"><span class="kata-num">36</span>Notifications and Toasts</a></li>
+      </ul>
+    </div>
+
+    <div class="phase">
+      <h2 class="phase-title">Phase 7 &mdash; Advanced Patterns</h2>
+      <ul class="kata-list">
+        <li><a href="37-page-object-model/"><span class="kata-num">37</span>Page Object Model</a></li>
+        <li><a href="38-visual-regression/"><span class="kata-num">38</span>Visual Regression</a></li>
+        <li><a href="39-accessibility-testing/"><span class="kata-num">39</span>Accessibility Testing</a></li>
+        <li><a href="40-test-data-and-fixtures/"><span class="kata-num">40</span>Test Data and Fixtures</a></li>
+      </ul>
+    </div>
+
+    <div class="phase">
+      <h2 class="phase-title">Phase 8 &mdash; Parallel & CI/CD</h2>
+      <ul class="kata-list">
+        <li><a href="41-parallel-testing/"><span class="kata-num">41</span>Parallel Testing</a></li>
+        <li><a href="42-loop-parallel-testing/"><span class="kata-num">42</span>Loop-Based Parallel Testing</a></li>
+        <li><a href="43-ci-cd-integration/"><span class="kata-num">43</span>CI/CD Integration</a></li>
+        <li><a href="44-reporting-and-debugging/"><span class="kata-num">44</span>Reporting and Debugging</a></li>
+      </ul>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,31 @@
+# dependencies
+node_modules/
+
+# playwright
+playwright-report/
+test-results/
+blob-report/
+playwright/.cache/
+
+# cypress
+cypress/screenshots/
+cypress/videos/
+cypress/downloads/
+
+# build output
+dist/
+playground/*/
+
+# os
+.DS_Store
+Thumbs.db
+
+# editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# env
+.env
+.env.local
