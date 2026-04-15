@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kata 32: Multi-Window Workflows | QA Labs</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #1e293b; padding: 2rem; }
+    .header { background: #0f172a; color: white; padding: 1rem 2rem; margin: -2rem -2rem 2rem; }
+    .header h1 { font-size: 1.25rem; }
+    .kata-badge { display: inline-block; background: #38bdf8; color: #0f172a; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 4px; margin-right: 0.5rem; }
+
+    .status-bar {
+      background: #e2e8f0; padding: 0.75rem 1rem; border-radius: 6px;
+      margin-bottom: 1.5rem; font-size: 0.875rem;
+    }
+
+    table {
+      width: 100%; border-collapse: collapse; background: white;
+      border-radius: 8px; overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    th { background: #f1f5f9; padding: 0.75rem 1rem; text-align: left; font-size: 0.8rem; text-transform: uppercase; color: #475569; }
+    td { padding: 0.75rem 1rem; border-top: 1px solid #e2e8f0; font-size: 0.875rem; }
+    tr:hover { background: #f8fafc; }
+
+    .status-badge {
+      display: inline-block; padding: 0.2rem 0.6rem; border-radius: 10px;
+      font-size: 0.75rem; font-weight: 600;
+    }
+    .status-pending { background: #fef3c7; color: #92400e; }
+    .status-approved { background: #dcfce7; color: #166534; }
+    .status-rejected { background: #fee2e2; color: #991b1b; }
+
+    .btn {
+      padding: 0.4rem 0.8rem; border: none; border-radius: 4px;
+      font-weight: 600; font-size: 0.8rem; cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-review { background: #3b82f6; color: white; }
+    .btn-review:hover { background: #2563eb; }
+    .btn-review:disabled { background: #94a3b8; cursor: not-allowed; }
+
+    .risk-low { color: #16a34a; }
+    .risk-medium { color: #d97706; }
+    .risk-high { color: #dc2626; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <span class="kata-badge">KATA 32</span>
+    <h1>Multi-Window Workflows — Applicant Review</h1>
+  </div>
+
+  <div class="status-bar">
+    Last action: <span data-testid="last-action">None</span> |
+    Open popups: <span data-testid="open-popup-count">0</span>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Name</th>
+        <th>Email</th>
+        <th>Position</th>
+        <th>Risk</th>
+        <th>Status</th>
+        <th>Action</th>
+      </tr>
+    </thead>
+    <tbody data-testid="applicant-table">
+      <!-- Rows are rendered by JavaScript below -->
+    </tbody>
+  </table>
+
+  <script>
+    // -------------------------------------------------------------------
+    // Applicant data — each applicant starts with status "pending".
+    // This array acts as the in-memory data store for the main page.
+    // -------------------------------------------------------------------
+    const applicants = [
+      { id: '1', name: 'Alice Johnson',  email: 'alice@example.com',  position: 'Engineer',   risk: 'low',    date: '2025-01-15', status: 'pending' },
+      { id: '2', name: 'Bob Smith',      email: 'bob@example.com',    position: 'Manager',    risk: 'medium', date: '2025-02-01', status: 'pending' },
+      { id: '3', name: 'Clara Nguyen',   email: 'clara@example.com',  position: 'Analyst',    risk: 'high',   date: '2025-02-10', status: 'pending' },
+      { id: '4', name: 'David Park',     email: 'david@example.com',  position: 'Designer',   risk: 'low',    date: '2025-03-05', status: 'pending' },
+      { id: '5', name: 'Eva Martinez',   email: 'eva@example.com',    position: 'Director',   risk: 'medium', date: '2025-03-20', status: 'pending' },
+    ];
+
+    // Track open popup windows so we can count them and close them later.
+    const openPopups = [];
+
+    // -------------------------------------------------------------------
+    // renderTable() — rebuilds the table body from the applicants array.
+    // Called on page load and whenever an applicant's status changes.
+    // -------------------------------------------------------------------
+    function renderTable() {
+      const tbody = document.querySelector('[data-testid="applicant-table"]');
+      tbody.innerHTML = '';
+
+      applicants.forEach(app => {
+        const tr = document.createElement('tr');
+        tr.setAttribute('data-testid', 'row-' + app.id);
+
+        tr.innerHTML = `
+          <td data-testid="name-${app.id}">${app.name}</td>
+          <td data-testid="email-${app.id}">${app.email}</td>
+          <td data-testid="position-${app.id}">${app.position}</td>
+          <td data-testid="risk-${app.id}" class="risk-${app.risk}">${app.risk}</td>
+          <td>
+            <span class="status-badge status-${app.status}" data-testid="status-${app.id}">${app.status}</span>
+          </td>
+          <td>
+            <button class="btn btn-review" data-testid="review-${app.id}"
+              ${app.status !== 'pending' ? 'disabled' : ''}
+              onclick="openReview('${app.id}')">
+              Review
+            </button>
+          </td>
+        `;
+
+        tbody.appendChild(tr);
+      });
+    }
+
+    // -------------------------------------------------------------------
+    // openReview(id) — opens a popup window (admin-panel.html) with the
+    // applicant's details passed as URL search parameters. The popup is
+    // a real browser window that the test must interact with.
+    // -------------------------------------------------------------------
+    function openReview(id) {
+      const app = applicants.find(a => a.id === id);
+      if (!app) return;
+
+      // Build the URL with query params so the popup can read applicant data.
+      const params = new URLSearchParams({
+        id: app.id,
+        name: app.name,
+        email: app.email,
+        position: app.position,
+        risk: app.risk,
+        date: app.date,
+      });
+
+      // window.open(url, target, features) opens a new browser window/tab.
+      // The second argument is the window name — using the applicant id
+      // prevents opening duplicate windows for the same applicant.
+      const popup = window.open(
+        'admin-panel.html?' + params.toString(),
+        'review-' + id,
+        'width=500,height=500'
+      );
+
+      if (popup) {
+        openPopups.push(popup);
+        updatePopupCount();
+      }
+    }
+
+    // -------------------------------------------------------------------
+    // updatePopupCount() — counts how many popup windows are still open
+    // and updates the status bar. A popup is "open" if its .closed
+    // property is false.
+    // -------------------------------------------------------------------
+    function updatePopupCount() {
+      const count = openPopups.filter(w => !w.closed).length;
+      document.querySelector('[data-testid="open-popup-count"]').textContent = String(count);
+    }
+
+    // Poll popup count every 500ms to keep the count accurate when the
+    // user (or test) closes a popup window manually.
+    setInterval(updatePopupCount, 500);
+
+    // -------------------------------------------------------------------
+    // Listen for postMessage events from popup windows. When the admin
+    // approves or rejects an applicant in the popup, the popup sends a
+    // message with { type, id, decision }. We use that to update the
+    // applicant's status in our data and re-render the table.
+    // -------------------------------------------------------------------
+    window.addEventListener('message', (event) => {
+      // Only handle messages with our expected type.
+      if (event.data && event.data.type === 'applicant-decision') {
+        const { id, decision } = event.data;
+
+        // Find the applicant and update their status.
+        const app = applicants.find(a => a.id === id);
+        if (app) {
+          app.status = decision; // 'approved' or 'rejected'
+        }
+
+        // Update the status bar with the last action taken.
+        document.querySelector('[data-testid="last-action"]').textContent =
+          `${app ? app.name : 'Unknown'} was ${decision}`;
+
+        // Re-render the table to reflect the new status.
+        renderTable();
+      }
+    });
+
+    // Initial render on page load.
+    renderTable();
+  </script>
+</body>
+</html>
