@@ -1,0 +1,220 @@
+# =============================================================================
+# GitHub Actions Workflow: Matrix Strategy for Cross-Browser Testing
+# =============================================================================
+# This workflow runs the SAME tests across MULTIPLE browsers and OS versions.
+#
+# Matrix strategy creates a JOB for each combination of parameters.
+# For example, 3 browsers x 1 OS = 3 parallel CI jobs.
+#
+# This ensures your app works consistently across Chrome, Firefox, and WebKit.
+# =============================================================================
+
+name: Cross-Browser Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ===========================================================================
+  # Job 1: Playwright Cross-Browser Tests
+  # ===========================================================================
+  playwright:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    # strategy.matrix defines the parameters to iterate over.
+    # Each combination creates a separate CI job that runs in parallel.
+    strategy:
+      # fail-fast: false means ALL matrix jobs run even if one fails.
+      # Set to true (default) to cancel all jobs when one fails.
+      # false is better for cross-browser testing — you want to see
+      # which browsers pass and which fail independently.
+      fail-fast: false
+
+      # matrix — defines the parameter combinations.
+      # Each key becomes a variable accessible via ${{ matrix.key }}.
+      matrix:
+        # browser — the Playwright project (browser) to test.
+        # Playwright config should have projects named 'chromium', 'firefox', 'webkit'.
+        browser: [chromium, firefox, webkit]
+
+        # You can add more dimensions:
+        # os: [ubuntu-latest, windows-latest, macos-latest]
+        # node-version: [18, 20]
+        # shard: ['1/3', '2/3', '3/3']
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      # Run tests for ONLY the browser specified by the matrix.
+      # --project=${{ matrix.browser }} selects the browser project.
+      # Each matrix job runs one browser in parallel.
+      - name: Run tests (${{ matrix.browser }})
+        run: npx playwright test --project=${{ matrix.browser }}
+
+      # Upload the report with a browser-specific artifact name.
+      # Each browser gets its own report artifact.
+      - name: Upload report (${{ matrix.browser }})
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report-${{ matrix.browser }}
+          path: playwright-report/
+          retention-days: 14
+
+  # ===========================================================================
+  # Job 2: Playwright Sharded Tests (Scale Across Machines)
+  # ===========================================================================
+  playwright-sharded:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # shard — splits tests across 3 CI machines.
+        # Machine 1 gets shard 1/3, machine 2 gets 2/3, etc.
+        # Each machine runs roughly 1/3 of the total tests.
+        shard: ['1/3', '2/3', '3/3']
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      # --shard=${{ matrix.shard }} tells Playwright which portion of tests to run.
+      # Shard 1/3 runs the first third, 2/3 the second, 3/3 the last.
+      - name: Run tests (shard ${{ matrix.shard }})
+        run: npx playwright test --shard=${{ matrix.shard }}
+
+      # Upload results with shard-specific names.
+      # Use the shard index (1, 2, 3) in the artifact name.
+      - name: Upload blob report
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: blob-report-${{ strategy.job-index }}
+          path: blob-report/
+          retention-days: 7
+
+  # ===========================================================================
+  # Job 3: Cypress Cross-Browser Tests
+  # ===========================================================================
+  cypress:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # browser — Cypress supports chrome, firefox, edge, and electron.
+        # Note: Cypress does NOT support WebKit/Safari directly.
+        browser: [chrome, firefox, edge]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # The Cypress GitHub Action handles Node.js setup and caching.
+      - name: Run Cypress (${{ matrix.browser }})
+        uses: cypress-io/github-action@v6
+        with:
+          build: npm run build
+          start: npm start
+          wait-on: 'http://localhost:3000'
+          wait-on-timeout: 60
+          # browser — the browser from the matrix parameter.
+          browser: ${{ matrix.browser }}
+
+      - name: Upload screenshots (${{ matrix.browser }})
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: cypress-screenshots-${{ matrix.browser }}
+          path: cypress/screenshots/
+          retention-days: 7
+
+  # ===========================================================================
+  # Job 4: Combined Playwright + Cypress in One Pipeline
+  # ===========================================================================
+  # This job runs BOTH frameworks sequentially in a single job.
+  # Use this if you want a simple "all tests pass" check.
+  combined:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # --- Playwright ---
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: Run Playwright tests
+        run: npx playwright test
+
+      - name: Upload Playwright report
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: playwright-report-combined
+          path: playwright-report/
+          retention-days: 14
+
+      # --- Cypress ---
+      # Start the dev server in the background, then run Cypress.
+      - name: Start application server
+        run: npm start &
+
+      - name: Wait for server
+        run: npx wait-on http://localhost:3000 --timeout 60000
+
+      - name: Run Cypress tests
+        run: npx cypress run --browser chrome
+
+      - name: Upload Cypress artifacts
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: cypress-artifacts-combined
+          path: |
+            cypress/screenshots/
+            cypress/videos/
+          retention-days: 7

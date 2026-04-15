@@ -1,0 +1,104 @@
+# =============================================================================
+# GitHub Actions Workflow: Playwright Tests
+# =============================================================================
+# This workflow runs Playwright end-to-end tests on every push and PR.
+#
+# TO USE THIS IN YOUR PROJECT:
+#   1. Copy this file to .github/workflows/playwright.yml
+#   2. Ensure your project has a package.json with Playwright installed
+#   3. Push to GitHub — the workflow runs automatically
+#
+# EVERY LINE IS EXPLAINED BELOW.
+# =============================================================================
+
+# name — the display name shown in the GitHub Actions tab.
+# You will see "Playwright Tests" in the list of workflow runs.
+name: Playwright Tests
+
+# on — defines WHEN this workflow runs (the trigger).
+on:
+  # push — run when code is pushed to these branches.
+  push:
+    branches: [main, develop]
+
+  # pull_request — run when a PR is opened or updated targeting these branches.
+  pull_request:
+    branches: [main]
+
+# jobs — defines WHAT to run. A workflow can have multiple jobs.
+# Jobs run in parallel by default (unless you add `needs:` dependencies).
+jobs:
+  # "test" is the job name — you choose this. It appears in the GitHub UI.
+  test:
+    # runs-on — the operating system for the CI machine.
+    # ubuntu-latest is a Linux machine provided by GitHub (free for public repos).
+    # It comes with Node.js, npm, and common tools pre-installed.
+    runs-on: ubuntu-latest
+
+    # timeout-minutes — kill the job if it runs longer than this.
+    # Prevents stuck jobs from running forever and consuming CI minutes.
+    timeout-minutes: 30
+
+    # steps — a list of sequential commands. Each step runs in order.
+    steps:
+      # STEP 1: Checkout the repository code.
+      # actions/checkout@v4 clones your repo into the CI machine.
+      # Without this step, the CI machine has no access to your code.
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # STEP 2: Set up Node.js.
+      # actions/setup-node@v4 installs a specific version of Node.js.
+      # node-version: 20 installs Node.js v20 (LTS).
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          # cache: npm — caches the npm download cache (~/.npm).
+          # This makes subsequent `npm ci` runs faster because
+          # packages are restored from cache instead of re-downloaded.
+          cache: npm
+
+      # STEP 3: Install project dependencies.
+      # `npm ci` installs from package-lock.json (deterministic, faster).
+      # It is preferred over `npm install` in CI because:
+      #   - It uses the exact versions from package-lock.json
+      #   - It removes node_modules first for a clean install
+      #   - It fails if package-lock.json is out of sync with package.json
+      - name: Install dependencies
+        run: npm ci
+
+      # STEP 4: Install Playwright browsers.
+      # Playwright needs browser binaries (Chromium, Firefox, WebKit).
+      # `npx playwright install --with-deps` downloads browsers AND
+      # installs OS-level dependencies (libs needed by the browsers).
+      # The --with-deps flag is important on Linux CI machines.
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      # STEP 5: Run the tests.
+      # `npx playwright test` runs all tests found in the project.
+      # You can add flags:
+      #   --workers=4        — run 4 tests in parallel
+      #   --reporter=html    — generate an HTML report
+      #   --project=chromium — run only in Chromium
+      - name: Run Playwright tests
+        run: npx playwright test
+
+      # STEP 6: Upload the HTML report as an artifact.
+      # Artifacts are files saved from the CI run that you can download later.
+      # The HTML report shows test results, screenshots, and traces.
+      #
+      # if: ${{ !cancelled() }} means this step runs even if tests failed.
+      # (If tests fail, you WANT the report to debug the failures.)
+      - name: Upload test report
+        uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          # name — the artifact name shown in the GitHub UI.
+          name: playwright-report
+          # path — the directory to upload.
+          # Playwright saves the HTML report to playwright-report/ by default.
+          path: playwright-report/
+          # retention-days — how long to keep the artifact (default: 90).
+          retention-days: 14

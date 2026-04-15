@@ -1,0 +1,96 @@
+# =============================================================================
+# GitHub Actions Workflow: Cypress Tests
+# =============================================================================
+# This workflow runs Cypress end-to-end tests on every push and PR.
+#
+# Cypress provides an official GitHub Action (cypress-io/github-action)
+# that handles installation, caching, and running tests automatically.
+#
+# TO USE THIS IN YOUR PROJECT:
+#   1. Copy this file to .github/workflows/cypress.yml
+#   2. Ensure your project has Cypress installed (npm install cypress)
+#   3. Ensure your app has a start script (e.g., npm start)
+#   4. Push to GitHub — the workflow runs automatically
+# =============================================================================
+
+name: Cypress Tests
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      # STEP 1: Checkout the repository code.
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # STEP 2: Use the official Cypress GitHub Action.
+      # cypress-io/github-action@v6 handles everything:
+      #   - Installs Node.js and npm dependencies
+      #   - Caches node_modules and Cypress binary
+      #   - Starts the dev server (if configured)
+      #   - Runs Cypress tests
+      #
+      # This is the RECOMMENDED way to run Cypress in GitHub Actions.
+      - name: Run Cypress tests
+        uses: cypress-io/github-action@v6
+        with:
+          # build — command to build the app before testing (optional).
+          # Runs after npm install but before starting the server.
+          build: npm run build
+
+          # start — command to start the application server.
+          # Cypress needs a running server to test against.
+          # The action starts this command and waits for it to be ready.
+          start: npm start
+
+          # wait-on — URL to wait for before running tests.
+          # The action polls this URL until it responds with 200 OK.
+          # Only then does it start running Cypress tests.
+          wait-on: 'http://localhost:3000'
+
+          # wait-on-timeout — how long to wait (in seconds) for the server.
+          # If the server doesn't respond within this time, the job fails.
+          wait-on-timeout: 60
+
+          # browser — which browser to use (chrome, firefox, edge, electron).
+          # Electron is the default and does NOT need separate installation.
+          browser: chrome
+
+          # record — set to true to record results to Cypress Cloud.
+          # Requires CYPRESS_RECORD_KEY secret to be set in the repo.
+          # record: true
+
+          # config — override Cypress configuration.
+          # Useful for CI-specific settings like base URL or video.
+          # config: baseUrl=http://localhost:3000,video=true
+
+      # STEP 3: Upload screenshots on failure.
+      # Cypress automatically captures screenshots when a test fails.
+      # These are saved to cypress/screenshots/.
+      - name: Upload screenshots
+        uses: actions/upload-artifact@v4
+        if: failure()    # Only upload if the previous step FAILED
+        with:
+          name: cypress-screenshots
+          path: cypress/screenshots/
+          retention-days: 7
+
+      # STEP 4: Upload videos.
+      # Cypress can record a video of the entire test run.
+      # Videos are saved to cypress/videos/.
+      # Enable video in cypress.config.ts: video: true
+      - name: Upload videos
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: cypress-videos
+          path: cypress/videos/
+          retention-days: 7
