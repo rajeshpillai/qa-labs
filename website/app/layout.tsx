@@ -1,9 +1,7 @@
 import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import { ThemeProvider } from '@/components/theme-provider';
-import { ThemeToggle } from '@/components/theme-toggle';
-import { Sidebar } from '@/components/sidebar';
-import { MobileHeader } from '@/components/sidebar-mobile';
+import { LayoutWrapper } from '@/components/layout-wrapper';
 import { getAllPhases } from '@/lib/katas';
 import './globals.css';
 
@@ -38,27 +36,9 @@ export default function RootLayout({
     >
       <body className="min-h-full">
         <ThemeProvider>
-          <div className="flex min-h-screen">
-            {/* Desktop sidebar */}
-            <aside className="hidden lg:flex lg:fixed lg:inset-y-0 lg:z-30 lg:w-[280px]">
-              <Sidebar phases={phases} />
-            </aside>
-
-            {/* Desktop theme toggle (top-right) */}
-            <div className="hidden lg:flex fixed top-4 right-4 z-30">
-              <ThemeToggle />
-            </div>
-
-            {/* Mobile header + sidebar drawer */}
-            <MobileHeader phases={phases} />
-
-            {/* Main content */}
-            <main className="flex-1 lg:pl-[280px]">
-              <div className="mx-auto max-w-4xl px-6 py-8 lg:py-12">
-                {children}
-              </div>
-            </main>
-          </div>
+          <LayoutWrapper phases={phases}>
+            {children}
+          </LayoutWrapper>
         </ThemeProvider>
       </body>
     </html>
