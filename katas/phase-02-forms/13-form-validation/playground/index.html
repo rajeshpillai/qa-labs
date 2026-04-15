@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kata 13: Form Validation | QA Labs</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #1e293b; padding: 2rem; }
+    .header { background: #0f172a; color: white; padding: 1rem 2rem; margin: -2rem -2rem 2rem; }
+    .header h1 { font-size: 1.25rem; }
+    .kata-badge { display: inline-block; background: #38bdf8; color: #0f172a; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 4px; margin-right: 0.5rem; }
+
+    .form-container { max-width: 600px; margin: 0 auto; background: white; border-radius: 8px; padding: 2rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .form-title { font-size: 1.1rem; color: #334155; margin-bottom: 1.5rem; padding-bottom: 0.75rem; border-bottom: 2px solid #e2e8f0; }
+
+    .form-group { margin-bottom: 1.25rem; }
+    .form-group label { display: block; font-size: 0.875rem; font-weight: 600; color: #475569; margin-bottom: 0.35rem; }
+    .form-group label .required { color: #ef4444; margin-left: 2px; }
+
+    .form-group input, .form-group select {
+      width: 100%; padding: 0.6rem 0.75rem; border: 2px solid #cbd5e1;
+      border-radius: 6px; font-size: 0.875rem; transition: border-color 0.2s;
+      outline: none;
+    }
+    .form-group input:focus, .form-group select:focus { border-color: #3b82f6; }
+
+    /* Error state: red border and red error message text */
+    .form-group input.input-error, .form-group select.input-error { border-color: #ef4444; }
+    .form-group .error-message {
+      display: none; font-size: 0.78rem; color: #ef4444; margin-top: 0.3rem;
+    }
+    .form-group .error-message.visible { display: block; }
+
+    .btn-submit {
+      width: 100%; padding: 0.75rem; background: #2563eb; color: white;
+      font-size: 0.95rem; font-weight: 600; border: none; border-radius: 6px;
+      cursor: pointer; transition: background 0.2s;
+    }
+    .btn-submit:hover { background: #1d4ed8; }
+
+    /* Success / error banners shown after submission */
+    .form-status {
+      display: none; padding: 0.85rem 1rem; border-radius: 6px;
+      margin-top: 1rem; font-size: 0.875rem; font-weight: 500;
+    }
+    .form-status.success { display: block; background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+    .form-status.error { display: block; background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+  </style>
+</head>
+<body>
+
+  <header class="header" data-testid="page-header">
+    <span class="kata-badge">KATA 13</span>
+    <h1>KYC Personal Details - Form Validation</h1>
+  </header>
+
+  <div class="form-container" data-testid="form-container">
+    <h2 class="form-title">Personal Details (KYC Step 1)</h2>
+
+    <form id="kyc-form" data-testid="kyc-form" novalidate>
+
+      <!-- Full Name -->
+      <div class="form-group">
+        <label for="full-name">Full Name <span class="required">*</span></label>
+        <input type="text" id="full-name" name="fullName" data-testid="input-full-name"
+               placeholder="e.g. Aisha Patel" minlength="3" maxlength="50" required>
+        <div class="error-message" data-testid="error-full-name">Full name is required (3-50 characters).</div>
+      </div>
+
+      <!-- Email -->
+      <div class="form-group">
+        <label for="email">Email Address <span class="required">*</span></label>
+        <input type="email" id="email" name="email" data-testid="input-email"
+               placeholder="e.g. aisha@example.com" required>
+        <div class="error-message" data-testid="error-email">Please enter a valid email address.</div>
+      </div>
+
+      <!-- Phone -->
+      <div class="form-group">
+        <label for="phone">Phone Number <span class="required">*</span></label>
+        <input type="tel" id="phone" name="phone" data-testid="input-phone"
+               placeholder="e.g. +1-555-123-4567" required>
+        <div class="error-message" data-testid="error-phone">Phone must be 10-15 digits (may start with +).</div>
+      </div>
+
+      <!-- Date of Birth -->
+      <div class="form-group">
+        <label for="dob">Date of Birth <span class="required">*</span></label>
+        <input type="date" id="dob" name="dob" data-testid="input-dob" required>
+        <div class="error-message" data-testid="error-dob">Date of birth is required.</div>
+      </div>
+
+      <!-- Nationality -->
+      <div class="form-group">
+        <label for="nationality">Nationality <span class="required">*</span></label>
+        <select id="nationality" name="nationality" data-testid="input-nationality" required>
+          <option value="">-- Select Nationality --</option>
+          <option value="US">United States</option>
+          <option value="GB">United Kingdom</option>
+          <option value="IN">India</option>
+          <option value="SG">Singapore</option>
+          <option value="AU">Australia</option>
+        </select>
+        <div class="error-message" data-testid="error-nationality">Please select your nationality.</div>
+      </div>
+
+      <!-- ID Number -->
+      <div class="form-group">
+        <label for="id-number">Government ID Number <span class="required">*</span></label>
+        <input type="text" id="id-number" name="idNumber" data-testid="input-id-number"
+               placeholder="e.g. A12345678" minlength="5" maxlength="20" required>
+        <div class="error-message" data-testid="error-id-number">ID number must be 5-20 characters.</div>
+      </div>
+
+      <button type="submit" class="btn-submit" data-testid="btn-submit">Submit KYC Details</button>
+    </form>
+
+    <!-- Status banner shown after submission attempt -->
+    <div id="form-status" class="form-status" data-testid="form-status"></div>
+  </div>
+
+  <script>
+    // -----------------------------------------------------------------------
+    // Client-side form validation for KYC personal details.
+    //
+    // We use the HTML5 "novalidate" attribute on the <form> to disable the
+    // browser's built-in validation popups, then run our own JavaScript
+    // validation so we can show inline error messages below each field.
+    // -----------------------------------------------------------------------
+
+    const form = document.getElementById('kyc-form');
+    const statusEl = document.getElementById('form-status');
+
+    // EMAIL_REGEX: A simple pattern that checks for text@text.text format.
+    // ^ — start of string
+    // [^\s@]+ — one or more characters that are NOT whitespace or @
+    // @ — literal @ symbol
+    // [^\s@]+ — domain name (no spaces or @)
+    // \. — literal dot
+    // [^\s@]{2,} — TLD with at least 2 characters
+    // $ — end of string
+    const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+    // PHONE_REGEX: Allows an optional leading +, then 10-15 digits.
+    // Dashes, spaces, and parentheses are stripped before testing.
+    const PHONE_REGEX = /^\+?\d{10,15}$/;
+
+    // showError(fieldName) makes the error message visible and adds the red
+    // border class to the input element.
+    // Parameters:
+    //   fieldName — the data-testid suffix, e.g. "email" for "error-email"
+    function showError(fieldName) {
+      const input = document.querySelector(`[data-testid="input-${fieldName}"]`);
+      const error = document.querySelector(`[data-testid="error-${fieldName}"]`);
+      if (input) input.classList.add('input-error');
+      if (error) error.classList.add('visible');
+    }
+
+    // clearError(fieldName) hides the error message and removes the red border.
+    function clearError(fieldName) {
+      const input = document.querySelector(`[data-testid="input-${fieldName}"]`);
+      const error = document.querySelector(`[data-testid="error-${fieldName}"]`);
+      if (input) input.classList.remove('input-error');
+      if (error) error.classList.remove('visible');
+    }
+
+    // clearAllErrors() resets all fields to their default (no-error) state.
+    function clearAllErrors() {
+      document.querySelectorAll('.input-error').forEach(el => el.classList.remove('input-error'));
+      document.querySelectorAll('.error-message').forEach(el => el.classList.remove('visible'));
+      statusEl.className = 'form-status';
+      statusEl.textContent = '';
+    }
+
+    // validateForm() checks every field and returns true if all are valid.
+    // It calls showError() for each invalid field.
+    function validateForm() {
+      let isValid = true;
+
+      // --- Full Name: required, 3-50 characters ---
+      const fullName = form.fullName.value.trim();
+      if (!fullName || fullName.length < 3 || fullName.length > 50) {
+        showError('full-name');
+        isValid = false;
+      }
+
+      // --- Email: required, must match EMAIL_REGEX ---
+      const email = form.email.value.trim();
+      if (!email || !EMAIL_REGEX.test(email)) {
+        showError('email');
+        isValid = false;
+      }
+
+      // --- Phone: required, must match PHONE_REGEX after stripping formatting ---
+      const phoneRaw = form.phone.value.trim();
+      // Remove dashes, spaces, and parentheses so "+1-555-123-4567" becomes "+15551234567".
+      const phoneClean = phoneRaw.replace(/[\s\-()]/g, '');
+      if (!phoneRaw || !PHONE_REGEX.test(phoneClean)) {
+        showError('phone');
+        isValid = false;
+      }
+
+      // --- Date of Birth: required (must not be empty) ---
+      if (!form.dob.value) {
+        showError('dob');
+        isValid = false;
+      }
+
+      // --- Nationality: required (must have selected an option) ---
+      if (!form.nationality.value) {
+        showError('nationality');
+        isValid = false;
+      }
+
+      // --- ID Number: required, 5-20 characters ---
+      const idNumber = form.idNumber.value.trim();
+      if (!idNumber || idNumber.length < 5 || idNumber.length > 20) {
+        showError('id-number');
+        isValid = false;
+      }
+
+      return isValid;
+    }
+
+    // Listen for the form's submit event.
+    // e.preventDefault() stops the browser from doing a full page reload.
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+
+      // Clear any previous error indicators before re-validating.
+      clearAllErrors();
+
+      if (validateForm()) {
+        // All fields are valid — show success banner.
+        statusEl.className = 'form-status success';
+        statusEl.textContent = 'KYC details submitted successfully!';
+
+        // Clear all error styling (should already be clear, but be safe).
+        clearAllErrors();
+        // Re-show the success banner since clearAllErrors hides it.
+        statusEl.className = 'form-status success';
+        statusEl.textContent = 'KYC details submitted successfully!';
+      } else {
+        // At least one field is invalid — show error banner.
+        statusEl.className = 'form-status error';
+        statusEl.textContent = 'Please fix the errors above before submitting.';
+      }
+    });
+  </script>
+
+</body>
+</html>
