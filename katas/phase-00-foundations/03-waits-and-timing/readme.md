@@ -181,6 +181,9 @@ Click "Show after 1s" and verify the delayed message appears.
 ### Exercise 2: Wait for Slow Element
 Click "Show after 3s" and verify it appears. You may need to increase the assertion timeout.
 
+### Exercise 2b: Wait for Very Slow Element (Custom Timeout)
+Click "Show after 7s". This exceeds the default timeout — you must pass a custom `{ timeout: 10000 }` option to make the assertion wait long enough.
+
 ### Exercise 3: Loading State Transition
 Click "Fetch Applicant Data", verify the loading spinner appears, then verify it's replaced by the applicant data.
 
