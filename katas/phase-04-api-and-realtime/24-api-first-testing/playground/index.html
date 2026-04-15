@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kata 24: API-First Testing | QA Labs</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #1e293b; padding: 2rem; }
+    .header { background: #0f172a; color: white; padding: 1rem 2rem; margin: -2rem -2rem 2rem; }
+    .header h1 { font-size: 1.25rem; }
+    .kata-badge { display: inline-block; background: #38bdf8; color: #0f172a; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 4px; margin-right: 0.5rem; }
+
+    .section { margin-bottom: 2rem; padding: 1.5rem; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .section h2 { font-size: 1rem; color: #475569; margin-bottom: 1rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.5rem; }
+
+    .concept-box {
+      padding: 1rem 1.25rem; background: #f0f9ff; border: 1px solid #bae6fd;
+      border-radius: 6px; margin-bottom: 1.25rem; font-size: 0.9rem; line-height: 1.6;
+    }
+    .concept-box h3 { font-size: 0.95rem; color: #0369a1; margin-bottom: 0.5rem; }
+
+    .endpoint {
+      padding: 0.75rem 1rem; background: #f8fafc; border: 1px solid #e2e8f0;
+      border-radius: 6px; margin-bottom: 0.75rem; font-family: 'SF Mono', monospace; font-size: 0.85rem;
+    }
+    .endpoint .method {
+      display: inline-block; font-weight: 700; padding: 0.15rem 0.5rem;
+      border-radius: 4px; margin-right: 0.5rem; font-size: 0.75rem;
+    }
+    .method-get { background: #dcfce7; color: #166534; }
+    .method-post { background: #dbeafe; color: #1e40af; }
+    .method-put { background: #fef3c7; color: #92400e; }
+    .method-delete { background: #fee2e2; color: #991b1b; }
+    .endpoint .path { color: #1e293b; }
+    .endpoint .desc { display: block; font-family: -apple-system, sans-serif; color: #64748b; font-size: 0.8rem; margin-top: 0.25rem; }
+
+    code { background: #f1f5f9; padding: 0.15rem 0.35rem; border-radius: 3px; font-size: 0.85em; }
+
+    .note {
+      margin-top: 1rem; padding: 0.75rem 1rem; background: #fffbeb; border: 1px solid #fde68a;
+      border-radius: 6px; font-size: 0.8rem; color: #92400e;
+    }
+
+    table { width: 100%; border-collapse: collapse; margin-top: 0.75rem; font-size: 0.85rem; }
+    th, td { padding: 0.5rem 0.75rem; text-align: left; border-bottom: 1px solid #e2e8f0; }
+    th { background: #f8fafc; font-weight: 600; color: #475569; }
+  </style>
+</head>
+<body>
+
+  <header class="header" data-testid="page-header">
+    <span class="kata-badge">KATA 24</span>
+    <h1>API-First Testing - Testing APIs Without a Browser UI</h1>
+  </header>
+
+  <div class="section" data-testid="intro-section">
+    <h2>What is API-First Testing?</h2>
+    <div class="concept-box">
+      <h3>Testing the API Layer Directly</h3>
+      <p>
+        In API-first testing, you send HTTP requests directly to an API endpoint and
+        verify the response — <strong>without loading any browser UI</strong>. This is
+        faster than UI tests, catches backend bugs earlier, and is essential for
+        validating API contracts.
+      </p>
+      <p style="margin-top: 0.5rem;">
+        Playwright provides <code>request</code> context for direct HTTP calls.
+        Cypress provides <code>cy.request()</code> for the same purpose.
+        Both bypass the browser's rendering engine entirely.
+      </p>
+    </div>
+
+    <div class="concept-box">
+      <h3>When to Use API-First Testing</h3>
+      <ul style="margin-left: 1.25rem; margin-top: 0.25rem;">
+        <li>Validating API response shapes and status codes</li>
+        <li>Testing CRUD operations (Create, Read, Update, Delete)</li>
+        <li>Verifying authentication and authorization rules</li>
+        <li>Testing error handling and edge cases</li>
+        <li>Setting up test data before UI tests (seeding)</li>
+        <li>Performance baseline testing (response times)</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="section" data-testid="api-reference-section">
+    <h2>API Endpoints Reference</h2>
+    <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 1rem;">
+      The exercises in this kata use <code>https://jsonplaceholder.typicode.com</code>,
+      a free public REST API for testing. No authentication required.
+    </p>
+
+    <div class="endpoint" data-testid="endpoint-get-posts">
+      <span class="method method-get">GET</span>
+      <span class="path">/posts</span>
+      <span class="desc">Returns a list of 100 posts. Each post has: id, userId, title, body.</span>
+    </div>
+
+    <div class="endpoint" data-testid="endpoint-get-post">
+      <span class="method method-get">GET</span>
+      <span class="path">/posts/:id</span>
+      <span class="desc">Returns a single post by ID. Returns 404 for non-existent IDs.</span>
+    </div>
+
+    <div class="endpoint" data-testid="endpoint-post-posts">
+      <span class="method method-post">POST</span>
+      <span class="path">/posts</span>
+      <span class="desc">Creates a new post. Send JSON body with { title, body, userId }. Returns the created post with an id.</span>
+    </div>
+
+    <div class="endpoint" data-testid="endpoint-get-comments">
+      <span class="method method-get">GET</span>
+      <span class="path">/posts/:id/comments</span>
+      <span class="desc">Returns all comments for a specific post. Each comment has: id, postId, name, email, body.</span>
+    </div>
+
+    <div class="endpoint" data-testid="endpoint-get-users">
+      <span class="method method-get">GET</span>
+      <span class="path">/users</span>
+      <span class="desc">Returns a list of 10 users. Each user has: id, name, username, email, address, phone, website, company.</span>
+    </div>
+
+    <h2 style="margin-top: 1.5rem;">Response Format Examples</h2>
+
+    <table data-testid="response-examples">
+      <thead>
+        <tr>
+          <th>Endpoint</th>
+          <th>Example Response (truncated)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><code>GET /posts/1</code></td>
+          <td><code>{ "userId": 1, "id": 1, "title": "sunt aut...", "body": "quia et..." }</code></td>
+        </tr>
+        <tr>
+          <td><code>POST /posts</code></td>
+          <td><code>{ "id": 101, "title": "...", "body": "...", "userId": 1 }</code></td>
+        </tr>
+        <tr>
+          <td><code>GET /users/1</code></td>
+          <td><code>{ "id": 1, "name": "Leanne Graham", "username": "Bret", ... }</code></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section" data-testid="tools-section">
+    <h2>Testing Tools Comparison</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Feature</th>
+          <th>Playwright</th>
+          <th>Cypress</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Send GET request</td>
+          <td><code>request.get(url)</code></td>
+          <td><code>cy.request('GET', url)</code></td>
+        </tr>
+        <tr>
+          <td>Send POST request</td>
+          <td><code>request.post(url, { data })</code></td>
+          <td><code>cy.request('POST', url, body)</code></td>
+        </tr>
+        <tr>
+          <td>Set base URL</td>
+          <td><code>test.use({ baseURL })</code></td>
+          <td><code>Cypress.config('baseUrl')</code></td>
+        </tr>
+        <tr>
+          <td>Custom headers</td>
+          <td><code>request.get(url, { headers })</code></td>
+          <td><code>cy.request({ headers })</code></td>
+        </tr>
+        <tr>
+          <td>Access response body</td>
+          <td><code>await response.json()</code></td>
+          <td><code>.its('body')</code></td>
+        </tr>
+        <tr>
+          <td>Check status code</td>
+          <td><code>expect(response.status()).toBe(200)</code></td>
+          <td><code>.its('status').should('eq', 200)</code></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note">
+    <strong>Note:</strong> This kata has no interactive playground. The exercises
+    test API endpoints directly using Playwright's <code>request</code> API and
+    Cypress's <code>cy.request()</code> — no browser page is loaded for most tests.
+    This reference page explains the concepts and lists the endpoints used.
+  </div>
+
+</body>
+</html>
