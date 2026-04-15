@@ -24,7 +24,7 @@ export function ProgressTracker({ kataSlug }: ProgressTrackerProps) {
   return (
     <button
       onClick={toggle}
-      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800"
+      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors hover:bg-surface"
       title={completed ? 'Mark as incomplete' : 'Mark as completed'}
     >
       {completed ? (

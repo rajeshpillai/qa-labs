@@ -47,8 +47,8 @@ export function CodeViewer({ playwrightFiles, cypressFiles }: CodeViewerProps) {
 
   if (!hasPlaywright && !hasCypress) {
     return (
-      <div className="flex items-center justify-center min-h-[300px] rounded-lg border border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900">
-        <p className="text-zinc-500 dark:text-zinc-400">
+      <div className="flex items-center justify-center min-h-[300px] rounded-lg border border-border bg-background">
+        <p className="text-muted">
           No solution files available for this kata.
         </p>
       </div>
@@ -58,7 +58,7 @@ export function CodeViewer({ playwrightFiles, cypressFiles }: CodeViewerProps) {
   return (
     <div className="flex flex-col gap-0">
       {/* Framework tabs */}
-      <div className="flex items-center gap-0 border-b border-zinc-200 dark:border-zinc-800">
+      <div className="flex items-center gap-0 border-b border-border">
         {hasPlaywright && (
           <button
             onClick={() => handleFrameworkChange('playwright')}
@@ -66,7 +66,7 @@ export function CodeViewer({ playwrightFiles, cypressFiles }: CodeViewerProps) {
               'px-4 py-2 text-sm font-medium border-b-2 transition-colors',
               framework === 'playwright'
                 ? 'border-green-600 text-green-700 dark:border-green-400 dark:text-green-400'
-                : 'border-transparent text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300'
+                : 'border-transparent text-muted hover:text-foreground'
             )}
           >
             Playwright
@@ -79,7 +79,7 @@ export function CodeViewer({ playwrightFiles, cypressFiles }: CodeViewerProps) {
               'px-4 py-2 text-sm font-medium border-b-2 transition-colors',
               framework === 'cypress'
                 ? 'border-green-600 text-green-700 dark:border-green-400 dark:text-green-400'
-                : 'border-transparent text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300'
+                : 'border-transparent text-muted hover:text-foreground'
             )}
           >
             Cypress
@@ -89,7 +89,7 @@ export function CodeViewer({ playwrightFiles, cypressFiles }: CodeViewerProps) {
 
       {/* File sub-tabs (if multiple files) */}
       {files.length > 1 && (
-        <div className="flex items-center gap-0 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50">
+        <div className="flex items-center gap-0 border-b border-border bg-surface/50">
           {files.map((file, i) => (
             <button
               key={file.filename}
@@ -97,8 +97,8 @@ export function CodeViewer({ playwrightFiles, cypressFiles }: CodeViewerProps) {
               className={cn(
                 'px-3 py-1.5 text-xs font-mono transition-colors',
                 i === fileIndex
-                  ? 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 border-b-2 border-blue-500'
-                  : 'text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300'
+                  ? 'bg-background text-foreground border-b-2 border-accent'
+                  : 'text-muted hover:text-foreground'
               )}
             >
               {file.filename}
@@ -109,7 +109,7 @@ export function CodeViewer({ playwrightFiles, cypressFiles }: CodeViewerProps) {
 
       {/* Code block */}
       {currentFile && (
-        <div className="relative group rounded-b-lg border border-t-0 border-zinc-200 dark:border-zinc-800 overflow-hidden">
+        <div className="relative group rounded-b-lg border border-t-0 border-border overflow-hidden">
           {/* Copy button */}
           <button
             onClick={handleCopy}

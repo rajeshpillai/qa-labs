@@ -31,7 +31,7 @@ export default function Home() {
   const totalKatas = phases.reduce((sum, p) => sum + p.katas.length, 0);
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950">
+    <div className="min-h-screen bg-surface/50 dark:bg-zinc-950">
       {/* Hero */}
       <section className="relative overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-blue-600/10 via-violet-600/10 to-emerald-600/10 dark:from-blue-600/5 dark:via-violet-600/5 dark:to-emerald-600/5" />
@@ -41,16 +41,16 @@ export default function Home() {
               QA Labs
             </span>
           </h1>
-          <p className="mt-4 text-lg sm:text-xl text-zinc-600 dark:text-zinc-400 max-w-xl mx-auto">
+          <p className="mt-4 text-lg sm:text-xl text-muted max-w-xl mx-auto">
             {totalKatas} Testing Katas — Playwright &amp; Cypress
           </p>
-          <p className="mt-2 text-sm text-zinc-500 dark:text-zinc-500">
+          <p className="mt-2 text-sm text-muted">
             Hands-on exercises across {phases.length} phases, from foundations to advanced patterns
           </p>
           {firstKata && (
             <Link
               href={`/katas/${firstKata.phaseSlug}/${firstKata.slug}/`}
-              className="inline-flex items-center gap-2 mt-8 px-6 py-3 rounded-full bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 text-sm font-medium hover:bg-zinc-700 dark:hover:bg-zinc-200 transition-colors"
+              className="inline-flex items-center gap-2 mt-8 px-6 py-3 rounded-full bg-foreground text-background text-sm font-medium hover:opacity-90 transition-opacity"
             >
               Start Learning
               <span aria-hidden="true">&rarr;</span>
@@ -69,7 +69,7 @@ export default function Home() {
             return (
               <div
                 key={phase.slug}
-                className={`rounded-xl border ${border} bg-white dark:bg-zinc-900 p-5 flex flex-col gap-3 hover:shadow-md transition-shadow`}
+                className={`rounded-xl border ${border} bg-background p-5 flex flex-col gap-3 hover:shadow-md transition-shadow`}
               >
                 <div className="flex items-center gap-2.5">
                   <span
@@ -77,12 +77,12 @@ export default function Home() {
                   >
                     {phase.number}
                   </span>
-                  <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-100">
+                  <h2 className="text-base font-semibold text-foreground">
                     {phase.name}
                   </h2>
                 </div>
 
-                <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                <p className="text-xs text-muted">
                   {phase.katas.length} kata{phase.katas.length !== 1 ? 's' : ''}
                 </p>
 
@@ -91,7 +91,7 @@ export default function Home() {
                     <li key={kata.slug}>
                       <Link
                         href={`/katas/${kata.phaseSlug}/${kata.slug}/`}
-                        className="text-sm text-zinc-600 dark:text-zinc-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                        className="text-sm text-muted hover:text-accent transition-colors"
                       >
                         {String(kata.number).padStart(2, '0')}. {kata.title}
                       </Link>

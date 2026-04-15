@@ -9,6 +9,7 @@ import { KataContent } from '@/components/kata-content';
 import { PlaygroundViewer } from '@/components/playground-viewer';
 import { CodeViewer } from '@/components/code-viewer';
 import { ProgressTracker } from '@/components/progress-tracker';
+import { TableOfContents } from '@/components/table-of-contents';
 
 const PHASE_COLORS: Record<number, string> = {
   0: 'bg-blue-600',
@@ -57,7 +58,7 @@ export function KataPageClient({
   return (
     <div className="flex flex-col min-h-screen">
       {/* Top bar */}
-      <header className="sticky top-0 z-30 border-b border-zinc-200 dark:border-zinc-800 bg-white/80 dark:bg-zinc-950/80 backdrop-blur-sm">
+      <header className="sticky top-0 z-30 border-b border-border bg-background/80 backdrop-blur-sm">
         <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 min-w-0">
             <span
@@ -68,7 +69,7 @@ export function KataPageClient({
             >
               Phase {kata.phaseNumber}
             </span>
-            <h1 className="text-base font-semibold text-zinc-900 dark:text-zinc-100 truncate">
+            <h1 className="text-base font-semibold text-foreground truncate">
               Kata {String(kata.number).padStart(2, '0')}: {kata.title}
             </h1>
           </div>
@@ -80,26 +81,26 @@ export function KataPageClient({
               {prev ? (
                 <Link
                   href={`/katas/${prev.phaseSlug}/${prev.slug}/`}
-                  className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400"
+                  className="p-1.5 rounded-md hover:bg-surface text-muted"
                   title={`Previous: ${prev.title}`}
                 >
                   <ChevronLeft className="w-5 h-5" />
                 </Link>
               ) : (
-                <span className="p-1.5 text-zinc-300 dark:text-zinc-700">
+                <span className="p-1.5 text-border">
                   <ChevronLeft className="w-5 h-5" />
                 </span>
               )}
               {next ? (
                 <Link
                   href={`/katas/${next.phaseSlug}/${next.slug}/`}
-                  className="p-1.5 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400"
+                  className="p-1.5 rounded-md hover:bg-surface text-muted"
                   title={`Next: ${next.title}`}
                 >
                   <ChevronRight className="w-5 h-5" />
                 </Link>
               ) : (
-                <span className="p-1.5 text-zinc-300 dark:text-zinc-700">
+                <span className="p-1.5 text-border">
                   <ChevronRight className="w-5 h-5" />
                 </span>
               )}
@@ -109,8 +110,8 @@ export function KataPageClient({
       </header>
 
       {/* Tabs */}
-      <nav className="border-b border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950">
-        <div className="max-w-5xl mx-auto px-4 flex gap-0">
+      <nav className="border-b border-border bg-background">
+        <div className="max-w-5xl mx-auto px-4 flex gap-0 overflow-x-auto">
           {tabs.map((tab) => (
             <button
               key={tab.key}
@@ -119,9 +120,9 @@ export function KataPageClient({
               className={cn(
                 'px-4 py-2.5 text-sm font-medium border-b-2 transition-colors',
                 activeTab === tab.key
-                  ? 'border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400'
-                  : 'border-transparent text-zinc-500 dark:text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-300',
-                tab.disabled && 'opacity-40 cursor-not-allowed hover:text-zinc-500 dark:hover:text-zinc-400'
+                  ? 'border-accent text-accent'
+                  : 'border-transparent text-muted hover:text-foreground',
+                tab.disabled && 'opacity-40 cursor-not-allowed hover:text-muted'
               )}
             >
               {tab.label}
@@ -131,9 +132,14 @@ export function KataPageClient({
       </nav>
 
       {/* Tab content */}
-      <main className="flex-1 bg-zinc-50 dark:bg-zinc-950">
+      <main className="flex-1 bg-surface/50 dark:bg-zinc-950">
         <div className="max-w-5xl mx-auto px-4 py-8">
-          {activeTab === 'learn' && <KataContent markdown={kata.readmeRaw} />}
+          {activeTab === 'learn' && (
+            <>
+              <KataContent markdown={kata.readmeRaw} />
+              <TableOfContents />
+            </>
+          )}
 
           {activeTab === 'playground' && (
             <PlaygroundViewer kataSlug={kata.slug} hasPlayground={kata.hasPlayground} />
@@ -149,12 +155,12 @@ export function KataPageClient({
       </main>
 
       {/* Bottom nav */}
-      <footer className="border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-950">
+      <footer className="border-t border-border bg-background">
         <div className="max-w-5xl mx-auto px-4 py-4 flex justify-between">
           {prev ? (
             <Link
               href={`/katas/${prev.phaseSlug}/${prev.slug}/`}
-              className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
+              className="flex items-center gap-2 text-sm text-muted hover:text-foreground"
             >
               <ChevronLeft className="w-4 h-4" />
               <span>{prev.title}</span>
@@ -165,7 +171,7 @@ export function KataPageClient({
           {next ? (
             <Link
               href={`/katas/${next.phaseSlug}/${next.slug}/`}
-              className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100"
+              className="flex items-center gap-2 text-sm text-muted hover:text-foreground"
             >
               <span>{next.title}</span>
               <ChevronRight className="w-4 h-4" />
