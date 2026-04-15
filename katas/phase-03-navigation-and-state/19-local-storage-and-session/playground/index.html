@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kata 19: Local Storage and Session | QA Labs</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #1e293b; padding: 2rem; transition: background 0.3s, color 0.3s; }
+    body.dark { background: #0f172a; color: #e2e8f0; }
+    .header { background: #0f172a; color: white; padding: 1rem 2rem; margin: -2rem -2rem 2rem; }
+    body.dark .header { background: #1e293b; }
+    .header h1 { font-size: 1.25rem; }
+    .kata-badge { display: inline-block; background: #38bdf8; color: #0f172a; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 4px; margin-right: 0.5rem; }
+
+    .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; max-width: 900px; }
+
+    .section {
+      background: white; border-radius: 8px; padding: 1.5rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 1.5rem;
+    }
+    body.dark .section { background: #1e293b; box-shadow: 0 1px 3px rgba(0,0,0,0.3); }
+    .section h2 { font-size: 1rem; color: #475569; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid #e2e8f0; }
+    body.dark .section h2 { color: #94a3b8; border-bottom-color: #334155; }
+
+    .form-group { margin-bottom: 1rem; }
+    .form-group label { display: block; font-weight: 600; font-size: 0.875rem; margin-bottom: 0.25rem; color: #334155; }
+    body.dark .form-group label { color: #cbd5e1; }
+    .form-group input, .form-group textarea, .form-group select {
+      width: 100%; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 6px;
+      font-size: 0.875rem; font-family: inherit;
+    }
+    body.dark .form-group input, body.dark .form-group textarea, body.dark .form-group select {
+      background: #0f172a; color: #e2e8f0; border-color: #475569;
+    }
+    .form-group textarea { resize: vertical; min-height: 80px; }
+
+    .btn {
+      padding: 0.5rem 1.25rem; border: none; border-radius: 6px;
+      font-size: 0.875rem; font-weight: 600; cursor: pointer;
+      margin-right: 0.5rem; margin-bottom: 0.5rem;
+    }
+    .btn-primary { background: #3b82f6; color: white; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-success { background: #22c55e; color: white; }
+    .btn-success:hover { background: #16a34a; }
+    .btn-danger { background: #ef4444; color: white; }
+    .btn-danger:hover { background: #dc2626; }
+    .btn-secondary { background: #64748b; color: white; }
+    .btn-secondary:hover { background: #475569; }
+
+    .status-message {
+      margin-top: 0.75rem; padding: 0.5rem 0.75rem; border-radius: 6px;
+      font-size: 0.8rem; background: #f1f5f9; color: #475569;
+    }
+    body.dark .status-message { background: #334155; color: #94a3b8; }
+    .status-message.success { background: #dcfce7; color: #166534; }
+    .status-message.error { background: #fee2e2; color: #991b1b; }
+
+    /* Theme toggle */
+    .theme-toggle {
+      display: flex; align-items: center; gap: 0.75rem; margin-bottom: 1rem;
+    }
+    .theme-toggle .switch {
+      position: relative; width: 48px; height: 26px; background: #cbd5e1;
+      border-radius: 13px; cursor: pointer; transition: background 0.3s;
+    }
+    .theme-toggle .switch.on { background: #3b82f6; }
+    .theme-toggle .switch .knob {
+      position: absolute; top: 3px; left: 3px; width: 20px; height: 20px;
+      background: white; border-radius: 50%; transition: left 0.3s;
+    }
+    .theme-toggle .switch.on .knob { left: 25px; }
+    .theme-toggle .label { font-size: 0.875rem; font-weight: 500; }
+
+    /* Session counter */
+    .counter-display {
+      font-size: 2rem; font-weight: 700; color: #3b82f6; text-align: center;
+      padding: 1rem;
+    }
+    body.dark .counter-display { color: #38bdf8; }
+
+    /* Storage viewer */
+    .storage-viewer {
+      font-family: monospace; font-size: 0.8rem; background: #f8fafc;
+      border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.75rem;
+      max-height: 200px; overflow-y: auto; white-space: pre-wrap;
+      word-break: break-all;
+    }
+    body.dark .storage-viewer { background: #0f172a; border-color: #475569; color: #94a3b8; }
+  </style>
+</head>
+<body>
+
+  <header class="header" data-testid="page-header">
+    <span class="kata-badge">KATA 19</span>
+    <h1>KYC Draft Saving - Local Storage and Session</h1>
+  </header>
+
+  <div class="layout">
+
+    <!-- Left column: Draft form + actions -->
+    <div>
+
+      <!-- KYC Draft Form -->
+      <div class="section" data-testid="draft-section">
+        <h2>KYC Application Draft</h2>
+        <div class="form-group">
+          <label for="draft-name">Full Name</label>
+          <input type="text" id="draft-name" data-testid="draft-name" placeholder="Enter your full name">
+        </div>
+        <div class="form-group">
+          <label for="draft-email">Email Address</label>
+          <input type="email" id="draft-email" data-testid="draft-email" placeholder="Enter your email">
+        </div>
+        <div class="form-group">
+          <label for="draft-country">Country</label>
+          <select id="draft-country" data-testid="draft-country">
+            <option value="">Select country</option>
+            <option value="us">United States</option>
+            <option value="uk">United Kingdom</option>
+            <option value="in">India</option>
+            <option value="sg">Singapore</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="draft-notes">Additional Notes</label>
+          <textarea id="draft-notes" data-testid="draft-notes" placeholder="Any additional information..."></textarea>
+        </div>
+
+        <!-- Action buttons -->
+        <button class="btn btn-primary" data-testid="btn-save-draft" id="btn-save-draft">Save Draft</button>
+        <button class="btn btn-success" data-testid="btn-load-draft" id="btn-load-draft">Load Draft</button>
+        <button class="btn btn-danger" data-testid="btn-clear-draft" id="btn-clear-draft">Clear Draft</button>
+
+        <!-- Status message for save/load/clear feedback -->
+        <div class="status-message" data-testid="draft-status" id="draft-status">
+          No action taken yet.
+        </div>
+      </div>
+
+      <!-- Theme Preference (persisted in localStorage) -->
+      <div class="section" data-testid="theme-section">
+        <h2>Theme Preference</h2>
+        <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 0.75rem;">
+          Your theme choice is saved in localStorage and persists across page reloads.
+        </p>
+        <div class="theme-toggle" data-testid="theme-toggle">
+          <span class="label" data-testid="theme-label">Light Mode</span>
+          <div class="switch" data-testid="theme-switch" id="theme-switch">
+            <div class="knob"></div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Right column: Session counter + Storage viewer -->
+    <div>
+
+      <!-- Session Counter (sessionStorage) -->
+      <div class="section" data-testid="session-section">
+        <h2>Session Page Views</h2>
+        <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 0.75rem;">
+          This counter uses sessionStorage. It increments on each page load within the same browser tab session and resets when the tab is closed.
+        </p>
+        <div class="counter-display" data-testid="session-counter" id="session-counter">0</div>
+        <p style="text-align: center; font-size: 0.8rem; color: #94a3b8;">page views this session</p>
+      </div>
+
+      <!-- Storage Viewer -->
+      <div class="section" data-testid="storage-section">
+        <h2>Storage Inspector</h2>
+        <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 0.75rem;">
+          View the current contents of localStorage and sessionStorage.
+        </p>
+        <button class="btn btn-secondary" data-testid="btn-refresh-storage" id="btn-refresh-storage">Refresh View</button>
+        <h3 style="font-size: 0.85rem; margin-top: 1rem; margin-bottom: 0.5rem;">localStorage</h3>
+        <div class="storage-viewer" data-testid="local-storage-view" id="local-storage-view">Empty</div>
+        <h3 style="font-size: 0.85rem; margin-top: 1rem; margin-bottom: 0.5rem;">sessionStorage</h3>
+        <div class="storage-viewer" data-testid="session-storage-view" id="session-storage-view">Empty</div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    // -----------------------------------------------------------------------
+    // 1. Draft Save / Load / Clear — using localStorage
+    // -----------------------------------------------------------------------
+    // localStorage persists data across page reloads AND browser restarts.
+    // It stores key-value pairs where both key and value are strings.
+    //
+    // Key methods:
+    //   localStorage.setItem(key, value) — stores a string under the key
+    //   localStorage.getItem(key)        — retrieves the value for a key (null if missing)
+    //   localStorage.removeItem(key)     — deletes a single key
+    //   localStorage.clear()             — deletes ALL keys
+
+    // STORAGE KEY used for the draft data. We store the form fields as a
+    // JSON string under this key.
+    const DRAFT_KEY = 'kyc-draft';
+
+    // References to form fields.
+    const nameInput = document.getElementById('draft-name');
+    const emailInput = document.getElementById('draft-email');
+    const countrySelect = document.getElementById('draft-country');
+    const notesTextarea = document.getElementById('draft-notes');
+    const draftStatus = document.getElementById('draft-status');
+
+    // setDraftStatus(message, type) updates the status message element
+    // below the form buttons. type can be 'success', 'error', or '' for neutral.
+    function setDraftStatus(message, type = '') {
+      draftStatus.textContent = message;
+      draftStatus.className = 'status-message' + (type ? ' ' + type : '');
+    }
+
+    // Save Draft: reads all form fields, serializes them to JSON, and stores
+    // in localStorage under the DRAFT_KEY.
+    document.getElementById('btn-save-draft').addEventListener('click', () => {
+      const draft = {
+        name: nameInput.value,
+        email: emailInput.value,
+        country: countrySelect.value,
+        notes: notesTextarea.value
+      };
+
+      // JSON.stringify() converts a JavaScript object to a JSON string.
+      // This is necessary because localStorage only stores strings.
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+
+      setDraftStatus('Draft saved successfully!', 'success');
+      refreshStorageView();
+    });
+
+    // Load Draft: reads the JSON string from localStorage, parses it back
+    // into an object, and fills the form fields.
+    document.getElementById('btn-load-draft').addEventListener('click', () => {
+      const stored = localStorage.getItem(DRAFT_KEY);
+
+      if (!stored) {
+        setDraftStatus('No draft found in storage.', 'error');
+        return;
+      }
+
+      // JSON.parse() converts a JSON string back to a JavaScript object.
+      const draft = JSON.parse(stored);
+
+      nameInput.value = draft.name || '';
+      emailInput.value = draft.email || '';
+      countrySelect.value = draft.country || '';
+      notesTextarea.value = draft.notes || '';
+
+      setDraftStatus('Draft loaded successfully!', 'success');
+    });
+
+    // Clear Draft: removes the draft from localStorage and clears the form.
+    document.getElementById('btn-clear-draft').addEventListener('click', () => {
+      // removeItem(key) deletes a single key from localStorage.
+      localStorage.removeItem(DRAFT_KEY);
+
+      // Clear all form fields.
+      nameInput.value = '';
+      emailInput.value = '';
+      countrySelect.value = '';
+      notesTextarea.value = '';
+
+      setDraftStatus('Draft cleared.', 'success');
+      refreshStorageView();
+    });
+
+    // -----------------------------------------------------------------------
+    // 2. Theme Preference — persisted in localStorage
+    // -----------------------------------------------------------------------
+    // The user can toggle between light and dark mode. The preference is
+    // stored in localStorage under the key 'kyc-theme' so it persists.
+
+    const THEME_KEY = 'kyc-theme';
+    const themeSwitch = document.getElementById('theme-switch');
+    const themeLabel = document.querySelector('[data-testid="theme-label"]');
+
+    // applyTheme(dark) adds or removes the 'dark' class on <body> and
+    // updates the toggle switch appearance and label text.
+    function applyTheme(dark) {
+      if (dark) {
+        document.body.classList.add('dark');
+        themeSwitch.classList.add('on');
+        themeLabel.textContent = 'Dark Mode';
+      } else {
+        document.body.classList.remove('dark');
+        themeSwitch.classList.remove('on');
+        themeLabel.textContent = 'Light Mode';
+      }
+    }
+
+    // On click, toggle the theme and save the new preference.
+    themeSwitch.addEventListener('click', () => {
+      const isDark = document.body.classList.toggle('dark');
+      themeSwitch.classList.toggle('on');
+      themeLabel.textContent = isDark ? 'Dark Mode' : 'Light Mode';
+
+      // Save the preference as a string ('dark' or 'light').
+      localStorage.setItem(THEME_KEY, isDark ? 'dark' : 'light');
+      refreshStorageView();
+    });
+
+    // On page load, read the saved theme preference and apply it.
+    const savedTheme = localStorage.getItem(THEME_KEY);
+    if (savedTheme === 'dark') {
+      applyTheme(true);
+    }
+
+    // -----------------------------------------------------------------------
+    // 3. Session Counter — using sessionStorage
+    // -----------------------------------------------------------------------
+    // sessionStorage works like localStorage but its data is scoped to the
+    // browser tab. Data is cleared when the tab is closed, but survives
+    // page reloads within the same tab.
+    //
+    // Key methods (same API as localStorage):
+    //   sessionStorage.setItem(key, value)
+    //   sessionStorage.getItem(key)
+    //   sessionStorage.removeItem(key)
+    //   sessionStorage.clear()
+
+    const SESSION_KEY = 'kyc-page-views';
+
+    // Read the current count, increment it, and store it back.
+    // parseInt(str, 10) converts a string to an integer (base 10).
+    // If getItem returns null (first visit), parseInt returns NaN,
+    // so we default to 0 with || 0.
+    let pageViews = parseInt(sessionStorage.getItem(SESSION_KEY), 10) || 0;
+    pageViews += 1;
+    sessionStorage.setItem(SESSION_KEY, String(pageViews));
+
+    // Display the counter.
+    document.getElementById('session-counter').textContent = pageViews;
+
+    // -----------------------------------------------------------------------
+    // 4. Storage Inspector — displays current storage contents
+    // -----------------------------------------------------------------------
+    // refreshStorageView() reads all keys from both localStorage and
+    // sessionStorage and displays them in the viewer panels.
+    function refreshStorageView() {
+      // Build a text representation of localStorage contents.
+      let localText = '';
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        const value = localStorage.getItem(key);
+        localText += key + ': ' + value + '\n';
+      }
+      document.getElementById('local-storage-view').textContent = localText || 'Empty';
+
+      // Build a text representation of sessionStorage contents.
+      let sessionText = '';
+      for (let i = 0; i < sessionStorage.length; i++) {
+        const key = sessionStorage.key(i);
+        const value = sessionStorage.getItem(key);
+        sessionText += key + ': ' + value + '\n';
+      }
+      document.getElementById('session-storage-view').textContent = sessionText || 'Empty';
+    }
+
+    // Refresh button updates the storage view panels.
+    document.getElementById('btn-refresh-storage').addEventListener('click', refreshStorageView);
+
+    // Initial refresh to show storage contents on page load.
+    refreshStorageView();
+  </script>
+
+</body>
+</html>
