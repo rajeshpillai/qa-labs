@@ -8,7 +8,8 @@
     "prebuild": "bash scripts/copy-playgrounds.sh",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "deploy": "bash ../scripts/deploy-gh-pages.sh"
   },
   "dependencies": {
     "clsx": "^2.1.1",
