@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { KataContent } from '@/components/kata-content';
 import { PlaygroundViewer } from '@/components/playground-viewer';
 import { CodeViewer } from '@/components/code-viewer';
+import { TestRunner } from '@/components/test-runner';
 import { ProgressTracker } from '@/components/progress-tracker';
 import { TableOfContents } from '@/components/table-of-contents';
 
@@ -23,7 +24,7 @@ const PHASE_COLORS: Record<number, string> = {
   8: 'bg-indigo-600',
 };
 
-type Tab = 'learn' | 'playground' | 'solutions';
+type Tab = 'learn' | 'playground' | 'solutions' | 'run';
 
 interface KataPageClientProps {
   kata: Kata;
@@ -48,6 +49,12 @@ export function KataPageClient({
     {
       key: 'solutions',
       label: 'Solutions',
+      disabled:
+        playwrightHtml.length === 0 && cypressHtml.length === 0,
+    },
+    {
+      key: 'run',
+      label: 'Run Tests',
       disabled:
         playwrightHtml.length === 0 && cypressHtml.length === 0,
     },
@@ -149,6 +156,15 @@ export function KataPageClient({
             <CodeViewer
               playwrightFiles={playwrightHtml}
               cypressFiles={cypressHtml}
+            />
+          )}
+
+          {activeTab === 'run' && (
+            <TestRunner
+              phaseSlug={kata.phaseSlug}
+              kataSlug={kata.slug}
+              hasPlaywright={playwrightHtml.length > 0}
+              hasCypress={cypressHtml.length > 0}
             />
           )}
         </div>

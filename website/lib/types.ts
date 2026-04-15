@@ -22,3 +22,17 @@ export interface Phase {
   name: string;
   katas: Kata[];
 }
+
+export interface ExerciseResult {
+  exercise: string;
+  status: 'passed' | 'failed' | 'skipped' | 'running';
+  duration?: number;
+  error?: string;
+}
+
+export interface ExecutionSummary {
+  passed: number;
+  failed: number;
+  total: number;
+  duration: number;
+}
