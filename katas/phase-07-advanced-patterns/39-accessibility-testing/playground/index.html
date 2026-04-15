@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kata 39: Accessibility Testing | QA Labs</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #1e293b; padding: 2rem; }
+
+    /* =====================================================================
+       INTENTIONAL A11Y ISSUES IN THIS STYLESHEET
+       =====================================================================
+       Issue 3: POOR CONTRAST — .low-contrast uses #c0c0c0 on #f8fafc
+                WCAG requires 4.5:1 ratio — this is about 1.5:1 (FAIL)
+       Issue 5: NO FOCUS INDICATORS — *:focus { outline: none } removes
+                the default focus ring for keyboard users
+       ===================================================================== */
+
+    /* ISSUE 5: Removing focus outlines — keyboard users cannot see focus */
+    *:focus { outline: none; }
+
+    .header { background: #0f172a; color: white; padding: 1rem 2rem; margin: -2rem -2rem 2rem; }
+    .header h1 { font-size: 1.25rem; }
+    .kata-badge { display: inline-block; background: #f87171; color: #0f172a; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 4px; margin-right: 0.5rem; }
+
+    .section { margin-bottom: 2rem; padding: 1.5rem; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .section-title { font-size: 1rem; color: #475569; margin-bottom: 1rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.5rem; }
+
+    .form-group { margin-bottom: 1rem; }
+    .form-group input, .form-group select, .form-group textarea {
+      width: 100%; max-width: 400px; padding: 0.5rem 0.75rem; border: 1px solid #cbd5e1;
+      border-radius: 6px; font-size: 0.9rem; color: #1e293b;
+    }
+
+    /* ISSUE 3: Low contrast text — barely readable */
+    .low-contrast { color: #c0c0c0; font-size: 0.85rem; }
+
+    .field-hint { font-size: 0.8rem; margin-top: 0.25rem; }
+
+    button {
+      padding: 0.5rem 1.25rem; border: none; border-radius: 6px;
+      font-size: 0.875rem; font-weight: 600; cursor: pointer;
+    }
+    .btn-primary { background: #3b82f6; color: white; }
+    .btn-primary:hover { background: #2563eb; }
+
+    .icon-btn {
+      background: none; border: none; cursor: pointer; padding: 0.5rem;
+      font-size: 1.2rem;
+    }
+
+    .status-list { list-style: none; margin-top: 1rem; }
+    .status-list li { padding: 0.5rem 0; border-bottom: 1px solid #f1f5f9; font-size: 0.9rem; }
+
+    .note { margin-top: 2rem; padding: 1rem; background: #fef3c7; border: 1px solid #fde68a; border-radius: 6px; font-size: 0.85rem; color: #92400e; }
+  </style>
+</head>
+<body>
+
+  <!-- ISSUE 6: No <main> landmark — screen readers cannot find the main content -->
+  <!-- The header is a <header> element — that is correct -->
+
+  <header class="header" data-testid="page-header">
+    <span class="kata-badge">KATA 39</span>
+    <h1>KYC Application — Accessibility Practice</h1>
+  </header>
+
+  <!--
+    =========================================================================
+    INTENTIONAL A11Y ISSUES IN THIS HTML
+    =========================================================================
+    This playground has SIX intentional accessibility issues for learners
+    to discover using axe-core scans. Each issue is marked with a comment.
+
+    Issue 1: Missing <label> elements on form inputs
+    Issue 2: Missing alt text on images
+    Issue 3: Poor color contrast (light gray on white)
+    Issue 4: Missing ARIA attributes on interactive elements
+    Issue 5: No focus indicators (CSS outline: none)
+    Issue 6: No <main> landmark wrapping the content
+    =========================================================================
+  -->
+
+  <!-- ISSUE 2: Image without alt attribute — screen readers say "image" -->
+  <div class="section" data-testid="profile-section">
+    <div class="section-title">Applicant Profile</div>
+    <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80' viewBox='0 0 80 80'%3E%3Crect width='80' height='80' fill='%23e2e8f0'/%3E%3Ccircle cx='40' cy='30' r='15' fill='%2394a3b8'/%3E%3Cellipse cx='40' cy='70' rx='25' ry='20' fill='%2394a3b8'/%3E%3C/svg%3E"
+         data-testid="profile-image"
+         width="80" height="80"
+         style="border-radius: 50%; margin-bottom: 1rem;">
+    <!-- FIX: Add alt="Applicant profile photo" to the img element above -->
+  </div>
+
+  <!-- ISSUE 1: Form inputs WITHOUT labels — screen readers cannot identify fields -->
+  <div class="section" data-testid="kyc-form-section">
+    <div class="section-title">KYC Application Form</div>
+    <form data-testid="kyc-form" id="kyc-form">
+
+      <!-- ISSUE 1a: No <label> for this input -->
+      <div class="form-group">
+        <!-- FIX: Add <label for="full-name">Full Name</label> -->
+        <input type="text" id="full-name" data-testid="full-name-input" placeholder="Full Name">
+      </div>
+
+      <!-- ISSUE 1b: No <label> for this input -->
+      <div class="form-group">
+        <!-- FIX: Add <label for="email">Email Address</label> -->
+        <input type="email" id="email" data-testid="email-input" placeholder="Email Address">
+      </div>
+
+      <!-- ISSUE 1c: No <label> for this input -->
+      <div class="form-group">
+        <!-- FIX: Add <label for="phone">Phone Number</label> -->
+        <input type="tel" id="phone" data-testid="phone-input" placeholder="Phone Number">
+      </div>
+
+      <!-- ISSUE 1d: No <label> for this select -->
+      <div class="form-group">
+        <!-- FIX: Add <label for="country">Country</label> -->
+        <select id="country" data-testid="country-select">
+          <option value="">Select Country</option>
+          <option value="US">United States</option>
+          <option value="GB">United Kingdom</option>
+          <option value="IN">India</option>
+          <option value="DE">Germany</option>
+        </select>
+      </div>
+
+      <!-- ISSUE 3: Low contrast text — fails WCAG contrast ratio -->
+      <div class="form-group">
+        <p class="low-contrast" data-testid="low-contrast-text">
+          Please ensure all information matches your government-issued ID.
+          Incomplete applications will be rejected.
+        </p>
+      </div>
+
+      <!-- ISSUE 1e: No <label> for this textarea -->
+      <div class="form-group">
+        <!-- FIX: Add <label for="notes">Additional Notes</label> -->
+        <textarea id="notes" data-testid="notes-input" rows="3" placeholder="Additional notes (optional)" style="width:100%;max-width:400px;padding:0.5rem;border:1px solid #cbd5e1;border-radius:6px;font-size:0.9rem;"></textarea>
+      </div>
+
+      <!-- ISSUE 4: Button without accessible name or ARIA label -->
+      <div style="display:flex;gap:0.5rem;align-items:center;">
+        <button type="submit" class="btn-primary" data-testid="submit-btn">Submit Application</button>
+
+        <!-- ISSUE 4a: Icon-only button without aria-label — screen readers
+             see an empty button with no accessible name -->
+        <button type="button" class="icon-btn" data-testid="help-btn">?</button>
+        <!-- FIX: Add aria-label="Help" to the button above -->
+
+        <!-- ISSUE 4b: Another icon-only button without accessible name -->
+        <button type="button" class="icon-btn" data-testid="reset-btn">x</button>
+        <!-- FIX: Add aria-label="Reset form" to the button above -->
+      </div>
+    </form>
+  </div>
+
+  <!-- Status section — this one is mostly accessible for contrast -->
+  <div class="section" data-testid="status-section">
+    <div class="section-title">Application Status</div>
+    <ul class="status-list" data-testid="status-list">
+      <li>APP-1001: <strong>Approved</strong></li>
+      <li>APP-1002: <strong>Pending Review</strong></li>
+      <li>APP-1003: <strong>Rejected — missing documents</strong></li>
+    </ul>
+  </div>
+
+  <div class="note" data-testid="a11y-note">
+    <strong>Learner Note:</strong> This page has intentional accessibility issues.
+    Use axe-core in your tests to find them. Each issue is commented in the HTML source.
+    Your goal is to scan, identify, understand, and fix each violation.
+  </div>
+
+  <script>
+    // Simple form handler — prevents default submit and shows an alert.
+    document.getElementById('kyc-form').addEventListener('submit', (e) => {
+      e.preventDefault();
+      // In a real app, this would POST to an API.
+      // For this kata, we just prevent the page from refreshing.
+    });
+  </script>
+
+</body>
+</html>
