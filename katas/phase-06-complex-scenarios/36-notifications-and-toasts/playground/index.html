@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kata 36: Notifications and Toasts | QA Labs</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #1e293b; padding: 2rem; }
+    .header { background: #0f172a; color: white; padding: 1rem 2rem; margin: -2rem -2rem 2rem; position: relative; }
+    .header h1 { font-size: 1.25rem; }
+    .kata-badge { display: inline-block; background: #38bdf8; color: #0f172a; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 4px; margin-right: 0.5rem; }
+
+    /* Notification badge in header */
+    .badge-container { position: absolute; top: 1rem; right: 2rem; }
+    .bell-btn {
+      background: none; border: none; color: white; font-size: 1.5rem;
+      cursor: pointer; position: relative;
+    }
+    .badge-count {
+      position: absolute; top: -6px; right: -8px; background: #ef4444;
+      color: white; font-size: 0.65rem; font-weight: 700; border-radius: 50%;
+      width: 18px; height: 18px; display: flex; align-items: center;
+      justify-content: center;
+    }
+    .badge-count.hidden { display: none; }
+
+    /* Persistent banner */
+    .banner {
+      display: none; padding: 0.75rem 1rem; font-size: 0.875rem;
+      font-weight: 600; margin-bottom: 1rem; border-radius: 6px;
+      justify-content: space-between; align-items: center;
+    }
+    .banner.visible { display: flex; }
+    .banner-info { background: #dbeafe; color: #1e40af; }
+    .banner-warning { background: #fef3c7; color: #92400e; }
+    .banner-dismiss {
+      background: none; border: none; font-size: 1.2rem; cursor: pointer;
+      color: inherit; margin-left: 1rem;
+    }
+
+    /* Controls grid */
+    .controls {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;
+      margin-bottom: 2rem;
+    }
+    .control-card {
+      background: white; border-radius: 8px; padding: 1rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .control-card h3 { font-size: 0.9rem; margin-bottom: 0.5rem; color: #334155; }
+
+    .btn {
+      padding: 0.5rem 1rem; border: none; border-radius: 6px;
+      font-weight: 600; font-size: 0.8rem; cursor: pointer;
+      transition: background 0.2s; margin: 0.25rem 0;
+      display: block; width: 100%;
+    }
+    .btn-info { background: #3b82f6; color: white; }
+    .btn-success { background: #22c55e; color: white; }
+    .btn-warning { background: #f59e0b; color: white; }
+    .btn-error { background: #ef4444; color: white; }
+    .btn-secondary { background: #f1f5f9; color: #334155; }
+
+    /* Toast container (bottom-right) */
+    .toast-container {
+      position: fixed; bottom: 1.5rem; right: 1.5rem;
+      display: flex; flex-direction: column-reverse; gap: 0.5rem;
+      z-index: 100; max-width: 360px;
+    }
+    .toast {
+      padding: 0.75rem 1rem; border-radius: 8px; font-size: 0.85rem;
+      font-weight: 500; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      display: flex; justify-content: space-between; align-items: center;
+      animation: slideIn 0.3s ease-out;
+      min-width: 280px;
+    }
+    .toast-info { background: #3b82f6; color: white; }
+    .toast-success { background: #22c55e; color: white; }
+    .toast-warning { background: #f59e0b; color: white; }
+    .toast-error { background: #ef4444; color: white; }
+    .toast-dismiss {
+      background: none; border: none; color: white; font-size: 1rem;
+      cursor: pointer; margin-left: 0.75rem; opacity: 0.7;
+    }
+    .toast-dismiss:hover { opacity: 1; }
+
+    @keyframes slideIn {
+      from { transform: translateX(100%); opacity: 0; }
+      to { transform: translateX(0); opacity: 1; }
+    }
+    @keyframes slideOut {
+      from { transform: translateX(0); opacity: 1; }
+      to { transform: translateX(100%); opacity: 0; }
+    }
+
+    /* Snackbar (bottom-center) */
+    .snackbar {
+      display: none; position: fixed; bottom: 1.5rem; left: 50%;
+      transform: translateX(-50%); background: #1e293b; color: white;
+      padding: 0.75rem 1.5rem; border-radius: 8px; font-size: 0.85rem;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2); z-index: 110;
+      align-items: center; gap: 1rem;
+    }
+    .snackbar.visible { display: flex; }
+    .snackbar-action {
+      background: none; border: none; color: #38bdf8; font-weight: 700;
+      font-size: 0.85rem; cursor: pointer; text-transform: uppercase;
+    }
+
+    /* Notification drawer (slide-in from right) */
+    .drawer-overlay {
+      display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.4); z-index: 200;
+    }
+    .drawer-overlay.visible { display: block; }
+    .drawer {
+      position: fixed; top: 0; right: -400px; width: 360px; height: 100%;
+      background: white; box-shadow: -4px 0 16px rgba(0,0,0,0.1);
+      z-index: 210; transition: right 0.3s ease; padding: 1.5rem;
+      overflow-y: auto;
+    }
+    .drawer.open { right: 0; }
+    .drawer h2 { font-size: 1.1rem; margin-bottom: 1rem; color: #334155; }
+    .drawer-close {
+      position: absolute; top: 1rem; right: 1rem; background: none;
+      border: none; font-size: 1.2rem; cursor: pointer; color: #64748b;
+    }
+    .drawer-item {
+      padding: 0.75rem; border-radius: 6px; margin-bottom: 0.5rem;
+      font-size: 0.8rem; border-left: 4px solid;
+    }
+    .drawer-item-info { background: #eff6ff; border-color: #3b82f6; }
+    .drawer-item-success { background: #f0fdf4; border-color: #22c55e; }
+    .drawer-item-warning { background: #fffbeb; border-color: #f59e0b; }
+    .drawer-item-error { background: #fef2f2; border-color: #ef4444; }
+    .drawer-item .item-time { font-size: 0.7rem; color: #94a3b8; margin-top: 0.25rem; }
+    .drawer-empty { color: #94a3b8; font-size: 0.875rem; text-align: center; margin-top: 2rem; }
+
+    /* Modal dialog */
+    .modal-overlay {
+      display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.5); z-index: 300;
+      justify-content: center; align-items: center;
+    }
+    .modal-overlay.visible { display: flex; }
+    .modal {
+      background: white; border-radius: 12px; padding: 2rem;
+      max-width: 420px; width: 90%; text-align: center;
+    }
+    .modal h3 { margin-bottom: 0.5rem; color: #334155; }
+    .modal p { font-size: 0.875rem; color: #64748b; margin-bottom: 1.5rem; }
+    .modal-actions { display: flex; gap: 0.75rem; justify-content: center; }
+    .modal-actions .btn { width: auto; }
+
+    /* Status area */
+    .status-area {
+      background: white; border-radius: 8px; padding: 1rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-top: 1rem;
+    }
+    .status-area h3 { font-size: 0.9rem; margin-bottom: 0.5rem; color: #334155; }
+    .status-text { font-size: 0.8rem; color: #64748b; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <span class="kata-badge">KATA 36</span>
+    <h1>Notifications and Toasts</h1>
+    <div class="badge-container">
+      <button class="bell-btn" data-testid="bell-btn" onclick="toggleDrawer()">
+        &#128276;
+        <span class="badge-count hidden" data-testid="badge-count" id="badgeCount">0</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Persistent banner -->
+  <div class="banner banner-info" data-testid="banner" id="banner">
+    <span data-testid="banner-text">System maintenance scheduled for tonight at 11 PM.</span>
+    <button class="banner-dismiss" data-testid="banner-dismiss" onclick="dismissBanner()">&times;</button>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls">
+    <!-- Toast triggers -->
+    <div class="control-card">
+      <h3>Toast Messages</h3>
+      <button class="btn btn-info" data-testid="toast-info-btn" onclick="showToast('info', 'Information: System update available.')">Info Toast</button>
+      <button class="btn btn-success" data-testid="toast-success-btn" onclick="showToast('success', 'Success: Changes saved!')">Success Toast</button>
+      <button class="btn btn-warning" data-testid="toast-warning-btn" onclick="showToast('warning', 'Warning: Disk space running low.')">Warning Toast</button>
+      <button class="btn btn-error" data-testid="toast-error-btn" onclick="showToast('error', 'Error: Connection lost!')">Error Toast</button>
+    </div>
+
+    <!-- Banner & Modal triggers -->
+    <div class="control-card">
+      <h3>Banners & Modals</h3>
+      <button class="btn btn-secondary" data-testid="show-banner-btn" onclick="showBanner()">Show Banner</button>
+      <button class="btn btn-secondary" data-testid="show-modal-btn" onclick="showModal()">Show Modal Dialog</button>
+      <button class="btn btn-secondary" data-testid="show-snackbar-btn" onclick="showSnackbar()">Show Snackbar (with Undo)</button>
+    </div>
+
+    <!-- Multi-notification triggers -->
+    <div class="control-card">
+      <h3>Stacking & Priority</h3>
+      <button class="btn btn-secondary" data-testid="multi-toast-btn" onclick="showMultipleToasts()">Fire 3 Toasts</button>
+      <button class="btn btn-secondary" data-testid="priority-toast-btn" onclick="showPriorityToasts()">Fire Priority Toasts</button>
+      <button class="btn btn-secondary" data-testid="clear-all-btn" onclick="clearAllToasts()">Clear All Toasts</button>
+    </div>
+  </div>
+
+  <!-- Status area -->
+  <div class="status-area">
+    <h3>Last Action</h3>
+    <div class="status-text" data-testid="last-action">None</div>
+    <div class="status-text" style="margin-top: 0.25rem;">
+      Undone: <span data-testid="undo-status" id="undoStatus">—</span>
+    </div>
+    <div class="status-text" style="margin-top: 0.25rem;">
+      Total notifications: <span data-testid="total-notifications" id="totalNotifications">0</span>
+    </div>
+  </div>
+
+  <!-- Toast container -->
+  <div class="toast-container" data-testid="toast-container" id="toastContainer"></div>
+
+  <!-- Snackbar -->
+  <div class="snackbar" data-testid="snackbar" id="snackbar">
+    <span data-testid="snackbar-message">Item deleted.</span>
+    <button class="snackbar-action" data-testid="snackbar-undo" onclick="undoAction()">Undo</button>
+  </div>
+
+  <!-- Notification drawer -->
+  <div class="drawer-overlay" data-testid="drawer-overlay" id="drawerOverlay" onclick="closeDrawer()"></div>
+  <div class="drawer" data-testid="notification-drawer" id="notificationDrawer">
+    <button class="drawer-close" data-testid="drawer-close" onclick="closeDrawer()">&times;</button>
+    <h2>Notifications</h2>
+    <div data-testid="drawer-list" id="drawerList">
+      <div class="drawer-empty" data-testid="drawer-empty">No notifications yet</div>
+    </div>
+  </div>
+
+  <!-- Modal dialog -->
+  <div class="modal-overlay" data-testid="modal-overlay" id="modalOverlay">
+    <div class="modal" data-testid="modal-dialog">
+      <h3 data-testid="modal-title">Confirm Action</h3>
+      <p data-testid="modal-message">Are you sure you want to proceed with this action?</p>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" data-testid="modal-cancel" onclick="closeModal()">Cancel</button>
+        <button class="btn btn-info" data-testid="modal-confirm" onclick="confirmModal()">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ===================================================================
+    // State
+    // ===================================================================
+    let notificationCount = 0;
+    let totalNotifications = 0;
+    const notifications = []; // stored for the drawer
+    let snackbarTimeout = null;
+
+    // ===================================================================
+    // Toast Notifications
+    // Auto-dismiss after 3 seconds. Each toast has a type (info, success,
+    // warning, error) and a message. Toasts stack in the bottom-right.
+    // ===================================================================
+    function showToast(type, message) {
+      const container = document.getElementById('toastContainer');
+
+      // Create the toast element.
+      const toast = document.createElement('div');
+      toast.className = 'toast toast-' + type;
+      toast.setAttribute('data-testid', 'toast-' + type);
+      toast.setAttribute('data-toast-type', type);
+
+      // Toast content and dismiss button.
+      toast.innerHTML = `
+        <span class="toast-text">${message}</span>
+        <button class="toast-dismiss" onclick="this.parentElement.remove(); updateLastAction('Toast dismissed')">&times;</button>
+      `;
+
+      container.appendChild(toast);
+
+      // Add to notification list for the drawer.
+      addNotification(type, message);
+      updateLastAction('Toast shown: ' + type);
+
+      // Auto-dismiss after 3 seconds.
+      // setTimeout(fn, ms) schedules fn to run once after ms milliseconds.
+      setTimeout(() => {
+        if (toast.parentElement) {
+          toast.style.animation = 'slideOut 0.3s ease-in';
+          // Wait for the animation to finish before removing from DOM.
+          setTimeout(() => toast.remove(), 300);
+        }
+      }, 3000);
+    }
+
+    // ===================================================================
+    // Add notification to the drawer list and update the badge count.
+    // ===================================================================
+    function addNotification(type, message) {
+      notificationCount++;
+      totalNotifications++;
+      document.getElementById('totalNotifications').textContent = String(totalNotifications);
+
+      // Update badge.
+      const badge = document.getElementById('badgeCount');
+      badge.textContent = String(notificationCount);
+      badge.classList.remove('hidden');
+
+      // Add to drawer list.
+      notifications.unshift({ type, message, time: new Date().toLocaleTimeString() });
+      renderDrawerList();
+    }
+
+    // ===================================================================
+    // Render the notification drawer list.
+    // ===================================================================
+    function renderDrawerList() {
+      const list = document.getElementById('drawerList');
+      if (notifications.length === 0) {
+        list.innerHTML = '<div class="drawer-empty" data-testid="drawer-empty">No notifications yet</div>';
+        return;
+      }
+
+      list.innerHTML = notifications.map((n, i) => `
+        <div class="drawer-item drawer-item-${n.type}" data-testid="drawer-item-${i}">
+          <div>${n.message}</div>
+          <div class="item-time">${n.time}</div>
+        </div>
+      `).join('');
+    }
+
+    // ===================================================================
+    // Banner — persistent info banner that can be dismissed.
+    // ===================================================================
+    function showBanner() {
+      document.getElementById('banner').classList.add('visible');
+      updateLastAction('Banner shown');
+    }
+
+    function dismissBanner() {
+      document.getElementById('banner').classList.remove('visible');
+      updateLastAction('Banner dismissed');
+    }
+
+    // ===================================================================
+    // Modal Dialog — blocking confirmation dialog.
+    // ===================================================================
+    function showModal() {
+      document.getElementById('modalOverlay').classList.add('visible');
+      updateLastAction('Modal shown');
+    }
+
+    function closeModal() {
+      document.getElementById('modalOverlay').classList.remove('visible');
+      updateLastAction('Modal cancelled');
+    }
+
+    function confirmModal() {
+      document.getElementById('modalOverlay').classList.remove('visible');
+      updateLastAction('Modal confirmed');
+    }
+
+    // ===================================================================
+    // Snackbar — bottom-center bar with an "Undo" action button.
+    // Auto-dismisses after 5 seconds if no action is taken.
+    // ===================================================================
+    function showSnackbar() {
+      const snackbar = document.getElementById('snackbar');
+      snackbar.classList.add('visible');
+      updateLastAction('Item deleted (snackbar shown)');
+
+      // Clear any existing timeout.
+      if (snackbarTimeout) clearTimeout(snackbarTimeout);
+
+      // Auto-dismiss after 5 seconds.
+      snackbarTimeout = setTimeout(() => {
+        snackbar.classList.remove('visible');
+      }, 5000);
+    }
+
+    function undoAction() {
+      document.getElementById('snackbar').classList.remove('visible');
+      document.getElementById('undoStatus').textContent = 'Item restored';
+      if (snackbarTimeout) clearTimeout(snackbarTimeout);
+      updateLastAction('Undo performed');
+    }
+
+    // ===================================================================
+    // Notification drawer (slide-in panel).
+    // ===================================================================
+    function toggleDrawer() {
+      const drawer = document.getElementById('notificationDrawer');
+      const overlay = document.getElementById('drawerOverlay');
+
+      if (drawer.classList.contains('open')) {
+        closeDrawer();
+      } else {
+        drawer.classList.add('open');
+        overlay.classList.add('visible');
+        // Reset badge count when drawer is opened (notifications "read").
+        notificationCount = 0;
+        document.getElementById('badgeCount').textContent = '0';
+        document.getElementById('badgeCount').classList.add('hidden');
+      }
+    }
+
+    function closeDrawer() {
+      document.getElementById('notificationDrawer').classList.remove('open');
+      document.getElementById('drawerOverlay').classList.remove('visible');
+    }
+
+    // ===================================================================
+    // Multiple toasts — fire 3 toasts in quick succession.
+    // ===================================================================
+    function showMultipleToasts() {
+      showToast('info', 'First notification');
+      setTimeout(() => showToast('success', 'Second notification'), 100);
+      setTimeout(() => showToast('warning', 'Third notification'), 200);
+    }
+
+    // ===================================================================
+    // Priority toasts — error on top, then warning, then info.
+    // Errors are appended last (bottom of container = visually on top
+    // because of column-reverse flex direction).
+    // ===================================================================
+    function showPriorityToasts() {
+      showToast('info', 'Low priority: System info');
+      setTimeout(() => showToast('warning', 'Medium priority: Attention needed'), 100);
+      setTimeout(() => showToast('error', 'High priority: Critical error!'), 200);
+    }
+
+    // ===================================================================
+    // Clear all toasts.
+    // ===================================================================
+    function clearAllToasts() {
+      document.getElementById('toastContainer').innerHTML = '';
+      updateLastAction('All toasts cleared');
+    }
+
+    // ===================================================================
+    // Update the "Last Action" status text.
+    // ===================================================================
+    function updateLastAction(text) {
+      document.querySelector('[data-testid="last-action"]').textContent = text;
+    }
+  </script>
+</body>
+</html>
