@@ -152,6 +152,41 @@ Include error scenarios in the fixture data and test them in the loop.
 ### Exercise 6: Cypress Loop Pattern
 Implement the same pattern in Cypress using forEach.
 
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Putting the loop inside `test()` | The loop must run at file-load time to register separate tests; inside a test body it just runs iterations sequentially in one test | Place `for...of` at the module level (Playwright) or inside `describe` (Cypress) |
+| Sharing state between loop-generated tests | Each test gets its own worker/browser; referencing variables mutated by another test causes flaky failures | Treat each loop iteration as fully independent — no shared variables |
+| Forgetting to filter success vs error cases | Running all applicants through the same assertions causes false failures for intentional error scenarios | Split the array with `.filter()` and loop success and error cases separately |
+| Hardcoding expected values in assertions | Defeats the purpose of data-driven testing; adding a new applicant requires code changes | Store expected values (`expectedRef`, `expectedStatus`) in the fixture JSON |
+| Using `test.describe` around the loop in Playwright | Unnecessary nesting; the loop itself generates named tests | Use the loop directly at module level — no wrapping describe needed |
+| Not including the applicant name in the test title | When a test fails, you cannot tell which applicant caused it | Use template literals: `` test(`KYC: ${applicant.name}`) `` |
+
+## Quick Reference
+
+### Playwright Loop Pattern
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Import fixture data | `import data from './file.json'` | `import applicants from '../fixtures/applicants.json'` |
+| Generate tests from array | `for...of` at module level | `for (const a of applicants) { test(...) }` |
+| Filter by scenario type | `Array.filter()` | `applicants.filter(a => a.expectedStatus === 'success')` |
+| Mock per-applicant response | `page.route()` | `await page.route('/api/submit', route => route.fulfill({ body: ... }))` |
+| Run with parallel workers | `--workers=N` | `npx playwright test --workers=4` |
+| Identify worker in logs | `test.info().workerIndex` | `console.log(\`Worker ${test.info().workerIndex}\`)` |
+
+### Cypress Loop Pattern
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Import fixture data | `require()` | `const applicants = require('../fixtures/applicants.json')` |
+| Generate tests from array | `.forEach()` inside `describe` | `applicants.forEach(a => { it(...) })` |
+| Mock per-applicant response | `cy.intercept()` | `cy.intercept('POST', '/api/submit', { body: ... })` |
+| Run in parallel | Split spec files across CI machines | Cypress Cloud or manual CI job splitting |
+| Log to command panel | `cy.log()` | `cy.log(\`Testing ${applicant.name}\`)` |
+| Wait for intercepted request | `cy.wait()` | `cy.wait('@submitKyc')` |
+
 ## Key Takeaways
 
 ```
