@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kata 11: DOM Mutations | QA Labs</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #1e293b; padding: 2rem; }
+    .header { background: #0f172a; color: white; padding: 1rem 2rem; margin: -2rem -2rem 2rem; display: flex; align-items: center; gap: 0.75rem; }
+    .header h1 { font-size: 1.25rem; }
+    .kata-badge { display: inline-block; background: #38bdf8; color: #0f172a; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 4px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+    .section { margin-bottom: 2rem; padding: 1.5rem; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .section h2 { font-size: 1rem; color: #475569; margin-bottom: 1rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.5rem; }
+    button { padding: 0.5rem 1rem; border: none; border-radius: 6px; font-size: 0.875rem; cursor: pointer; margin-right: 0.5rem; margin-bottom: 0.5rem; }
+    .btn-primary { background: #3b82f6; color: white; }
+    .btn-success { background: #22c55e; color: white; }
+    .btn-danger { background: #ef4444; color: white; }
+    .btn-secondary { background: #64748b; color: white; }
+    .notification { padding: 0.75rem 1rem; border-radius: 6px; margin-bottom: 0.5rem; font-size: 0.875rem; background: #f0f9ff; border: 1px solid #bae6fd; color: #0c4a6e; display: flex; justify-content: space-between; align-items: center; animation: fadeIn 0.3s ease; }
+    .notification.read { background: #f1f5f9; border-color: #e2e8f0; color: #94a3b8; }
+    .notification .dismiss-btn { background: none; border: none; color: #94a3b8; cursor: pointer; font-size: 1rem; padding: 0 0.25rem; margin: 0; }
+    .notification .dismiss-btn:hover { color: #ef4444; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+    .badge { display: inline-flex; align-items: center; justify-content: center; background: #ef4444; color: white; font-size: 0.7rem; font-weight: 700; min-width: 20px; height: 20px; border-radius: 9999px; padding: 0 0.4rem; }
+    .badge.hidden { display: none; }
+    .counter { font-size: 1.5rem; font-weight: 700; color: #1e293b; }
+    .price-display { font-size: 1.75rem; font-weight: 700; color: #059669; font-family: 'Courier New', monospace; }
+    .status-area { min-height: 3rem; padding: 0.75rem; background: #f8fafc; border: 1px dashed #cbd5e1; border-radius: 6px; font-size: 0.875rem; }
+    .feed { max-height: 300px; overflow-y: auto; }
+  </style>
+</head>
+<body>
+
+  <header class="header" data-testid="page-header">
+    <span class="kata-badge">KATA 11</span>
+    <h1>Notification Center - DOM Mutations</h1>
+  </header>
+
+  <div class="grid">
+    <!-- LEFT COLUMN -->
+    <div>
+
+      <!-- Notification Feed -->
+      <div class="section" data-testid="feed-section">
+        <h2>
+          Live Notification Feed
+          <span class="badge" data-testid="unread-badge" id="unread-badge">0</span>
+        </h2>
+        <p style="font-size: 0.875rem; color: #64748b; margin-bottom: 0.75rem;">
+          New notifications arrive every 3 seconds automatically.
+        </p>
+        <div style="margin-bottom: 0.75rem;">
+          <button class="btn-primary" data-testid="btn-mark-all-read" id="btn-mark-all-read">Mark All Read</button>
+          <button class="btn-danger" data-testid="btn-clear-all" id="btn-clear-all">Clear All</button>
+          <button class="btn-secondary" data-testid="btn-pause-feed" id="btn-pause-feed">Pause Feed</button>
+        </div>
+        <p style="font-size: 0.875rem; margin-bottom: 0.5rem;">
+          Unread: <span class="counter" data-testid="unread-count" id="unread-count">0</span>
+          &nbsp;|&nbsp;
+          Total: <span class="counter" data-testid="total-count" id="total-count">0</span>
+        </p>
+        <div class="feed" data-testid="notification-feed" id="notification-feed">
+          <!-- Notifications are added here dynamically -->
+        </div>
+      </div>
+
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div>
+
+      <!-- Real-Time Price -->
+      <div class="section" data-testid="price-section">
+        <h2>Live Market Price</h2>
+        <p style="font-size: 0.875rem; color: #64748b; margin-bottom: 0.75rem;">
+          Price updates every 2 seconds (simulated real-time feed).
+        </p>
+        <p>
+          NIFTY 50: <span class="price-display" data-testid="live-price" id="live-price">22,450.00</span>
+        </p>
+        <p style="font-size: 0.875rem; margin-top: 0.5rem;">
+          Last updated: <span data-testid="price-timestamp" id="price-timestamp">--:--:--</span>
+        </p>
+      </div>
+
+      <!-- Dynamic Status Area -->
+      <div class="section" data-testid="status-section">
+        <h2>Dynamic Status Area</h2>
+        <p style="font-size: 0.875rem; color: #64748b; margin-bottom: 0.75rem;">
+          Elements are inserted, removed, and modified dynamically.
+        </p>
+        <button class="btn-primary" data-testid="btn-add-status" id="btn-add-status">Add Status</button>
+        <button class="btn-danger" data-testid="btn-remove-status" id="btn-remove-status">Remove Status</button>
+        <button class="btn-success" data-testid="btn-change-attr" id="btn-change-attr">Toggle Priority</button>
+        <div class="status-area" data-testid="status-area" id="status-area">
+          <p data-testid="status-message" id="status-message" data-priority="normal">System status: All services operational</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    // -----------------------------------------------------------------------
+    // Notification feed data — realistic fintech notifications
+    // -----------------------------------------------------------------------
+    const notificationMessages = [
+      'Payment of Rs 5,000 credited to account ending 4521',
+      'SIP installment of Rs 10,000 debited for Axis Bluechip Fund',
+      'Suspicious login attempt detected from new device',
+      'KYC verification approved — all services unlocked',
+      'FD maturity alert: Rs 2,00,000 maturing on 30 Apr 2026',
+      'UPI transaction Rs 1,200 to priya@upi successful',
+      'Mutual fund NAV updated — portfolio value: Rs 8,45,320',
+      'Credit card bill of Rs 32,450 due on 20 Apr 2026',
+      'Loan EMI of Rs 15,000 auto-debited successfully',
+      'New offer: 0% interest on EMI conversion for next 30 days',
+    ];
+
+    let notificationId = 0;   // tracks total notifications created
+    let unreadCount = 0;       // tracks unread notifications
+    let feedPaused = false;    // whether the live feed is paused
+    let feedInterval = null;   // reference to the setInterval timer
+
+    // -----------------------------------------------------------------------
+    // addNotification — creates a new notification DOM element and prepends
+    //   it to the feed. Increments counters and updates the badge.
+    // -----------------------------------------------------------------------
+    function addNotification() {
+      notificationId++;
+      unreadCount++;
+
+      // Pick a message from the list (cycles through them)
+      const message = notificationMessages[(notificationId - 1) % notificationMessages.length];
+
+      // Build the notification element
+      const el = document.createElement('div');
+      el.className = 'notification';
+      el.setAttribute('data-testid', 'notification-item');
+      el.setAttribute('data-notification-id', notificationId);
+      el.innerHTML =
+        '<span data-testid="notification-text">' + message + '</span>' +
+        '<button class="dismiss-btn" data-testid="btn-dismiss" aria-label="Dismiss">&times;</button>';
+
+      // Clicking the dismiss button removes this notification from the DOM
+      el.querySelector('.dismiss-btn').addEventListener('click', () => {
+        // If this notification is still unread, decrement the unread count
+        if (!el.classList.contains('read')) {
+          unreadCount--;
+        }
+        el.remove();                // remove from DOM entirely
+        updateCounters();           // recalculate and display counters
+      });
+
+      // Prepend to feed (newest on top)
+      const feed = document.getElementById('notification-feed');
+      feed.prepend(el);
+
+      // Update the counters and badge
+      updateCounters();
+    }
+
+    // -----------------------------------------------------------------------
+    // updateCounters — syncs the unread count, total count, and badge
+    //   visibility with the current DOM state.
+    // -----------------------------------------------------------------------
+    function updateCounters() {
+      const totalInDom = document.querySelectorAll('[data-testid="notification-item"]').length;
+      document.getElementById('unread-count').textContent = unreadCount;
+      document.getElementById('total-count').textContent = totalInDom;
+
+      const badge = document.getElementById('unread-badge');
+      badge.textContent = unreadCount;
+
+      // Show the badge only when there are unread notifications
+      if (unreadCount > 0) {
+        badge.classList.remove('hidden');
+      } else {
+        badge.classList.add('hidden');
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // Start the live feed — a new notification every 3 seconds
+    // -----------------------------------------------------------------------
+    feedInterval = setInterval(() => {
+      if (!feedPaused) {
+        addNotification();
+      }
+    }, 3000);
+
+    // -----------------------------------------------------------------------
+    // "Mark All Read" — adds the .read class to every notification, which
+    //   changes its background/border/text color via CSS.
+    // -----------------------------------------------------------------------
+    document.getElementById('btn-mark-all-read').addEventListener('click', () => {
+      const items = document.querySelectorAll('[data-testid="notification-item"]');
+      items.forEach(item => {
+        item.classList.add('read');   // CSS class changes the styling
+      });
+      unreadCount = 0;               // all are now read
+      updateCounters();
+    });
+
+    // -----------------------------------------------------------------------
+    // "Clear All" — removes every notification from the DOM
+    // -----------------------------------------------------------------------
+    document.getElementById('btn-clear-all').addEventListener('click', () => {
+      document.getElementById('notification-feed').innerHTML = '';
+      unreadCount = 0;
+      updateCounters();
+    });
+
+    // -----------------------------------------------------------------------
+    // "Pause / Resume Feed" — toggles the live feed on/off
+    // -----------------------------------------------------------------------
+    document.getElementById('btn-pause-feed').addEventListener('click', () => {
+      feedPaused = !feedPaused;
+      document.getElementById('btn-pause-feed').textContent = feedPaused ? 'Resume Feed' : 'Pause Feed';
+    });
+
+    // -----------------------------------------------------------------------
+    // Live price simulation — updates the price text every 2 seconds with
+    //   a random fluctuation, simulating a real-time market data feed.
+    // -----------------------------------------------------------------------
+    let currentPrice = 22450.00;
+
+    setInterval(() => {
+      // Random change between -50 and +50
+      const change = (Math.random() - 0.5) * 100;
+      currentPrice = Math.max(20000, currentPrice + change); // floor at 20000
+      const formatted = currentPrice.toLocaleString('en-IN', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      });
+
+      document.getElementById('live-price').textContent = formatted;
+
+      // Update the timestamp
+      const now = new Date();
+      document.getElementById('price-timestamp').textContent =
+        now.toLocaleTimeString('en-IN', { hour12: false });
+    }, 2000);
+
+    // -----------------------------------------------------------------------
+    // Dynamic Status Area — add, remove, and modify elements on demand
+    // -----------------------------------------------------------------------
+    let statusCounter = 0;
+
+    // "Add Status" — inserts a new <p> element into the status area
+    document.getElementById('btn-add-status').addEventListener('click', () => {
+      statusCounter++;
+      const p = document.createElement('p');
+      p.setAttribute('data-testid', 'dynamic-status');
+      p.textContent = 'Status update #' + statusCounter + ': Processing transaction batch';
+      document.getElementById('status-area').appendChild(p);
+    });
+
+    // "Remove Status" — removes the last dynamic status element
+    document.getElementById('btn-remove-status').addEventListener('click', () => {
+      const items = document.querySelectorAll('[data-testid="dynamic-status"]');
+      if (items.length > 0) {
+        items[items.length - 1].remove();
+      }
+    });
+
+    // "Toggle Priority" — changes the data-priority attribute on the main
+    //   status message between "normal" and "high".
+    document.getElementById('btn-change-attr').addEventListener('click', () => {
+      const msg = document.getElementById('status-message');
+      const current = msg.getAttribute('data-priority');
+      if (current === 'normal') {
+        msg.setAttribute('data-priority', 'high');
+        msg.textContent = 'System status: High priority — maintenance scheduled';
+        msg.style.color = '#dc2626';
+        msg.style.fontWeight = '700';
+      } else {
+        msg.setAttribute('data-priority', 'normal');
+        msg.textContent = 'System status: All services operational';
+        msg.style.color = '#1e293b';
+        msg.style.fontWeight = '400';
+      }
+    });
+  </script>
+
+</body>
+</html>
