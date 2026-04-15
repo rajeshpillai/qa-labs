@@ -3,6 +3,8 @@
 import { useRef } from 'react';
 import { ExternalLink, RotateCw } from 'lucide-react';
 
+const basePath = process.env.NEXT_PUBLIC_BASE_PATH || '';
+
 interface PlaygroundViewerProps {
   kataSlug: string;
   hasPlayground: boolean;
@@ -10,7 +12,7 @@ interface PlaygroundViewerProps {
 
 export function PlaygroundViewer({ kataSlug, hasPlayground }: PlaygroundViewerProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const playgroundUrl = `/playgrounds/${kataSlug}/index.html`;
+  const playgroundUrl = `${basePath}/playgrounds/${kataSlug}/index.html`;
 
   if (!hasPlayground) {
     return (
