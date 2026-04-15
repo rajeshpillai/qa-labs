@@ -126,7 +126,7 @@ export function CodeViewer({ playwrightFiles, cypressFiles }: CodeViewerProps) {
 
           {/* Highlighted code */}
           <div
-            className="overflow-x-auto text-sm [&_pre]:!m-0 [&_pre]:!rounded-none [&_pre]:!p-4 [&_.shiki]:!bg-zinc-900"
+            className="overflow-x-auto text-sm [&_pre]:!m-0 [&_pre]:!rounded-none [&_pre]:!p-4 [&_pre]:!bg-[#24292e]"
             dangerouslySetInnerHTML={{ __html: currentFile.html }}
           />
         </div>

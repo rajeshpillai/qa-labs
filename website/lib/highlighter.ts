@@ -16,6 +16,6 @@ export async function highlightCode(code: string, lang: string = 'typescript'): 
   const hl = await getHighlighter();
   return hl.codeToHtml(code, {
     lang,
-    themes: { light: 'github-light', dark: 'github-dark' },
+    theme: 'github-dark',
   });
 }
