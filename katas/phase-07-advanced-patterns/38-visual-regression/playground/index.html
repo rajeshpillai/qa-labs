@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kata 38: Visual Regression | QA Labs</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #1e293b; padding: 2rem; }
+    .header { background: #0f172a; color: white; padding: 1rem 2rem; margin: -2rem -2rem 2rem; }
+    .header h1 { font-size: 1.25rem; }
+    .kata-badge { display: inline-block; background: #a78bfa; color: #0f172a; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 4px; margin-right: 0.5rem; }
+
+    .dashboard { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem; margin-bottom: 2rem; }
+
+    .card {
+      background: white; border-radius: 8px; padding: 1.25rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1); border-left: 4px solid #3b82f6;
+    }
+    .card.approved { border-left-color: #22c55e; }
+    .card.pending { border-left-color: #f59e0b; }
+    .card.rejected { border-left-color: #ef4444; }
+
+    .card h3 { font-size: 0.85rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; }
+    .card .value { font-size: 2rem; font-weight: 700; color: #0f172a; }
+    .card .subtitle { font-size: 0.8rem; color: #94a3b8; margin-top: 0.25rem; }
+
+    .table-section { background: white; border-radius: 8px; padding: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 2rem; }
+    .table-section h2 { font-size: 1rem; color: #475569; margin-bottom: 1rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.5rem; }
+
+    table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+    thead th { text-align: left; padding: 0.75rem 1rem; background: #f1f5f9; color: #475569; font-weight: 600; border-bottom: 2px solid #e2e8f0; }
+    tbody td { padding: 0.75rem 1rem; border-bottom: 1px solid #f1f5f9; color: #334155; }
+    tbody tr:hover { background: #f8fafc; }
+
+    .status-badge {
+      display: inline-block; padding: 0.2rem 0.6rem; border-radius: 12px;
+      font-size: 0.75rem; font-weight: 600;
+    }
+    .status-approved { background: #dcfce7; color: #166534; }
+    .status-pending { background: #fef3c7; color: #92400e; }
+    .status-rejected { background: #fee2e2; color: #991b1b; }
+
+    .actions { display: flex; gap: 0.5rem; margin-top: 1.5rem; }
+    button {
+      padding: 0.5rem 1.25rem; border: none; border-radius: 6px; font-size: 0.875rem;
+      font-weight: 600; cursor: pointer;
+    }
+    .btn-primary { background: #3b82f6; color: white; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-secondary { background: #e2e8f0; color: #334155; }
+    .btn-secondary:hover { background: #cbd5e1; }
+    .btn-danger { background: #ef4444; color: white; }
+    .btn-danger:hover { background: #dc2626; }
+
+    .timestamp { font-size: 0.75rem; color: #94a3b8; text-align: right; margin-top: 1rem; }
+  </style>
+</head>
+<body>
+
+  <header class="header" data-testid="page-header">
+    <span class="kata-badge">KATA 38</span>
+    <h1>KYC Dashboard — Visual Regression Practice</h1>
+  </header>
+
+  <!-- Summary Cards — designed for screenshot stability -->
+  <div class="dashboard" data-testid="dashboard-cards">
+    <div class="card approved" data-testid="card-approved">
+      <h3>Approved</h3>
+      <div class="value">1,247</div>
+      <div class="subtitle">Last 30 days</div>
+    </div>
+    <div class="card pending" data-testid="card-pending">
+      <h3>Pending Review</h3>
+      <div class="value">83</div>
+      <div class="subtitle">Awaiting verification</div>
+    </div>
+    <div class="card rejected" data-testid="card-rejected">
+      <h3>Rejected</h3>
+      <div class="value">29</div>
+      <div class="subtitle">Requires resubmission</div>
+    </div>
+    <div class="card" data-testid="card-total">
+      <h3>Total Applications</h3>
+      <div class="value">1,359</div>
+      <div class="subtitle">All time</div>
+    </div>
+  </div>
+
+  <!-- Applicant Table -->
+  <div class="table-section" data-testid="applicant-table-section">
+    <h2>Recent Applications</h2>
+    <table data-testid="applicant-table">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Name</th>
+          <th>Country</th>
+          <th>Document</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr data-testid="row-1">
+          <td>APP-1001</td>
+          <td>Aisha Patel</td>
+          <td>India</td>
+          <td>Passport</td>
+          <td><span class="status-badge status-approved" data-testid="status-1">Approved</span></td>
+        </tr>
+        <tr data-testid="row-2">
+          <td>APP-1002</td>
+          <td>Carlos Rivera</td>
+          <td>Mexico</td>
+          <td>National ID</td>
+          <td><span class="status-badge status-pending" data-testid="status-2">Pending</span></td>
+        </tr>
+        <tr data-testid="row-3">
+          <td>APP-1003</td>
+          <td>Yuki Tanaka</td>
+          <td>Japan</td>
+          <td>Driver's License</td>
+          <td><span class="status-badge status-approved" data-testid="status-3">Approved</span></td>
+        </tr>
+        <tr data-testid="row-4">
+          <td>APP-1004</td>
+          <td>Fatima Al-Hassan</td>
+          <td>UAE</td>
+          <td>Passport</td>
+          <td><span class="status-badge status-rejected" data-testid="status-4">Rejected</span></td>
+        </tr>
+        <tr data-testid="row-5">
+          <td>APP-1005</td>
+          <td>Olga Petrov</td>
+          <td>Russia</td>
+          <td>National ID</td>
+          <td><span class="status-badge status-pending" data-testid="status-5">Pending</span></td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Action Buttons -->
+  <div class="actions" data-testid="action-buttons">
+    <button class="btn-primary" data-testid="btn-export">Export Report</button>
+    <button class="btn-secondary" data-testid="btn-filter">Filter</button>
+    <button class="btn-danger" data-testid="btn-reset">Reset</button>
+  </div>
+
+  <!-- Dynamic timestamp — this will be masked in visual tests -->
+  <div class="timestamp" data-testid="timestamp">
+    Last updated: <span data-testid="timestamp-value" id="timestamp-value"></span>
+  </div>
+
+  <script>
+    // Set a live timestamp — this is INTENTIONALLY dynamic to teach
+    // learners how to handle dynamic content in visual regression tests.
+    // In tests, you should MASK this element or freeze time.
+    document.getElementById('timestamp-value').textContent =
+      new Date().toLocaleString('en-US', {
+        dateStyle: 'medium',
+        timeStyle: 'short'
+      });
+  </script>
+
+</body>
+</html>
