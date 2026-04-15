@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kata 12: Web APIs | QA Labs</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #1e293b; padding: 2rem; }
+    .header { background: #0f172a; color: white; padding: 1rem 2rem; margin: -2rem -2rem 2rem; display: flex; align-items: center; gap: 0.75rem; }
+    .header h1 { font-size: 1.25rem; }
+    .kata-badge { display: inline-block; background: #38bdf8; color: #0f172a; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 4px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+    .section { margin-bottom: 2rem; padding: 1.5rem; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .section h2 { font-size: 1rem; color: #475569; margin-bottom: 1rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.5rem; }
+    button { padding: 0.5rem 1rem; border: none; border-radius: 6px; font-size: 0.875rem; cursor: pointer; margin-right: 0.5rem; margin-bottom: 0.5rem; }
+    .btn-primary { background: #3b82f6; color: white; }
+    .btn-success { background: #22c55e; color: white; }
+    .btn-danger { background: #ef4444; color: white; }
+    .btn-secondary { background: #64748b; color: white; }
+    input { padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.875rem; width: 100%; margin-bottom: 0.75rem; }
+    .result-box { padding: 0.75rem 1rem; border-radius: 6px; margin-top: 0.75rem; font-size: 0.875rem; background: #f0f9ff; border: 1px solid #bae6fd; color: #0c4a6e; min-height: 2rem; }
+    .alert-success { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+    .alert-error { background: #fecaca; color: #991b1b; border: 1px solid #fca5a5; }
+    .status-badge { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; }
+    .status-granted { background: #dcfce7; color: #166534; }
+    .status-denied { background: #fecaca; color: #991b1b; }
+    .status-pending { background: #fef3c7; color: #92400e; }
+    code { background: #f1f5f9; padding: 0.1rem 0.4rem; border-radius: 4px; font-size: 0.8rem; }
+  </style>
+</head>
+<body>
+
+  <header class="header" data-testid="page-header">
+    <span class="kata-badge">KATA 12</span>
+    <h1>Browser APIs - Web API Playground</h1>
+  </header>
+
+  <div class="grid">
+    <!-- LEFT COLUMN -->
+    <div>
+
+      <!-- Clipboard API -->
+      <div class="section" data-testid="clipboard-section">
+        <h2>Clipboard API</h2>
+        <p style="font-size: 0.875rem; color: #64748b; margin-bottom: 0.75rem;">
+          Copy an account number to the clipboard, then paste it into the input.
+        </p>
+        <p style="font-size: 0.875rem; margin-bottom: 0.5rem;">
+          Account Number: <code data-testid="account-number">1234-5678-9012-3456</code>
+        </p>
+        <button class="btn-primary" data-testid="btn-copy-account" id="btn-copy-account">Copy Account Number</button>
+        <p data-testid="copy-status" id="copy-status" style="font-size: 0.875rem; margin-top: 0.5rem; color: #64748b;"></p>
+        <input type="text" data-testid="paste-target" id="paste-target" placeholder="Paste the account number here..." />
+      </div>
+
+      <!-- Geolocation API -->
+      <div class="section" data-testid="geolocation-section">
+        <h2>Geolocation API</h2>
+        <p style="font-size: 0.875rem; color: #64748b; margin-bottom: 0.75rem;">
+          Detect your location (mockable in tests).
+        </p>
+        <button class="btn-primary" data-testid="btn-detect-location" id="btn-detect-location">Detect Location</button>
+        <div class="result-box" data-testid="location-result" id="location-result">
+          Click the button to detect your location.
+        </div>
+        <p style="font-size: 0.875rem; margin-top: 0.5rem;">
+          Latitude: <span data-testid="location-lat" id="location-lat">--</span> &nbsp;
+          Longitude: <span data-testid="location-lng" id="location-lng">--</span>
+        </p>
+      </div>
+
+      <!-- Browser Dialogs -->
+      <div class="section" data-testid="dialog-section">
+        <h2>Browser Dialogs</h2>
+        <p style="font-size: 0.875rem; color: #64748b; margin-bottom: 0.75rem;">
+          Trigger alert, confirm, and prompt dialogs and see the results.
+        </p>
+        <button class="btn-primary" data-testid="btn-trigger-alert" id="btn-trigger-alert">Show Alert</button>
+        <button class="btn-success" data-testid="btn-trigger-confirm" id="btn-trigger-confirm">Show Confirm</button>
+        <button class="btn-secondary" data-testid="btn-trigger-prompt" id="btn-trigger-prompt">Show Prompt</button>
+        <div class="result-box" data-testid="dialog-result" id="dialog-result">
+          No dialog triggered yet.
+        </div>
+      </div>
+
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div>
+
+      <!-- Permissions (Simulated) -->
+      <div class="section" data-testid="permissions-section">
+        <h2>Permissions API (Camera)</h2>
+        <p style="font-size: 0.875rem; color: #64748b; margin-bottom: 0.75rem;">
+          Request camera access. In tests, grant or deny the permission.
+        </p>
+        <button class="btn-primary" data-testid="btn-request-camera" id="btn-request-camera">Request Camera Access</button>
+        <div style="margin-top: 0.75rem;">
+          <span>Status: </span>
+          <span class="status-badge status-pending" data-testid="permission-status" id="permission-status">Not requested</span>
+        </div>
+        <div class="result-box" data-testid="permission-result" id="permission-result">
+          Click the button to request camera permission.
+        </div>
+      </div>
+
+      <!-- localStorage / sessionStorage -->
+      <div class="section" data-testid="storage-section">
+        <h2>Web Storage (localStorage)</h2>
+        <p style="font-size: 0.875rem; color: #64748b; margin-bottom: 0.75rem;">
+          Read and write data to localStorage.
+        </p>
+        <div style="margin-bottom: 0.5rem;">
+          <input type="text" data-testid="storage-key" id="storage-key" placeholder="Key (e.g. theme)" style="width: 45%; display: inline-block;" />
+          <input type="text" data-testid="storage-value" id="storage-value" placeholder="Value (e.g. dark)" style="width: 45%; display: inline-block;" />
+        </div>
+        <button class="btn-primary" data-testid="btn-storage-save" id="btn-storage-save">Save to localStorage</button>
+        <button class="btn-success" data-testid="btn-storage-load" id="btn-storage-load">Load from localStorage</button>
+        <button class="btn-danger" data-testid="btn-storage-clear" id="btn-storage-clear">Clear localStorage</button>
+        <div class="result-box" data-testid="storage-result" id="storage-result">
+          No storage operations yet.
+        </div>
+      </div>
+
+      <!-- File Download -->
+      <div class="section" data-testid="download-section">
+        <h2>File Download</h2>
+        <p style="font-size: 0.875rem; color: #64748b; margin-bottom: 0.75rem;">
+          Trigger a file download (a CSV statement).
+        </p>
+        <button class="btn-primary" data-testid="btn-download-statement" id="btn-download-statement">Download Statement (CSV)</button>
+        <p data-testid="download-status" id="download-status" style="font-size: 0.875rem; margin-top: 0.5rem; color: #64748b;"></p>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    // -----------------------------------------------------------------------
+    // Clipboard API
+    //
+    // navigator.clipboard.writeText() copies text to the system clipboard.
+    // This is an async operation that requires a secure context (HTTPS or
+    // localhost) and may need user permission.
+    // -----------------------------------------------------------------------
+    document.getElementById('btn-copy-account').addEventListener('click', async () => {
+      const accountNumber = '1234-5678-9012-3456';
+      try {
+        await navigator.clipboard.writeText(accountNumber);
+        document.getElementById('copy-status').textContent = 'Copied to clipboard!';
+        document.getElementById('copy-status').style.color = '#166534';
+      } catch (err) {
+        document.getElementById('copy-status').textContent = 'Failed to copy: ' + err.message;
+        document.getElementById('copy-status').style.color = '#991b1b';
+      }
+    });
+
+    // -----------------------------------------------------------------------
+    // Geolocation API
+    //
+    // navigator.geolocation.getCurrentPosition() returns the user's
+    // latitude and longitude. In tests, you mock this API to return
+    // predictable coordinates.
+    // -----------------------------------------------------------------------
+    document.getElementById('btn-detect-location').addEventListener('click', () => {
+      const resultEl = document.getElementById('location-result');
+      const latEl = document.getElementById('location-lat');
+      const lngEl = document.getElementById('location-lng');
+
+      resultEl.textContent = 'Detecting location...';
+
+      navigator.geolocation.getCurrentPosition(
+        // Success callback — called when location is available
+        (position) => {
+          const lat = position.coords.latitude.toFixed(4);
+          const lng = position.coords.longitude.toFixed(4);
+          latEl.textContent = lat;
+          lngEl.textContent = lng;
+          resultEl.textContent = 'Location detected: ' + lat + ', ' + lng;
+          resultEl.className = 'result-box alert-success';
+        },
+        // Error callback — called when permission denied or unavailable
+        (error) => {
+          resultEl.textContent = 'Location error: ' + error.message;
+          resultEl.className = 'result-box alert-error';
+          latEl.textContent = 'N/A';
+          lngEl.textContent = 'N/A';
+        }
+      );
+    });
+
+    // -----------------------------------------------------------------------
+    // Browser Dialogs — alert(), confirm(), prompt()
+    //
+    // These are native browser dialogs. In Playwright, you handle them
+    // with page.on('dialog'). In Cypress, with cy.on('window:alert') etc.
+    // -----------------------------------------------------------------------
+    document.getElementById('btn-trigger-alert').addEventListener('click', () => {
+      alert('Payment of Rs 5,000 has been processed successfully!');
+      // After the alert is dismissed, update the result display.
+      document.getElementById('dialog-result').textContent = 'Alert was dismissed.';
+    });
+
+    document.getElementById('btn-trigger-confirm').addEventListener('click', () => {
+      const result = confirm('Are you sure you want to transfer Rs 50,000?');
+      // confirm() returns true if user clicks OK, false if Cancel.
+      if (result) {
+        document.getElementById('dialog-result').textContent = 'Transfer confirmed.';
+        document.getElementById('dialog-result').className = 'result-box alert-success';
+      } else {
+        document.getElementById('dialog-result').textContent = 'Transfer cancelled.';
+        document.getElementById('dialog-result').className = 'result-box alert-error';
+      }
+    });
+
+    document.getElementById('btn-trigger-prompt').addEventListener('click', () => {
+      const amount = prompt('Enter transfer amount (Rs):', '1000');
+      // prompt() returns the entered text, or null if cancelled.
+      if (amount !== null) {
+        document.getElementById('dialog-result').textContent = 'Transfer amount set to Rs ' + amount;
+        document.getElementById('dialog-result').className = 'result-box alert-success';
+      } else {
+        document.getElementById('dialog-result').textContent = 'Transfer cancelled — no amount entered.';
+        document.getElementById('dialog-result').className = 'result-box alert-error';
+      }
+    });
+
+    // -----------------------------------------------------------------------
+    // Permissions API (Camera)
+    //
+    // navigator.mediaDevices.getUserMedia() requests camera access.
+    // The browser shows a permission prompt. In tests, you pre-grant
+    // or deny this permission using browser context settings.
+    // -----------------------------------------------------------------------
+    document.getElementById('btn-request-camera').addEventListener('click', async () => {
+      const statusEl = document.getElementById('permission-status');
+      const resultEl = document.getElementById('permission-result');
+
+      statusEl.textContent = 'Requesting...';
+      statusEl.className = 'status-badge status-pending';
+
+      try {
+        // Request camera access — this triggers the browser permission prompt
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        // If granted, we get a MediaStream. Stop it immediately (we don't need video).
+        stream.getTracks().forEach(track => track.stop());
+
+        statusEl.textContent = 'Granted';
+        statusEl.className = 'status-badge status-granted';
+        resultEl.textContent = 'Camera access granted. Ready to capture.';
+        resultEl.className = 'result-box alert-success';
+      } catch (err) {
+        statusEl.textContent = 'Denied';
+        statusEl.className = 'status-badge status-denied';
+        resultEl.textContent = 'Camera access denied: ' + err.message;
+        resultEl.className = 'result-box alert-error';
+      }
+    });
+
+    // -----------------------------------------------------------------------
+    // Web Storage (localStorage)
+    //
+    // localStorage.setItem(key, value) stores data that persists across
+    // browser sessions. localStorage.getItem(key) retrieves it.
+    // In tests, you can read/write localStorage via page.evaluate()
+    // or cy.window().
+    // -----------------------------------------------------------------------
+    document.getElementById('btn-storage-save').addEventListener('click', () => {
+      const key = document.getElementById('storage-key').value.trim();
+      const value = document.getElementById('storage-value').value.trim();
+      const resultEl = document.getElementById('storage-result');
+
+      if (!key) {
+        resultEl.textContent = 'Please enter a key.';
+        resultEl.className = 'result-box alert-error';
+        return;
+      }
+
+      localStorage.setItem(key, value);
+      resultEl.textContent = 'Saved: "' + key + '" = "' + value + '"';
+      resultEl.className = 'result-box alert-success';
+    });
+
+    document.getElementById('btn-storage-load').addEventListener('click', () => {
+      const key = document.getElementById('storage-key').value.trim();
+      const resultEl = document.getElementById('storage-result');
+
+      if (!key) {
+        resultEl.textContent = 'Please enter a key to load.';
+        resultEl.className = 'result-box alert-error';
+        return;
+      }
+
+      const value = localStorage.getItem(key);
+      if (value !== null) {
+        resultEl.textContent = 'Loaded: "' + key + '" = "' + value + '"';
+        resultEl.className = 'result-box alert-success';
+      } else {
+        resultEl.textContent = 'Key "' + key + '" not found in localStorage.';
+        resultEl.className = 'result-box alert-error';
+      }
+    });
+
+    document.getElementById('btn-storage-clear').addEventListener('click', () => {
+      localStorage.clear();
+      document.getElementById('storage-result').textContent = 'localStorage cleared.';
+      document.getElementById('storage-result').className = 'result-box';
+    });
+
+    // -----------------------------------------------------------------------
+    // File Download
+    //
+    // Creates a CSV file as a Blob, generates a temporary download URL
+    // via URL.createObjectURL(), and triggers the download by clicking
+    // a programmatically created <a> element with the download attribute.
+    // -----------------------------------------------------------------------
+    document.getElementById('btn-download-statement').addEventListener('click', () => {
+      // Build CSV content (a simple account statement)
+      const csv = [
+        'Date,Description,Amount,Balance',
+        '2026-04-01,Salary Credit,+85000,185000',
+        '2026-04-03,Electricity Bill,-2500,182500',
+        '2026-04-05,UPI Transfer to Priya,-5000,177500',
+        '2026-04-10,SIP - Axis Bluechip,-10000,167500',
+        '2026-04-12,ATM Withdrawal,-3000,164500',
+      ].join('\n');
+
+      // Create a Blob (binary large object) with the CSV text
+      const blob = new Blob([csv], { type: 'text/csv' });
+
+      // Create a temporary URL pointing to the Blob
+      const url = URL.createObjectURL(blob);
+
+      // Create an invisible <a> element, set its href and download attributes,
+      // then click it to trigger the download.
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'statement-april-2026.csv';  // suggested filename
+      document.body.appendChild(a);
+      a.click();
+
+      // Clean up: remove the <a> element and revoke the Blob URL
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      document.getElementById('download-status').textContent = 'Download started: statement-april-2026.csv';
+      document.getElementById('download-status').style.color = '#166534';
+    });
+  </script>
+
+</body>
+</html>
