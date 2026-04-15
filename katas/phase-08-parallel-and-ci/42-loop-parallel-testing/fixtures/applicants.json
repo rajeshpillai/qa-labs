@@ -1,0 +1,65 @@
+[
+  {
+    "name": "Aisha Patel",
+    "email": "aisha@example.com",
+    "country": "IN",
+    "docType": "passport",
+    "expectedRef": "KYC-LOOP-001",
+    "expectedStatus": "success",
+    "scenario": "india-passport"
+  },
+  {
+    "name": "Carlos Rivera",
+    "email": "carlos@example.com",
+    "country": "US",
+    "docType": "drivers-license",
+    "expectedRef": "KYC-LOOP-002",
+    "expectedStatus": "success",
+    "scenario": "us-drivers-license"
+  },
+  {
+    "name": "Yuki Tanaka",
+    "email": "yuki@example.com",
+    "country": "GB",
+    "docType": "national-id",
+    "expectedRef": "KYC-LOOP-003",
+    "expectedStatus": "success",
+    "scenario": "uk-national-id"
+  },
+  {
+    "name": "Fatima Al-Hassan",
+    "email": "fatima@example.com",
+    "country": "DE",
+    "docType": "passport",
+    "expectedRef": "KYC-LOOP-004",
+    "expectedStatus": "success",
+    "scenario": "germany-passport"
+  },
+  {
+    "name": "Olga Petrov",
+    "email": "olga@example.com",
+    "country": "US",
+    "docType": "national-id",
+    "expectedRef": "KYC-LOOP-005",
+    "expectedStatus": "success",
+    "scenario": "us-national-id"
+  },
+  {
+    "name": "Raj Krishnan",
+    "email": "raj@example.com",
+    "country": "IN",
+    "docType": "national-id",
+    "expectedRef": "KYC-LOOP-006",
+    "expectedStatus": "success",
+    "scenario": "india-national-id"
+  },
+  {
+    "name": "",
+    "email": "invalid@test.com",
+    "country": "US",
+    "docType": "passport",
+    "expectedRef": "",
+    "expectedStatus": "error",
+    "scenario": "missing-name-error"
+  }
+]
