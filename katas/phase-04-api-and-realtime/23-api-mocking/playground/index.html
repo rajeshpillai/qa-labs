@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kata 23: API Mocking | QA Labs</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #1e293b; padding: 2rem; }
+    .header { background: #0f172a; color: white; padding: 1rem 2rem; margin: -2rem -2rem 2rem; }
+    .header h1 { font-size: 1.25rem; }
+    .kata-badge { display: inline-block; background: #38bdf8; color: #0f172a; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 4px; margin-right: 0.5rem; }
+
+    .dashboard { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+
+    .score-card {
+      background: white; border-radius: 8px; padding: 1.25rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1); border-left: 4px solid #cbd5e1;
+      transition: opacity 0.2s;
+    }
+    .score-card .entity-name { font-size: 0.8rem; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.25rem; }
+    .score-card .score-value { font-size: 2rem; font-weight: 700; }
+    .score-card .risk-label { font-size: 0.75rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 10px; display: inline-block; margin-top: 0.35rem; }
+
+    .risk-high .score-value { color: #dc2626; }
+    .risk-high { border-left-color: #ef4444; }
+    .risk-high .risk-label { background: #fee2e2; color: #991b1b; }
+    .risk-medium .score-value { color: #d97706; }
+    .risk-medium { border-left-color: #f59e0b; }
+    .risk-medium .risk-label { background: #fef3c7; color: #92400e; }
+    .risk-low .score-value { color: #16a34a; }
+    .risk-low { border-left-color: #22c55e; }
+    .risk-low .risk-label { background: #dcfce7; color: #166534; }
+
+    .controls { margin-bottom: 1.5rem; display: flex; gap: 0.75rem; align-items: center; }
+
+    button {
+      padding: 0.5rem 1.25rem; border: none; border-radius: 6px; font-size: 0.875rem;
+      font-weight: 600; cursor: pointer; transition: background 0.2s;
+    }
+    .btn-primary { background: #3b82f6; color: white; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-primary:disabled { background: #94a3b8; cursor: not-allowed; }
+    .btn-danger { background: #ef4444; color: white; }
+    .btn-danger:hover { background: #dc2626; }
+
+    .loading-bar {
+      display: none; align-items: center; gap: 0.5rem; color: #64748b; font-size: 0.85rem;
+    }
+    .loading-bar.visible { display: flex; }
+    .spinner { width: 16px; height: 16px; border: 2px solid #cbd5e1; border-top-color: #3b82f6; border-radius: 50%; animation: spin 0.6s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .error-panel {
+      display: none; padding: 1rem; background: #fee2e2; border: 1px solid #fecaca;
+      border-radius: 8px; color: #991b1b; margin-bottom: 1.5rem;
+    }
+    .error-panel.visible { display: block; }
+    .error-panel .error-message { font-size: 0.9rem; margin-bottom: 0.5rem; }
+
+    .status-bar {
+      padding: 0.75rem 1rem; background: #f1f5f9; border-radius: 6px;
+      font-size: 0.85rem; color: #475569; margin-top: 1rem;
+    }
+
+    .note {
+      margin-top: 1rem; padding: 0.75rem 1rem; background: #fffbeb; border: 1px solid #fde68a;
+      border-radius: 6px; font-size: 0.8rem; color: #92400e;
+    }
+  </style>
+</head>
+<body>
+
+  <header class="header" data-testid="page-header">
+    <span class="kata-badge">KATA 23</span>
+    <h1>Risk Assessment Dashboard - API Mocking Practice</h1>
+  </header>
+
+  <!--
+    This playground fetches risk scores from /api/risk-scores on page load
+    and when the "Refresh Scores" button is clicked. There is no real backend;
+    the tests will mock the API responses using page.route() or cy.intercept().
+  -->
+
+  <!-- Controls -->
+  <div class="controls" data-testid="controls">
+    <button class="btn-primary" data-testid="refresh-btn" id="refresh-btn">Refresh Scores</button>
+    <div class="loading-bar" data-testid="loading-indicator" id="loading-indicator">
+      <div class="spinner"></div>
+      <span>Loading risk scores...</span>
+    </div>
+    <span data-testid="request-count" id="request-count" style="font-size: 0.8rem; color: #64748b;">
+      Requests: <strong id="request-count-value" data-testid="request-count-value">0</strong>
+    </span>
+  </div>
+
+  <!-- Error Panel -->
+  <div class="error-panel" data-testid="error-panel" id="error-panel">
+    <div class="error-message" data-testid="error-message" id="error-message"></div>
+    <button class="btn-danger" data-testid="retry-btn" id="retry-btn">Retry</button>
+  </div>
+
+  <!-- Score Cards Grid -->
+  <div class="dashboard" data-testid="scores-grid" id="scores-grid">
+    <!-- Score cards are dynamically inserted here by JavaScript -->
+  </div>
+
+  <!-- Status Bar -->
+  <div class="status-bar" data-testid="status-bar" id="status-bar">
+    Status: <strong data-testid="status-text" id="status-text">Idle</strong>
+    | Last updated: <strong data-testid="last-updated" id="last-updated">Never</strong>
+  </div>
+
+  <div class="note">
+    <strong>Note:</strong> This dashboard fetches from <code>/api/risk-scores</code>.
+    Without a backend, requests will fail. In the test exercises, you will mock
+    this endpoint to return various responses and test the dashboard behavior.
+  </div>
+
+  <script>
+    // -----------------------------------------------------------------------
+    // Risk Assessment Dashboard
+    // -----------------------------------------------------------------------
+    // This dashboard fetches risk scores from an API and displays them as
+    // score cards. It supports loading states, error states, and retry.
+
+    // Track how many API requests have been made so tests can verify.
+    let requestCount = 0;
+
+    // fetchScores() makes a GET request to /api/risk-scores and updates the UI.
+    // It handles loading, success, and error states.
+    async function fetchScores() {
+      // Increment the request counter and update the display.
+      requestCount++;
+      document.getElementById('request-count-value').textContent = String(requestCount);
+
+      // Show loading state.
+      document.getElementById('loading-indicator').classList.add('visible');
+      document.getElementById('refresh-btn').disabled = true;
+      document.getElementById('status-text').textContent = 'Loading...';
+
+      // Hide any previous error.
+      document.getElementById('error-panel').classList.remove('visible');
+
+      try {
+        // Send the GET request to the risk scores endpoint.
+        // fetch() returns a Response object wrapped in a Promise.
+        const response = await fetch('/api/risk-scores', {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'X-Dashboard-Version': '2.0.0'
+          }
+        });
+
+        // Check if the response indicates success (status 200-299).
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || `Server error: ${response.status}`);
+        }
+
+        // Parse the JSON response body.
+        const data = await response.json();
+
+        // Render the score cards in the grid.
+        renderScores(data.scores || []);
+
+        // Update the status bar.
+        document.getElementById('status-text').textContent = 'Loaded';
+        document.getElementById('last-updated').textContent = new Date().toLocaleTimeString();
+      } catch (err) {
+        // Show the error panel with the error message.
+        showError(err.message || 'Failed to load risk scores.');
+        document.getElementById('status-text').textContent = 'Error';
+      } finally {
+        // Hide loading state and re-enable the refresh button.
+        document.getElementById('loading-indicator').classList.remove('visible');
+        document.getElementById('refresh-btn').disabled = false;
+      }
+    }
+
+    // renderScores(scores) creates score card elements from the API data and
+    // inserts them into the dashboard grid.
+    // Each score object should have: { entity, score, riskLevel }
+    function renderScores(scores) {
+      const grid = document.getElementById('scores-grid');
+      // Clear any existing cards.
+      grid.innerHTML = '';
+
+      // Create a card for each score entry.
+      scores.forEach((item, index) => {
+        // Determine the risk class based on the riskLevel string.
+        const riskClass = `risk-${item.riskLevel.toLowerCase()}`;
+
+        // Create the card HTML. Each card has data-testid attributes so
+        // tests can locate specific elements.
+        const card = document.createElement('div');
+        card.className = `score-card ${riskClass}`;
+        card.setAttribute('data-testid', `score-card-${index}`);
+        card.innerHTML = `
+          <div class="entity-name" data-testid="entity-name-${index}">${item.entity}</div>
+          <div class="score-value" data-testid="score-value-${index}">${item.score}</div>
+          <span class="risk-label" data-testid="risk-label-${index}">${item.riskLevel} Risk</span>
+        `;
+        grid.appendChild(card);
+      });
+    }
+
+    // showError(msg) displays the error panel with the given message.
+    function showError(msg) {
+      document.getElementById('error-message').textContent = msg;
+      document.getElementById('error-panel').classList.add('visible');
+    }
+
+    // --- Event Listeners ---
+
+    // "Refresh Scores" button triggers a new fetch.
+    document.getElementById('refresh-btn').addEventListener('click', fetchScores);
+
+    // "Retry" button in the error panel also triggers a new fetch.
+    document.getElementById('retry-btn').addEventListener('click', fetchScores);
+
+    // Auto-fetch scores when the page loads.
+    // We call fetchScores() immediately so the dashboard populates on load.
+    fetchScores();
+  </script>
+
+</body>
+</html>
