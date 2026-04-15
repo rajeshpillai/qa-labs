@@ -167,6 +167,46 @@ Use cy.screenshot() and configure video recording in Cypress.
 ### Exercise 6: Debugging Cheatsheet
 Use the debugging cheatsheet to quickly diagnose common test failures.
 
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Setting `trace: 'on'` in production CI | Traces are large files; recording every test wastes disk and slows runs | Use `trace: 'on-first-retry'` or `trace: 'retain-on-failure'` |
+| Not uploading artifacts in CI | Reports, screenshots, and videos are lost when the CI runner is cleaned up | Upload `playwright-report/`, `test-results/`, `cypress/screenshots/` as CI artifacts |
+| Using `page.waitForTimeout()` instead of proper waits | Arbitrary delays are flaky and slow; they hide the real issue | Wait for a specific condition: `await expect(locator).toBeVisible()` |
+| Calling `cy.debug()` in headless mode | `cy.debug()` only works in interactive mode; in headless CI it does nothing useful | Use `cy.log()` and `console.log()` for CI, reserve `cy.debug()` for local development |
+| Setting up console spies after page load | `cy.spy(win.console, 'log')` only captures calls made after the spy is set up | Set up spies in `cy.on('window:before:load')` to capture initial page load messages |
+| Forgetting `--reporter=html` when generating reports | Without the flag, Playwright uses the default `list` reporter and no HTML report is generated | Always pass `--reporter=html` or configure it in `playwright.config.ts` |
+
+## Quick Reference
+
+### Playwright Debugging and Reporting
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Generate HTML report | `--reporter=html` | `npx playwright test --reporter=html` |
+| View HTML report | `show-report` | `npx playwright show-report` |
+| Record trace | `--trace=on` | `npx playwright test --trace=on` |
+| View trace | `show-trace` | `npx playwright show-trace test-results/.../trace.zip` |
+| Capture screenshot | `page.screenshot()` | `await page.screenshot({ path: 'debug.png' })` |
+| Attach to report | `test.info().attach()` | `await test.info().attach('name', { body, contentType: 'image/png' })` |
+| Capture console logs | `page.on('console')` | `page.on('console', msg => console.log(msg.text()))` |
+| Pause for Inspector | `page.pause()` | `await page.pause()` |
+| Add annotation | `test.info().annotations` | `test.info().annotations.push({ type: 'note', description: '...' })` |
+
+### Cypress Debugging and Reporting
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Log to command panel | `cy.log()` | `cy.log('Section: assertions')` |
+| Take screenshot | `cy.screenshot()` | `cy.screenshot('before-click', { overwrite: true })` |
+| Element screenshot | `.screenshot()` | `cy.get('#card').screenshot('card', { padding: 10 })` |
+| Enable video | `cypress.config.ts` | `e2e: { video: true }` |
+| Spy on console | `cy.spy()` | `cy.spy(win.console, 'log').as('consoleLog')` |
+| Pause test runner | `cy.pause()` | `cy.pause()` |
+| Open DevTools | `cy.debug()` | `cy.debug()` |
+| Custom log entry | `Cypress.log()` | `Cypress.log({ name: 'info', message: '...' })` |
+
 ## Key Takeaways
 
 ```
