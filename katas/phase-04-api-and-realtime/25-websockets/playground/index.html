@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kata 25: WebSockets | QA Labs</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #1e293b; padding: 2rem; }
+    .header { background: #0f172a; color: white; padding: 1rem 2rem; margin: -2rem -2rem 2rem; }
+    .header h1 { font-size: 1.25rem; }
+    .kata-badge { display: inline-block; background: #38bdf8; color: #0f172a; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 4px; margin-right: 0.5rem; }
+
+    .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+
+    .section { margin-bottom: 1.5rem; padding: 1.5rem; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .section h2 { font-size: 1rem; color: #475569; margin-bottom: 1rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.5rem; }
+
+    button {
+      padding: 0.5rem 1.25rem; border: none; border-radius: 6px; font-size: 0.875rem;
+      font-weight: 600; cursor: pointer; transition: background 0.2s;
+    }
+    .btn-primary { background: #3b82f6; color: white; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-danger { background: #ef4444; color: white; }
+    .btn-danger:hover { background: #dc2626; }
+    .btn-secondary { background: #e2e8f0; color: #334155; }
+    .btn-secondary:hover { background: #cbd5e1; }
+
+    .controls { display: flex; gap: 0.5rem; margin-bottom: 1rem; align-items: center; }
+
+    .status-badge {
+      display: inline-block; padding: 0.2rem 0.75rem; border-radius: 10px;
+      font-size: 0.75rem; font-weight: 600;
+    }
+    .status-connected { background: #dcfce7; color: #166534; }
+    .status-disconnected { background: #fee2e2; color: #991b1b; }
+    .status-connecting { background: #fef3c7; color: #92400e; }
+
+    .feed-list {
+      list-style: none; max-height: 300px; overflow-y: auto; border: 1px solid #e2e8f0;
+      border-radius: 6px; background: #f8fafc;
+    }
+    .feed-list li {
+      padding: 0.5rem 0.75rem; border-bottom: 1px solid #e2e8f0; font-size: 0.85rem;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .feed-list li:last-child { border-bottom: none; }
+    .feed-list .timestamp { font-size: 0.7rem; color: #94a3b8; }
+    .feed-list .status-new { color: #2563eb; }
+    .feed-list .status-approved { color: #16a34a; }
+    .feed-list .status-rejected { color: #dc2626; }
+    .feed-list .status-review { color: #d97706; }
+
+    .empty-state { padding: 2rem; text-align: center; color: #94a3b8; font-size: 0.85rem; }
+
+    .chat-messages {
+      list-style: none; max-height: 250px; overflow-y: auto; border: 1px solid #e2e8f0;
+      border-radius: 6px; background: #f8fafc; margin-bottom: 0.75rem;
+    }
+    .chat-messages li {
+      padding: 0.5rem 0.75rem; border-bottom: 1px solid #e2e8f0; font-size: 0.85rem;
+    }
+    .chat-messages li:last-child { border-bottom: none; }
+    .chat-messages .sender { font-weight: 600; margin-right: 0.5rem; }
+    .chat-messages .sender-you { color: #2563eb; }
+    .chat-messages .sender-agent { color: #16a34a; }
+
+    .chat-input { display: flex; gap: 0.5rem; }
+    .chat-input input {
+      flex: 1; padding: 0.5rem 0.75rem; border: 1px solid #cbd5e1;
+      border-radius: 6px; font-size: 0.9rem;
+    }
+
+    .counter { font-size: 0.8rem; color: #64748b; margin-top: 0.5rem; }
+
+    .note {
+      margin-top: 1rem; padding: 0.75rem 1rem; background: #fffbeb; border: 1px solid #fde68a;
+      border-radius: 6px; font-size: 0.8rem; color: #92400e; grid-column: 1 / -1;
+    }
+  </style>
+</head>
+<body>
+
+  <header class="header" data-testid="page-header">
+    <span class="kata-badge">KATA 25</span>
+    <h1>Live KYC Status Feed &amp; Chat Support - WebSocket Practice</h1>
+  </header>
+
+  <!--
+    MOCK WEBSOCKET IMPLEMENTATION
+    ========================================================================
+    Since there is no real WebSocket server, this playground uses a mock
+    implementation that simulates WebSocket behavior using setInterval.
+
+    - The "Connect" button starts a simulated connection that pushes
+      status update messages at regular intervals.
+    - The "Chat" widget echoes back messages to simulate a chat agent.
+    - The mock exposes the same interface as a real WebSocket (onopen,
+      onmessage, onclose, send) so the test patterns are realistic.
+
+    In tests, you can:
+    - Playwright: use page.evaluate() to interact with the mock, or
+      observe DOM changes caused by the mock messages.
+    - Cypress: use cy.stub() on the WebSocket constructor, or simply
+      verify the DOM state as messages arrive.
+    ========================================================================
+  -->
+
+  <div class="layout">
+    <!-- Left: KYC Status Feed -->
+    <div class="section" data-testid="feed-section">
+      <h2>Live KYC Status Feed</h2>
+
+      <div class="controls">
+        <button class="btn-primary" data-testid="connect-btn" id="connect-btn">Connect</button>
+        <button class="btn-danger" data-testid="disconnect-btn" id="disconnect-btn" style="display:none;">Disconnect</button>
+        <span class="status-badge status-disconnected" data-testid="connection-status" id="connection-status">Disconnected</span>
+      </div>
+
+      <ul class="feed-list" data-testid="feed-list" id="feed-list">
+        <li class="empty-state" data-testid="feed-empty">Click "Connect" to start receiving updates</li>
+      </ul>
+
+      <div class="counter" data-testid="message-count" id="message-count">
+        Messages received: <strong data-testid="message-count-value" id="message-count-value">0</strong>
+      </div>
+    </div>
+
+    <!-- Right: Chat Support Widget -->
+    <div class="section" data-testid="chat-section">
+      <h2>Chat Support</h2>
+
+      <div class="controls">
+        <span class="status-badge status-disconnected" data-testid="chat-status" id="chat-status">Offline</span>
+      </div>
+
+      <ul class="chat-messages" data-testid="chat-messages" id="chat-messages">
+        <li class="empty-state" data-testid="chat-empty">Connect the feed to enable chat</li>
+      </ul>
+
+      <div class="chat-input" data-testid="chat-input">
+        <input type="text" id="chat-input-field" data-testid="chat-input-field"
+               placeholder="Type a message..." disabled>
+        <button class="btn-primary" data-testid="chat-send-btn" id="chat-send-btn" disabled>Send</button>
+      </div>
+    </div>
+
+    <div class="note">
+      <strong>Note:</strong> This playground uses a mock WebSocket (implemented with setInterval)
+      since there is no real WebSocket server. The mock simulates real-time messages at 2-second
+      intervals. In the test exercises, you will verify the DOM state, manipulate the mock via
+      <code>page.evaluate()</code>, and test connection/disconnection behavior.
+    </div>
+  </div>
+
+  <script>
+    // -----------------------------------------------------------------------
+    // Mock WebSocket Implementation
+    // -----------------------------------------------------------------------
+    // This mock simulates a WebSocket connection using setInterval. It
+    // produces KYC status update messages at regular intervals and supports
+    // sending messages (which echo back as chat agent responses).
+    //
+    // The mock is stored on window.mockWs so tests can access it via
+    // page.evaluate() in Playwright.
+
+    // Pool of mock KYC status updates that the feed will cycle through.
+    const STATUS_UPDATES = [
+      { applicant: 'Aisha Patel', status: 'approved', id: 'KYC-001' },
+      { applicant: 'Ben Okafor', status: 'review', id: 'KYC-002' },
+      { applicant: 'Clara Jansen', status: 'rejected', id: 'KYC-003' },
+      { applicant: 'Derek Wong', status: 'approved', id: 'KYC-004' },
+      { applicant: 'Elena Vasquez', status: 'new', id: 'KYC-005' },
+      { applicant: 'Fiona Chen', status: 'review', id: 'KYC-006' },
+      { applicant: 'Grace Kim', status: 'approved', id: 'KYC-007' },
+      { applicant: 'Hassan Ali', status: 'rejected', id: 'KYC-008' }
+    ];
+
+    // State variables for the mock connection.
+    let connected = false;           // Whether the mock connection is "open"
+    let feedInterval = null;         // The setInterval ID for the feed
+    let messageIndex = 0;            // Index into STATUS_UPDATES array
+    let messageCount = 0;            // Total messages received
+
+    // DOM element references.
+    const connectBtn = document.getElementById('connect-btn');
+    const disconnectBtn = document.getElementById('disconnect-btn');
+    const connectionStatus = document.getElementById('connection-status');
+    const feedList = document.getElementById('feed-list');
+    const messageCountValue = document.getElementById('message-count-value');
+    const chatStatus = document.getElementById('chat-status');
+    const chatMessages = document.getElementById('chat-messages');
+    const chatInputField = document.getElementById('chat-input-field');
+    const chatSendBtn = document.getElementById('chat-send-btn');
+
+    // -----------------------------------------------------------------------
+    // connect() — Start the mock WebSocket connection
+    // -----------------------------------------------------------------------
+    // Simulates the WebSocket onopen event and starts sending messages.
+    function connect() {
+      if (connected) return;
+
+      // Show "Connecting..." state briefly.
+      connectionStatus.textContent = 'Connecting...';
+      connectionStatus.className = 'status-badge status-connecting';
+
+      // Simulate connection delay (300ms), then go to "connected" state.
+      setTimeout(() => {
+        connected = true;
+
+        // Update UI to connected state.
+        connectionStatus.textContent = 'Connected';
+        connectionStatus.className = 'status-badge status-connected';
+        connectBtn.style.display = 'none';
+        disconnectBtn.style.display = 'inline-block';
+
+        // Enable chat.
+        chatStatus.textContent = 'Online';
+        chatStatus.className = 'status-badge status-connected';
+        chatInputField.disabled = false;
+        chatSendBtn.disabled = false;
+
+        // Clear the empty state from the feed.
+        const emptyState = feedList.querySelector('.empty-state');
+        if (emptyState) emptyState.remove();
+
+        // Clear the empty state from chat.
+        const chatEmpty = chatMessages.querySelector('.empty-state');
+        if (chatEmpty) chatEmpty.remove();
+
+        // Start the message feed — send a status update every 2 seconds.
+        // setInterval(callback, ms) calls the callback repeatedly.
+        feedInterval = setInterval(() => {
+          if (!connected) return;
+
+          // Get the next status update from the pool (cycling through).
+          const update = STATUS_UPDATES[messageIndex % STATUS_UPDATES.length];
+          messageIndex++;
+          messageCount++;
+
+          // Add the message to the feed list.
+          addFeedMessage(update);
+
+          // Update the message counter.
+          messageCountValue.textContent = String(messageCount);
+        }, 2000);
+
+        // Expose the mock on window so tests can access it.
+        window.mockWs = {
+          connected: true,
+          messageCount: () => messageCount,
+          // injectMessage() lets tests push a custom message into the feed.
+          injectMessage: (update) => {
+            messageCount++;
+            addFeedMessage(update);
+            messageCountValue.textContent = String(messageCount);
+          },
+          // disconnect() lets tests programmatically close the connection.
+          disconnect: () => disconnect()
+        };
+      }, 300);
+    }
+
+    // -----------------------------------------------------------------------
+    // disconnect() — Close the mock WebSocket connection
+    // -----------------------------------------------------------------------
+    // Simulates the WebSocket onclose event and stops the message feed.
+    function disconnect() {
+      if (!connected) return;
+
+      connected = false;
+
+      // Stop the message feed interval.
+      // clearInterval(id) cancels a previously scheduled interval.
+      if (feedInterval) {
+        clearInterval(feedInterval);
+        feedInterval = null;
+      }
+
+      // Update UI to disconnected state.
+      connectionStatus.textContent = 'Disconnected';
+      connectionStatus.className = 'status-badge status-disconnected';
+      connectBtn.style.display = 'inline-block';
+      disconnectBtn.style.display = 'none';
+
+      // Disable chat.
+      chatStatus.textContent = 'Offline';
+      chatStatus.className = 'status-badge status-disconnected';
+      chatInputField.disabled = true;
+      chatSendBtn.disabled = true;
+
+      // Update the mock state.
+      if (window.mockWs) {
+        window.mockWs.connected = false;
+      }
+    }
+
+    // -----------------------------------------------------------------------
+    // addFeedMessage(update) — Add a status update to the feed list
+    // -----------------------------------------------------------------------
+    // Creates a list item for the KYC status update and prepends it to the
+    // feed list (newest messages at the top).
+    function addFeedMessage(update) {
+      const li = document.createElement('li');
+      li.setAttribute('data-testid', `feed-message-${messageCount}`);
+      li.className = 'feed-message';
+
+      const now = new Date().toLocaleTimeString();
+      li.innerHTML = `
+        <span>
+          <strong class="status-${update.status}">${update.applicant}</strong>
+          — ${update.id} status changed to
+          <strong class="status-${update.status}">${update.status}</strong>
+        </span>
+        <span class="timestamp">${now}</span>
+      `;
+
+      // Prepend so newest messages appear at the top.
+      // insertBefore(newNode, referenceNode) inserts before the reference.
+      feedList.insertBefore(li, feedList.firstChild);
+    }
+
+    // -----------------------------------------------------------------------
+    // Chat: Send Message and Echo Response
+    // -----------------------------------------------------------------------
+    // When the user sends a chat message, it appears in the chat list,
+    // and after a short delay, an "agent" echo response appears.
+
+    function sendChatMessage() {
+      const message = chatInputField.value.trim();
+      if (!message || !connected) return;
+
+      // Add the user's message to the chat list.
+      addChatMessage('You', message, 'sender-you');
+
+      // Clear the input field.
+      chatInputField.value = '';
+
+      // Simulate an agent response after 500ms.
+      // This simulates a WebSocket server echoing the message.
+      setTimeout(() => {
+        if (connected) {
+          addChatMessage('Agent', `Received: "${message}". We will review your request.`, 'sender-agent');
+        }
+      }, 500);
+    }
+
+    // addChatMessage(sender, text, cssClass) adds a message to the chat list.
+    function addChatMessage(sender, text, cssClass) {
+      const li = document.createElement('li');
+      const msgCount = chatMessages.querySelectorAll('li').length + 1;
+      li.setAttribute('data-testid', `chat-message-${msgCount}`);
+      li.innerHTML = `<span class="sender ${cssClass}">${sender}:</span> ${text}`;
+      chatMessages.appendChild(li);
+      // Scroll to the bottom to show the latest message.
+      chatMessages.scrollTop = chatMessages.scrollHeight;
+    }
+
+    // --- Event Listeners ---
+
+    // Connect button starts the mock WebSocket connection.
+    connectBtn.addEventListener('click', connect);
+
+    // Disconnect button stops the connection.
+    disconnectBtn.addEventListener('click', disconnect);
+
+    // Send button sends the chat message.
+    chatSendBtn.addEventListener('click', sendChatMessage);
+
+    // Enter key in the chat input also sends the message.
+    chatInputField.addEventListener('keydown', (e) => {
+      // e.key is the name of the key pressed. 'Enter' is the Enter/Return key.
+      if (e.key === 'Enter') {
+        sendChatMessage();
+      }
+    });
+  </script>
+
+</body>
+</html>
