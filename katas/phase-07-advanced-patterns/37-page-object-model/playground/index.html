@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kata 37: Page Object Model | QA Labs</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #1e293b; padding: 2rem; }
+    .header { background: #0f172a; color: white; padding: 1rem 2rem; margin: -2rem -2rem 2rem; }
+    .header h1 { font-size: 1.25rem; }
+    .kata-badge { display: inline-block; background: #a78bfa; color: #0f172a; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 4px; margin-right: 0.5rem; }
+    .section { margin-bottom: 2rem; padding: 1.5rem; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .section h2 { font-size: 1rem; color: #475569; margin-bottom: 1rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.5rem; }
+    .section p { font-size: 0.9rem; line-height: 1.6; color: #64748b; margin-bottom: 1rem; }
+    .link-card { display: inline-block; padding: 1rem 2rem; background: #3b82f6; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 0.95rem; }
+    .link-card:hover { background: #2563eb; }
+    pre { background: #1e293b; color: #e2e8f0; padding: 1rem; border-radius: 6px; font-size: 0.8rem; overflow-x: auto; margin: 1rem 0; }
+    code { font-family: 'Fira Code', 'Consolas', monospace; }
+  </style>
+</head>
+<body>
+
+  <header class="header" data-testid="page-header">
+    <span class="kata-badge">KATA 37</span>
+    <h1>Page Object Model (POM) Pattern</h1>
+  </header>
+
+  <div class="section">
+    <h2>About This Kata</h2>
+    <p>
+      This kata does not introduce a new playground page. Instead, it teaches
+      you the <strong>Page Object Model</strong> design pattern by writing POM
+      classes/objects for the KYC Onboarding Form from Kata 26.
+    </p>
+    <p>
+      The POM pattern wraps page interactions into reusable classes (Playwright)
+      or objects (Cypress). This keeps your tests clean and your selectors in
+      one place.
+    </p>
+    <a href="/phase-05-fintech-domain/26-kyc-onboarding-flow/playground/"
+       class="link-card"
+       data-testid="kata-26-link">
+      Open Kata 26: KYC Onboarding Form
+    </a>
+  </div>
+
+  <div class="section">
+    <h2>Without POM (Fragile)</h2>
+    <pre><code>// Every test repeats selectors — if one changes, ALL tests break
+await page.getByTestId('full-name-input').fill('Aisha Patel');
+await page.getByTestId('email-input').fill('aisha@example.com');
+await page.getByTestId('country-select').selectOption('IN');
+await page.getByTestId('submit-btn').click();</code></pre>
+  </div>
+
+  <div class="section">
+    <h2>With POM (Robust)</h2>
+    <pre><code>// Selectors live in ONE file — tests read like user stories
+const kycForm = new KycFormPage(page);
+await kycForm.fillName('Aisha Patel');
+await kycForm.fillEmail('aisha@example.com');
+await kycForm.selectCountry('IN');
+await kycForm.submit();</code></pre>
+  </div>
+
+</body>
+</html>
