@@ -193,7 +193,7 @@
         <label for="field-notes">Notes</label>
         <textarea id="field-notes" data-testid="field-notes" rows="2" placeholder="Additional notes..." tabindex="4"></textarea>
 
-        <button class="btn-success" data-testid="btn-submit" tabindex="5">Submit</button>
+        <button class="btn-success" data-testid="btn-submit" id="btn-submit" tabindex="5">Submit</button>
 
         <div class="focus-indicator">
           Currently focused: <strong data-testid="focused-field" id="focused-field">None</strong>
@@ -287,6 +287,7 @@
         if (prev) {
           sortableList.insertBefore(selectedItem, prev);
           updateTierOrder();
+          selectedItem.focus();
         }
       } else if (e.key === 'ArrowDown') {
         e.preventDefault();
@@ -294,6 +295,7 @@
         if (next) {
           sortableList.insertBefore(next, selectedItem);
           updateTierOrder();
+          selectedItem.focus();
         }
       } else if (e.key === 'Enter') {
         e.preventDefault();
