@@ -202,18 +202,36 @@
     let lastInteractionTime = null;
 
     // -------------------------------------------------------------------
-    // generateMockJWT() — creates a fake JWT-like token string.
+    // generateMockJWT(username) — creates a fake JWT-like token string.
     // Real JWTs have three base64-encoded parts: header.payload.signature.
     // We mimic this format with random characters for realism.
+    //
+    // NOTE: btoa() only accepts Latin-1 characters, so we pass the
+    // username explicitly rather than reading it from the DOM (where the
+    // placeholder is the em-dash "—" which is outside Latin-1 and would
+    // crash btoa). We also fall back to an empty "sub" if the username
+    // happens to contain characters outside Latin-1.
     // -------------------------------------------------------------------
-    function generateMockJWT() {
+    function generateMockJWT(username) {
+      const safeUsername = typeof username === 'string' ? username : '';
       const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
-      const payload = btoa(JSON.stringify({
-        sub: document.getElementById('sessionUser').textContent,
-        iat: Math.floor(Date.now() / 1000),
-        exp: Math.floor(Date.now() / 1000) + EXPIRE_TIME,
-        jti: Math.random().toString(36).substring(2, 10),
-      }));
+      let payload;
+      try {
+        payload = btoa(JSON.stringify({
+          sub: safeUsername,
+          iat: Math.floor(Date.now() / 1000),
+          exp: Math.floor(Date.now() / 1000) + EXPIRE_TIME,
+          jti: Math.random().toString(36).substring(2, 10),
+        }));
+      } catch (e) {
+        // Fallback if the username contains non-Latin-1 characters.
+        payload = btoa(JSON.stringify({
+          sub: '',
+          iat: Math.floor(Date.now() / 1000),
+          exp: Math.floor(Date.now() / 1000) + EXPIRE_TIME,
+          jti: Math.random().toString(36).substring(2, 10),
+        }));
+      }
       const signature = btoa(Math.random().toString(36).substring(2, 30));
       return header + '.' + payload + '.' + signature;
     }
@@ -256,8 +274,9 @@
       refreshCounter = 0;
       lastInteractionTime = Date.now();
 
-      // Generate the initial access token.
-      currentToken = generateMockJWT();
+      // Generate the initial access token. Pass the username explicitly
+      // so generateMockJWT doesn't have to read it from the DOM.
+      currentToken = generateMockJWT(username);
 
       // Update the UI.
       document.getElementById('loginPanel').classList.add('hidden');
@@ -335,7 +354,10 @@
       lastInteractionTime = Date.now();
 
       // Generate a new token (simulating refresh token exchange).
-      currentToken = generateMockJWT();
+      // Read the current username directly from the DOM; it was set on
+      // login and may contain only Latin-1 characters for the test user.
+      const currentUsername = document.getElementById('sessionUser').textContent;
+      currentToken = generateMockJWT(currentUsername);
 
       // Update the UI.
       document.getElementById('tokenDisplay').textContent = currentToken;
