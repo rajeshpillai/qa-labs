@@ -101,7 +101,10 @@ test('exercise 3: verify active nav state highlighting', async ({ page }) => {
 // should return to the previous page. Playwright's goBack() simulates
 // clicking the browser back button.
 test('exercise 4: use browser back button to navigate', async ({ page }) => {
-  await page.goto(PLAYGROUND);
+  // Start on the Home route explicitly so that going back through the
+  // history always lands on a well-defined hash route (and not on the
+  // bare URL without a hash).
+  await page.goto(PLAYGROUND + '#/home');
 
   // Navigate forward: Home -> Apply -> Status
   await page.getByTestId('nav-apply').click();
@@ -113,16 +116,22 @@ test('exercise 4: use browser back button to navigate', async ({ page }) => {
   // Go back one step. goBack() simulates clicking the browser back button.
   // It returns a response or null. The hashchange event fires, triggering
   // our router to show the previous page.
-  await page.goBack();
+  //
+  // For hash-only navigation, no full page load occurs, so we pass
+  // { waitUntil: 'commit' } to avoid waiting for a 'load' event that
+  // will never fire.
+  await page.goBack({ waitUntil: 'commit' });
 
   // We should now be on the Apply page (the previous page in history).
-  await expect(page.getByTestId('page-apply')).toBeVisible();
+  // Playwright's expect() auto-retries until the assertion passes,
+  // giving the hashchange handler time to update the DOM.
   await expect(page).toHaveURL(/#\/apply/);
+  await expect(page.getByTestId('page-apply')).toBeVisible();
 
   // Go back again — should return to Home.
-  await page.goBack();
-  await expect(page.getByTestId('page-home')).toBeVisible();
+  await page.goBack({ waitUntil: 'commit' });
   await expect(page).toHaveURL(/#\/home/);
+  await expect(page.getByTestId('page-home')).toBeVisible();
 });
 
 // --------------------------------------------------------------------------
