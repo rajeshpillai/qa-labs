@@ -77,17 +77,43 @@
 
   <script>
     // -----------------------------------------------------------------------
-    // Parse URL search params to populate applicant details.
-    // The main page passes applicant data as query parameters when opening
-    // this popup, e.g., ?id=1&name=Alice&email=alice@example.com
+    // Resolve applicant details from one of two sources:
+    //  1) URL search parameters (preferred when the popup was opened with
+    //     a URL like admin-panel.html?id=1&name=Alice&...).
+    //  2) window.opener.__reviewData[window.name] — a fallback used when
+    //     the browser/test runner strips the query string during popup
+    //     navigation. The opener stashes the record keyed by window.name
+    //     before calling window.open().
     // -----------------------------------------------------------------------
     const params = new URLSearchParams(window.location.search);
-    const applicantId = params.get('id') || '';
-    const applicantName = params.get('name') || 'Unknown';
-    const applicantEmail = params.get('email') || '—';
-    const applicantPosition = params.get('position') || '—';
-    const applicantRisk = params.get('risk') || '—';
-    const applicantDate = params.get('date') || '—';
+
+    // Try to read the fallback record from the opener keyed by this
+    // popup's window name. Guard against window.opener being null (e.g.
+    // when the popup was opened with rel="noopener" or in a new context).
+    let openerData = null;
+    try {
+      if (window.opener && window.name && window.opener.__reviewData) {
+        openerData = window.opener.__reviewData[window.name] || null;
+      }
+    } catch (e) {
+      // Cross-origin access to window.opener can throw; ignore and fall
+      // back to URL params.
+      openerData = null;
+    }
+
+    function readField(key, fallback) {
+      const fromUrl = params.get(key);
+      if (fromUrl !== null && fromUrl !== '') return fromUrl;
+      if (openerData && openerData[key]) return openerData[key];
+      return fallback;
+    }
+
+    const applicantId = readField('id', '');
+    const applicantName = readField('name', 'Unknown');
+    const applicantEmail = readField('email', '—');
+    const applicantPosition = readField('position', '—');
+    const applicantRisk = readField('risk', '—');
+    const applicantDate = readField('date', '—');
 
     // Populate the detail card with the applicant info from URL params.
     document.querySelector('[data-testid="applicant-name"]').textContent = applicantName;

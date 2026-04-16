@@ -127,7 +127,17 @@
     // openReview(id) — opens a popup window (admin-panel.html) with the
     // applicant's details passed as URL search parameters. The popup is
     // a real browser window that the test must interact with.
+    //
+    // We also stash the applicant record on window.__reviewData so that
+    // the popup can read it directly via window.opener.__reviewData.
+    // This is a robust fallback for environments where the query string
+    // gets stripped during popup navigation.
     // -------------------------------------------------------------------
+    // Shared lookup table of applicants currently being reviewed, keyed
+    // by the window name used for window.open(). Each popup reads its
+    // own entry using its window.name when it loads.
+    window.__reviewData = window.__reviewData || {};
+
     function openReview(id) {
       const app = applicants.find(a => a.id === id);
       if (!app) return;
@@ -142,12 +152,25 @@
         date: app.date,
       });
 
+      const windowName = 'review-' + id;
+
+      // Stash the applicant record for this popup window so the popup's
+      // script can read it via window.opener.__reviewData[windowName].
+      window.__reviewData[windowName] = {
+        id: app.id,
+        name: app.name,
+        email: app.email,
+        position: app.position,
+        risk: app.risk,
+        date: app.date,
+      };
+
       // window.open(url, target, features) opens a new browser window/tab.
       // The second argument is the window name — using the applicant id
       // prevents opening duplicate windows for the same applicant.
       const popup = window.open(
         'admin-panel.html?' + params.toString(),
-        'review-' + id,
+        windowName,
         'width=500,height=500'
       );
 
