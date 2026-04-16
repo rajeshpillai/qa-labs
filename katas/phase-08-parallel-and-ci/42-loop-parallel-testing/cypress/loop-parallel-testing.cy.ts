@@ -10,7 +10,7 @@
 // using Cypress Cloud or manual CI job splitting.
 // =============================================================================
 
-const PLAYGROUND = '/phase-05-fintech-domain/26-kyc-onboarding-flow/playground/';
+const PLAYGROUND = '/phase-08-parallel-and-ci/42-loop-parallel-testing/playground/';
 
 // Define the applicant type.
 interface Applicant {

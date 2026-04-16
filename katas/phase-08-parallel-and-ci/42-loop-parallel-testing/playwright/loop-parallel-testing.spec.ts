@@ -15,8 +15,10 @@ import allApplicants from '../fixtures/applicants.json';
 // The --workers flag controls how many tests run simultaneously.
 // =============================================================================
 
-// The playground URL (from Kata 26).
-const PLAYGROUND = '/phase-05-fintech-domain/26-kyc-onboarding-flow/playground/';
+// Kata 42 ships its own flat KYC form playground, purpose-built for
+// loop + parallel testing. Each generated test intercepts /api/kyc/submit
+// with its own mock response derived from the fixture row.
+const PLAYGROUND = '/phase-08-parallel-and-ci/42-loop-parallel-testing/playground/';
 
 // Define the TypeScript interface for applicant data.
 interface Applicant {
