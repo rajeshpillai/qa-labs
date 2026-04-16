@@ -10,47 +10,158 @@
     .header { background: #0f172a; color: white; padding: 1rem 2rem; margin: -2rem -2rem 2rem; }
     .header h1 { font-size: 1.25rem; }
     .kata-badge { display: inline-block; background: #a78bfa; color: #0f172a; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 4px; margin-right: 0.5rem; }
+
     .section { margin-bottom: 2rem; padding: 1.5rem; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
     .section h2 { font-size: 1rem; color: #475569; margin-bottom: 1rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.5rem; }
-    .section p { font-size: 0.9rem; line-height: 1.6; color: #64748b; margin-bottom: 1rem; }
-    .link-card { display: inline-block; padding: 1rem 2rem; background: #3b82f6; color: white; text-decoration: none; border-radius: 8px; font-weight: 600; font-size: 0.95rem; }
-    .link-card:hover { background: #2563eb; }
-    pre { background: #1e293b; color: #e2e8f0; padding: 1rem; border-radius: 6px; font-size: 0.8rem; overflow-x: auto; margin: 1rem 0; }
+
+    .form-group { margin-bottom: 1rem; }
+    .form-group label { display: block; font-size: 0.85rem; font-weight: 600; color: #475569; margin-bottom: 0.25rem; }
+    .form-group input, .form-group select {
+      width: 100%; max-width: 400px; padding: 0.5rem 0.75rem; border: 1px solid #cbd5e1;
+      border-radius: 6px; font-size: 0.9rem; color: #1e293b;
+    }
+
+    button {
+      padding: 0.5rem 1.25rem; border: none; border-radius: 6px; font-size: 0.875rem;
+      font-weight: 600; cursor: pointer; transition: background 0.2s;
+    }
+    .btn-primary { background: #3b82f6; color: white; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-primary:disabled { background: #94a3b8; cursor: not-allowed; }
+
+    .loading { display: none; align-items: center; gap: 0.5rem; color: #64748b; font-size: 0.85rem; margin-top: 0.5rem; }
+    .loading.visible { display: flex; }
+    .spinner { width: 16px; height: 16px; border: 2px solid #cbd5e1; border-top-color: #3b82f6; border-radius: 50%; animation: spin 0.6s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .status-message {
+      margin-top: 0.75rem; padding: 0.75rem 1rem; border-radius: 6px;
+      font-size: 0.85rem; display: none;
+    }
+    .status-message.visible { display: block; }
+    .status-success { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+    .status-error { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+
+    .note {
+      margin-top: 1rem; padding: 0.75rem 1rem; background: #fffbeb; border: 1px solid #fde68a;
+      border-radius: 6px; font-size: 0.8rem; color: #92400e;
+    }
   </style>
 </head>
 <body>
 
   <header class="header" data-testid="page-header">
     <span class="kata-badge">KATA 40</span>
-    <h1>Test Data and Fixtures</h1>
+    <h1>Test Data and Fixtures — KYC Form</h1>
   </header>
 
-  <div class="section">
-    <h2>About This Kata</h2>
-    <p>
-      This kata teaches you how to manage test data using JSON fixture files.
-      Instead of hard-coding data in every test, you store it in a shared file
-      and load it at test time.
-    </p>
-    <p>
-      The tests in this kata target the KYC Onboarding Form from Kata 26.
-    </p>
-    <a href="/phase-05-fintech-domain/26-kyc-onboarding-flow/playground/"
-       class="link-card"
-       data-testid="kata-26-link">
-      Open Kata 26: KYC Onboarding Form
-    </a>
+  <!--
+    LEARNER NOTE:
+    ==========================================================================
+    This playground is a flat KYC submission form used to practice
+    data-driven / fixture-driven testing. Tests load applicant records from
+    playwright/fixtures/applicants.json (or cypress/fixtures/applicants.json)
+    and loop over them, generating one test per record.
+
+    The form POSTs to /api/kyc/submit — a URL with no real backend. Tests
+    intercept this call with page.route() (Playwright) or cy.intercept()
+    (Cypress) and return a mock response based on the fixture data.
+    ==========================================================================
+  -->
+
+  <div class="section" data-testid="kyc-form-section">
+    <h2>Submit KYC Application</h2>
+    <form id="kyc-form" data-testid="kyc-form">
+      <div class="form-group">
+        <label for="full-name">Full Name</label>
+        <input type="text" id="full-name" data-testid="full-name-input" placeholder="Aisha Patel" required>
+      </div>
+      <div class="form-group">
+        <label for="email">Email</label>
+        <input type="email" id="email" data-testid="email-input" placeholder="aisha@example.com" required>
+      </div>
+      <div class="form-group">
+        <label for="country">Country</label>
+        <select id="country" data-testid="country-select">
+          <option value="US">United States</option>
+          <option value="GB">United Kingdom</option>
+          <option value="IN">India</option>
+          <option value="DE">Germany</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="doc-type">Document Type</label>
+        <select id="doc-type" data-testid="doc-type-select">
+          <option value="passport">Passport</option>
+          <option value="drivers-license">Driver's License</option>
+          <option value="national-id">National ID</option>
+        </select>
+      </div>
+      <button type="submit" class="btn-primary" data-testid="submit-btn" id="submit-btn">Submit KYC</button>
+    </form>
+
+    <div class="loading" data-testid="submit-loading" id="submit-loading">
+      <div class="spinner"></div>
+      <span>Submitting KYC application...</span>
+    </div>
+
+    <div class="status-message" data-testid="submit-status" id="submit-status"></div>
   </div>
 
-  <div class="section">
-    <h2>Fixture File Example</h2>
-    <pre><code>// fixtures/applicants.json
-[
-  { "name": "Aisha Patel",    "email": "aisha@example.com",  "country": "IN" },
-  { "name": "Carlos Rivera",  "email": "carlos@example.com", "country": "US" },
-  { "name": "Yuki Tanaka",    "email": "yuki@example.com",   "country": "JP" }
-]</code></pre>
+  <div class="note">
+    <strong>Note:</strong> This form POSTs to <code>/api/kyc/submit</code>, which has no real backend.
+    In your tests, intercept the request and return a mock response based on the fixture data.
   </div>
+
+  <script>
+    document.getElementById('kyc-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const submitBtn = document.getElementById('submit-btn');
+      submitBtn.disabled = true;
+
+      document.getElementById('submit-loading').classList.add('visible');
+      document.getElementById('submit-status').classList.remove('visible');
+
+      const formData = {
+        fullName: document.getElementById('full-name').value.trim(),
+        email: document.getElementById('email').value.trim(),
+        country: document.getElementById('country').value,
+        documentType: document.getElementById('doc-type').value
+      };
+
+      try {
+        const response = await fetch('/api/kyc/submit', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer test-token-abc123',
+            'X-Client-Version': '1.0.0'
+          },
+          body: JSON.stringify(formData)
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.error || result.message || `Server error: ${response.status}`);
+        }
+
+        showSubmitStatus('success', `KYC submitted successfully! Reference: ${result.referenceId}`);
+      } catch (err) {
+        showSubmitStatus('error', err.message || 'Failed to submit KYC application.');
+      } finally {
+        document.getElementById('submit-loading').classList.remove('visible');
+        submitBtn.disabled = false;
+      }
+    });
+
+    function showSubmitStatus(type, msg) {
+      const el = document.getElementById('submit-status');
+      el.textContent = msg;
+      el.className = `status-message visible status-${type}`;
+    }
+  </script>
 
 </body>
 </html>

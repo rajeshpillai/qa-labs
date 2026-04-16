@@ -8,7 +8,7 @@
 // The path is relative to cypress/fixtures/.
 // =============================================================================
 
-const PLAYGROUND = '/phase-05-fintech-domain/26-kyc-onboarding-flow/playground/';
+const PLAYGROUND = '/phase-07-advanced-patterns/40-test-data-and-fixtures/playground/';
 
 // Define the applicant type for clarity.
 interface Applicant {

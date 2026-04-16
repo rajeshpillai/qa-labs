@@ -13,7 +13,10 @@ import applicants from './fixtures/applicants.json';
 // instead of writing new test code.
 // =============================================================================
 
-const PLAYGROUND = '/phase-05-fintech-domain/26-kyc-onboarding-flow/playground/';
+// Kata 40 ships its own flat KYC form playground, purpose-built for
+// data-driven / fixture-driven testing. The form posts to /api/kyc/submit
+// which every test intercepts with page.route().
+const PLAYGROUND = '/phase-07-advanced-patterns/40-test-data-and-fixtures/playground/';
 
 // Define the TypeScript type for an applicant object.
 // This gives us autocomplete and type checking when using the fixture data.
