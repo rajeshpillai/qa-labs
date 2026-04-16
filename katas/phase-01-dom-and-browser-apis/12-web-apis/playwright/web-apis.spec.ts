@@ -163,8 +163,24 @@ test('exercise 5: handle prompt dialog and enter text', async ({ page }) => {
 // the UI status changes from "Not requested" to "Granted".
 // --------------------------------------------------------------------------
 test('exercise 6a: grant camera permission and verify UI', async ({ page, context }) => {
-  // Grant camera permission BEFORE navigating.
+  // Grant camera permission BEFORE navigating. This satisfies the browser
+  // permission model so no prompt appears.
   await context.grantPermissions(['camera']);
+
+  // Headless Chromium does not have a real camera device, so even after
+  // granting permission, navigator.mediaDevices.getUserMedia({ video: true })
+  // would fail with NotFoundError. We stub getUserMedia to return a
+  // minimal fake MediaStream so the success branch runs. addInitScript
+  // injects this BEFORE any page script executes.
+  //
+  // The function body runs in the browser page context, where TypeScript
+  // types do not apply. We cast getUserMedia via `any` to avoid a type
+  // error while still overriding the method at runtime.
+  await page.addInitScript(() => {
+    const fakeStream = { getTracks: () => [{ stop: () => {} }] };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (navigator.mediaDevices as any).getUserMedia = async () => fakeStream;
+  });
 
   await page.goto(PLAYGROUND);
 

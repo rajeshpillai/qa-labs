@@ -1,126 +1,173 @@
 # qa-labs
 
-A cookbook-style QA automation training lab — 44 testing katas that take you from zero to expert in **Playwright** and **Cypress**.
+**Master test automation with 44 hands-on katas covering Playwright and Cypress.**
 
-Every kata includes a self-contained HTML playground (no external dependencies), detailed explanations for every function, command, and best practice, and complete test solutions for both frameworks.
+[**🚀 Try it live**](https://rajeshpillai.github.io/qa-labs/) — interactive learning site with playgrounds, solutions, and progress tracking.
 
-## Who is this for?
+---
 
-QA engineers — from freshers to experienced testers looking to master modern test automation. The domain focus is **fintech**: KYC onboarding, video-based onboarding, document verification, background checks, and risk assessment.
+## What is this?
 
-After completing all katas you will be able to automate e2e tests for any website or app, including complex DOM interactions, animations, CSS effects, Web APIs, drag-drop, multi-window, multi-tab, session-based, and websocket-based applications.
+A cookbook-style QA automation training lab that takes you from zero to expert in modern test automation. Every kata is a self-contained lesson with:
 
-## Prerequisites
+- 📖 A detailed readme explaining concepts, functions, and best practices
+- 🎮 A built-in HTML playground (no external dependencies)
+- ✅ Complete Playwright test solution
+- ✅ Complete Cypress test solution
+- 📝 Common mistakes, quick reference tables, and exercises
 
-- [Node.js](https://nodejs.org/) 18+ installed
-- A code editor (VS Code recommended)
-- Basic understanding of HTML, CSS, and JavaScript
-- Terminal / command line basics
+**Domain focus**: Fintech — KYC onboarding, video verification, document verification, background checks, risk assessment.
 
-## Getting Started
+**Who is this for?**
+- QA freshers learning automation from scratch
+- Developers wanting to add e2e testing skills
+- Experienced testers wanting to compare Playwright vs Cypress
+- Teams building a structured QA onboarding program
 
-### 1. Clone the repository
+After all 44 katas you'll be able to automate e2e tests for any website or app — including complex DOM interactions, animations, CSS effects, Web APIs, drag-drop, multi-window, multi-tab, session-based, and websocket-based applications.
 
-```bash
-git clone <repo-url>
-cd qa-labs
-```
-
-### 2. Set up Playwright
-
-```bash
-cd playwright
-npm install
-npx playwright install
-cd ..
-```
-
-### 3. Set up Cypress
-
-```bash
-cd cypress
-npm install
-cd ..
-```
-
-### 4. Start a kata
-
-Each kata lives in its own folder under `katas/`. Open the kata's `readme.md` to read the lesson, then open the playground in your browser:
-
-```bash
-# serve all playgrounds locally
-npx serve katas -l 8080
-
-# open a kata's playground
-# e.g. http://localhost:8080/phase-00-foundations/01-selectors-and-locators/playground/
-```
-
-### 5. Run tests
-
-```bash
-# playwright
-cd playwright
-npx playwright test
-
-# cypress
-cd cypress
-npx cypress open    # interactive mode
-npx cypress run     # headless mode
-```
+---
 
 ## Curriculum
 
-### Phase 0 — Foundations (katas 01-06)
-Selectors, assertions, waits, clicks/inputs, keyboard/mouse, iframes & shadow DOM
+| Phase | Katas | Focus |
+|-------|-------|-------|
+| **0 — Foundations** | 01-06 | Selectors, assertions, waits, inputs, keyboard, iframes, shadow DOM |
+| **1 — DOM & Browser APIs** | 07-12 | Drag-drop, animations, scroll, canvas, SVG, mutations, web APIs |
+| **2 — Forms & Validation** | 13-17 | Validation, multi-step wizards, file upload, date pickers, dynamic forms |
+| **3 — Navigation & State** | 18-21 | Routing, localStorage, cookies, auth, tabs, windows |
+| **4 — API & Real-Time** | 22-25 | Network interception, mocking, API-first, websockets |
+| **5 — Fintech Domain** | 26-31 | KYC onboarding, video, docs, background checks, risk, approval |
+| **6 — Complex Scenarios** | 32-36 | Multi-window, session management, long flows, error recovery, notifications |
+| **7 — Advanced Patterns** | 37-40 | Page object model, visual regression, accessibility, test data/fixtures |
+| **8 — Parallel & CI/CD** | 41-44 | Parallel testing, loop-parallel, CI/CD, reporting & debugging |
 
-### Phase 1 — DOM, Interactions & Browser APIs (katas 07-12)
-Drag-and-drop, CSS animations, scroll/intersection, canvas/SVG, DOM mutations, web APIs
+---
 
-### Phase 2 — Forms & Validation (katas 13-17)
-Form validation, multi-step forms, file upload, date pickers, dynamic forms
+## Quick Start
 
-### Phase 3 — Navigation & State (katas 18-21)
-Multi-page navigation, localStorage/session, cookies/auth state, tabs & windows
+### Option 1: Use the live site (no setup)
 
-### Phase 4 — API & Real-Time (katas 22-25)
-Network interception, API mocking, API-first testing, websockets
+Open [rajeshpillai.github.io/qa-labs](https://rajeshpillai.github.io/qa-labs/) and start learning. Read, try the playgrounds, see solutions for both frameworks.
 
-### Phase 5 — Fintech Domain (katas 26-31)
-KYC onboarding, video onboarding, document verification, background verification, risk assessment, approval/rejection flows
-
-### Phase 6 — Complex Scenarios (katas 32-36)
-Multi-window workflows, session management, complex multi-step e2e, error recovery, notifications/toasts
-
-### Phase 7 — Advanced Patterns (katas 37-40)
-Page object model, visual regression, accessibility testing, test data & fixtures
-
-### Phase 8 — Parallel & CI/CD (katas 41-44)
-Parallel testing, loop-based parallel testing, CI/CD integration, reporting & debugging
-
-## Kata Structure
-
-Each kata folder contains:
-
-```
-NN-kata-name/
-├── readme.md          # lesson: concepts, exercises, solutions
-├── playground/        # self-contained HTML mini-app to test against
-│   └── index.html
-├── playwright/        # playwright test file
-│   └── kata-name.spec.ts
-├── cypress/           # cypress test file
-│   └── kata-name.cy.ts
-└── references/        # optional: cheatsheets, diagrams, extra notes
-```
-
-## GitHub Pages
-
-All playgrounds are published to GitHub Pages. You can practice directly in the browser without cloning:
+### Option 2: Clone and run locally
 
 ```bash
-# build the pages site locally
-bash scripts/build-pages.sh
+git clone https://github.com/rajeshpillai/qa-labs.git
+cd qa-labs
+
+# Install Playwright
+cd playwright && npm install && npx playwright install && cd ..
+
+# Install Cypress
+cd cypress && npm install && cd ..
+
+# Run Playwright tests
+cd playwright && npx playwright test
+
+# Run Cypress tests (interactive)
+cd cypress && npx cypress open
 ```
+
+### Option 3: Run the full interactive site locally (with test execution)
+
+```bash
+# Build the website
+cd website && npm install && npm run build
+
+# Start the server (website + test execution API)
+cd ../server && npm install && npm start
+
+# Open http://localhost:3000
+# Navigate to any kata → "Run Tests" tab → execute tests live
+```
+
+---
+
+## Project Structure
+
+```
+qa-labs/
+├── katas/                    # 44 katas across 9 phases
+│   └── phase-NN-name/
+│       └── NN-kata-name/
+│           ├── readme.md     # lesson content
+│           ├── playground/   # self-contained HTML app
+│           ├── playwright/   # Playwright test files
+│           ├── cypress/      # Cypress test files
+│           └── references/   # optional cheatsheets
+├── playwright/               # Playwright project root
+├── cypress/                  # Cypress project root
+├── website/                  # Next.js interactive learning site
+├── server/                   # Express backend for test execution
+└── scripts/                  # build and deploy scripts
+```
+
+---
+
+## How a Kata Works
+
+Each kata is self-contained. Open a kata's folder and you'll find:
+
+1. **`readme.md`** — Read the lesson. Every concept, function, and command is explained with code examples for both frameworks side-by-side.
+2. **`playground/index.html`** — A self-contained fintech-themed mini-app. Open it in a browser to interact with it manually.
+3. **`playwright/<kata>.spec.ts`** — The Playwright solution with detailed inline comments.
+4. **`cypress/<kata>.cy.ts`** — The Cypress solution with detailed inline comments.
+
+### Learning flow
+
+1. Read the "Concepts Explained" section of the readme
+2. Open the playground and try it manually
+3. Look at the exercises
+4. Try to write tests yourself
+5. Compare with the provided solutions
+6. Mark the kata as complete
+
+---
+
+## Tech Stack
+
+- **Katas**: Vanilla HTML/CSS/JS playgrounds (zero dependencies)
+- **Tests**: Playwright 1.52+ and Cypress 14+ (TypeScript)
+- **Website**: Next.js 15, Tailwind CSS v4, shadcn/ui components, shiki (syntax highlighting), react-markdown
+- **Server**: Express 4, SSE for live test result streaming
+- **Deploy**: GitHub Pages for static site, `npm run deploy` script
+
+---
+
+## Features of the Interactive Site
+
+- 🌙 **Dark/light theme** with system preference detection
+- 📚 **Sidebar navigation** with collapsible phases and completion tracking
+- 🔍 **Search** across all katas (⌘+K)
+- 📝 **Three tabs per kata**: Learn (readme), Playground (iframe), Solutions (code viewer)
+- ⚡ **Run Tests** tab — execute Playwright/Cypress tests live with per-exercise results (requires local server)
+- 📊 **Progress tracking** via localStorage
+- 📱 **Mobile responsive** with slide-out sidebar
+- 🎨 **Table of contents** for long kata readmes (on wide screens)
+
+---
+
+## Roadmap
+
+- [ ] Deploy test execution backend to Railway/Render for online test runs
+- [ ] Add more katas: database testing, GraphQL, mobile viewport, Lighthouse, OAuth, i18n, PDF, email
+- [ ] CI pipeline to verify all katas pass on every commit
+- [ ] Progress dashboard with streaks and estimated completion time
+
+---
+
+## Contributing
+
+Found a bug? Have a kata idea? PRs welcome.
+
+1. Pick an existing kata or propose a new one
+2. Follow the kata structure (readme, playground, playwright, cypress)
+3. Keep playgrounds self-contained (no CDN, no external deps)
+4. Use `data-testid` for all interactive elements
+5. Write detailed comments explaining every function for freshers
+
+---
 
 ## License
 
