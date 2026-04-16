@@ -272,7 +272,8 @@
 
     // hasContent tracks whether anything has been drawn on the canvas.
     // Tests can read this flag or check pixel data directly.
-    let hasContent = false;
+    // Exposed on window so Playwright's page.evaluate can read it.
+    window.hasContent = false;
 
     // Configure the drawing style
     ctx.lineWidth   = 2;
@@ -295,7 +296,7 @@
       ctx.lineTo(e.offsetX, e.offsetY);
       // stroke renders the path on the canvas
       ctx.stroke();
-      hasContent = true;
+      window.hasContent = true;
     });
 
     // mouseup — end the stroke
@@ -316,7 +317,7 @@
       // clearRect erases all pixels in the given rectangle.
       // Passing (0, 0, width, height) clears the entire canvas.
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      hasContent = false;
+      window.hasContent = false;
 
       // Reset signature status
       sigStatus.textContent = 'Unsigned';
@@ -332,7 +333,7 @@
     const captureBtn = document.getElementById('capture-btn');
 
     captureBtn.addEventListener('click', () => {
-      if (!hasContent) return;    // do nothing if canvas is blank
+      if (!window.hasContent) return;    // do nothing if canvas is blank
 
       // Update signature status to "Signed"
       sigStatus.textContent = 'Signed';
