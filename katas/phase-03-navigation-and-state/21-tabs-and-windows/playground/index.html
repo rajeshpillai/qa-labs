@@ -82,8 +82,11 @@
         <h2>Terms and Conditions</h2>
         <p>Review our terms and conditions before proceeding with your KYC application.</p>
         <!-- target="_blank" causes the link to open in a new browser tab.
-             rel="noopener" prevents the new tab from accessing window.opener. -->
-        <a href="terms.html" target="_blank" rel="noopener" class="btn btn-primary" data-testid="link-view-terms" id="link-view-terms">
+             We intentionally do NOT set rel="noopener" here because the
+             terms.html page uses window.opener.postMessage() to notify
+             the parent when the user accepts/declines. With rel="noopener",
+             window.opener would be null and those messages would be lost. -->
+        <a href="terms.html" target="_blank" class="btn btn-primary" data-testid="link-view-terms" id="link-view-terms">
           View Terms (opens in new tab)
         </a>
         <div class="status-bar" data-testid="tab-status" id="tab-status">
