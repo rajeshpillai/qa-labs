@@ -14,7 +14,7 @@
 // =============================================================================
 
 // The playground URL for the KYC form.
-const PLAYGROUND = '/phase-05-fintech-domain/26-kyc-onboarding-flow/playground/';
+const PLAYGROUND = '/phase-07-advanced-patterns/37-page-object-model/playground/';
 
 /**
  * kycFormPage — a plain object containing all interactions with the KYC form.

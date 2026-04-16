@@ -63,10 +63,11 @@ export class KycFormPage {
 
   /**
    * Navigate to the KYC form playground.
-   * goto() loads the URL in the browser. We use the Kata 26 playground.
+   * goto() loads the URL in the browser. Kata 37 ships its own flat
+   * KYC form playground purpose-built for practicing the POM pattern.
    */
   async goto(): Promise<void> {
-    await this.page.goto('/phase-05-fintech-domain/26-kyc-onboarding-flow/playground/');
+    await this.page.goto('/phase-07-advanced-patterns/37-page-object-model/playground/');
   }
 
   // ---------------------------------------------------------------------------

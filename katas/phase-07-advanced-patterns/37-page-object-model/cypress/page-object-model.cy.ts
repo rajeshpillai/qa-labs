@@ -8,7 +8,7 @@ import { kycFormPage } from './pages/kyc-form.page';
 // Exercises 4-6 show the SAME tests WITH POM (clean and reusable).
 // =============================================================================
 
-const PLAYGROUND = '/phase-05-fintech-domain/26-kyc-onboarding-flow/playground/';
+const PLAYGROUND = '/phase-07-advanced-patterns/37-page-object-model/playground/';
 
 describe('Kata 37: Page Object Model', () => {
 

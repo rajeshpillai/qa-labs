@@ -60,9 +60,11 @@ export class ReviewPage {
 
   /**
    * Navigate to the KYC playground (same page as the form).
+   * Kata 37's own playground hosts BOTH the applicant lookup and the
+   * KYC submission form, so this URL matches KycFormPage.goto().
    */
   async goto(): Promise<void> {
-    await this.page.goto('/phase-05-fintech-domain/26-kyc-onboarding-flow/playground/');
+    await this.page.goto('/phase-07-advanced-patterns/37-page-object-model/playground/');
   }
 
   // ---------------------------------------------------------------------------

@@ -8,11 +8,13 @@ import { ReviewPage } from './pages/review.page';
 // These tests demonstrate the POM pattern by showing tests BEFORE refactoring
 // (raw selectors) and AFTER refactoring (using Page Objects).
 //
-// The tests target the Kata 26 KYC Onboarding Form playground.
+// The tests target Kata 37's own flat KYC form playground, which mirrors
+// the Kata 26 domain but is purpose-built for POM practice (a single page
+// containing both the applicant lookup and the KYC submission form).
 // All API calls are intercepted — no real backend is needed.
 // =============================================================================
 
-const PLAYGROUND = '/phase-05-fintech-domain/26-kyc-onboarding-flow/playground/';
+const PLAYGROUND = '/phase-07-advanced-patterns/37-page-object-model/playground/';
 
 // --------------------------------------------------------------------------
 // Exercise 1: Test WITHOUT POM (The Problem)
