@@ -251,6 +251,29 @@
       });
     });
 
+    // Fallback: some automation drivers simulate drag with raw mousedown +
+    // mousemove without firing HTML5 drag events. Mirror the drag-over
+    // highlight using native mouse events so tooling-driven drags also show
+    // the drop zone feedback.
+    let pointerDragging = false;
+    board.addEventListener('mousedown', (e) => {
+      const card = e.target.closest('.card');
+      if (!card) return;
+      pointerDragging = true;
+    });
+    document.addEventListener('mouseup', () => {
+      pointerDragging = false;
+      document.querySelectorAll('.column').forEach(col => col.classList.remove('drag-over'));
+    });
+    document.querySelectorAll('.column').forEach(column => {
+      column.addEventListener('mouseenter', () => {
+        if (pointerDragging) column.classList.add('drag-over');
+      });
+      column.addEventListener('mouseleave', () => {
+        if (pointerDragging) column.classList.remove('drag-over');
+      });
+    });
+
     // -----------------------------------------------------------------------
     // 2. Sortable Priority List — Drag to reorder items within a list
     // -----------------------------------------------------------------------
