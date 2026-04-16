@@ -1,0 +1,1207 @@
+1:"$Sreact.fragment"
+2:I[31749,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js","/qa-labs/_next/static/chunks/03nvm.8~ftt80.js"],"KataPageClient"]
+b:I[49583,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js"],"OutletBoundary"]
+c:"$Sreact.suspense"
+3:T222c,# Kata 44: Reporting and Debugging
+
+## What You Will Learn
+
+- How to generate and view HTML test reports in Playwright
+- How to use Playwright's Trace Viewer to debug failed tests step-by-step
+- How to configure video recording for test runs
+- How to capture and view screenshots on failure
+- How to capture browser console logs in tests
+- How to configure Cypress reporters (mochawesome) and debugging tools
+
+## Prerequisites
+
+- Completed Katas 01-43
+- Understanding of test execution and assertions
+- Basic familiarity with browser DevTools (console tab)
+
+## Concepts Explained
+
+### Why Reporting and Debugging Matter
+
+```
+When a test fails in CI, you cannot open a browser and click around.
+You need ARTIFACTS — saved evidence of what happened:
+
+  1. HTML REPORT     — shows pass/fail for every test, with error messages
+  2. SCREENSHOTS     — captures what the page looked like at the moment of failure
+  3. VIDEO           — records the entire test run (like a screen recording)
+  4. TRACE           — a detailed timeline of every action, network request, and DOM snapshot
+  5. CONSOLE LOGS    — captures browser console.log, console.error messages
+
+These artifacts are the difference between "the test failed" and
+"I know exactly WHY the test failed and HOW to fix it."
+```
+
+### Playwright Reporting
+
+```
+Playwright has several built-in reporters:
+
+REPORTER         WHAT IT DOES
+────────────────────────────────────────────────────────
+list             Prints test results to the terminal (default)
+dot              Minimal dot-based output (one dot per test)
+html             Generates an interactive HTML report
+json             Outputs results as JSON (for CI tools)
+junit            Outputs JUnit XML (for CI tools like Jenkins)
+line             Minimal single-line output per test
+
+Configure in playwright.config.ts:
+  reporter: 'html'
+
+Or use multiple reporters:
+  reporter: [
+    ['html', { open: 'never' }],
+    ['json', { outputFile: 'results.json' }],
+    ['junit', { outputFile: 'results.xml' }]
+  ]
+```
+
+### Playwright Trace Viewer
+
+```
+The Trace Viewer is Playwright's most powerful debugging tool.
+It records a TRACE of every action during a test:
+
+  - DOM snapshots before and after each action
+  - Network requests and responses
+  - Console logs
+  - Screenshots at every step
+  - Action timing and duration
+
+CONFIGURATION (playwright.config.ts):
+  use: {
+    trace: 'on-first-retry'  // record trace only on retries (recommended)
+    // trace: 'on'           // record trace for every test (slow, large files)
+    // trace: 'retain-on-failure' // keep trace only for failed tests
+  }
+
+VIEWING A TRACE:
+  npx playwright show-trace trace.zip
+
+Or open the HTML report — traces are linked from failed tests.
+```
+
+### Playwright Video Recording
+
+```
+Video records the entire browser viewport during a test.
+
+CONFIGURATION (playwright.config.ts):
+  use: {
+    video: 'on-first-retry'  // record video only on retries
+    // video: 'on'           // record every test (lots of disk space)
+    // video: 'retain-on-failure' // keep video only for failed tests
+  }
+
+Videos are saved to the test results directory.
+Open the HTML report to view videos inline.
+```
+
+### Playwright Screenshots
+
+```
+Playwright can capture screenshots automatically on failure:
+
+CONFIGURATION (playwright.config.ts):
+  use: {
+    screenshot: 'only-on-failure'  // capture on failure (recommended)
+    // screenshot: 'on'           // capture for every test
+    // screenshot: 'off'          // no automatic screenshots
+  }
+
+You can also capture screenshots manually in tests:
+  await page.screenshot({ path: 'debug.png' });
+  await page.screenshot({ path: 'full.png', fullPage: true });
+```
+
+### Cypress Reporting
+
+```
+Cypress uses Mocha reporters. The default is 'spec' (terminal output).
+
+MOCHAWESOME — popular HTML reporter for Cypress:
+  npm install --save-dev mochawesome mochawesome-merge mochawesome-report-generator
+
+  // cypress.config.ts
+  reporter: 'mochawesome',
+  reporterOptions: {
+    reportDir: 'cypress/results',
+    overwrite: false,
+    html: false,       // generate JSON, merge later
+    json: true
+  }
+
+  // After tests, generate the HTML report:
+  npx mochawesome-merge cypress/results/*.json > merged.json
+  npx mochawesome-report-generator merged.json
+
+CYPRESS VIDEO:
+  // cypress.config.ts
+  video: true    // record video of each spec file
+
+CYPRESS SCREENSHOTS:
+  Cypress automatically captures screenshots on failure.
+  Saved to cypress/screenshots/.
+  Disable with: screenshotOnRunFailure: false
+```
+
+## Exercises
+
+### Exercise 1: Generate and View an HTML Report (Playwright)
+Run tests with the HTML reporter and explore the report.
+
+### Exercise 2: Capture Console Logs
+Capture browser console.log messages during tests for debugging.
+
+### Exercise 3: Screenshot on Failure
+Configure and trigger automatic screenshots when tests fail.
+
+### Exercise 4: Trace Viewer (Playwright)
+Configure trace recording and explore a trace file.
+
+### Exercise 5: Cypress Screenshot and Video
+Use cy.screenshot() and configure video recording in Cypress.
+
+### Exercise 6: Debugging Cheatsheet
+Use the debugging cheatsheet to quickly diagnose common test failures.
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Setting `trace: 'on'` in production CI | Traces are large files; recording every test wastes disk and slows runs | Use `trace: 'on-first-retry'` or `trace: 'retain-on-failure'` |
+| Not uploading artifacts in CI | Reports, screenshots, and videos are lost when the CI runner is cleaned up | Upload `playwright-report/`, `test-results/`, `cypress/screenshots/` as CI artifacts |
+| Using `page.waitForTimeout()` instead of proper waits | Arbitrary delays are flaky and slow; they hide the real issue | Wait for a specific condition: `await expect(locator).toBeVisible()` |
+| Calling `cy.debug()` in headless mode | `cy.debug()` only works in interactive mode; in headless CI it does nothing useful | Use `cy.log()` and `console.log()` for CI, reserve `cy.debug()` for local development |
+| Setting up console spies after page load | `cy.spy(win.console, 'log')` only captures calls made after the spy is set up | Set up spies in `cy.on('window:before:load')` to capture initial page load messages |
+| Forgetting `--reporter=html` when generating reports | Without the flag, Playwright uses the default `list` reporter and no HTML report is generated | Always pass `--reporter=html` or configure it in `playwright.config.ts` |
+
+## Quick Reference
+
+### Playwright Debugging and Reporting
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Generate HTML report | `--reporter=html` | `npx playwright test --reporter=html` |
+| View HTML report | `show-report` | `npx playwright show-report` |
+| Record trace | `--trace=on` | `npx playwright test --trace=on` |
+| View trace | `show-trace` | `npx playwright show-trace test-results/.../trace.zip` |
+| Capture screenshot | `page.screenshot()` | `await page.screenshot({ path: 'debug.png' })` |
+| Attach to report | `test.info().attach()` | `await test.info().attach('name', { body, contentType: 'image/png' })` |
+| Capture console logs | `page.on('console')` | `page.on('console', msg => console.log(msg.text()))` |
+| Pause for Inspector | `page.pause()` | `await page.pause()` |
+| Add annotation | `test.info().annotations` | `test.info().annotations.push({ type: 'note', description: '...' })` |
+
+### Cypress Debugging and Reporting
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Log to command panel | `cy.log()` | `cy.log('Section: assertions')` |
+| Take screenshot | `cy.screenshot()` | `cy.screenshot('before-click', { overwrite: true })` |
+| Element screenshot | `.screenshot()` | `cy.get('#card').screenshot('card', { padding: 10 })` |
+| Enable video | `cypress.config.ts` | `e2e: { video: true }` |
+| Spy on console | `cy.spy()` | `cy.spy(win.console, 'log').as('consoleLog')` |
+| Pause test runner | `cy.pause()` | `cy.pause()` |
+| Open DevTools | `cy.debug()` | `cy.debug()` |
+| Custom log entry | `Cypress.log()` | `Cypress.log({ name: 'info', message: '...' })` |
+
+## Key Takeaways
+
+```
+- Always configure reporting BEFORE you need it — not after a failure
+- Playwright: HTML report + trace viewer = best debugging experience
+- Cypress: mochawesome + screenshots + video = good debugging setup
+- Use 'on-first-retry' for trace and video — balances detail and performance
+- Console log capture helps debug JavaScript errors in the app
+- Upload artifacts in CI (see Kata 43) so the team can access them
+- The debugging cheatsheet saves time when diagnosing common failures
+```
+4:T26b5,import { test, expect } from '@playwright/test';
+
+// =============================================================================
+// Kata 44: Reporting and Debugging — Playwright Tests
+// =============================================================================
+//
+// These tests demonstrate Playwright's debugging and reporting features.
+//
+// RUN WITH HTML REPORT:
+//   npx playwright test reporting-and-debugging.spec.ts --reporter=html
+//
+// VIEW THE REPORT:
+//   npx playwright show-report
+//
+// RUN WITH TRACE:
+//   npx playwright test reporting-and-debugging.spec.ts --trace=on
+//
+// VIEW A TRACE:
+//   npx playwright show-trace test-results/.../trace.zip
+// =============================================================================
+
+// --------------------------------------------------------------------------
+// Exercise 1: Generate an HTML Report
+// --------------------------------------------------------------------------
+// This test passes cleanly. Run it with --reporter=html and view the report.
+// The report shows test names, durations, and pass/fail status.
+test('exercise 1: generate HTML report (run with --reporter=html)', async ({ page }) => {
+  // Navigate to a simple page.
+  await page.goto('data:text/html,<h1>Report Demo</h1><p>This test generates a report.</p>');
+
+  // Simple assertions that will appear in the report.
+  await expect(page).toHaveTitle('');  // data: URLs have empty titles
+  await expect(page.locator('h1')).toHaveText('Report Demo');
+  await expect(page.locator('p')).toContainText('report');
+
+  // AFTER RUNNING:
+  //   npx playwright test reporting-and-debugging.spec.ts --reporter=html
+  //   npx playwright show-report
+  //
+  // The HTML report opens in your browser showing:
+  //   - Test name and duration
+  //   - Steps (goto, expect, etc.)
+  //   - Screenshots (if configured)
+  //   - Traces (if configured)
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Capture Browser Console Logs
+// --------------------------------------------------------------------------
+// This test captures console.log messages from the browser.
+// Useful for debugging JavaScript errors in the application.
+test('exercise 2: capture browser console logs', async ({ page }) => {
+  // Collect console messages from the browser.
+  // page.on('console', callback) registers a listener that fires
+  // whenever the page's JavaScript calls console.log, console.error, etc.
+  const consoleMessages: string[] = [];
+
+  page.on('console', (msg) => {
+    // msg.type() returns: 'log', 'error', 'warning', 'info', etc.
+    // msg.text() returns the message text.
+    consoleMessages.push(`[${msg.type()}] ${msg.text()}`);
+  });
+
+  // Navigate to a page that logs messages.
+  await page.goto('data:text/html,<h1>Console Demo</h1><script>console.log("Hello from page"); console.warn("Warning message"); console.error("Error message");</script>');
+
+  // Wait a moment for console messages to be captured.
+  await page.waitForTimeout(100);
+
+  // Verify we captured the messages.
+  // eslint-disable-next-line no-console
+  console.log('Captured console messages:');
+  for (const msg of consoleMessages) {
+    // eslint-disable-next-line no-console
+    console.log('  ', msg);
+  }
+
+  // Assert that we captured at least the log message.
+  expect(consoleMessages.some(m => m.includes('Hello from page'))).toBe(true);
+
+  // Check for error messages — useful for catching runtime errors.
+  const errors = consoleMessages.filter(m => m.startsWith('[error]'));
+  // eslint-disable-next-line no-console
+  console.log(`Found ${errors.length} error(s) in browser console`);
+  expect(errors.length).toBeGreaterThan(0);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Manual Screenshot Capture
+// --------------------------------------------------------------------------
+// Capture screenshots at specific points during the test.
+// These are saved as test attachments and appear in the HTML report.
+test('exercise 3: capture screenshots for debugging', async ({ page }) => {
+  await page.goto('data:text/html,<h1>Screenshot Demo</h1><p>Before interaction</p><button onclick="this.textContent=\'Clicked!\'">Click me</button>');
+
+  // page.screenshot(options) captures the current viewport.
+  //
+  // Options:
+  //   path     — file path to save the screenshot (e.g., 'debug.png')
+  //   fullPage — true to capture the full scrollable page (default: false)
+  //   type     — 'png' or 'jpeg' (default: 'png')
+  //   quality  — JPEG quality 0-100 (only for 'jpeg' type)
+
+  // Capture BEFORE interaction.
+  const beforeScreenshot = await page.screenshot();
+
+  // test.info().attach(name, options) attaches a file to the test report.
+  // When you view the HTML report, these attachments are visible.
+  await test.info().attach('before-click', {
+    body: beforeScreenshot,
+    contentType: 'image/png'
+  });
+
+  // Perform an interaction.
+  await page.locator('button').click();
+
+  // Capture AFTER interaction.
+  const afterScreenshot = await page.screenshot();
+  await test.info().attach('after-click', {
+    body: afterScreenshot,
+    contentType: 'image/png'
+  });
+
+  // Verify the button text changed.
+  await expect(page.locator('button')).toHaveText('Clicked!');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Trace Viewer Demo
+// --------------------------------------------------------------------------
+// When you run with --trace=on, Playwright records a trace file.
+// The trace contains DOM snapshots, network logs, and action timelines.
+test('exercise 4: trace viewer demo (run with --trace=on)', async ({ page }) => {
+  // Each action in this test will be recorded in the trace.
+  // The trace shows the DOM state BEFORE and AFTER each action.
+
+  // Step 1: Navigate (recorded in trace).
+  await page.goto('data:text/html,<h1>Trace Demo</h1><input data-testid="name" placeholder="Your name"><button data-testid="greet" onclick="document.getElementById(\'result\').textContent=\'Hello, \'+document.querySelector(\'[data-testid=name]\').value">Greet</button><p id="result" data-testid="result"></p>');
+
+  // Step 2: Fill an input (recorded — trace shows the value typed).
+  await page.getByTestId('name').fill('QA Learner');
+
+  // Step 3: Click a button (recorded — trace shows before/after DOM).
+  await page.getByTestId('greet').click();
+
+  // Step 4: Assert (recorded — trace shows the expected vs actual).
+  await expect(page.getByTestId('result')).toHaveText('Hello, QA Learner');
+
+  // AFTER RUNNING WITH --trace=on:
+  //   The trace is saved to test-results/.../trace.zip
+  //   View it with: npx playwright show-trace test-results/.../trace.zip
+  //
+  // Or open the HTML report — failed tests have traces linked automatically.
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Test Info and Annotations
+// --------------------------------------------------------------------------
+// Playwright allows you to add annotations and custom info to tests.
+// These appear in the HTML report.
+test('exercise 5: add annotations to the report', async ({ page }) => {
+  // test.info().annotations is an array of { type, description } objects.
+  // These appear in the HTML report next to the test.
+  test.info().annotations.push({
+    type: 'note',
+    description: 'This test demonstrates report annotations.'
+  });
+
+  test.info().annotations.push({
+    type: 'documentation',
+    description: 'See https://playwright.dev/docs/test-annotations for more.'
+  });
+
+  await page.goto('data:text/html,<h1>Annotations Demo</h1>');
+  await expect(page.locator('h1')).toHaveText('Annotations Demo');
+
+  // You can also use test.skip(), test.fixme(), test.slow() for special annotations:
+  //   test.skip(condition, 'reason')    — skip the test
+  //   test.fixme()                      — mark as known broken
+  //   test.slow()                       — triple the timeout
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Debugging a Failure
+// --------------------------------------------------------------------------
+// This test is designed to help you practice debugging.
+// Uncomment the failing assertion to see how reports, screenshots,
+// and traces help you diagnose the issue.
+test('exercise 6: practice debugging a failure', async ({ page }) => {
+  // Capture console errors — a common debugging technique.
+  const errors: string[] = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') {
+      errors.push(msg.text());
+    }
+  });
+
+  await page.goto('data:text/html,<h1>Debug Practice</h1><p id="status">Loading...</p><script>setTimeout(() => { document.getElementById("status").textContent = "Ready"; }, 100);</script>');
+
+  // Wait for the dynamic content to load.
+  await expect(page.locator('#status')).toHaveText('Ready');
+
+  // Attach a debug screenshot to the report.
+  await test.info().attach('final-state', {
+    body: await page.screenshot(),
+    contentType: 'image/png'
+  });
+
+  // DEBUGGING TIPS:
+  // 1. Run with --reporter=html to see the HTML report
+  // 2. Run with --trace=on to see step-by-step DOM changes
+  // 3. Run with --debug to open the Playwright Inspector (interactive)
+  // 4. Run with --headed to see the browser during the test
+  // 5. Add await page.pause() to pause the test at a specific point
+  //
+  // COMMON CLI FLAGS:
+  //   npx playwright test --headed            ← see the browser
+  //   npx playwright test --debug             ← step through with Inspector
+  //   npx playwright test --trace=on          ← record a trace
+  //   npx playwright test --reporter=html     ← generate HTML report
+  //   npx playwright test --update-snapshots  ← update visual baselines
+
+  await expect(page.locator('h1')).toHaveText('Debug Practice');
+});
+5:T2082,// =============================================================================
+// Kata 44: Reporting and Debugging — Cypress Tests
+// =============================================================================
+//
+// These tests demonstrate Cypress's debugging and reporting features.
+//
+// CYPRESS REPORTERS:
+//   Default: 'spec' (terminal output)
+//   HTML:    mochawesome (npm install mochawesome)
+//
+// CYPRESS DEBUGGING:
+//   cy.debug()    — pauses and opens DevTools
+//   cy.pause()    — pauses the test runner
+//   .debug()      — chained, pauses with subject in console
+//   cy.log()      — prints to the Cypress command log
+// =============================================================================
+
+describe('Kata 44: Reporting and Debugging', () => {
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Cypress Command Log
+  // --------------------------------------------------------------------------
+  // cy.log() prints messages to the Cypress command log (left panel).
+  // These messages help trace test execution flow.
+  it('exercise 1: use cy.log for test tracing', () => {
+    // cy.log(message, ...args) prints to the Cypress command log.
+    // This is visible in the Cypress Test Runner's left panel.
+    // It does NOT print to the terminal — use console.log() for that.
+    cy.log('Starting exercise 1: command log demo');
+
+    cy.visit('data:text/html,<h1>Log Demo</h1><p>Test logging</p>');
+
+    cy.log('Page loaded successfully');
+
+    cy.get('h1').should('have.text', 'Log Demo');
+    cy.log('Heading assertion passed');
+
+    cy.get('p').should('contain.text', 'logging');
+    cy.log('Paragraph assertion passed');
+
+    // cy.log is also useful for marking sections of complex tests:
+    cy.log('--- SECTION: Form Interaction ---');
+    cy.log('--- SECTION: Assertion Phase ---');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Console Log Capture
+  // --------------------------------------------------------------------------
+  // Capture browser console.log messages for debugging.
+  it('exercise 2: capture browser console messages', () => {
+    // cy.on('window:console', callback) is NOT a real Cypress event.
+    // Instead, use cy.window() to access the console.
+    //
+    // The common pattern: stub console.log before visiting the page.
+    cy.visit('data:text/html,<h1>Console Demo</h1><script>console.log("App loaded"); console.warn("Watch out!"); console.error("Something broke");</script>');
+
+    // cy.window() gives access to the browser's window object.
+    // We can spy on console methods to capture messages.
+    cy.window().then((win) => {
+      // cy.spy(object, method) wraps a method with a spy.
+      // The spy records all calls without changing the method's behavior.
+      cy.spy(win.console, 'log').as('consoleLog');
+      cy.spy(win.console, 'error').as('consoleError');
+    });
+
+    // Trigger some console activity by reloading.
+    cy.reload();
+
+    // NOTE: Spies only capture calls AFTER they are set up.
+    // Messages logged before cy.spy() are not captured.
+    // To capture initial page load messages, set up spies in
+    // cy.on('window:before:load', (win) => { cy.spy(win.console, 'log'); })
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Screenshot Capture
+  // --------------------------------------------------------------------------
+  // cy.screenshot() captures the current state of the page.
+  it('exercise 3: capture screenshots at key points', () => {
+    cy.visit('data:text/html,<h1>Screenshot Demo</h1><p>Before interaction</p><button id="btn" onclick="this.textContent=\'Done!\'">Click</button>');
+
+    // cy.screenshot(name, options?) captures the viewport.
+    //
+    // Parameters:
+    //   name — filename for the screenshot (saved to cypress/screenshots/)
+    //
+    // Options:
+    //   capture: 'fullPage' | 'viewport' | 'runner'
+    //   overwrite: true/false — overwrite existing screenshot
+    //   clip: { x, y, width, height } — capture a specific region
+    //   padding: number — add padding around element screenshots
+
+    // Capture BEFORE interaction.
+    cy.screenshot('before-click', { overwrite: true });
+
+    // Perform an interaction.
+    cy.get('#btn').click();
+
+    // Capture AFTER interaction.
+    cy.screenshot('after-click', { overwrite: true });
+
+    // Verify the button text changed.
+    cy.get('#btn').should('have.text', 'Done!');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Element-Specific Screenshot
+  // --------------------------------------------------------------------------
+  it('exercise 4: screenshot a specific element', () => {
+    cy.visit('data:text/html,<div style="padding:2rem"><h1>Element Screenshot</h1><div id="card" style="padding:1rem;border:2px solid blue;border-radius:8px;background:#f0f8ff"><h2>KYC Card</h2><p>Applicant: Aisha Patel</p><p>Status: Approved</p></div></div>');
+
+    // cy.get(selector).screenshot(name) captures just the element.
+    // The screenshot is cropped to the element's bounding box.
+    cy.get('#card').screenshot('kyc-card', {
+      overwrite: true,
+      // padding — adds pixels around the element in the screenshot.
+      // Useful to capture context around the element.
+      padding: 10
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Cypress Video Configuration
+  // --------------------------------------------------------------------------
+  // Cypress can record a video of the entire spec file execution.
+  it('exercise 5: video recording (configure in cypress.config.ts)', () => {
+    // VIDEO CONFIGURATION:
+    //
+    // In cypress.config.ts:
+    //   e2e: {
+    //     video: true,              // enable video recording
+    //     videoCompression: 32,     // compression quality (0 = best, 51 = worst)
+    //     videosFolder: 'cypress/videos'  // where videos are saved
+    //   }
+    //
+    // Videos are recorded per SPEC FILE (not per test).
+    // The video captures the entire run of this file.
+    //
+    // Videos are saved to: cypress/videos/<spec-name>.mp4
+    //
+    // BEST PRACTICE:
+    //   - Enable video only in CI (not locally — too slow)
+    //   - Use compression to reduce file size
+    //   - Upload videos as CI artifacts (see Kata 43)
+    //
+    // DISABLE in interactive mode (cypress open):
+    //   Video is only recorded in headless mode (cypress run).
+
+    cy.log('Video is configured in cypress.config.ts, not in test code');
+    cy.visit('data:text/html,<h1>Video Demo</h1>');
+    cy.get('h1').should('have.text', 'Video Demo');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Debugging Techniques
+  // --------------------------------------------------------------------------
+  it('exercise 6: debugging techniques cheatsheet', () => {
+    cy.visit('data:text/html,<h1>Debug Practice</h1><p id="status">Loading...</p><script>setTimeout(function(){document.getElementById("status").textContent="Ready"},100)</script>');
+
+    // TECHNIQUE 1: cy.log() — print to command log
+    cy.log('Waiting for status to change...');
+
+    // TECHNIQUE 2: .then() with console.log — print to terminal
+    cy.get('#status').then(($el) => {
+      // eslint-disable-next-line no-console
+      console.log('Current status text:', $el.text());
+    });
+
+    // Wait for the dynamic update.
+    cy.get('#status').should('have.text', 'Ready');
+
+    // TECHNIQUE 3: cy.debug() — pauses test and opens DevTools
+    // Uncomment the line below to try it:
+    // cy.debug();
+
+    // TECHNIQUE 4: cy.pause() — pauses the test runner
+    // Uncomment the line below to try it:
+    // cy.pause();
+
+    // TECHNIQUE 5: .debug() — chained, logs the subject to console
+    // cy.get('#status').debug();
+
+    // TECHNIQUE 6: Cypress.log() — create custom log entries
+    Cypress.log({
+      name: 'custom-log',
+      message: 'Test completed successfully',
+      consoleProps: () => ({
+        'Status': 'Ready',
+        'Technique': 'Cypress.log with consoleProps'
+      })
+    });
+
+    cy.get('h1').should('have.text', 'Debug Practice');
+  });
+});
+6:T1284,# Kata 43: CI/CD Integration
+
+## What You Will Learn
+
+- How to run Playwright and Cypress tests in GitHub Actions
+- How to configure a CI workflow YAML file step by step
+- How to use matrix strategy for cross-browser testing
+- How to upload test artifacts (reports, screenshots, videos)
+- How to cache dependencies for faster CI runs
+- How to set up test reporting and failure notifications
+
+## Prerequisites
+
+- Completed Katas 01-42
+- Basic understanding of YAML syntax
+- A GitHub account (for GitHub Actions)
+- Understanding of what CI/CD means (Continuous Integration / Continuous Deployment)
+
+## Concepts Explained
+
+### What Is CI/CD?
+
+```
+CI (Continuous Integration):
+  Every time you push code to GitHub, automated checks run:
+  - Lint your code
+  - Run unit tests
+  - Run end-to-end tests (Playwright, Cypress)
+  - Build the application
+  If any check fails, the pull request is blocked.
+
+CD (Continuous Deployment):
+  If all checks pass, the code is automatically deployed to production
+  (or a staging environment for manual review).
+
+Why CI for QA?
+  - Tests run automatically on every push — no manual test runs
+  - Tests run in a clean environment — no "works on my machine" issues
+  - Parallel execution on CI machines — faster feedback
+  - Test results are visible to the whole team
+  - Broken tests block merges — prevents regressions
+```
+
+### GitHub Actions Workflow Structure
+
+```yaml
+# .github/workflows/test.yml
+#
+# A workflow is a YAML file that defines automated steps.
+# It lives in the .github/workflows/ directory of your repository.
+
+name: Tests                    # Display name in the GitHub UI
+
+on:                            # TRIGGER — when does this workflow run?
+  push:
+    branches: [main]           # Run on pushes to main
+  pull_request:
+    branches: [main]           # Run on PRs targeting main
+
+jobs:                          # JOBS — what to run
+  test:                        # Job name (you choose this)
+    runs-on: ubuntu-latest     # Machine type (Linux)
+    steps:                     # STEPS — sequential commands
+      - uses: actions/checkout@v4        # Clone the repo
+      - uses: actions/setup-node@v4      # Install Node.js
+      - run: npm ci                       # Install dependencies
+      - run: npx playwright test          # Run tests
+```
+
+### Key Concepts
+
+```
+RUNNER:
+  The machine that runs your workflow. GitHub provides:
+  - ubuntu-latest (Linux — most common, fastest)
+  - windows-latest (Windows)
+  - macos-latest (macOS — needed for Safari/WebKit)
+
+STEPS:
+  Sequential commands within a job. Each step either:
+  - uses: — runs a pre-built action (e.g., actions/checkout@v4)
+  - run: — executes a shell command (e.g., npm ci)
+
+MATRIX:
+  Run the same job multiple times with different parameters.
+  Use this for cross-browser testing (Chrome, Firefox, WebKit).
+
+ARTIFACTS:
+  Files saved from the CI run for later download.
+  Upload test reports, screenshots, and videos as artifacts.
+  Team members can download them from the GitHub UI.
+
+CACHING:
+  Save node_modules between runs to speed up npm install.
+  actions/cache@v4 handles this automatically.
+```
+
+## Reference Files
+
+This kata includes example workflow files in the `references/` directory.
+These are NOT active workflows (they are not in .github/workflows/).
+They are templates you can copy to your own repository.
+
+```
+references/
+  playwright-ci.yml    — GitHub Actions workflow for Playwright
+  cypress-ci.yml       — GitHub Actions workflow for Cypress
+  matrix-ci.yml        — Matrix strategy for cross-browser testing
+```
+
+## Exercises
+
+### Exercise 1: Read and Understand the Playwright CI Workflow
+Open `references/playwright-ci.yml` and understand each line.
+
+### Exercise 2: Read and Understand the Cypress CI Workflow
+Open `references/cypress-ci.yml` and understand each line.
+
+### Exercise 3: Matrix Strategy for Cross-Browser Testing
+Open `references/matrix-ci.yml` and understand matrix configuration.
+
+### Exercise 4: Artifact Upload
+Understand how to upload test reports and screenshots as CI artifacts.
+
+### Exercise 5: Caching for Faster Builds
+Understand how dependency caching reduces CI build times.
+
+### Exercise 6: Create Your Own Workflow
+Design a workflow that runs both Playwright and Cypress in the same CI pipeline.
+
+## Key Takeaways
+
+```
+- CI runs your tests automatically on every push/PR
+- GitHub Actions uses YAML files in .github/workflows/
+- Use matrix strategy for cross-browser testing
+- Upload artifacts (reports, screenshots) for debugging failed tests
+- Cache node_modules and Playwright browsers for faster CI runs
+- Start simple (one browser, one OS) and add complexity later
+- CI failures should block merges — that is the whole point
+```
+7:T8afb,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { test, expect } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> '@playwright/test'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// =============================================================================</span></span>
+<span class="line"><span style="color:#6A737D">// Kata 44: Reporting and Debugging — Playwright Tests</span></span>
+<span class="line"><span style="color:#6A737D">// =============================================================================</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// These tests demonstrate Playwright's debugging and reporting features.</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// RUN WITH HTML REPORT:</span></span>
+<span class="line"><span style="color:#6A737D">//   npx playwright test reporting-and-debugging.spec.ts --reporter=html</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// VIEW THE REPORT:</span></span>
+<span class="line"><span style="color:#6A737D">//   npx playwright show-report</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// RUN WITH TRACE:</span></span>
+<span class="line"><span style="color:#6A737D">//   npx playwright test reporting-and-debugging.spec.ts --trace=on</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// VIEW A TRACE:</span></span>
+<span class="line"><span style="color:#6A737D">//   npx playwright show-trace test-results/.../trace.zip</span></span>
+<span class="line"><span style="color:#6A737D">// =============================================================================</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 1: Generate an HTML Report</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// This test passes cleanly. Run it with --reporter=html and view the report.</span></span>
+<span class="line"><span style="color:#6A737D">// The report shows test names, durations, and pass/fail status.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: generate HTML report (run with --reporter=html)'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">  // Navigate to a simple page.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'data:text/html,&#x3C;h1>Report Demo&#x3C;/h1>&#x3C;p>This test generates a report.&#x3C;/p>'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Simple assertions that will appear in the report.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page).</span><span style="color:#B392F0">toHaveTitle</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">''</span><span style="color:#E1E4E8">);  </span><span style="color:#6A737D">// data: URLs have empty titles</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">locator</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'h1'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Report Demo'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">locator</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'p'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'report'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // AFTER RUNNING:</span></span>
+<span class="line"><span style="color:#6A737D">  //   npx playwright test reporting-and-debugging.spec.ts --reporter=html</span></span>
+<span class="line"><span style="color:#6A737D">  //   npx playwright show-report</span></span>
+<span class="line"><span style="color:#6A737D">  //</span></span>
+<span class="line"><span style="color:#6A737D">  // The HTML report opens in your browser showing:</span></span>
+<span class="line"><span style="color:#6A737D">  //   - Test name and duration</span></span>
+<span class="line"><span style="color:#6A737D">  //   - Steps (goto, expect, etc.)</span></span>
+<span class="line"><span style="color:#6A737D">  //   - Screenshots (if configured)</span></span>
+<span class="line"><span style="color:#6A737D">  //   - Traces (if configured)</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 2: Capture Browser Console Logs</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// This test captures console.log messages from the browser.</span></span>
+<span class="line"><span style="color:#6A737D">// Useful for debugging JavaScript errors in the application.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: capture browser console logs'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">  // Collect console messages from the browser.</span></span>
+<span class="line"><span style="color:#6A737D">  // page.on('console', callback) registers a listener that fires</span></span>
+<span class="line"><span style="color:#6A737D">  // whenever the page's JavaScript calls console.log, console.error, etc.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> consoleMessages</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> string</span><span style="color:#E1E4E8">[] </span><span style="color:#F97583">=</span><span style="color:#E1E4E8"> [];</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">  page.</span><span style="color:#B392F0">on</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'console'</span><span style="color:#E1E4E8">, (</span><span style="color:#FFAB70">msg</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // msg.type() returns: 'log', 'error', 'warning', 'info', etc.</span></span>
+<span class="line"><span style="color:#6A737D">    // msg.text() returns the message text.</span></span>
+<span class="line"><span style="color:#E1E4E8">    consoleMessages.</span><span style="color:#B392F0">push</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`[${</span><span style="color:#E1E4E8">msg</span><span style="color:#9ECBFF">.</span><span style="color:#B392F0">type</span><span style="color:#9ECBFF">()</span><span style="color:#9ECBFF">}] ${</span><span style="color:#E1E4E8">msg</span><span style="color:#9ECBFF">.</span><span style="color:#B392F0">text</span><span style="color:#9ECBFF">()</span><span style="color:#9ECBFF">}`</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Navigate to a page that logs messages.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'data:text/html,&#x3C;h1>Console Demo&#x3C;/h1>&#x3C;script>console.log("Hello from page"); console.warn("Warning message"); console.error("Error message");&#x3C;/script>'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Wait a moment for console messages to be captured.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">waitForTimeout</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">100</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify we captured the messages.</span></span>
+<span class="line"><span style="color:#6A737D">  // eslint-disable-next-line no-console</span></span>
+<span class="line"><span style="color:#E1E4E8">  console.</span><span style="color:#B392F0">log</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Captured console messages:'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  for</span><span style="color:#E1E4E8"> (</span><span style="color:#F97583">const</span><span style="color:#79B8FF"> msg</span><span style="color:#F97583"> of</span><span style="color:#E1E4E8"> consoleMessages) {</span></span>
+<span class="line"><span style="color:#6A737D">    // eslint-disable-next-line no-console</span></span>
+<span class="line"><span style="color:#E1E4E8">    console.</span><span style="color:#B392F0">log</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'  '</span><span style="color:#E1E4E8">, msg);</span></span>
+<span class="line"><span style="color:#E1E4E8">  }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Assert that we captured at least the log message.</span></span>
+<span class="line"><span style="color:#B392F0">  expect</span><span style="color:#E1E4E8">(consoleMessages.</span><span style="color:#B392F0">some</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">m</span><span style="color:#F97583"> =></span><span style="color:#E1E4E8"> m.</span><span style="color:#B392F0">includes</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Hello from page'</span><span style="color:#E1E4E8">))).</span><span style="color:#B392F0">toBe</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">true</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Check for error messages — useful for catching runtime errors.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> errors</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> consoleMessages.</span><span style="color:#B392F0">filter</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">m</span><span style="color:#F97583"> =></span><span style="color:#E1E4E8"> m.</span><span style="color:#B392F0">startsWith</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[error]'</span><span style="color:#E1E4E8">));</span></span>
+<span class="line"><span style="color:#6A737D">  // eslint-disable-next-line no-console</span></span>
+<span class="line"><span style="color:#E1E4E8">  console.</span><span style="color:#B392F0">log</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`Found ${</span><span style="color:#E1E4E8">errors</span><span style="color:#9ECBFF">.</span><span style="color:#79B8FF">length</span><span style="color:#9ECBFF">} error(s) in browser console`</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#B392F0">  expect</span><span style="color:#E1E4E8">(errors.</span><span style="color:#79B8FF">length</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">toBeGreaterThan</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 3: Manual Screenshot Capture</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Capture screenshots at specific points during the test.</span></span>
+<span class="line"><span style="color:#6A737D">// These are saved as test attachments and appear in the HTML report.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: capture screenshots for debugging'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'data:text/html,&#x3C;h1>Screenshot Demo&#x3C;/h1>&#x3C;p>Before interaction&#x3C;/p>&#x3C;button onclick="this.textContent=</span><span style="color:#79B8FF">\'</span><span style="color:#9ECBFF">Clicked!</span><span style="color:#79B8FF">\'</span><span style="color:#9ECBFF">">Click me&#x3C;/button>'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // page.screenshot(options) captures the current viewport.</span></span>
+<span class="line"><span style="color:#6A737D">  //</span></span>
+<span class="line"><span style="color:#6A737D">  // Options:</span></span>
+<span class="line"><span style="color:#6A737D">  //   path     — file path to save the screenshot (e.g., 'debug.png')</span></span>
+<span class="line"><span style="color:#6A737D">  //   fullPage — true to capture the full scrollable page (default: false)</span></span>
+<span class="line"><span style="color:#6A737D">  //   type     — 'png' or 'jpeg' (default: 'png')</span></span>
+<span class="line"><span style="color:#6A737D">  //   quality  — JPEG quality 0-100 (only for 'jpeg' type)</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Capture BEFORE interaction.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> beforeScreenshot</span><span style="color:#F97583"> =</span><span style="color:#F97583"> await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">screenshot</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // test.info().attach(name, options) attaches a file to the test report.</span></span>
+<span class="line"><span style="color:#6A737D">  // When you view the HTML report, these attachments are visible.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> test.</span><span style="color:#B392F0">info</span><span style="color:#E1E4E8">().</span><span style="color:#B392F0">attach</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'before-click'</span><span style="color:#E1E4E8">, {</span></span>
+<span class="line"><span style="color:#E1E4E8">    body: beforeScreenshot,</span></span>
+<span class="line"><span style="color:#E1E4E8">    contentType: </span><span style="color:#9ECBFF">'image/png'</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Perform an interaction.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">locator</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'button'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Capture AFTER interaction.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> afterScreenshot</span><span style="color:#F97583"> =</span><span style="color:#F97583"> await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">screenshot</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> test.</span><span style="color:#B392F0">info</span><span style="color:#E1E4E8">().</span><span style="color:#B392F0">attach</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'after-click'</span><span style="color:#E1E4E8">, {</span></span>
+<span class="line"><span style="color:#E1E4E8">    body: afterScreenshot,</span></span>
+<span class="line"><span style="color:#E1E4E8">    contentType: </span><span style="color:#9ECBFF">'image/png'</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the button text changed.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">locator</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'button'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Clicked!'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 4: Trace Viewer Demo</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// When you run with --trace=on, Playwright records a trace file.</span></span>
+<span class="line"><span style="color:#6A737D">// The trace contains DOM snapshots, network logs, and action timelines.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: trace viewer demo (run with --trace=on)'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">  // Each action in this test will be recorded in the trace.</span></span>
+<span class="line"><span style="color:#6A737D">  // The trace shows the DOM state BEFORE and AFTER each action.</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Step 1: Navigate (recorded in trace).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'data:text/html,&#x3C;h1>Trace Demo&#x3C;/h1>&#x3C;input data-testid="name" placeholder="Your name">&#x3C;button data-testid="greet" onclick="document.getElementById(</span><span style="color:#79B8FF">\'</span><span style="color:#9ECBFF">result</span><span style="color:#79B8FF">\'</span><span style="color:#9ECBFF">).textContent=</span><span style="color:#79B8FF">\'</span><span style="color:#9ECBFF">Hello, </span><span style="color:#79B8FF">\'</span><span style="color:#9ECBFF">+document.querySelector(</span><span style="color:#79B8FF">\'</span><span style="color:#9ECBFF">[data-testid=name]</span><span style="color:#79B8FF">\'</span><span style="color:#9ECBFF">).value">Greet&#x3C;/button>&#x3C;p id="result" data-testid="result">&#x3C;/p>'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Step 2: Fill an input (recorded — trace shows the value typed).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'name'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'QA Learner'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Step 3: Click a button (recorded — trace shows before/after DOM).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'greet'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Step 4: Assert (recorded — trace shows the expected vs actual).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'result'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Hello, QA Learner'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // AFTER RUNNING WITH --trace=on:</span></span>
+<span class="line"><span style="color:#6A737D">  //   The trace is saved to test-results/.../trace.zip</span></span>
+<span class="line"><span style="color:#6A737D">  //   View it with: npx playwright show-trace test-results/.../trace.zip</span></span>
+<span class="line"><span style="color:#6A737D">  //</span></span>
+<span class="line"><span style="color:#6A737D">  // Or open the HTML report — failed tests have traces linked automatically.</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 5: Test Info and Annotations</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Playwright allows you to add annotations and custom info to tests.</span></span>
+<span class="line"><span style="color:#6A737D">// These appear in the HTML report.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: add annotations to the report'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">  // test.info().annotations is an array of { type, description } objects.</span></span>
+<span class="line"><span style="color:#6A737D">  // These appear in the HTML report next to the test.</span></span>
+<span class="line"><span style="color:#E1E4E8">  test.</span><span style="color:#B392F0">info</span><span style="color:#E1E4E8">().annotations.</span><span style="color:#B392F0">push</span><span style="color:#E1E4E8">({</span></span>
+<span class="line"><span style="color:#E1E4E8">    type: </span><span style="color:#9ECBFF">'note'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">    description: </span><span style="color:#9ECBFF">'This test demonstrates report annotations.'</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">  test.</span><span style="color:#B392F0">info</span><span style="color:#E1E4E8">().annotations.</span><span style="color:#B392F0">push</span><span style="color:#E1E4E8">({</span></span>
+<span class="line"><span style="color:#E1E4E8">    type: </span><span style="color:#9ECBFF">'documentation'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">    description: </span><span style="color:#9ECBFF">'See https://playwright.dev/docs/test-annotations for more.'</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'data:text/html,&#x3C;h1>Annotations Demo&#x3C;/h1>'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">locator</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'h1'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Annotations Demo'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // You can also use test.skip(), test.fixme(), test.slow() for special annotations:</span></span>
+<span class="line"><span style="color:#6A737D">  //   test.skip(condition, 'reason')    — skip the test</span></span>
+<span class="line"><span style="color:#6A737D">  //   test.fixme()                      — mark as known broken</span></span>
+<span class="line"><span style="color:#6A737D">  //   test.slow()                       — triple the timeout</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 6: Debugging a Failure</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// This test is designed to help you practice debugging.</span></span>
+<span class="line"><span style="color:#6A737D">// Uncomment the failing assertion to see how reports, screenshots,</span></span>
+<span class="line"><span style="color:#6A737D">// and traces help you diagnose the issue.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: practice debugging a failure'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">  // Capture console errors — a common debugging technique.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> errors</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> string</span><span style="color:#E1E4E8">[] </span><span style="color:#F97583">=</span><span style="color:#E1E4E8"> [];</span></span>
+<span class="line"><span style="color:#E1E4E8">  page.</span><span style="color:#B392F0">on</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'console'</span><span style="color:#E1E4E8">, (</span><span style="color:#FFAB70">msg</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">    if</span><span style="color:#E1E4E8"> (msg.</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">() </span><span style="color:#F97583">===</span><span style="color:#9ECBFF"> 'error'</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#E1E4E8">      errors.</span><span style="color:#B392F0">push</span><span style="color:#E1E4E8">(msg.</span><span style="color:#B392F0">text</span><span style="color:#E1E4E8">());</span></span>
+<span class="line"><span style="color:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'data:text/html,&#x3C;h1>Debug Practice&#x3C;/h1>&#x3C;p id="status">Loading...&#x3C;/p>&#x3C;script>setTimeout(() => { document.getElementById("status").textContent = "Ready"; }, 100);&#x3C;/script>'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Wait for the dynamic content to load.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">locator</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'#status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Ready'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Attach a debug screenshot to the report.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> test.</span><span style="color:#B392F0">info</span><span style="color:#E1E4E8">().</span><span style="color:#B392F0">attach</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'final-state'</span><span style="color:#E1E4E8">, {</span></span>
+<span class="line"><span style="color:#E1E4E8">    body: </span><span style="color:#F97583">await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">screenshot</span><span style="color:#E1E4E8">(),</span></span>
+<span class="line"><span style="color:#E1E4E8">    contentType: </span><span style="color:#9ECBFF">'image/png'</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // DEBUGGING TIPS:</span></span>
+<span class="line"><span style="color:#6A737D">  // 1. Run with --reporter=html to see the HTML report</span></span>
+<span class="line"><span style="color:#6A737D">  // 2. Run with --trace=on to see step-by-step DOM changes</span></span>
+<span class="line"><span style="color:#6A737D">  // 3. Run with --debug to open the Playwright Inspector (interactive)</span></span>
+<span class="line"><span style="color:#6A737D">  // 4. Run with --headed to see the browser during the test</span></span>
+<span class="line"><span style="color:#6A737D">  // 5. Add await page.pause() to pause the test at a specific point</span></span>
+<span class="line"><span style="color:#6A737D">  //</span></span>
+<span class="line"><span style="color:#6A737D">  // COMMON CLI FLAGS:</span></span>
+<span class="line"><span style="color:#6A737D">  //   npx playwright test --headed            ← see the browser</span></span>
+<span class="line"><span style="color:#6A737D">  //   npx playwright test --debug             ← step through with Inspector</span></span>
+<span class="line"><span style="color:#6A737D">  //   npx playwright test --trace=on          ← record a trace</span></span>
+<span class="line"><span style="color:#6A737D">  //   npx playwright test --reporter=html     ← generate HTML report</span></span>
+<span class="line"><span style="color:#6A737D">  //   npx playwright test --update-snapshots  ← update visual baselines</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">locator</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'h1'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Debug Practice'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>8:T6ce6,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#6A737D">// =============================================================================</span></span>
+<span class="line"><span style="color:#6A737D">// Kata 44: Reporting and Debugging — Cypress Tests</span></span>
+<span class="line"><span style="color:#6A737D">// =============================================================================</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// These tests demonstrate Cypress's debugging and reporting features.</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// CYPRESS REPORTERS:</span></span>
+<span class="line"><span style="color:#6A737D">//   Default: 'spec' (terminal output)</span></span>
+<span class="line"><span style="color:#6A737D">//   HTML:    mochawesome (npm install mochawesome)</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// CYPRESS DEBUGGING:</span></span>
+<span class="line"><span style="color:#6A737D">//   cy.debug()    — pauses and opens DevTools</span></span>
+<span class="line"><span style="color:#6A737D">//   cy.pause()    — pauses the test runner</span></span>
+<span class="line"><span style="color:#6A737D">//   .debug()      — chained, pauses with subject in console</span></span>
+<span class="line"><span style="color:#6A737D">//   cy.log()      — prints to the Cypress command log</span></span>
+<span class="line"><span style="color:#6A737D">// =============================================================================</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">describe</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Kata 44: Reporting and Debugging'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 1: Cypress Command Log</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // cy.log() prints messages to the Cypress command log (left panel).</span></span>
+<span class="line"><span style="color:#6A737D">  // These messages help trace test execution flow.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: use cy.log for test tracing'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // cy.log(message, ...args) prints to the Cypress command log.</span></span>
+<span class="line"><span style="color:#6A737D">    // This is visible in the Cypress Test Runner's left panel.</span></span>
+<span class="line"><span style="color:#6A737D">    // It does NOT print to the terminal — use console.log() for that.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">log</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Starting exercise 1: command log demo'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'data:text/html,&#x3C;h1>Log Demo&#x3C;/h1>&#x3C;p>Test logging&#x3C;/p>'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">log</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Page loaded successfully'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'h1'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Log Demo'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">log</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Heading assertion passed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'p'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'logging'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">log</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Paragraph assertion passed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // cy.log is also useful for marking sections of complex tests:</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">log</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'--- SECTION: Form Interaction ---'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">log</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'--- SECTION: Assertion Phase ---'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 2: Console Log Capture</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Capture browser console.log messages for debugging.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: capture browser console messages'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // cy.on('window:console', callback) is NOT a real Cypress event.</span></span>
+<span class="line"><span style="color:#6A737D">    // Instead, use cy.window() to access the console.</span></span>
+<span class="line"><span style="color:#6A737D">    //</span></span>
+<span class="line"><span style="color:#6A737D">    // The common pattern: stub console.log before visiting the page.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'data:text/html,&#x3C;h1>Console Demo&#x3C;/h1>&#x3C;script>console.log("App loaded"); console.warn("Watch out!"); console.error("Something broke");&#x3C;/script>'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // cy.window() gives access to the browser's window object.</span></span>
+<span class="line"><span style="color:#6A737D">    // We can spy on console methods to capture messages.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">window</span><span style="color:#E1E4E8">().</span><span style="color:#B392F0">then</span><span style="color:#E1E4E8">((</span><span style="color:#FFAB70">win</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">      // cy.spy(object, method) wraps a method with a spy.</span></span>
+<span class="line"><span style="color:#6A737D">      // The spy records all calls without changing the method's behavior.</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">spy</span><span style="color:#E1E4E8">(win.console, </span><span style="color:#9ECBFF">'log'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">as</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'consoleLog'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">spy</span><span style="color:#E1E4E8">(win.console, </span><span style="color:#9ECBFF">'error'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">as</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'consoleError'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Trigger some console activity by reloading.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">reload</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // NOTE: Spies only capture calls AFTER they are set up.</span></span>
+<span class="line"><span style="color:#6A737D">    // Messages logged before cy.spy() are not captured.</span></span>
+<span class="line"><span style="color:#6A737D">    // To capture initial page load messages, set up spies in</span></span>
+<span class="line"><span style="color:#6A737D">    // cy.on('window:before:load', (win) => { cy.spy(win.console, 'log'); })</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 3: Screenshot Capture</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // cy.screenshot() captures the current state of the page.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: capture screenshots at key points'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'data:text/html,&#x3C;h1>Screenshot Demo&#x3C;/h1>&#x3C;p>Before interaction&#x3C;/p>&#x3C;button id="btn" onclick="this.textContent=</span><span style="color:#79B8FF">\'</span><span style="color:#9ECBFF">Done!</span><span style="color:#79B8FF">\'</span><span style="color:#9ECBFF">">Click&#x3C;/button>'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // cy.screenshot(name, options?) captures the viewport.</span></span>
+<span class="line"><span style="color:#6A737D">    //</span></span>
+<span class="line"><span style="color:#6A737D">    // Parameters:</span></span>
+<span class="line"><span style="color:#6A737D">    //   name — filename for the screenshot (saved to cypress/screenshots/)</span></span>
+<span class="line"><span style="color:#6A737D">    //</span></span>
+<span class="line"><span style="color:#6A737D">    // Options:</span></span>
+<span class="line"><span style="color:#6A737D">    //   capture: 'fullPage' | 'viewport' | 'runner'</span></span>
+<span class="line"><span style="color:#6A737D">    //   overwrite: true/false — overwrite existing screenshot</span></span>
+<span class="line"><span style="color:#6A737D">    //   clip: { x, y, width, height } — capture a specific region</span></span>
+<span class="line"><span style="color:#6A737D">    //   padding: number — add padding around element screenshots</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Capture BEFORE interaction.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">screenshot</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'before-click'</span><span style="color:#E1E4E8">, { overwrite: </span><span style="color:#79B8FF">true</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Perform an interaction.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'#btn'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Capture AFTER interaction.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">screenshot</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'after-click'</span><span style="color:#E1E4E8">, { overwrite: </span><span style="color:#79B8FF">true</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the button text changed.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'#btn'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Done!'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 4: Element-Specific Screenshot</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: screenshot a specific element'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'data:text/html,&#x3C;div style="padding:2rem">&#x3C;h1>Element Screenshot&#x3C;/h1>&#x3C;div id="card" style="padding:1rem;border:2px solid blue;border-radius:8px;background:#f0f8ff">&#x3C;h2>KYC Card&#x3C;/h2>&#x3C;p>Applicant: Aisha Patel&#x3C;/p>&#x3C;p>Status: Approved&#x3C;/p>&#x3C;/div>&#x3C;/div>'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // cy.get(selector).screenshot(name) captures just the element.</span></span>
+<span class="line"><span style="color:#6A737D">    // The screenshot is cropped to the element's bounding box.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'#card'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">screenshot</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'kyc-card'</span><span style="color:#E1E4E8">, {</span></span>
+<span class="line"><span style="color:#E1E4E8">      overwrite: </span><span style="color:#79B8FF">true</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#6A737D">      // padding — adds pixels around the element in the screenshot.</span></span>
+<span class="line"><span style="color:#6A737D">      // Useful to capture context around the element.</span></span>
+<span class="line"><span style="color:#E1E4E8">      padding: </span><span style="color:#79B8FF">10</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 5: Cypress Video Configuration</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Cypress can record a video of the entire spec file execution.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: video recording (configure in cypress.config.ts)'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // VIDEO CONFIGURATION:</span></span>
+<span class="line"><span style="color:#6A737D">    //</span></span>
+<span class="line"><span style="color:#6A737D">    // In cypress.config.ts:</span></span>
+<span class="line"><span style="color:#6A737D">    //   e2e: {</span></span>
+<span class="line"><span style="color:#6A737D">    //     video: true,              // enable video recording</span></span>
+<span class="line"><span style="color:#6A737D">    //     videoCompression: 32,     // compression quality (0 = best, 51 = worst)</span></span>
+<span class="line"><span style="color:#6A737D">    //     videosFolder: 'cypress/videos'  // where videos are saved</span></span>
+<span class="line"><span style="color:#6A737D">    //   }</span></span>
+<span class="line"><span style="color:#6A737D">    //</span></span>
+<span class="line"><span style="color:#6A737D">    // Videos are recorded per SPEC FILE (not per test).</span></span>
+<span class="line"><span style="color:#6A737D">    // The video captures the entire run of this file.</span></span>
+<span class="line"><span style="color:#6A737D">    //</span></span>
+<span class="line"><span style="color:#6A737D">    // Videos are saved to: cypress/videos/&#x3C;spec-name>.mp4</span></span>
+<span class="line"><span style="color:#6A737D">    //</span></span>
+<span class="line"><span style="color:#6A737D">    // BEST PRACTICE:</span></span>
+<span class="line"><span style="color:#6A737D">    //   - Enable video only in CI (not locally — too slow)</span></span>
+<span class="line"><span style="color:#6A737D">    //   - Use compression to reduce file size</span></span>
+<span class="line"><span style="color:#6A737D">    //   - Upload videos as CI artifacts (see Kata 43)</span></span>
+<span class="line"><span style="color:#6A737D">    //</span></span>
+<span class="line"><span style="color:#6A737D">    // DISABLE in interactive mode (cypress open):</span></span>
+<span class="line"><span style="color:#6A737D">    //   Video is only recorded in headless mode (cypress run).</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">log</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Video is configured in cypress.config.ts, not in test code'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'data:text/html,&#x3C;h1>Video Demo&#x3C;/h1>'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'h1'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Video Demo'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 6: Debugging Techniques</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: debugging techniques cheatsheet'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'data:text/html,&#x3C;h1>Debug Practice&#x3C;/h1>&#x3C;p id="status">Loading...&#x3C;/p>&#x3C;script>setTimeout(function(){document.getElementById("status").textContent="Ready"},100)&#x3C;/script>'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // TECHNIQUE 1: cy.log() — print to command log</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">log</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Waiting for status to change...'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // TECHNIQUE 2: .then() with console.log — print to terminal</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'#status'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">then</span><span style="color:#E1E4E8">((</span><span style="color:#FFAB70">$el</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">      // eslint-disable-next-line no-console</span></span>
+<span class="line"><span style="color:#E1E4E8">      console.</span><span style="color:#B392F0">log</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Current status text:'</span><span style="color:#E1E4E8">, $el.</span><span style="color:#B392F0">text</span><span style="color:#E1E4E8">());</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Wait for the dynamic update.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'#status'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Ready'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // TECHNIQUE 3: cy.debug() — pauses test and opens DevTools</span></span>
+<span class="line"><span style="color:#6A737D">    // Uncomment the line below to try it:</span></span>
+<span class="line"><span style="color:#6A737D">    // cy.debug();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // TECHNIQUE 4: cy.pause() — pauses the test runner</span></span>
+<span class="line"><span style="color:#6A737D">    // Uncomment the line below to try it:</span></span>
+<span class="line"><span style="color:#6A737D">    // cy.pause();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // TECHNIQUE 5: .debug() — chained, logs the subject to console</span></span>
+<span class="line"><span style="color:#6A737D">    // cy.get('#status').debug();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // TECHNIQUE 6: Cypress.log() — create custom log entries</span></span>
+<span class="line"><span style="color:#E1E4E8">    Cypress.</span><span style="color:#B392F0">log</span><span style="color:#E1E4E8">({</span></span>
+<span class="line"><span style="color:#E1E4E8">      name: </span><span style="color:#9ECBFF">'custom-log'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      message: </span><span style="color:#9ECBFF">'Test completed successfully'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#B392F0">      consoleProps</span><span style="color:#E1E4E8">: () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> ({</span></span>
+<span class="line"><span style="color:#9ECBFF">        'Status'</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">'Ready'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#9ECBFF">        'Technique'</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">'Cypress.log with consoleProps'</span></span>
+<span class="line"><span style="color:#E1E4E8">      })</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'h1'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Debug Practice'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"kata":{"slug":"44-reporting-and-debugging","number":44,"title":"Reporting and Debugging","phaseSlug":"phase-08-parallel-and-ci","phaseNumber":8,"phaseName":"Parallel And Ci","readmeRaw":"$3","hasPlayground":false,"playwrightFiles":[{"filename":"reporting-and-debugging.spec.ts","content":"$4"}],"cypressFiles":[{"filename":"reporting-and-debugging.cy.ts","content":"$5"}]},"prev":{"slug":"43-ci-cd-integration","number":43,"title":"CI/CD Integration","phaseSlug":"phase-08-parallel-and-ci","phaseNumber":8,"phaseName":"Parallel And Ci","readmeRaw":"$6","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[]},"next":null,"playwrightHtml":[{"filename":"reporting-and-debugging.spec.ts","html":"$7"}],"cypressHtml":[{"filename":"reporting-and-debugging.cy.ts","html":"$8"}]}],["$L9"],"$La"]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"iDtrTKWIN4zzRgDRiiDd2"}
+9:["$","script","script-0",{"src":"/qa-labs/_next/static/chunks/03nvm.8~ftt80.js","async":true}]
+a:["$","$Lb",null,{"children":["$","$c",null,{"name":"Next.MetadataOutlet","children":"$@d"}]}]
+d:null

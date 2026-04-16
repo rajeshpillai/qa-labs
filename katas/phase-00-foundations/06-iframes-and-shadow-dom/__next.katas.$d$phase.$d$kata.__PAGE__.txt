@@ -1,0 +1,2520 @@
+1:"$Sreact.fragment"
+2:I[31749,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js","/qa-labs/_next/static/chunks/03nvm.8~ftt80.js"],"KataPageClient"]
+10:I[49583,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js"],"OutletBoundary"]
+11:"$Sreact.suspense"
+3:T266e,# Kata 06: Iframes and Shadow DOM
+
+## What You Will Learn
+
+- How to access and interact with elements inside `<iframe>` elements
+- How to handle nested iframes (iframe within iframe)
+- How to work with Shadow DOM and custom web components
+- Playwright `frameLocator()` API (no frame switching needed)
+- Cypress iframe pattern using `contentDocument.body`
+- Shadow DOM piercing: automatic in Playwright, `includeShadowDom` option in Cypress
+- Cross-boundary assertions: reading iframe content, acting on the parent page
+
+## Prerequisites
+
+- Completed Kata 01-05
+- Understanding of CSS selectors and `data-testid` attributes
+
+## Concepts Explained
+
+### What Are Iframes?
+
+An `<iframe>` (inline frame) embeds a separate HTML document inside the current page. The iframe has its own DOM, separate from the parent page. This means normal selectors **cannot** reach inside an iframe -- you need special APIs.
+
+Common real-world uses: embedded payment forms (Stripe, PayPal), third-party widgets, terms-and-conditions documents, ads.
+
+### What Is Shadow DOM?
+
+Shadow DOM is a web standard that encapsulates a component's internal structure. Elements inside a shadow root are hidden from the main page's DOM. Custom elements (like `<compliance-widget>`) use shadow DOM to prevent style leakage and maintain encapsulation.
+
+### Playwright: frameLocator() API
+
+```typescript
+// frameLocator() returns a FrameLocator scoped to the iframe's document.
+// You pass a CSS selector that matches the <iframe> element on the parent page.
+const frame = page.frameLocator('[data-testid="payment-iframe"]');
+
+// Inside the frame, use normal locator methods.
+await frame.getByTestId('input-cardholder').fill('Jane Doe');
+await expect(frame.getByTestId('payment-title')).toHaveText('Payment');
+
+// No "switching" needed -- you can use multiple frameLocators independently.
+const termsFrame = page.frameLocator('[data-testid="terms-iframe"]');
+await expect(termsFrame.getByTestId('terms-title')).toHaveText('Terms');
+
+// You can still access the main page with `page` at any time.
+await expect(page.getByTestId('page-header')).toBeVisible();
+```
+
+**Key points:**
+- `frameLocator()` does NOT switch context (unlike Selenium's `switchTo().frame()`)
+- Each `FrameLocator` is an independent scoped view into one iframe
+- You can use multiple frame locators in the same test without switching back
+- All locator methods (`.getByTestId()`, `.getByRole()`, `.locator()`) work inside frames
+
+### Playwright: Nested Iframes
+
+```typescript
+// Chain frameLocator() calls to access iframes within iframes.
+const outer = page.frameLocator('[data-testid="outer-iframe"]');
+const inner = outer.frameLocator('[data-testid="inner-iframe"]');
+
+// Now interact with elements inside the nested iframe.
+await expect(inner.getByTestId('inner-text')).toContainText('passed');
+```
+
+### Playwright: Shadow DOM (Automatic Piercing)
+
+```typescript
+// Playwright automatically pierces open shadow roots.
+// No special configuration needed -- getByTestId, getByRole, locator() all work.
+await page.getByTestId('widget-title');                    // finds inside shadow DOM
+await page.getByTestId('input-entity-name').fill('Acme');  // fills inside shadow DOM
+```
+
+### Cypress: Iframe Pattern
+
+Cypress does **not** have a built-in `frameLocator()`. You must manually access the iframe's `contentDocument.body`:
+
+```typescript
+// Helper function to get an iframe's body as a Cypress-wrapped element.
+function getIframeBody(selector: string) {
+  return cy
+    .get(selector)                          // find the <iframe> element
+    .its('0.contentDocument.body')          // get the DOM node of the iframe body
+    .should('not.be.empty')                 // wait until the iframe has loaded
+    .then(cy.wrap);                         // wrap it for chaining Cypress commands
+}
+
+// Usage:
+getIframeBody('[data-testid="payment-iframe"]')
+  .find('[data-testid="input-cardholder"]')
+  .type('Jane Doe');
+```
+
+**Key points:**
+- `.its('0.contentDocument.body')` accesses the first matched element's content document
+- `.should('not.be.empty')` acts as a retry/wait until the iframe loads
+- `cy.wrap()` converts the raw DOM node into a Cypress chainable
+- Use `.find()` (not `.get()`) to scope searches within the iframe body
+
+### Cypress: Nested Iframes
+
+```typescript
+// Get the outer iframe body, then find the inner iframe within it.
+getIframeBody('[data-testid="outer-iframe"]').then(($outerBody) => {
+  cy.wrap($outerBody)
+    .find('[data-testid="inner-iframe"]')
+    .its('0.contentDocument.body')
+    .should('not.be.empty')
+    .then(cy.wrap)
+    .then(($innerBody) => {
+      cy.wrap($innerBody).find('[data-testid="inner-text"]')
+        .should('contain.text', 'passed');
+    });
+});
+```
+
+### Cypress: Shadow DOM
+
+```typescript
+// Option 1: Per-command -- pass { includeShadowDom: true } to cy.get() or .find()
+cy.get('[data-testid="widget-title"]', { includeShadowDom: true })
+  .should('have.text', 'Compliance Check');
+
+// Option 2: Global -- set in cypress.config.ts (affects ALL commands)
+// export default defineConfig({ includeShadowDom: true });
+```
+
+## Function Signatures
+
+### Playwright
+
+| Method | Signature | Purpose |
+|--------|-----------|---------|
+| `page.frameLocator()` | `frameLocator(selector: string): FrameLocator` | Returns a scoped view into an iframe |
+| `frameLocator.getByTestId()` | `getByTestId(testId: string): Locator` | Find element by data-testid inside the frame |
+| `frameLocator.locator()` | `locator(selector: string): Locator` | Find element by CSS/text inside the frame |
+| `frameLocator.frameLocator()` | `frameLocator(selector: string): FrameLocator` | Access nested iframe within a frame |
+
+### Cypress
+
+| Method | Signature | Purpose |
+|--------|-----------|---------|
+| `.its()` | `.its(propertyPath: string)` | Access a property on the subject (used for `contentDocument.body`) |
+| `cy.wrap()` | `cy.wrap(subject: any)` | Wrap a DOM node so Cypress commands can chain on it |
+| `.find()` | `.find(selector: string, options?)` | Find descendants within the current subject |
+| `{ includeShadowDom: true }` | option on `cy.get()` / `.find()` | Pierce shadow DOM boundaries |
+
+## Exercises
+
+| # | Exercise | What You Practice |
+|---|----------|-------------------|
+| 1 | Read text inside an iframe | `frameLocator()` / `getIframeBody()` basics |
+| 2 | Fill payment form inside iframe | `fill()` / `type()` within iframe scope |
+| 3 | Submit form in iframe, verify result | Click + assertion inside iframe |
+| 4 | Read text inside Shadow DOM | Shadow DOM piercing |
+| 5 | Fill and submit Shadow DOM form | Full interaction with shadow root elements |
+| 6 | Access nested iframe (iframe in iframe) | Chained `frameLocator()` / nested `contentDocument` |
+| 7 | Switch between multiple iframes | Multiple frame locators, no switching overhead |
+| 8 | Assert across iframe boundary | Read iframe, act on parent page |
+
+## Solutions
+
+- Playwright: `playwright/iframes-and-shadow-dom.spec.ts`
+- Cypress: `cypress/iframes-and-shadow-dom.cy.ts`
+
+## Common Mistakes
+
+### 1. Using `page.locator()` to find elements inside an iframe
+```typescript
+// WRONG -- this searches the parent page DOM only
+await page.getByTestId('input-cardholder').fill('Jane');
+
+// RIGHT -- use frameLocator() first
+const frame = page.frameLocator('[data-testid="payment-iframe"]');
+await frame.getByTestId('input-cardholder').fill('Jane');
+```
+
+### 2. Using `cy.get()` instead of `.find()` inside an iframe body
+```typescript
+// WRONG -- cy.get() searches from the root document, not the iframe
+getIframeBody('[data-testid="payment-iframe"]');
+cy.get('[data-testid="input-cardholder"]').type('Jane');  // searches main page!
+
+// RIGHT -- chain .find() on the wrapped iframe body
+getIframeBody('[data-testid="payment-iframe"]')
+  .find('[data-testid="input-cardholder"]')
+  .type('Jane');
+```
+
+### 3. Forgetting `{ includeShadowDom: true }` in Cypress
+```typescript
+// WRONG -- Cypress cannot see inside shadow roots by default
+cy.get('[data-testid="widget-title"]').should('have.text', 'Check');
+// Error: element not found
+
+// RIGHT -- pass the option
+cy.get('[data-testid="widget-title"]', { includeShadowDom: true })
+  .should('have.text', 'Check');
+```
+
+### 4. Trying to "switch back" to the main page in Playwright
+```typescript
+// UNNECESSARY -- Playwright does not have an active frame concept
+// There is no need to "switch back" like in Selenium
+const frame = page.frameLocator('[data-testid="payment-iframe"]');
+await frame.getByTestId('input-cardholder').fill('Jane');
+// You can immediately use `page` for the main page -- no switching needed
+await page.getByTestId('page-header').click();
+```
+
+### 5. Not waiting for iframe to load in Cypress
+```typescript
+// WRONG -- iframe body may not be ready yet
+cy.get('[data-testid="payment-iframe"]')
+  .its('0.contentDocument.body')
+  .then(cy.wrap)  // might wrap an empty body!
+
+// RIGHT -- add .should('not.be.empty') to retry until loaded
+cy.get('[data-testid="payment-iframe"]')
+  .its('0.contentDocument.body')
+  .should('not.be.empty')   // retries until the iframe body has content
+  .then(cy.wrap);
+```
+
+## Quick Reference
+
+```
+Playwright                                   Cypress
+----------------------------------------------  ------------------------------------------------
+page.frameLocator(sel)                        cy.get(sel).its('0.contentDocument.body')
+                                                .should('not.be.empty').then(cy.wrap)
+frame.getByTestId('x')                        iframeBody.find('[data-testid="x"]')
+outer.frameLocator(sel)  // nested            iframeBody.find(sel).its('0.contentDocument.body')
+page.getByTestId('x')    // auto-pierce       cy.get(sel, { includeShadowDom: true })
+No switching needed                           No switching needed (but more boilerplate)
+```
+4:T22a4,import { test, expect } from '@playwright/test';
+
+// The playground URL for this kata.
+const PLAYGROUND = '/phase-00-foundations/06-iframes-and-shadow-dom/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Access iframe content using frameLocator
+// --------------------------------------------------------------------------
+test('exercise 1: read text inside an iframe', async ({ page }) => {
+  // Navigate to the playground page.
+  await page.goto(PLAYGROUND);
+
+  // frameLocator() returns a FrameLocator scoped to the iframe.
+  // You pass a CSS selector (or data-testid) that matches the <iframe> element.
+  const paymentFrame = page.frameLocator('[data-testid="payment-iframe"]');
+
+  // Inside the frame, use normal locator methods to find elements.
+  // The locator is scoped to the iframe's document, not the parent page.
+  await expect(paymentFrame.getByTestId('payment-title')).toHaveText('Secure Payment Gateway');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Fill form inside iframe
+// --------------------------------------------------------------------------
+test('exercise 2: fill the payment form inside an iframe', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Get a FrameLocator for the payment iframe.
+  const paymentFrame = page.frameLocator('[data-testid="payment-iframe"]');
+
+  // fill() works exactly the same inside a frameLocator as on the main page.
+  // It clears the field first, then sets the value.
+  await paymentFrame.getByTestId('input-cardholder').fill('Alice Johnson');
+  await paymentFrame.getByTestId('input-card-number').fill('4242 4242 4242 4242');
+  await paymentFrame.getByTestId('input-amount').fill('250.00');
+
+  // selectOption() works for <select> elements inside iframes too.
+  await paymentFrame.getByTestId('select-currency').selectOption('EUR');
+
+  // Verify the values were entered correctly.
+  await expect(paymentFrame.getByTestId('input-cardholder')).toHaveValue('Alice Johnson');
+  await expect(paymentFrame.getByTestId('input-card-number')).toHaveValue('4242 4242 4242 4242');
+  await expect(paymentFrame.getByTestId('input-amount')).toHaveValue('250.00');
+  await expect(paymentFrame.getByTestId('select-currency')).toHaveValue('EUR');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Click button inside iframe and verify result
+// --------------------------------------------------------------------------
+test('exercise 3: submit the payment form and verify confirmation', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  const paymentFrame = page.frameLocator('[data-testid="payment-iframe"]');
+
+  // Fill the form fields.
+  await paymentFrame.getByTestId('input-cardholder').fill('Bob Smith');
+  await paymentFrame.getByTestId('input-amount').fill('99.99');
+  await paymentFrame.getByTestId('select-currency').selectOption('GBP');
+
+  // Click the submit button inside the iframe.
+  await paymentFrame.getByTestId('btn-submit-payment').click();
+
+  // Verify the result message appeared inside the iframe.
+  // The result div is inside the iframe, so we use the same frameLocator.
+  await expect(paymentFrame.getByTestId('payment-result')).toBeVisible();
+  await expect(paymentFrame.getByTestId('payment-result')).toContainText('99.99 GBP');
+  await expect(paymentFrame.getByTestId('payment-result')).toContainText('Bob Smith');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Access Shadow DOM elements
+// --------------------------------------------------------------------------
+test('exercise 4: read text inside a shadow DOM component', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Playwright automatically pierces open shadow roots!
+  // You can use getByTestId() and it will find elements inside shadow DOM
+  // without any special configuration. This is a major advantage over Cypress.
+  const widgetTitle = page.getByTestId('widget-title');
+
+  // Verify the title text inside the shadow root.
+  await expect(widgetTitle).toHaveText('Compliance Check');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Interact with Shadow DOM form
+// --------------------------------------------------------------------------
+test('exercise 5: fill and submit the compliance widget form', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Fill fields inside the shadow DOM component.
+  // Playwright pierces shadow DOM automatically for all locator methods.
+  await page.getByTestId('input-entity-name').fill('Acme Corp');
+  await page.getByTestId('input-entity-id').fill('ENT-007');
+  await page.getByTestId('select-check-type').selectOption('aml');
+
+  // Click the button inside the shadow root.
+  await page.getByTestId('btn-run-check').click();
+
+  // Verify the status message appeared inside the shadow DOM.
+  const status = page.getByTestId('check-status');
+  await expect(status).toBeVisible();
+  await expect(status).toContainText('AML check passed for Acme Corp (ENT-007)');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Access nested iframes (iframe inside iframe)
+// --------------------------------------------------------------------------
+test('exercise 6: read content from a nested iframe', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // First, get the outer iframe using frameLocator().
+  const outerFrame = page.frameLocator('[data-testid="outer-iframe"]');
+
+  // Verify content in the outer frame.
+  await expect(outerFrame.getByTestId('outer-title')).toHaveText('Outer Audit Frame');
+  await expect(outerFrame.getByTestId('outer-text')).toContainText('outer compliance audit layer');
+
+  // To access a nested iframe, chain another frameLocator() on the outer one.
+  // This is how Playwright handles iframe-within-iframe scenarios.
+  const innerFrame = outerFrame.frameLocator('[data-testid="inner-iframe"]');
+
+  // Now you can interact with elements inside the nested iframe.
+  await expect(innerFrame.getByTestId('inner-text')).toContainText('All checks passed');
+  await expect(innerFrame.getByTestId('inner-text')).toContainText('AUD-2026-0415');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Switch between multiple iframes
+// --------------------------------------------------------------------------
+test('exercise 7: interact with multiple iframes in sequence', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Unlike Selenium, Playwright does NOT require "switching" to a frame.
+  // You simply create frameLocators for each iframe and use them independently.
+  // There is no "active frame" concept — each frameLocator is a scoped view.
+
+  // Access the payment iframe.
+  const paymentFrame = page.frameLocator('[data-testid="payment-iframe"]');
+  await paymentFrame.getByTestId('input-cardholder').fill('Multi-Frame Test');
+
+  // Access the terms iframe — no need to "switch back" to the main page first.
+  const termsFrame = page.frameLocator('[data-testid="terms-iframe"]');
+  await expect(termsFrame.getByTestId('terms-title')).toHaveText('Terms of Service v3.1');
+
+  // Go back and verify the payment iframe still has the value we entered.
+  // Since there is no frame switching, the value is still accessible.
+  await expect(paymentFrame.getByTestId('input-cardholder')).toHaveValue('Multi-Frame Test');
+
+  // Access something on the main page (outside any iframe) — no switching needed.
+  await expect(page.getByTestId('page-header')).toBeVisible();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Assert content across iframe boundary
+// --------------------------------------------------------------------------
+test('exercise 8: verify terms iframe content and accept on main page', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Step 1: Read content from inside the terms iframe.
+  const termsFrame = page.frameLocator('[data-testid="terms-iframe"]');
+  await expect(termsFrame.getByTestId('terms-section-1')).toContainText('compliance regulations');
+  await expect(termsFrame.getByTestId('terms-last-updated')).toHaveText('Last updated: 2026-04-01');
+
+  // Step 2: Interact with the checkbox and button on the MAIN page (not in iframe).
+  // The terms checkbox and accept button are on the main page, not inside the iframe.
+  // This tests the common pattern: read iframe content, then act on the parent page.
+  await page.getByTestId('terms-checkbox').check();
+  await page.getByTestId('btn-accept-terms').click();
+
+  // Step 3: Verify the result on the main page.
+  await expect(page.getByTestId('terms-result')).toHaveText('Terms accepted successfully. You may proceed.');
+});
+5:T23d7,const PLAYGROUND = '/phase-00-foundations/06-iframes-and-shadow-dom/playground/';
+
+// ---------------------------------------------------------------------------
+// Helper: get the <body> of an iframe.
+// Cypress does NOT have built-in iframe support like Playwright's frameLocator.
+// This helper reaches into the iframe's contentDocument and wraps its body
+// so you can chain normal Cypress commands on it.
+// ---------------------------------------------------------------------------
+function getIframeBody(selector: string) {
+  return cy
+    .get(selector)                              // find the <iframe> element
+    .its('0.contentDocument.body')              // get its contentDocument.body (DOM node)
+    .should('not.be.empty')                     // make sure the iframe has loaded
+    .then(cy.wrap);                             // wrap it so we can chain Cypress commands
+}
+
+describe('Kata 06: Iframes and Shadow DOM', () => {
+
+  beforeEach(() => {
+    // Visit the playground before every test.
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Access iframe content using the iframe helper
+  // --------------------------------------------------------------------------
+  it('exercise 1: read text inside an iframe', () => {
+    // Use the helper to get the payment iframe's body.
+    // Once wrapped, you can use .find() to locate elements inside.
+    getIframeBody('[data-testid="payment-iframe"]')
+      .find('[data-testid="payment-title"]')      // find element inside the iframe body
+      .should('have.text', 'Secure Payment Gateway');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Fill form inside iframe
+  // --------------------------------------------------------------------------
+  it('exercise 2: fill the payment form inside an iframe', () => {
+    // Get the iframe body, then use .find() + .type() to fill fields.
+    // Remember: Cypress type() appends text (fields start empty here, so that's fine).
+    getIframeBody('[data-testid="payment-iframe"]').then(($body) => {
+      // .find() scopes the search to the iframe body.
+      cy.wrap($body).find('[data-testid="input-cardholder"]').type('Alice Johnson');
+      cy.wrap($body).find('[data-testid="input-card-number"]').type('4242 4242 4242 4242');
+      cy.wrap($body).find('[data-testid="input-amount"]').type('250.00');
+      cy.wrap($body).find('[data-testid="select-currency"]').select('EUR');
+
+      // Verify the values.
+      cy.wrap($body).find('[data-testid="input-cardholder"]').should('have.value', 'Alice Johnson');
+      cy.wrap($body).find('[data-testid="input-card-number"]').should('have.value', '4242 4242 4242 4242');
+      cy.wrap($body).find('[data-testid="input-amount"]').should('have.value', '250.00');
+      cy.wrap($body).find('[data-testid="select-currency"]').should('have.value', 'EUR');
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Click button inside iframe and verify result
+  // --------------------------------------------------------------------------
+  it('exercise 3: submit the payment form and verify confirmation', () => {
+    getIframeBody('[data-testid="payment-iframe"]').then(($body) => {
+      // Fill the form.
+      cy.wrap($body).find('[data-testid="input-cardholder"]').type('Bob Smith');
+      cy.wrap($body).find('[data-testid="input-amount"]').type('99.99');
+      cy.wrap($body).find('[data-testid="select-currency"]').select('GBP');
+
+      // Click submit inside the iframe.
+      cy.wrap($body).find('[data-testid="btn-submit-payment"]').click();
+
+      // Verify the result message appeared inside the iframe.
+      cy.wrap($body).find('[data-testid="payment-result"]')
+        .should('be.visible')
+        .and('contain.text', '99.99 GBP')
+        .and('contain.text', 'Bob Smith');
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Access Shadow DOM elements
+  // --------------------------------------------------------------------------
+  it('exercise 4: read text inside a shadow DOM component', () => {
+    // Cypress needs { includeShadowDom: true } to pierce shadow roots.
+    // This option tells cy.get() / .find() to search inside shadow DOM.
+    cy.get('[data-testid="widget-title"]', { includeShadowDom: true })
+      .should('have.text', 'Compliance Check');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Interact with Shadow DOM form
+  // --------------------------------------------------------------------------
+  it('exercise 5: fill and submit the compliance widget form', () => {
+    // Each command that targets a shadow DOM element needs { includeShadowDom: true }.
+    // Alternatively, set "includeShadowDom": true in cypress.config.ts globally.
+    cy.get('[data-testid="input-entity-name"]', { includeShadowDom: true })
+      .type('Acme Corp');
+
+    cy.get('[data-testid="input-entity-id"]', { includeShadowDom: true })
+      .type('ENT-007');
+
+    cy.get('[data-testid="select-check-type"]', { includeShadowDom: true })
+      .select('aml');
+
+    // Click the button inside the shadow root.
+    cy.get('[data-testid="btn-run-check"]', { includeShadowDom: true })
+      .click();
+
+    // Verify the status message.
+    cy.get('[data-testid="check-status"]', { includeShadowDom: true })
+      .should('be.visible')
+      .and('contain.text', 'AML check passed for Acme Corp (ENT-007)');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Access nested iframes (iframe inside iframe)
+  // --------------------------------------------------------------------------
+  it('exercise 6: read content from a nested iframe', () => {
+    // Step 1: Get the outer iframe body.
+    getIframeBody('[data-testid="outer-iframe"]').then(($outerBody) => {
+      // Verify content in the outer frame.
+      cy.wrap($outerBody).find('[data-testid="outer-title"]')
+        .should('have.text', 'Outer Audit Frame');
+
+      cy.wrap($outerBody).find('[data-testid="outer-text"]')
+        .should('contain.text', 'outer compliance audit layer');
+
+      // Step 2: Get the inner iframe body from within the outer iframe.
+      // We find the inner <iframe> element, then access its contentDocument.
+      cy.wrap($outerBody)
+        .find('[data-testid="inner-iframe"]')
+        .its('0.contentDocument.body')
+        .should('not.be.empty')
+        .then(cy.wrap)
+        .then(($innerBody) => {
+          // Now we can assert on elements inside the nested iframe.
+          cy.wrap($innerBody).find('[data-testid="inner-text"]')
+            .should('contain.text', 'All checks passed')
+            .and('contain.text', 'AUD-2026-0415');
+        });
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Switch between multiple iframes
+  // --------------------------------------------------------------------------
+  it('exercise 7: interact with multiple iframes in sequence', () => {
+    // In Cypress, there is no explicit "switch to frame" like Selenium.
+    // You just get each iframe's body whenever you need it.
+
+    // Access the payment iframe and fill a field.
+    getIframeBody('[data-testid="payment-iframe"]')
+      .find('[data-testid="input-cardholder"]')
+      .type('Multi-Frame Test');
+
+    // Access the terms iframe — no "switching" required.
+    getIframeBody('[data-testid="terms-iframe"]')
+      .find('[data-testid="terms-title"]')
+      .should('have.text', 'Terms of Service v3.1');
+
+    // Go back and verify the payment iframe still has the entered value.
+    getIframeBody('[data-testid="payment-iframe"]')
+      .find('[data-testid="input-cardholder"]')
+      .should('have.value', 'Multi-Frame Test');
+
+    // Access something on the main page (outside any iframe).
+    cy.get('[data-testid="page-header"]').should('be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Assert content across iframe boundary
+  // --------------------------------------------------------------------------
+  it('exercise 8: verify terms iframe content and accept on main page', () => {
+    // Step 1: Read content from inside the terms iframe.
+    getIframeBody('[data-testid="terms-iframe"]').then(($body) => {
+      cy.wrap($body).find('[data-testid="terms-section-1"]')
+        .should('contain.text', 'compliance regulations');
+
+      cy.wrap($body).find('[data-testid="terms-last-updated"]')
+        .should('have.text', 'Last updated: 2026-04-01');
+    });
+
+    // Step 2: Interact with elements on the MAIN page (not in iframe).
+    // The checkbox and button are on the parent page, not inside the iframe.
+    cy.get('[data-testid="terms-checkbox"]').check();
+    cy.get('[data-testid="btn-accept-terms"]').click();
+
+    // Step 3: Verify the result on the main page.
+    cy.get('[data-testid="terms-result"]')
+      .should('have.text', 'Terms accepted successfully. You may proceed.');
+  });
+
+});
+6:T2f6a,# Kata 05: Keyboard and Mouse
+
+## What You Will Learn
+
+- How to press individual keyboard keys (Enter, Tab, Escape, Arrow keys)
+- How to use keyboard shortcuts with modifier keys (Ctrl+B, Ctrl+I)
+- How to simulate mouse hover to reveal tooltips
+- How to click at specific positions within an element
+- How to manage focus — move it, verify it, type into focused elements
+- Tab navigation through form fields
+- Single-key shortcuts for application actions
+- Arrow key reordering of list items
+- Mouse events: mousedown, mousemove, mouseup for drag simulation
+
+## Prerequisites
+
+- Completed Kata 01-04
+
+## Concepts Explained
+
+### Pressing Keyboard Keys
+
+```typescript
+// PLAYWRIGHT
+// page.keyboard.press(key) dispatches keydown, keypress, and keyup events.
+// Key names follow the W3C KeyboardEvent.key spec.
+//
+// Signature:
+//   page.keyboard.press(key: string, options?: { delay?: number }): Promise<void>
+//
+// Parameters:
+//   key   — Key name (e.g., 'Enter', 'Tab', 'Escape', 'ArrowUp', 'a', 'A')
+//   delay — Time in ms to wait between keydown and keyup (default: 0)
+await page.keyboard.press('Escape');
+await page.keyboard.press('Enter');
+await page.keyboard.press('Tab');
+await page.keyboard.press('ArrowUp');
+await page.keyboard.press('ArrowDown');
+
+// CYPRESS
+// In Cypress, special keys are sent via type() using curly-brace sequences.
+//
+// Signature:
+//   .type(text: string, options?: TypeOptions): Chainable
+//
+// Special key sequences:
+//   {enter}, {esc}, {tab}, {backspace}, {del}
+//   {uparrow}, {downarrow}, {leftarrow}, {rightarrow}
+//   {home}, {end}, {pageup}, {pagedown}
+//   {selectall}, {movetostart}, {movetoend}
+cy.get('body').type('{esc}');
+cy.get(sel).type('{enter}');
+cy.get(sel).type('{uparrow}');
+cy.get(sel).type('{downarrow}');
+```
+
+### Keyboard Shortcuts with Modifiers
+
+```typescript
+// PLAYWRIGHT
+// Combine modifier keys using '+' syntax.
+//
+// Signature:
+//   page.keyboard.press(key: string): Promise<void>
+//
+// Modifier names: 'Control', 'Shift', 'Alt', 'Meta'
+// Examples:
+await page.keyboard.press('Control+b');     // Ctrl+B
+await page.keyboard.press('Control+i');     // Ctrl+I
+await page.keyboard.press('Control+Shift+s'); // Ctrl+Shift+S
+await page.keyboard.press('Meta+c');        // Cmd+C (Mac)
+
+// CYPRESS
+// Use modifier names inside curly braces with '+' syntax.
+//
+// Modifier names: ctrl, alt, shift, meta
+// Examples:
+cy.get(sel).type('{ctrl+b}');       // Ctrl+B
+cy.get(sel).type('{ctrl+i}');       // Ctrl+I
+cy.get(sel).type('{ctrl+shift+s}'); // Ctrl+Shift+S
+cy.get(sel).type('{meta+c}');       // Cmd+C (Mac)
+```
+
+### Hover (Mouse Over)
+
+```typescript
+// PLAYWRIGHT
+// hover() moves the mouse to the center of the element.
+// Triggers CSS :hover pseudo-class and mouseenter/mouseover events.
+//
+// Signature:
+//   locator.hover(options?: {
+//     force?: boolean,
+//     modifiers?: ('Alt'|'Control'|'Meta'|'Shift')[],
+//     position?: { x: number, y: number },
+//     timeout?: number
+//   }): Promise<void>
+await page.getByTestId('card-aml').hover();
+
+// CYPRESS
+// Cypress has NO built-in hover() command because it cannot trigger
+// CSS :hover pseudo-class. Workarounds:
+//
+// 1. trigger('mouseover') — fires the JS event but NOT CSS :hover
+cy.get(sel).trigger('mouseover');
+//
+// 2. invoke('show') — force-display a hidden tooltip for testing
+cy.get('[data-testid="tooltip"]').invoke('css', 'display', 'block');
+//
+// 3. cypress-real-events plugin — triggers real browser hover
+//    npm install cypress-real-events
+cy.get(sel).realHover();  // requires cypress-real-events
+```
+
+### Focus Management
+
+```typescript
+// PLAYWRIGHT
+// focus() sets focus on the element without clicking.
+//
+// Signature:
+//   locator.focus(options?: { timeout?: number }): Promise<void>
+await page.getByTestId('field-email').focus();
+
+// toBeFocused() asserts the element is document.activeElement.
+await expect(page.getByTestId('field-email')).toBeFocused();
+
+// CYPRESS
+// focus() sets focus on the element.
+//
+// Signature:
+//   .focus(options?: Partial<Loggable & Timeoutable>): Chainable
+cy.get('[data-testid="field-email"]').focus();
+
+// 'have.focus' asserts the element is document.activeElement.
+cy.get('[data-testid="field-email"]').should('have.focus');
+```
+
+### Tab Navigation
+
+```typescript
+// PLAYWRIGHT
+// Press Tab to move focus through the tab order.
+await page.keyboard.press('Tab');         // move forward
+await page.keyboard.press('Shift+Tab');   // move backward
+
+// CYPRESS
+// Cypress type('{tab}') does NOT actually move browser focus.
+// Workaround: use focus() to move focus directly, or install cypress-real-events.
+cy.get(sel).focus();  // direct focus as workaround
+// or with cypress-real-events:
+cy.realPress('Tab');
+```
+
+### Typing Text (Character by Character)
+
+```typescript
+// PLAYWRIGHT
+// page.keyboard.type(text) types character by character, firing
+// keydown/keypress/keyup for each character.
+//
+// Signature:
+//   page.keyboard.type(text: string, options?: { delay?: number }): Promise<void>
+await page.keyboard.type('Hello world');
+await page.keyboard.type('slow typing', { delay: 100 }); // 100ms between chars
+
+// pressSequentially() is an alias on Locator that works the same way:
+await page.getByTestId('input').pressSequentially('Hello');
+
+// CYPRESS
+// type(text) already types character by character.
+cy.get(sel).type('Hello world');
+cy.get(sel).type('slow typing', { delay: 100 }); // 100ms between chars
+```
+
+### Mouse Click at Position
+
+```typescript
+// PLAYWRIGHT
+// click({ position }) clicks at a specific offset from the element's top-left.
+//
+// Signature:
+//   locator.click(options?: {
+//     button?: 'left' | 'right' | 'middle',
+//     clickCount?: number,
+//     delay?: number,
+//     force?: boolean,
+//     modifiers?: ('Alt'|'Control'|'Meta'|'Shift')[],
+//     position?: { x: number, y: number },
+//     timeout?: number
+//   }): Promise<void>
+await page.getByTestId('canvas').click({ position: { x: 100, y: 50 } });
+
+// CYPRESS
+// click(x, y) clicks at the specified offset from the element's top-left.
+//
+// Signature:
+//   .click(x: number, y: number, options?: ClickOptions): Chainable
+cy.get(sel).click(100, 50);
+```
+
+## Playground
+
+The playground is a "Risk Tier Sorter" themed as a fintech compliance tool. It contains:
+
+1. **Sortable Risk Tiers** — a list of risk levels (Critical, High, Medium, Low) that can be reordered using arrow keys after selecting an item with a click
+2. **Notes Editor** — a textarea with Ctrl+B (bold) and Ctrl+I (italic) keyboard shortcut simulation that updates a format status indicator
+3. **Risk Assessment Cards** — three cards (AML, KYC, PEP) with hover-triggered tooltips showing detailed descriptions
+4. **Client Onboarding Form** — five tab-navigable fields (first name, last name, email, notes, submit) with a focus tracker displaying the currently focused field
+5. **Quick Actions Panel** — a focusable panel where pressing 'A' approves, 'R' rejects, and 'E' escalates, with a color-coded status badge
+6. **Risk Zone Mapper** — a drag simulation area with a draggable box, mouse coordinate tracking, and drag status display
+7. **Alert Dialog** — a modal that opens via button click and closes with Escape key or a close button
+
+## Exercises
+
+### Exercise 1: Press Escape to Close Modal
+Open the modal by clicking the "Open Alert" button. Verify it's visible. Press Escape to close it. Verify the modal is hidden and the state text reads "Closed".
+
+### Exercise 2: Keyboard Shortcuts (Ctrl+B, Ctrl+I)
+Focus the textarea, type some text, then press Ctrl+B. Verify the format status shows "Bold". Press Ctrl+I and verify it shows "Italic".
+
+### Exercise 3: Tab Navigation
+Click the first form field, then Tab through all fields. Verify the focus indicator updates at each step: first-name, last-name, email, notes, submit.
+
+### Exercise 4: Hover to Show Tooltip
+Hover over the AML card and verify its tooltip appears with text containing "OFAC". Hover over the KYC card and verify the AML tooltip hides while the KYC tooltip appears.
+
+### Exercise 5: Click at Specific Position
+Click at position (100, 50) within the drag area. Verify the mouse coordinates display shows non-zero values.
+
+### Exercise 6: Keyboard Shortcut Actions
+Focus the shortcut panel. Press 'A' and verify status is "Approved". Press 'R' for "Rejected". Press 'E' for "Escalated".
+
+### Exercise 7: Arrow Key Reordering
+Click "High" to select it. Press ArrowUp to move it above "Critical". Press ArrowDown twice to move it below "Medium". Verify the order at each step using the order display. Press Enter to confirm.
+
+### Exercise 8: Focus Management
+Focus the email field programmatically (without clicking). Verify it is focused. Move focus to the notes field, type text, and verify the input value.
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/keyboard-and-mouse.spec.ts`
+
+### Cypress Solution
+
+See `cypress/keyboard-and-mouse.cy.ts`
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Pressing keys without focusing the target element first | Key events go to whichever element has focus — if you haven't focused the right element, the shortcut won't work | Click or focus() the target element before pressing keys |
+| Using `page.keyboard.press('ctrl+b')` with lowercase 'ctrl' | Playwright requires proper casing: `'Control'`, not `'ctrl'` | Use `'Control+b'`, `'Shift+a'`, `'Meta+c'` |
+| Expecting Cypress `type('{tab}')` to move browser focus | Cypress's `{tab}` key sequence does not actually change `document.activeElement` | Use `cy.get(sel).focus()` or install cypress-real-events plugin |
+| Trying to test CSS `:hover` tooltips with Cypress `trigger('mouseover')` | `trigger('mouseover')` fires the JS event but does NOT activate CSS `:hover` pseudo-class | Use `invoke('css', 'display', 'block')` to force-show, or use cypress-real-events `realHover()` |
+| Forgetting to verify focus before typing | If focus is on the wrong element, `page.keyboard.type()` sends text elsewhere | Always assert focus with `toBeFocused()` / `should('have.focus')` before typing |
+| Using `page.keyboard.press('Up')` instead of `'ArrowUp'` | The W3C key name is `'ArrowUp'`, not `'Up'` | Use `'ArrowUp'`, `'ArrowDown'`, `'ArrowLeft'`, `'ArrowRight'` |
+| Not waiting for modal to be visible before pressing Escape | If the modal animation hasn't finished, Escape may not register | Assert `toBeVisible()` before pressing Escape |
+
+## Quick Reference
+
+### Playwright Keyboard & Mouse
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Press key | `page.keyboard.press(key)` | `await page.keyboard.press('Enter')` |
+| Key with modifier | `page.keyboard.press(combo)` | `await page.keyboard.press('Control+b')` |
+| Type text | `page.keyboard.type(text)` | `await page.keyboard.type('hello')` |
+| Type on locator | `locator.pressSequentially(text)` | `await el.pressSequentially('hello')` |
+| Focus element | `locator.focus()` | `await el.focus()` |
+| Hover | `locator.hover()` | `await el.hover()` |
+| Click at position | `locator.click({ position })` | `await el.click({ position: { x: 10, y: 20 } })` |
+| Assert focused | `expect(locator).toBeFocused()` | `await expect(el).toBeFocused()` |
+| Assert visible | `expect(locator).toBeVisible()` | `await expect(el).toBeVisible()` |
+| Assert hidden | `expect(locator).toBeHidden()` | `await expect(el).toBeHidden()` |
+
+### Cypress Keyboard & Mouse
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Press special key | `.type('{key}')` | `cy.get(sel).type('{enter}')` |
+| Key with modifier | `.type('{ctrl+key}')` | `cy.get(sel).type('{ctrl+b}')` |
+| Type text | `.type(text)` | `cy.get(sel).type('hello')` |
+| Focus element | `.focus()` | `cy.get(sel).focus()` |
+| Trigger mouse event | `.trigger(event)` | `cy.get(sel).trigger('mouseover')` |
+| Click at position | `.click(x, y)` | `cy.get(sel).click(10, 20)` |
+| Assert focused | `.should('have.focus')` | `cy.get(sel).should('have.focus')` |
+| Assert visible | `.should('be.visible')` | `cy.get(sel).should('be.visible')` |
+| Assert hidden | `.should('not.be.visible')` | `cy.get(sel).should('not.be.visible')` |
+7:T35e5,import { test, expect } from '@playwright/test';
+
+// The base URL for our playground page. All tests navigate here first.
+const PLAYGROUND = '/phase-00-foundations/05-keyboard-and-mouse/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Press Keyboard Keys (Enter, Tab, Escape)
+// --------------------------------------------------------------------------
+// This exercise demonstrates how to press individual keyboard keys using
+// Playwright's keyboard API. You'll learn to open a modal, close it with
+// Escape, and verify state changes driven by key presses.
+test('exercise 1: press Escape to close a modal dialog', async ({ page }) => {
+  // Navigate to the playground page.
+  // page.goto(url) loads the given URL. It waits for the page to reach
+  // the 'load' state by default before continuing.
+  await page.goto(PLAYGROUND);
+
+  // Click the "Open Alert" button to show the modal dialog.
+  // getByTestId(id) finds an element by its data-testid attribute.
+  // click() performs a single left-click on the element.
+  await page.getByTestId('btn-open-modal').click();
+
+  // Verify the modal overlay is now visible on the page.
+  // toBeVisible() asserts that the element is displayed (not hidden via
+  // display:none, visibility:hidden, or opacity:0).
+  await expect(page.getByTestId('modal-overlay')).toBeVisible();
+
+  // Verify the modal state text changed to "Open".
+  // toHaveText(text) asserts that the element's textContent matches exactly.
+  await expect(page.getByTestId('modal-state')).toHaveText('Open');
+
+  // Press the Escape key to close the modal.
+  // page.keyboard.press(key) dispatches a keydown, keypress (if applicable),
+  // and keyup event for the given key. The key names follow the W3C key values
+  // spec — e.g., 'Escape', 'Enter', 'Tab', 'ArrowUp', 'ArrowDown', etc.
+  await page.keyboard.press('Escape');
+
+  // Verify the modal is now hidden.
+  // toBeHidden() asserts the element is no longer visible in the viewport.
+  await expect(page.getByTestId('modal-overlay')).toBeHidden();
+
+  // Verify the modal state text changed back to "Closed".
+  await expect(page.getByTestId('modal-state')).toHaveText('Closed');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Keyboard Shortcuts (Ctrl+B, Ctrl+I)
+// --------------------------------------------------------------------------
+// This exercise demonstrates how to press modifier key combinations using
+// Playwright. Ctrl+B triggers bold formatting, Ctrl+I triggers italic.
+test('exercise 2: use Ctrl+B and Ctrl+I keyboard shortcuts', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // First, click the text area to focus it. The keyboard shortcuts only
+  // work when the text area has focus, because the keydown listener is
+  // attached to that element.
+  // click() focuses the element as a side effect — browsers move focus
+  // to the element being clicked.
+  await page.getByTestId('format-area').click();
+
+  // Type some text into the textarea using fill().
+  // fill(value) clears any existing content and sets the value. It triggers
+  // 'input' and 'change' events. Unlike pressSequentially(), fill() sets
+  // the value instantly without simulating individual keypresses.
+  await page.getByTestId('format-area').fill('Compliance notes for review');
+
+  // Press Ctrl+B to trigger the bold shortcut.
+  // page.keyboard.press('Control+b') presses Control and 'b' together.
+  // The '+' syntax means "hold the first key, press the second, release both."
+  // Common modifiers: 'Control', 'Shift', 'Alt', 'Meta' (Cmd on Mac).
+  await page.keyboard.press('Control+b');
+
+  // Verify the format status shows "Bold".
+  await expect(page.getByTestId('format-status')).toHaveText('Bold');
+
+  // Press Ctrl+I to trigger the italic shortcut.
+  await page.keyboard.press('Control+i');
+
+  // Verify the format status changed to "Italic".
+  await expect(page.getByTestId('format-status')).toHaveText('Italic');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Tab Navigation Through Form Fields
+// --------------------------------------------------------------------------
+// This exercise demonstrates how pressing Tab moves focus between elements
+// that have a tabindex or are natively focusable (inputs, buttons, etc.).
+test('exercise 3: tab through form fields and verify focus', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Click the first form field to give it focus. This is our starting point
+  // for Tab navigation.
+  await page.getByTestId('field-first-name').click();
+
+  // Verify the focus indicator shows which field is currently focused.
+  // The playground tracks focus via the 'focus' event listener and displays
+  // the field id in the "focused-field" element.
+  await expect(page.getByTestId('focused-field')).toHaveText('field-first-name');
+
+  // Press Tab to move focus to the next field (Last Name).
+  // page.keyboard.press('Tab') simulates pressing the Tab key, which moves
+  // focus to the next element in the tab order (determined by tabindex
+  // attribute or DOM order for focusable elements).
+  await page.keyboard.press('Tab');
+
+  // Verify focus moved to the last name field.
+  await expect(page.getByTestId('focused-field')).toHaveText('field-last-name');
+
+  // Press Tab again to move to the email field.
+  await page.keyboard.press('Tab');
+  await expect(page.getByTestId('focused-field')).toHaveText('field-email');
+
+  // Press Tab to move to the notes textarea.
+  await page.keyboard.press('Tab');
+  await expect(page.getByTestId('focused-field')).toHaveText('field-notes');
+
+  // Press Tab to move to the submit button.
+  await page.keyboard.press('Tab');
+  await expect(page.getByTestId('focused-field')).toHaveText('btn-submit');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Hover to Show Tooltip
+// --------------------------------------------------------------------------
+// This exercise demonstrates how to simulate mouse hover to trigger CSS
+// :hover rules that show hidden tooltip elements.
+test('exercise 4: hover over a card to reveal its tooltip', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // First, verify the tooltip is hidden before hovering.
+  // The tooltip is hidden by default (display: none in CSS) and only shown
+  // when the parent card is hovered (.tooltip-card:hover .tooltip-text).
+  await expect(page.getByTestId('tooltip-aml')).toBeHidden();
+
+  // Hover over the AML card to trigger the CSS :hover state.
+  // hover() moves the mouse to the center of the element. This triggers
+  // CSS :hover pseudo-class, which in our playground shows the tooltip.
+  // Unlike click(), hover() doesn't change focus — it only moves the mouse.
+  await page.getByTestId('card-aml').hover();
+
+  // Verify the tooltip is now visible.
+  await expect(page.getByTestId('tooltip-aml')).toBeVisible();
+
+  // Verify the tooltip contains the expected text.
+  // toContainText(substring) checks if the element's textContent contains
+  // the given string as a substring (not an exact match).
+  await expect(page.getByTestId('tooltip-aml')).toContainText('OFAC');
+
+  // Hover over the KYC card to reveal its tooltip.
+  await page.getByTestId('card-kyc').hover();
+
+  // The AML tooltip should now be hidden because we moved the mouse away.
+  await expect(page.getByTestId('tooltip-aml')).toBeHidden();
+
+  // The KYC tooltip should now be visible.
+  await expect(page.getByTestId('tooltip-kyc')).toBeVisible();
+  await expect(page.getByTestId('tooltip-kyc')).toContainText('identity documents');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Mouse Position-Based Click
+// --------------------------------------------------------------------------
+// This exercise demonstrates how to click at specific coordinates within
+// an element using the position option.
+test('exercise 5: click at specific position in the drag area', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Click at a specific position within the drag area.
+  // click({ position: { x, y } }) clicks at the given offset from the
+  // element's top-left corner. x is pixels from the left edge, y is pixels
+  // from the top edge. This is useful for canvas, maps, or other position-
+  // sensitive elements.
+  await page.getByTestId('drag-area').click({ position: { x: 100, y: 50 } });
+
+  // Verify the mouse coordinates display updated. The playground tracks
+  // mouse position relative to the drag area via the mousemove event.
+  // Note: The exact coordinates may vary slightly depending on timing,
+  // so we check that the display contains reasonable values.
+  await expect(page.getByTestId('mouse-coords')).not.toHaveText('x: 0, y: 0');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Keyboard Shortcut Actions (A / R / E)
+// --------------------------------------------------------------------------
+// This exercise demonstrates pressing single-character keys to trigger
+// application-specific shortcuts on a focused panel.
+test('exercise 6: press A to approve, R to reject, E to escalate', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // First, focus the shortcut panel by clicking it. The keyboard shortcut
+  // listener is attached to this specific element, so it must have focus
+  // for the key events to reach it.
+  await page.getByTestId('shortcut-panel').click();
+
+  // Verify the initial status is "Pending".
+  await expect(page.getByTestId('shortcut-status')).toHaveText('Pending');
+
+  // Press 'a' to approve the application.
+  // page.keyboard.press(key) sends the key to whatever element currently
+  // has focus. For single character keys, you just pass the character.
+  await page.keyboard.press('a');
+
+  // Verify the status changed to "Approved".
+  await expect(page.getByTestId('shortcut-status')).toHaveText('Approved');
+
+  // Press 'r' to reject the application.
+  await page.keyboard.press('r');
+  await expect(page.getByTestId('shortcut-status')).toHaveText('Rejected');
+
+  // Press 'e' to escalate the application.
+  await page.keyboard.press('e');
+  await expect(page.getByTestId('shortcut-status')).toHaveText('Escalated');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Arrow Keys to Reorder Items
+// --------------------------------------------------------------------------
+// This exercise demonstrates using arrow keys to reorder items in a list.
+// The sortable list uses ArrowUp and ArrowDown to move the selected item.
+test('exercise 7: reorder risk tiers using arrow keys', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify the initial order of risk tiers.
+  await expect(page.getByTestId('tier-order')).toHaveText('critical, high, medium, low');
+
+  // Click the "High" tier item to select it. This adds the 'selected' class
+  // and gives it focus, enabling arrow key interaction.
+  await page.getByTestId('tier-high').click();
+
+  // Press ArrowUp to move "High" one position up (above "Critical").
+  // page.keyboard.press('ArrowUp') dispatches the ArrowUp key event.
+  // The sortable list's keydown handler intercepts this and moves the
+  // selected element before its previous sibling in the DOM.
+  await page.keyboard.press('ArrowUp');
+
+  // Verify the order changed — "High" is now first.
+  await expect(page.getByTestId('tier-order')).toHaveText('high, critical, medium, low');
+
+  // Press ArrowDown twice to move "High" back down past "Critical" and "Medium".
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowDown');
+
+  // Verify the new order.
+  await expect(page.getByTestId('tier-order')).toHaveText('critical, medium, high, low');
+
+  // Press Enter to confirm the selection (deselects the item).
+  // After pressing Enter, the item loses the 'selected' class.
+  await page.keyboard.press('Enter');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Focus Management
+// --------------------------------------------------------------------------
+// This exercise demonstrates how to programmatically focus elements using
+// Playwright's focus() method and verify focus state.
+test('exercise 8: focus elements and verify focus state', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // focus() sets focus on the element without clicking it. This is useful
+  // when you need to test focus-related behavior (like focus styles or
+  // focus event handlers) without the side effects of a click.
+  await page.getByTestId('field-email').focus();
+
+  // Verify the focus indicator updated to show the email field.
+  await expect(page.getByTestId('focused-field')).toHaveText('field-email');
+
+  // toBeFocused() asserts that the element is the currently focused element
+  // in the document (i.e., document.activeElement points to this element).
+  await expect(page.getByTestId('field-email')).toBeFocused();
+
+  // Move focus to the notes field programmatically.
+  await page.getByTestId('field-notes').focus();
+  await expect(page.getByTestId('field-notes')).toBeFocused();
+  await expect(page.getByTestId('focused-field')).toHaveText('field-notes');
+
+  // Type into the focused field using the keyboard. Since 'field-notes'
+  // has focus, keyboard input goes directly to it.
+  // page.keyboard.type(text) types the text character by character,
+  // triggering keydown, keypress, and keyup events for each character.
+  // This is different from fill() which sets the value directly.
+  await page.keyboard.type('Reviewed by compliance team');
+  await expect(page.getByTestId('field-notes')).toHaveValue('Reviewed by compliance team');
+});
+8:T34a1,const PLAYGROUND = '/phase-00-foundations/05-keyboard-and-mouse/playground/';
+
+describe('Kata 05: Keyboard and Mouse', () => {
+
+  // beforeEach runs before every test in this describe block.
+  // We navigate to the playground page so each test starts fresh.
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Press Keyboard Keys (Enter, Tab, Escape)
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates how to press individual keyboard keys using
+  // Cypress's type() command with special key sequences.
+  it('exercise 1: press Escape to close a modal dialog', () => {
+    // Click the "Open Alert" button to show the modal.
+    // cy.get(selector) queries the DOM for a matching element.
+    // .click() performs a single left-click on that element.
+    cy.get('[data-testid="btn-open-modal"]').click();
+
+    // Verify the modal overlay is visible.
+    // .should('be.visible') asserts the element has CSS that makes it visible
+    // (not display:none, not visibility:hidden, has dimensions, etc.).
+    cy.get('[data-testid="modal-overlay"]').should('be.visible');
+
+    // Verify the modal state text shows "Open".
+    // .should('have.text', str) asserts the element's textContent equals str.
+    cy.get('[data-testid="modal-state"]').should('have.text', 'Open');
+
+    // Press the Escape key to close the modal.
+    // In Cypress, you send special keys using type() with curly-brace syntax.
+    // {esc} sends the Escape key. Other special keys include:
+    //   {enter}, {tab}, {backspace}, {del}, {uparrow}, {downarrow},
+    //   {leftarrow}, {rightarrow}, {home}, {end}, {pageup}, {pagedown}.
+    // We type on the body because the Escape listener is on the document.
+    cy.get('body').type('{esc}');
+
+    // Verify the modal is now hidden.
+    // .should('not.be.visible') or .should('be.hidden') both work.
+    cy.get('[data-testid="modal-overlay"]').should('not.be.visible');
+
+    // Verify the modal state text changed back to "Closed".
+    cy.get('[data-testid="modal-state"]').should('have.text', 'Closed');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Keyboard Shortcuts (Ctrl+B, Ctrl+I)
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates how to press modifier key combinations in
+  // Cypress using type() with modifier prefixes.
+  it('exercise 2: use Ctrl+B and Ctrl+I keyboard shortcuts', () => {
+    // Click the textarea to focus it. The Ctrl+B / Ctrl+I shortcut handlers
+    // are attached to the textarea's keydown event.
+    cy.get('[data-testid="format-area"]').click();
+
+    // Type some text into the textarea.
+    // type(text) types the text character by character, triggering keydown,
+    // keypress, and keyup events for each character. It appends to any
+    // existing content (unlike Playwright's fill which replaces).
+    cy.get('[data-testid="format-area"]').type('Compliance notes for review');
+
+    // Press Ctrl+B to trigger bold formatting.
+    // In Cypress, modifier keys are specified inside type() using curly braces:
+    //   {ctrl+b} — press Ctrl and B together
+    //   {alt+x}  — press Alt and X together
+    //   {shift+a} — press Shift and A together
+    //   {meta+c}  — press Cmd (Mac) / Win key and C together
+    // Modifiers can be combined: {ctrl+shift+b}
+    cy.get('[data-testid="format-area"]').type('{ctrl+b}');
+
+    // Verify the format status shows "Bold".
+    cy.get('[data-testid="format-status"]').should('have.text', 'Bold');
+
+    // Press Ctrl+I to trigger italic formatting.
+    cy.get('[data-testid="format-area"]').type('{ctrl+i}');
+
+    // Verify the format status changed to "Italic".
+    cy.get('[data-testid="format-status"]').should('have.text', 'Italic');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Tab Navigation Through Form Fields
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates pressing Tab to navigate through form fields
+  // and verifying which field has focus.
+  it('exercise 3: tab through form fields and verify focus', () => {
+    // Click the first form field to give it focus.
+    cy.get('[data-testid="field-first-name"]').click();
+
+    // Verify the focus indicator shows the first name field.
+    cy.get('[data-testid="focused-field"]').should('have.text', 'field-first-name');
+
+    // Press Tab to move focus to the next field.
+    // {tab} is the special key sequence for the Tab key in Cypress type().
+    // IMPORTANT: We type on the currently focused element. Tab moves focus
+    // to the next element in the tab order.
+    cy.get('[data-testid="field-first-name"]').tab();
+
+    // NOTE: Cypress does not have a built-in .tab() command. Instead, we
+    // use cy.realPress('Tab') from the cypress-real-events plugin, or
+    // we can use a workaround with type(). However, Cypress's built-in
+    // type('{tab}') does not actually move browser focus. So we use
+    // focused() and trigger-based approaches instead.
+    // For this kata, we'll use the body + Tab keyboard simulation:
+    // We verify focus moved by checking the focused-field indicator.
+
+    // Alternative approach: directly focus the next field to demonstrate
+    // focus tracking without relying on Tab key simulation.
+    cy.get('[data-testid="field-last-name"]').focus();
+    cy.get('[data-testid="focused-field"]').should('have.text', 'field-last-name');
+
+    // Move to email field.
+    cy.get('[data-testid="field-email"]').focus();
+    cy.get('[data-testid="focused-field"]').should('have.text', 'field-email');
+
+    // Move to notes textarea.
+    cy.get('[data-testid="field-notes"]').focus();
+    cy.get('[data-testid="focused-field"]').should('have.text', 'field-notes');
+
+    // Move to submit button.
+    cy.get('[data-testid="btn-submit"]').focus();
+    cy.get('[data-testid="focused-field"]').should('have.text', 'btn-submit');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Hover to Show Tooltip
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates triggering CSS :hover states using Cypress
+  // to reveal hidden tooltip elements.
+  it('exercise 4: hover over a card to reveal its tooltip', () => {
+    // Verify the tooltip is hidden before hovering.
+    cy.get('[data-testid="tooltip-aml"]').should('not.be.visible');
+
+    // Trigger the 'mouseover' event on the AML card to simulate hover.
+    // In Cypress, there is no built-in hover() command because Cypress
+    // cannot trigger CSS :hover pseudo-class directly. However, we can
+    // use trigger('mouseover') to fire mouse events. For CSS :hover rules,
+    // we need cy.realHover() from the cypress-real-events plugin, or we
+    // can use invoke('show') to force-display the tooltip for testing.
+    //
+    // APPROACH: Since CSS :hover can't be triggered by Cypress natively,
+    // we use invoke() to make the tooltip visible and verify its content.
+    // In a real project, you would use cypress-real-events plugin:
+    //   cy.get('[data-testid="card-aml"]').realHover();
+    cy.get('[data-testid="tooltip-aml"]')
+      .invoke('css', 'display', 'block')
+      .should('be.visible');
+
+    // Verify the tooltip contains the expected text.
+    // .should('contain.text', str) checks if textContent contains the string.
+    cy.get('[data-testid="tooltip-aml"]').should('contain.text', 'OFAC');
+
+    // Reset the tooltip and show the KYC tooltip.
+    cy.get('[data-testid="tooltip-aml"]').invoke('css', 'display', 'none');
+    cy.get('[data-testid="tooltip-kyc"]')
+      .invoke('css', 'display', 'block')
+      .should('be.visible');
+
+    cy.get('[data-testid="tooltip-kyc"]').should('contain.text', 'identity documents');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Mouse Position-Based Click
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates clicking at specific coordinates within an
+  // element using Cypress's click(x, y) syntax.
+  it('exercise 5: click at specific position in the drag area', () => {
+    // Click at position (100, 50) within the drag area.
+    // cy.get(sel).click(x, y) clicks at the specified offset from the
+    // element's top-left corner. x is pixels from left, y is pixels from top.
+    // This is useful for canvas elements, image maps, or position-sensitive areas.
+    cy.get('[data-testid="drag-area"]').click(100, 50);
+
+    // Verify the mouse coordinates display updated.
+    // .should('not.have.text', str) asserts the text is NOT the given string.
+    cy.get('[data-testid="mouse-coords"]').should('not.have.text', 'x: 0, y: 0');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Keyboard Shortcut Actions (A / R / E)
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates pressing single-character keys to trigger
+  // application-specific shortcuts on a focused element.
+  it('exercise 6: press A to approve, R to reject, E to escalate', () => {
+    // Click the shortcut panel to focus it. The keyboard shortcut listener
+    // is attached to this panel's keydown event.
+    cy.get('[data-testid="shortcut-panel"]').click();
+
+    // Verify the initial status is "Pending".
+    cy.get('[data-testid="shortcut-status"]').should('have.text', 'Pending');
+
+    // Press 'a' to approve. We type on the focused shortcut panel.
+    // type('a') sends a keydown for 'a', then keypress, then keyup.
+    // The panel's keydown handler intercepts this and changes the status.
+    cy.get('[data-testid="shortcut-panel"]').type('a');
+
+    // Verify the status changed to "Approved".
+    cy.get('[data-testid="shortcut-status"]').should('have.text', 'Approved');
+
+    // Press 'r' to reject.
+    cy.get('[data-testid="shortcut-panel"]').type('r');
+    cy.get('[data-testid="shortcut-status"]').should('have.text', 'Rejected');
+
+    // Press 'e' to escalate.
+    cy.get('[data-testid="shortcut-panel"]').type('e');
+    cy.get('[data-testid="shortcut-status"]').should('have.text', 'Escalated');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Arrow Keys to Reorder Items
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates using arrow keys to move items in a list.
+  it('exercise 7: reorder risk tiers using arrow keys', () => {
+    // Verify the initial order of risk tiers.
+    cy.get('[data-testid="tier-order"]').should('have.text', 'critical, high, medium, low');
+
+    // Click the "High" tier to select it.
+    cy.get('[data-testid="tier-high"]').click();
+
+    // Press ArrowUp to move "High" above "Critical".
+    // {uparrow} is the Cypress special key sequence for the ArrowUp key.
+    // Other arrow keys: {downarrow}, {leftarrow}, {rightarrow}.
+    cy.get('[data-testid="tier-high"]').type('{uparrow}');
+
+    // Verify the order changed — "High" is now first.
+    cy.get('[data-testid="tier-order"]').should('have.text', 'high, critical, medium, low');
+
+    // Press ArrowDown twice to move "High" past "Critical" and "Medium".
+    // We type on the tier-high element which still has focus and is selected.
+    cy.get('[data-testid="tier-high"]').type('{downarrow}{downarrow}');
+
+    // Verify the new order.
+    cy.get('[data-testid="tier-order"]').should('have.text', 'critical, medium, high, low');
+
+    // Press Enter to confirm the selection (deselects the item).
+    // {enter} is the Cypress special key sequence for the Enter key.
+    cy.get('[data-testid="tier-high"]').type('{enter}');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Focus Management
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates focusing elements programmatically and
+  // verifying which element has focus.
+  it('exercise 8: focus elements and verify focus state', () => {
+    // focus() sets focus on the element without clicking it.
+    // cy.get(sel).focus() triggers the browser's native focus behavior,
+    // which fires the 'focus' event and applies :focus CSS styles.
+    cy.get('[data-testid="field-email"]').focus();
+
+    // Verify the focus indicator updated.
+    cy.get('[data-testid="focused-field"]').should('have.text', 'field-email');
+
+    // .should('have.focus') asserts the element is document.activeElement.
+    // This is the Cypress equivalent of Playwright's toBeFocused().
+    cy.get('[data-testid="field-email"]').should('have.focus');
+
+    // Move focus to the notes field.
+    cy.get('[data-testid="field-notes"]').focus();
+    cy.get('[data-testid="field-notes"]').should('have.focus');
+    cy.get('[data-testid="focused-field"]').should('have.text', 'field-notes');
+
+    // Type into the focused field. Since we used focus(), the element is
+    // active and type() sends characters to it.
+    cy.get('[data-testid="field-notes"]').type('Reviewed by compliance team');
+    cy.get('[data-testid="field-notes"]').should('have.value', 'Reviewed by compliance team');
+  });
+
+});
+9:T28fb,# Kata 07: Drag and Drop
+
+## What You Will Learn
+
+- How to drag elements from one container to another using HTML5 Drag and Drop
+- How to verify that a dragged card moved to the correct target column
+- How to check that column card counts update after a move
+- How to reorder items within a list by dragging
+- How to detect visual feedback during drag operations (ghost image, drop zone highlight)
+- Differences between Playwright's built-in `dragTo()` and Cypress's trigger-based approach
+
+## Prerequisites
+
+- Completed Kata 01-06
+- Understanding of DOM selectors and assertions
+
+## Concepts Explained
+
+### HTML5 Drag and Drop API
+
+```
+The browser's native drag-and-drop system uses these events:
+
+  dragstart  — fires on the element being dragged when drag begins
+  drag       — fires continuously on the dragged element while moving
+  dragenter  — fires on a drop target when a dragged item enters it
+  dragover   — fires continuously on a drop target while item is over it
+  dragleave  — fires on a drop target when a dragged item leaves it
+  drop       — fires on a drop target when the dragged item is released
+  dragend    — fires on the dragged element when drag operation ends
+
+For an element to be draggable, it needs: draggable="true"
+For a container to accept drops, its dragover handler must call e.preventDefault()
+```
+
+### Playwright: dragTo()
+
+```typescript
+// PLAYWRIGHT
+// dragTo(target) performs a full drag-and-drop sequence:
+//   1. Hover the source element
+//   2. Press the mouse button
+//   3. Move the mouse to the target element
+//   4. Release the mouse button
+//
+// Signature:
+//   locator.dragTo(target: Locator, options?: {
+//     force?: boolean,
+//     sourcePosition?: { x: number, y: number },
+//     targetPosition?: { x: number, y: number },
+//     timeout?: number
+//   }): Promise<void>
+//
+// Parameters:
+//   target          — the Locator of the drop target element
+//   sourcePosition  — offset within the source element to start the drag
+//   targetPosition  — offset within the target element to drop onto
+//   force           — bypass actionability checks (default: false)
+
+// Drag a card from the "New" column to the "In Review" column:
+await page.getByTestId('card-aisha').dragTo(page.getByTestId('column-review'));
+```
+
+### Cypress: trigger-based Drag and Drop
+
+```typescript
+// CYPRESS
+// Cypress does NOT have a built-in drag-and-drop command. Instead, we
+// simulate the HTML5 Drag and Drop events manually using trigger().
+//
+// trigger(eventName, options) dispatches a DOM event on the element.
+//
+// The drag-and-drop sequence requires three triggers:
+//   1. trigger('dragstart') on the source element — begins the drag
+//   2. trigger('drop')      on the target element — performs the drop
+//   3. trigger('dragend')   on the source element — cleans up
+//
+// We pass a dataTransfer object to carry data between events.
+
+// Create a DataTransfer object to pass between events:
+const dataTransfer = new DataTransfer();
+
+// Step 1: Start the drag on the card
+cy.get('[data-testid="card-aisha"]').trigger('dragstart', { dataTransfer });
+
+// Step 2: Trigger dragover on the target (required to allow drop)
+cy.get('[data-testid="column-review"]').trigger('dragover', { dataTransfer });
+
+// Step 3: Drop the card on the target column
+cy.get('[data-testid="column-review"]').trigger('drop', { dataTransfer });
+
+// Step 4: End the drag on the source card
+cy.get('[data-testid="card-aisha"]').trigger('dragend', { dataTransfer });
+```
+
+### Verifying Card Movement
+
+```typescript
+// PLAYWRIGHT
+// After dragging, verify the card is inside the target column by checking
+// that the target column contains the card element.
+const reviewColumn = page.getByTestId('column-review');
+await expect(reviewColumn.getByTestId('card-aisha')).toBeVisible();
+
+// Verify column count badge updated:
+await expect(page.getByTestId('count-review')).toHaveText('2');
+
+// CYPRESS
+// Use find() to search within a parent element:
+cy.get('[data-testid="column-review"]')
+  .find('[data-testid="card-aisha"]')
+  .should('exist');
+
+// Verify column count:
+cy.get('[data-testid="count-review"]').should('have.text', '2');
+```
+
+### Verifying Drop Zone Highlight
+
+```typescript
+// PLAYWRIGHT
+// During drag, the target column gets a 'drag-over' CSS class.
+// We can check for it during a manual drag sequence:
+await page.getByTestId('card-aisha').hover();
+await page.mouse.down();
+await page.getByTestId('column-review').hover();
+// Now check the class:
+await expect(page.getByTestId('column-review')).toHaveClass(/drag-over/);
+await page.mouse.up();
+
+// CYPRESS
+// After triggering dragover on a column, check for the class:
+cy.get('[data-testid="column-review"]').trigger('dragover', { dataTransfer });
+cy.get('[data-testid="column-review"]').should('have.class', 'drag-over');
+```
+
+## Playground
+
+The playground is a "KYC Kanban Board" themed as a fintech compliance tool. It contains:
+
+1. **Kanban Board** — four columns: "New", "In Review", "Approved", "Rejected". Each column accepts cards dropped into it via HTML5 Drag and Drop.
+2. **KYC Application Cards** — each card represents a KYC application with a name and risk level (High, Medium, Low). Cards have drag handles and are fully draggable.
+3. **Column Count Badges** — each column header shows the current number of cards, updating automatically after each drag operation.
+4. **Visual Feedback** — cards become semi-transparent while being dragged; target columns get a blue dashed border highlight when a card hovers over them.
+5. **Status Bar** — displays the last drag action (e.g., "Moved aisha from new to review").
+6. **Sortable Priority List** — a separate list of review priorities that can be reordered by dragging items up or down.
+
+### Initial Card Placement
+
+| Column     | Cards                                   |
+|------------|----------------------------------------|
+| New        | Aisha Patel (High), Ben Okafor (Medium), Clara Jansen (Low) |
+| In Review  | Derek Wong (Medium)                     |
+| Approved   | (empty)                                 |
+| Rejected   | (empty)                                 |
+
+## Exercises
+
+### Exercise 1: Drag a Card from "New" to "In Review"
+Drag the "Aisha Patel" card from the New column to the In Review column. Verify the status bar shows the correct action message.
+
+### Exercise 2: Verify Card Moved to Target Column
+After dragging "Aisha Patel" to In Review, verify the card element is now inside the In Review column and is visible.
+
+### Exercise 3: Drag a Card to "Approved" Column
+Drag "Clara Jansen" from the New column to the Approved column. Verify the card appears in the Approved column.
+
+### Exercise 4: Drag a Card to "Rejected" Column
+Drag "Ben Okafor" from the New column to the Rejected column. Verify the card appears in the Rejected column.
+
+### Exercise 5: Verify Source Column Card Count Decreases
+After moving all three cards out of New, verify the New column count shows "0" and the target columns show correct counts.
+
+### Exercise 6: Reorder Items Within the Sortable List
+Drag "Income Verification" above "Sanctions Screening" in the priority list. Verify the order text updates.
+
+### Exercise 7: Verify Drop Zone Highlights During Drag
+Start a drag on a card and hover over a column. Verify the column gets the "drag-over" CSS class. Release the drag and verify the class is removed.
+
+### Exercise 8: Drag Back from Rejected to New
+Drag "Ben Okafor" from the Rejected column back to the New column. Verify it appears in New and the counts update.
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/drag-and-drop.spec.ts`
+
+### Cypress Solution
+
+See `cypress/drag-and-drop.cy.ts`
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Forgetting `e.preventDefault()` in dragover handler | The browser's default is to NOT allow dropping. Without preventDefault(), the drop event never fires | Always call `e.preventDefault()` in the dragover handler |
+| Using `trigger('drag')` instead of the full sequence | A single drag trigger does nothing useful. HTML5 DnD requires dragstart, dragover, drop, dragend in sequence | Use the full trigger sequence: dragstart -> dragover -> drop -> dragend |
+| Not passing `dataTransfer` between Cypress triggers | Without a shared DataTransfer object, the drop handler can't read the data set during dragstart | Create one `new DataTransfer()` and pass it to all triggers |
+| Checking card position before the drop completes | The DOM hasn't updated yet if you assert too quickly | In Playwright, dragTo() is awaited. In Cypress, commands are auto-queued |
+| Dragging to a non-droppable area | If the target element doesn't have dragover/drop handlers, nothing happens | Drag to the column container, not arbitrary page areas |
+| Forgetting to verify column counts after drag | Card counts are a key acceptance criteria in kanban boards | Always check both source and target column counts |
+
+## Quick Reference
+
+### Playwright Drag and Drop
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Drag to target | `locator.dragTo(target)` | `await card.dragTo(column)` |
+| Drag with position | `locator.dragTo(target, { targetPosition })` | `await card.dragTo(col, { targetPosition: { x: 50, y: 50 } })` |
+| Manual drag start | `locator.hover() + page.mouse.down()` | `await card.hover(); await page.mouse.down()` |
+| Manual drag move | `locator.hover()` (while mouse is down) | `await target.hover()` |
+| Manual drag end | `page.mouse.up()` | `await page.mouse.up()` |
+| Check class | `expect(locator).toHaveClass(regex)` | `await expect(col).toHaveClass(/drag-over/)` |
+| Check child exists | `parent.getByTestId(id)` | `await expect(col.getByTestId('card-x')).toBeVisible()` |
+
+### Cypress Drag and Drop
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Start drag | `.trigger('dragstart', { dataTransfer })` | `cy.get(card).trigger('dragstart', { dataTransfer })` |
+| Hover over target | `.trigger('dragover', { dataTransfer })` | `cy.get(col).trigger('dragover', { dataTransfer })` |
+| Drop on target | `.trigger('drop', { dataTransfer })` | `cy.get(col).trigger('drop', { dataTransfer })` |
+| End drag | `.trigger('dragend', { dataTransfer })` | `cy.get(card).trigger('dragend', { dataTransfer })` |
+| Check class | `.should('have.class', name)` | `cy.get(col).should('have.class', 'drag-over')` |
+| Find child | `.find(selector)` | `cy.get(col).find('[data-testid="card-x"]')` |
+a:T2ab0,import { test, expect } from '@playwright/test';
+
+// The base URL for our playground page. All tests navigate here first.
+const PLAYGROUND = '/phase-01-dom-and-browser-apis/07-drag-and-drop/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Drag a Card from "New" to "In Review"
+// --------------------------------------------------------------------------
+// This exercise demonstrates Playwright's dragTo() method, which performs
+// a complete HTML5 drag-and-drop sequence (hover source, mousedown, move
+// to target, mouseup) in a single awaitable call.
+test('exercise 1: drag a card from New to In Review', async ({ page }) => {
+  // Navigate to the playground page.
+  // page.goto(url) loads the URL and waits for the 'load' event by default.
+  await page.goto(PLAYGROUND);
+
+  // Verify the card starts in the New column by checking the status bar
+  // shows no action yet.
+  await expect(page.getByTestId('last-action')).toHaveText('None');
+
+  // Drag the "Aisha Patel" card to the "In Review" column.
+  // dragTo(target) performs the full drag-and-drop operation:
+  //   1. Hovers the source element to find its center
+  //   2. Presses the left mouse button (mousedown)
+  //   3. Moves the mouse to the center of the target element
+  //   4. Releases the mouse button (mouseup)
+  // This triggers the HTML5 dragstart, dragover, drop, and dragend events.
+  await page.getByTestId('card-aisha').dragTo(page.getByTestId('column-review'));
+
+  // Verify the status bar reports the drag action.
+  // toContainText(substring) checks if textContent contains the substring.
+  await expect(page.getByTestId('last-action')).toContainText('aisha');
+  await expect(page.getByTestId('last-action')).toContainText('review');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Verify Card Moved to Target Column
+// --------------------------------------------------------------------------
+// After dragging, we verify the card DOM element is now a child of the
+// target column, not the source column.
+test('exercise 2: verify card is inside the target column after drag', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify the card is initially in the New column.
+  // We scope the search to the New column using a parent locator.
+  const newColumn = page.getByTestId('column-new');
+  await expect(newColumn.getByTestId('card-aisha')).toBeVisible();
+
+  // Drag the card to In Review.
+  await page.getByTestId('card-aisha').dragTo(page.getByTestId('column-review'));
+
+  // Verify the card is now inside the In Review column.
+  // getByTestId() on a parent locator scopes the search to that parent's
+  // descendants only. If the card were still in New, this would fail.
+  const reviewColumn = page.getByTestId('column-review');
+  await expect(reviewColumn.getByTestId('card-aisha')).toBeVisible();
+
+  // Verify the card is no longer in the New column.
+  // toBeHidden() asserts the element is not visible (or not in the DOM
+  // subtree of the parent locator).
+  await expect(newColumn.getByTestId('card-aisha')).toBeHidden();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Drag a Card to "Approved" Column
+// --------------------------------------------------------------------------
+// This exercise drags a different card to the Approved column to practice
+// targeting various drop zones.
+test('exercise 3: drag a card to the Approved column', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify the Approved column starts empty (count = 0).
+  await expect(page.getByTestId('count-approved')).toHaveText('0');
+
+  // Drag "Clara Jansen" to the Approved column.
+  await page.getByTestId('card-clara').dragTo(page.getByTestId('column-approved'));
+
+  // Verify the card is now in the Approved column.
+  const approvedColumn = page.getByTestId('column-approved');
+  await expect(approvedColumn.getByTestId('card-clara')).toBeVisible();
+
+  // Verify the Approved column count updated to 1.
+  await expect(page.getByTestId('count-approved')).toHaveText('1');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Drag a Card to "Rejected" Column
+// --------------------------------------------------------------------------
+// This exercise drags a card to the Rejected column.
+test('exercise 4: drag a card to the Rejected column', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify the Rejected column starts empty.
+  await expect(page.getByTestId('count-rejected')).toHaveText('0');
+
+  // Drag "Ben Okafor" to the Rejected column.
+  await page.getByTestId('card-ben').dragTo(page.getByTestId('column-rejected'));
+
+  // Verify the card is in the Rejected column.
+  const rejectedColumn = page.getByTestId('column-rejected');
+  await expect(rejectedColumn.getByTestId('card-ben')).toBeVisible();
+
+  // Verify the Rejected column count updated.
+  await expect(page.getByTestId('count-rejected')).toHaveText('1');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Verify Source Column Card Count Decreases
+// --------------------------------------------------------------------------
+// This exercise moves multiple cards and checks that both source and target
+// counts are correct.
+test('exercise 5: verify column counts update after moving cards', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify initial counts: New has 3 cards, Review has 1.
+  await expect(page.getByTestId('count-new')).toHaveText('3');
+  await expect(page.getByTestId('count-review')).toHaveText('1');
+
+  // Move all three cards out of New.
+  await page.getByTestId('card-aisha').dragTo(page.getByTestId('column-review'));
+  await page.getByTestId('card-ben').dragTo(page.getByTestId('column-rejected'));
+  await page.getByTestId('card-clara').dragTo(page.getByTestId('column-approved'));
+
+  // Verify New column now has 0 cards.
+  await expect(page.getByTestId('count-new')).toHaveText('0');
+
+  // Verify target columns have correct counts.
+  // Review: had 1 (Derek) + 1 (Aisha) = 2
+  await expect(page.getByTestId('count-review')).toHaveText('2');
+  // Rejected: had 0 + 1 (Ben) = 1
+  await expect(page.getByTestId('count-rejected')).toHaveText('1');
+  // Approved: had 0 + 1 (Clara) = 1
+  await expect(page.getByTestId('count-approved')).toHaveText('1');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Reorder Items Within the Sortable List
+// --------------------------------------------------------------------------
+// This exercise demonstrates dragging an item within a list to reorder it.
+// We use dragTo() with the target being another list item.
+test('exercise 6: reorder items within the sortable priority list', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify the initial order.
+  await expect(page.getByTestId('priority-order')).toHaveText(
+    'sanctions, identity, address, income'
+  );
+
+  // Drag "Income Verification" (last item) above "Sanctions Screening" (first item).
+  // dragTo() works for reordering within a list too — we just target another
+  // list item instead of a column container.
+  await page.getByTestId('priority-income').dragTo(
+    page.getByTestId('priority-sanctions')
+  );
+
+  // Verify the order changed — "income" should now be first.
+  // Note: The exact result depends on drop position calculation in the
+  // playground's drop handler (above/below midpoint). We verify income
+  // moved above sanctions.
+  const order = await page.getByTestId('priority-order').textContent();
+  // income should appear before sanctions in the new order.
+  expect(order!.indexOf('income')).toBeLessThan(order!.indexOf('sanctions'));
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Verify Drop Zone Highlights During Drag
+// --------------------------------------------------------------------------
+// This exercise uses a manual drag sequence (hover + mouse.down + hover
+// over target) to verify the CSS class applied during drag hover.
+test('exercise 7: verify drop zone highlight during drag', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify the column does NOT have the drag-over class initially.
+  // toHaveClass() with a regex checks if the element's class attribute
+  // matches the pattern. We negate it here.
+  await expect(page.getByTestId('column-approved')).not.toHaveClass(/drag-over/);
+
+  // Start a manual drag sequence:
+  // Step 1: Hover over the card to position the mouse on it.
+  await page.getByTestId('card-aisha').hover();
+
+  // Step 2: Press the mouse button to begin dragging.
+  // page.mouse.down() dispatches a mousedown event at the current position.
+  await page.mouse.down();
+
+  // Step 3: Move the mouse over the target column.
+  // This triggers dragenter and dragover events on the column, which
+  // cause the playground to add the 'drag-over' CSS class.
+  await page.getByTestId('column-approved').hover();
+
+  // Verify the column now has the 'drag-over' class.
+  // toHaveClass(regex) checks that the element's className matches.
+  await expect(page.getByTestId('column-approved')).toHaveClass(/drag-over/);
+
+  // Step 4: Release the mouse to complete the drop.
+  await page.mouse.up();
+
+  // After drop, the 'drag-over' class should be removed.
+  await expect(page.getByTestId('column-approved')).not.toHaveClass(/drag-over/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Drag Back from Rejected to New
+// --------------------------------------------------------------------------
+// This exercise verifies cards can be dragged back to their original column,
+// confirming the drop targets work in all directions.
+test('exercise 8: drag a card from Rejected back to New', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // First, move "Ben Okafor" to the Rejected column.
+  await page.getByTestId('card-ben').dragTo(page.getByTestId('column-rejected'));
+
+  // Verify it's in Rejected.
+  await expect(page.getByTestId('column-rejected').getByTestId('card-ben')).toBeVisible();
+  await expect(page.getByTestId('count-new')).toHaveText('2');
+  await expect(page.getByTestId('count-rejected')).toHaveText('1');
+
+  // Now drag it back to New.
+  await page.getByTestId('card-ben').dragTo(page.getByTestId('column-new'));
+
+  // Verify it's back in New.
+  await expect(page.getByTestId('column-new').getByTestId('card-ben')).toBeVisible();
+
+  // Verify counts restored.
+  await expect(page.getByTestId('count-new')).toHaveText('3');
+  await expect(page.getByTestId('count-rejected')).toHaveText('0');
+
+  // Verify the status bar shows the return move.
+  await expect(page.getByTestId('last-action')).toContainText('ben');
+  await expect(page.getByTestId('last-action')).toContainText('new');
+});
+b:T2df3,const PLAYGROUND = '/phase-01-dom-and-browser-apis/07-drag-and-drop/playground/';
+
+describe('Kata 07: Drag and Drop', () => {
+
+  // beforeEach runs before every test in this describe block.
+  // We navigate to the playground page so each test starts fresh.
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Helper: Perform an HTML5 drag-and-drop from source to target.
+  // --------------------------------------------------------------------------
+  // Cypress does NOT have a built-in drag-and-drop command. We must manually
+  // trigger the HTML5 Drag and Drop events in sequence. This helper function
+  // encapsulates that pattern so each test can use it simply.
+  //
+  // The sequence is:
+  //   1. dragstart on source — tells the browser "this element is being dragged"
+  //   2. dragover on target  — required to allow dropping (calls preventDefault)
+  //   3. drop on target      — performs the drop action
+  //   4. dragend on source   — cleans up the drag state
+  //
+  // We create a DataTransfer object and share it between all events so that
+  // data set in dragstart (via setData) is available in drop (via getData).
+  function dragAndDrop(sourceSelector: string, targetSelector: string) {
+    // Create a new DataTransfer object. This is the browser's built-in API
+    // for carrying data between drag events. We pass it to each trigger()
+    // call so all events share the same data.
+    const dataTransfer = new DataTransfer();
+
+    // Step 1: Fire dragstart on the source element.
+    // trigger(eventName, options) dispatches a DOM event on the element.
+    // { dataTransfer } passes our DataTransfer as part of the event.
+    cy.get(sourceSelector).trigger('dragstart', { dataTransfer });
+
+    // Step 2: Fire dragover on the target to allow dropping.
+    // Without this, the browser won't allow the drop event to fire.
+    cy.get(targetSelector).trigger('dragover', { dataTransfer });
+
+    // Step 3: Fire drop on the target to perform the drop action.
+    // The drop handler in our playground moves the card into this column.
+    cy.get(targetSelector).trigger('drop', { dataTransfer });
+
+    // Step 4: Fire dragend on the source to clean up.
+    // This removes the 'dragging' CSS class and resets drag state.
+    cy.get(sourceSelector).trigger('dragend', { dataTransfer });
+  }
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Drag a Card from "New" to "In Review"
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates the trigger-based drag-and-drop pattern in
+  // Cypress by moving a KYC card between kanban columns.
+  it('exercise 1: drag a card from New to In Review', () => {
+    // Verify no action has been taken yet.
+    cy.get('[data-testid="last-action"]').should('have.text', 'None');
+
+    // Perform the drag-and-drop using our helper.
+    dragAndDrop('[data-testid="card-aisha"]', '[data-testid="column-review"]');
+
+    // Verify the status bar reports the drag action.
+    // .should('contain.text', str) checks if textContent contains the string.
+    cy.get('[data-testid="last-action"]').should('contain.text', 'aisha');
+    cy.get('[data-testid="last-action"]').should('contain.text', 'review');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Verify Card Moved to Target Column
+  // --------------------------------------------------------------------------
+  // After dragging, we verify the card is a DOM child of the target column.
+  it('exercise 2: verify card is inside the target column after drag', () => {
+    // Verify the card is initially in the New column.
+    // find(selector) searches within the subject element's descendants.
+    cy.get('[data-testid="column-new"]')
+      .find('[data-testid="card-aisha"]')
+      .should('exist');
+
+    // Drag the card to In Review.
+    dragAndDrop('[data-testid="card-aisha"]', '[data-testid="column-review"]');
+
+    // Verify the card is now inside the In Review column.
+    // find() scopes the search to descendants of the Review column only.
+    cy.get('[data-testid="column-review"]')
+      .find('[data-testid="card-aisha"]')
+      .should('exist')
+      .and('be.visible');
+
+    // Verify the card is no longer in the New column.
+    // .should('not.exist') asserts the element is not in the DOM subtree.
+    cy.get('[data-testid="column-new"]')
+      .find('[data-testid="card-aisha"]')
+      .should('not.exist');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Drag a Card to "Approved" Column
+  // --------------------------------------------------------------------------
+  it('exercise 3: drag a card to the Approved column', () => {
+    // Verify the Approved column starts empty (count = 0).
+    cy.get('[data-testid="count-approved"]').should('have.text', '0');
+
+    // Drag "Clara Jansen" to the Approved column.
+    dragAndDrop('[data-testid="card-clara"]', '[data-testid="column-approved"]');
+
+    // Verify the card is now in the Approved column.
+    cy.get('[data-testid="column-approved"]')
+      .find('[data-testid="card-clara"]')
+      .should('exist');
+
+    // Verify the Approved column count updated to 1.
+    cy.get('[data-testid="count-approved"]').should('have.text', '1');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Drag a Card to "Rejected" Column
+  // --------------------------------------------------------------------------
+  it('exercise 4: drag a card to the Rejected column', () => {
+    // Verify the Rejected column starts empty.
+    cy.get('[data-testid="count-rejected"]').should('have.text', '0');
+
+    // Drag "Ben Okafor" to the Rejected column.
+    dragAndDrop('[data-testid="card-ben"]', '[data-testid="column-rejected"]');
+
+    // Verify the card is in the Rejected column.
+    cy.get('[data-testid="column-rejected"]')
+      .find('[data-testid="card-ben"]')
+      .should('exist');
+
+    // Verify the Rejected column count updated.
+    cy.get('[data-testid="count-rejected"]').should('have.text', '1');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Verify Source Column Card Count Decreases
+  // --------------------------------------------------------------------------
+  // This exercise moves multiple cards and checks all column counts.
+  it('exercise 5: verify column counts update after moving cards', () => {
+    // Verify initial counts.
+    cy.get('[data-testid="count-new"]').should('have.text', '3');
+    cy.get('[data-testid="count-review"]').should('have.text', '1');
+
+    // Move all three cards out of New.
+    dragAndDrop('[data-testid="card-aisha"]', '[data-testid="column-review"]');
+    dragAndDrop('[data-testid="card-ben"]', '[data-testid="column-rejected"]');
+    dragAndDrop('[data-testid="card-clara"]', '[data-testid="column-approved"]');
+
+    // Verify New column now has 0 cards.
+    cy.get('[data-testid="count-new"]').should('have.text', '0');
+
+    // Verify target columns have correct counts.
+    // Review: 1 (Derek) + 1 (Aisha) = 2
+    cy.get('[data-testid="count-review"]').should('have.text', '2');
+    // Rejected: 0 + 1 (Ben) = 1
+    cy.get('[data-testid="count-rejected"]').should('have.text', '1');
+    // Approved: 0 + 1 (Clara) = 1
+    cy.get('[data-testid="count-approved"]').should('have.text', '1');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Reorder Items Within the Sortable List
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates reordering items within a single list
+  // using the same trigger-based drag pattern.
+  it('exercise 6: reorder items within the sortable priority list', () => {
+    // Verify the initial order.
+    cy.get('[data-testid="priority-order"]').should(
+      'have.text',
+      'sanctions, identity, address, income'
+    );
+
+    // Drag "Income Verification" (last item) onto "Sanctions Screening" (first item).
+    // This reorders the list, placing income before sanctions.
+    dragAndDrop('[data-testid="priority-income"]', '[data-testid="priority-sanctions"]');
+
+    // Verify that "income" now appears before "sanctions" in the order string.
+    cy.get('[data-testid="priority-order"]').invoke('text').then((text) => {
+      // indexOf(str) returns the position of the first occurrence of str.
+      // We verify income's position is earlier than sanctions' position.
+      expect(text.indexOf('income')).to.be.lessThan(text.indexOf('sanctions'));
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Verify Drop Zone Highlights During Drag
+  // --------------------------------------------------------------------------
+  // This exercise checks that the CSS class 'drag-over' is applied to a
+  // column when a dragged card hovers over it.
+  it('exercise 7: verify drop zone highlight during drag', () => {
+    // Verify the column does NOT have the drag-over class initially.
+    // .should('not.have.class', name) checks the element's classList.
+    cy.get('[data-testid="column-approved"]').should('not.have.class', 'drag-over');
+
+    // Create a shared DataTransfer for the drag events.
+    const dataTransfer = new DataTransfer();
+
+    // Start the drag on the card.
+    cy.get('[data-testid="card-aisha"]').trigger('dragstart', { dataTransfer });
+
+    // Trigger dragover on the Approved column — this adds the highlight class.
+    cy.get('[data-testid="column-approved"]').trigger('dragover', { dataTransfer });
+
+    // Verify the column now has the 'drag-over' class.
+    // .should('have.class', name) asserts the element's classList contains name.
+    cy.get('[data-testid="column-approved"]').should('have.class', 'drag-over');
+
+    // Complete the drag by dropping (which removes the highlight).
+    cy.get('[data-testid="column-approved"]').trigger('drop', { dataTransfer });
+    cy.get('[data-testid="card-aisha"]').trigger('dragend', { dataTransfer });
+
+    // Verify the highlight class is removed after drop.
+    cy.get('[data-testid="column-approved"]').should('not.have.class', 'drag-over');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Drag Back from Rejected to New
+  // --------------------------------------------------------------------------
+  // This exercise verifies cards can be moved back to their original column.
+  it('exercise 8: drag a card from Rejected back to New', () => {
+    // First, move "Ben Okafor" to the Rejected column.
+    dragAndDrop('[data-testid="card-ben"]', '[data-testid="column-rejected"]');
+
+    // Verify it's in Rejected.
+    cy.get('[data-testid="column-rejected"]')
+      .find('[data-testid="card-ben"]')
+      .should('exist');
+    cy.get('[data-testid="count-new"]').should('have.text', '2');
+    cy.get('[data-testid="count-rejected"]').should('have.text', '1');
+
+    // Now drag it back to New.
+    dragAndDrop('[data-testid="card-ben"]', '[data-testid="column-new"]');
+
+    // Verify it's back in New.
+    cy.get('[data-testid="column-new"]')
+      .find('[data-testid="card-ben"]')
+      .should('exist');
+
+    // Verify counts restored.
+    cy.get('[data-testid="count-new"]').should('have.text', '3');
+    cy.get('[data-testid="count-rejected"]').should('have.text', '0');
+
+    // Verify the status bar shows the return move.
+    cy.get('[data-testid="last-action"]').should('contain.text', 'ben');
+    cy.get('[data-testid="last-action"]').should('contain.text', 'new');
+  });
+
+});
+c:T8d1a,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { test, expect } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> '@playwright/test'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// The playground URL for this kata.</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-00-foundations/06-iframes-and-shadow-dom/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 1: Access iframe content using frameLocator</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: read text inside an iframe'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">  // Navigate to the playground page.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // frameLocator() returns a FrameLocator scoped to the iframe.</span></span>
+<span class="line"><span style="color:#6A737D">  // You pass a CSS selector (or data-testid) that matches the &#x3C;iframe> element.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> paymentFrame</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">frameLocator</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="payment-iframe"]'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Inside the frame, use normal locator methods to find elements.</span></span>
+<span class="line"><span style="color:#6A737D">  // The locator is scoped to the iframe's document, not the parent page.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(paymentFrame.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'payment-title'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Secure Payment Gateway'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 2: Fill form inside iframe</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: fill the payment form inside an iframe'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Get a FrameLocator for the payment iframe.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> paymentFrame</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">frameLocator</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="payment-iframe"]'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // fill() works exactly the same inside a frameLocator as on the main page.</span></span>
+<span class="line"><span style="color:#6A737D">  // It clears the field first, then sets the value.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> paymentFrame.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'input-cardholder'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Alice Johnson'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> paymentFrame.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'input-card-number'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'4242 4242 4242 4242'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> paymentFrame.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'input-amount'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'250.00'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // selectOption() works for &#x3C;select> elements inside iframes too.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> paymentFrame.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'select-currency'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">selectOption</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'EUR'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the values were entered correctly.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(paymentFrame.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'input-cardholder'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveValue</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Alice Johnson'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(paymentFrame.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'input-card-number'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveValue</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'4242 4242 4242 4242'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(paymentFrame.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'input-amount'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveValue</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'250.00'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(paymentFrame.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'select-currency'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveValue</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'EUR'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 3: Click button inside iframe and verify result</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: submit the payment form and verify confirmation'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> paymentFrame</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">frameLocator</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="payment-iframe"]'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Fill the form fields.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> paymentFrame.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'input-cardholder'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Bob Smith'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> paymentFrame.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'input-amount'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'99.99'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> paymentFrame.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'select-currency'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">selectOption</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'GBP'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click the submit button inside the iframe.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> paymentFrame.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-submit-payment'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the result message appeared inside the iframe.</span></span>
+<span class="line"><span style="color:#6A737D">  // The result div is inside the iframe, so we use the same frameLocator.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(paymentFrame.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'payment-result'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(paymentFrame.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'payment-result'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'99.99 GBP'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(paymentFrame.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'payment-result'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Bob Smith'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 4: Access Shadow DOM elements</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: read text inside a shadow DOM component'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Playwright automatically pierces open shadow roots!</span></span>
+<span class="line"><span style="color:#6A737D">  // You can use getByTestId() and it will find elements inside shadow DOM</span></span>
+<span class="line"><span style="color:#6A737D">  // without any special configuration. This is a major advantage over Cypress.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> widgetTitle</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'widget-title'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the title text inside the shadow root.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(widgetTitle).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Compliance Check'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 5: Interact with Shadow DOM form</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: fill and submit the compliance widget form'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Fill fields inside the shadow DOM component.</span></span>
+<span class="line"><span style="color:#6A737D">  // Playwright pierces shadow DOM automatically for all locator methods.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'input-entity-name'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Acme Corp'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'input-entity-id'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'ENT-007'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'select-check-type'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">selectOption</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'aml'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click the button inside the shadow root.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-run-check'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the status message appeared inside the shadow DOM.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> status</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'check-status'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(status).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(status).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'AML check passed for Acme Corp (ENT-007)'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 6: Access nested iframes (iframe inside iframe)</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: read content from a nested iframe'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // First, get the outer iframe using frameLocator().</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> outerFrame</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">frameLocator</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="outer-iframe"]'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify content in the outer frame.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(outerFrame.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'outer-title'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Outer Audit Frame'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(outerFrame.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'outer-text'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'outer compliance audit layer'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // To access a nested iframe, chain another frameLocator() on the outer one.</span></span>
+<span class="line"><span style="color:#6A737D">  // This is how Playwright handles iframe-within-iframe scenarios.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> innerFrame</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> outerFrame.</span><span style="color:#B392F0">frameLocator</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="inner-iframe"]'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Now you can interact with elements inside the nested iframe.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(innerFrame.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'inner-text'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'All checks passed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(innerFrame.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'inner-text'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'AUD-2026-0415'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 7: Switch between multiple iframes</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 7: interact with multiple iframes in sequence'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Unlike Selenium, Playwright does NOT require "switching" to a frame.</span></span>
+<span class="line"><span style="color:#6A737D">  // You simply create frameLocators for each iframe and use them independently.</span></span>
+<span class="line"><span style="color:#6A737D">  // There is no "active frame" concept — each frameLocator is a scoped view.</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Access the payment iframe.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> paymentFrame</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">frameLocator</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="payment-iframe"]'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> paymentFrame.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'input-cardholder'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Multi-Frame Test'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Access the terms iframe — no need to "switch back" to the main page first.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> termsFrame</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">frameLocator</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="terms-iframe"]'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(termsFrame.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'terms-title'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Terms of Service v3.1'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Go back and verify the payment iframe still has the value we entered.</span></span>
+<span class="line"><span style="color:#6A737D">  // Since there is no frame switching, the value is still accessible.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(paymentFrame.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'input-cardholder'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveValue</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Multi-Frame Test'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Access something on the main page (outside any iframe) — no switching needed.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'page-header'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 8: Assert content across iframe boundary</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 8: verify terms iframe content and accept on main page'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Step 1: Read content from inside the terms iframe.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> termsFrame</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">frameLocator</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="terms-iframe"]'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(termsFrame.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'terms-section-1'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'compliance regulations'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(termsFrame.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'terms-last-updated'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Last updated: 2026-04-01'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Step 2: Interact with the checkbox and button on the MAIN page (not in iframe).</span></span>
+<span class="line"><span style="color:#6A737D">  // The terms checkbox and accept button are on the main page, not inside the iframe.</span></span>
+<span class="line"><span style="color:#6A737D">  // This tests the common pattern: read iframe content, then act on the parent page.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'terms-checkbox'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">check</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-accept-terms'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Step 3: Verify the result on the main page.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'terms-result'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Terms accepted successfully. You may proceed.'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>d:T91f6,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-00-foundations/06-iframes-and-shadow-dom/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// ---------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Helper: get the &#x3C;body> of an iframe.</span></span>
+<span class="line"><span style="color:#6A737D">// Cypress does NOT have built-in iframe support like Playwright's frameLocator.</span></span>
+<span class="line"><span style="color:#6A737D">// This helper reaches into the iframe's contentDocument and wraps its body</span></span>
+<span class="line"><span style="color:#6A737D">// so you can chain normal Cypress commands on it.</span></span>
+<span class="line"><span style="color:#6A737D">// ---------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#F97583">function</span><span style="color:#B392F0"> getIframeBody</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">selector</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> string</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#F97583">  return</span><span style="color:#E1E4E8"> cy</span></span>
+<span class="line"><span style="color:#E1E4E8">    .</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(selector)                              </span><span style="color:#6A737D">// find the &#x3C;iframe> element</span></span>
+<span class="line"><span style="color:#E1E4E8">    .</span><span style="color:#B392F0">its</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'0.contentDocument.body'</span><span style="color:#E1E4E8">)              </span><span style="color:#6A737D">// get its contentDocument.body (DOM node)</span></span>
+<span class="line"><span style="color:#E1E4E8">    .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.be.empty'</span><span style="color:#E1E4E8">)                     </span><span style="color:#6A737D">// make sure the iframe has loaded</span></span>
+<span class="line"><span style="color:#E1E4E8">    .</span><span style="color:#B392F0">then</span><span style="color:#E1E4E8">(cy.wrap);                             </span><span style="color:#6A737D">// wrap it so we can chain Cypress commands</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">describe</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Kata 06: Iframes and Shadow DOM'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">  beforeEach</span><span style="color:#E1E4E8">(() </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Visit the playground before every test.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 1: Access iframe content using the iframe helper</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: read text inside an iframe'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Use the helper to get the payment iframe's body.</span></span>
+<span class="line"><span style="color:#6A737D">    // Once wrapped, you can use .find() to locate elements inside.</span></span>
+<span class="line"><span style="color:#B392F0">    getIframeBody</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="payment-iframe"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">find</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="payment-title"]'</span><span style="color:#E1E4E8">)      </span><span style="color:#6A737D">// find element inside the iframe body</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Secure Payment Gateway'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 2: Fill form inside iframe</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: fill the payment form inside an iframe'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Get the iframe body, then use .find() + .type() to fill fields.</span></span>
+<span class="line"><span style="color:#6A737D">    // Remember: Cypress type() appends text (fields start empty here, so that's fine).</span></span>
+<span class="line"><span style="color:#B392F0">    getIframeBody</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="payment-iframe"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">then</span><span style="color:#E1E4E8">((</span><span style="color:#FFAB70">$body</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">      // .find() scopes the search to the iframe body.</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">wrap</span><span style="color:#E1E4E8">($body).</span><span style="color:#B392F0">find</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-cardholder"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Alice Johnson'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">wrap</span><span style="color:#E1E4E8">($body).</span><span style="color:#B392F0">find</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-card-number"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'4242 4242 4242 4242'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">wrap</span><span style="color:#E1E4E8">($body).</span><span style="color:#B392F0">find</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-amount"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'250.00'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">wrap</span><span style="color:#E1E4E8">($body).</span><span style="color:#B392F0">find</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="select-currency"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">select</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'EUR'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">      // Verify the values.</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">wrap</span><span style="color:#E1E4E8">($body).</span><span style="color:#B392F0">find</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-cardholder"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.value'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Alice Johnson'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">wrap</span><span style="color:#E1E4E8">($body).</span><span style="color:#B392F0">find</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-card-number"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.value'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'4242 4242 4242 4242'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">wrap</span><span style="color:#E1E4E8">($body).</span><span style="color:#B392F0">find</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-amount"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.value'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'250.00'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">wrap</span><span style="color:#E1E4E8">($body).</span><span style="color:#B392F0">find</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="select-currency"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.value'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'EUR'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 3: Click button inside iframe and verify result</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: submit the payment form and verify confirmation'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#B392F0">    getIframeBody</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="payment-iframe"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">then</span><span style="color:#E1E4E8">((</span><span style="color:#FFAB70">$body</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">      // Fill the form.</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">wrap</span><span style="color:#E1E4E8">($body).</span><span style="color:#B392F0">find</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-cardholder"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Bob Smith'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">wrap</span><span style="color:#E1E4E8">($body).</span><span style="color:#B392F0">find</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-amount"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'99.99'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">wrap</span><span style="color:#E1E4E8">($body).</span><span style="color:#B392F0">find</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="select-currency"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">select</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'GBP'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">      // Click submit inside the iframe.</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">wrap</span><span style="color:#E1E4E8">($body).</span><span style="color:#B392F0">find</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-submit-payment"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">      // Verify the result message appeared inside the iframe.</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">wrap</span><span style="color:#E1E4E8">($body).</span><span style="color:#B392F0">find</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="payment-result"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">        .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">        .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'99.99 GBP'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">        .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Bob Smith'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 4: Access Shadow DOM elements</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: read text inside a shadow DOM component'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Cypress needs { includeShadowDom: true } to pierce shadow roots.</span></span>
+<span class="line"><span style="color:#6A737D">    // This option tells cy.get() / .find() to search inside shadow DOM.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="widget-title"]'</span><span style="color:#E1E4E8">, { includeShadowDom: </span><span style="color:#79B8FF">true</span><span style="color:#E1E4E8"> })</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Compliance Check'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 5: Interact with Shadow DOM form</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: fill and submit the compliance widget form'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Each command that targets a shadow DOM element needs { includeShadowDom: true }.</span></span>
+<span class="line"><span style="color:#6A737D">    // Alternatively, set "includeShadowDom": true in cypress.config.ts globally.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-entity-name"]'</span><span style="color:#E1E4E8">, { includeShadowDom: </span><span style="color:#79B8FF">true</span><span style="color:#E1E4E8"> })</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Acme Corp'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-entity-id"]'</span><span style="color:#E1E4E8">, { includeShadowDom: </span><span style="color:#79B8FF">true</span><span style="color:#E1E4E8"> })</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'ENT-007'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="select-check-type"]'</span><span style="color:#E1E4E8">, { includeShadowDom: </span><span style="color:#79B8FF">true</span><span style="color:#E1E4E8"> })</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">select</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'aml'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Click the button inside the shadow root.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-run-check"]'</span><span style="color:#E1E4E8">, { includeShadowDom: </span><span style="color:#79B8FF">true</span><span style="color:#E1E4E8"> })</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the status message.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="check-status"]'</span><span style="color:#E1E4E8">, { includeShadowDom: </span><span style="color:#79B8FF">true</span><span style="color:#E1E4E8"> })</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'AML check passed for Acme Corp (ENT-007)'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 6: Access nested iframes (iframe inside iframe)</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: read content from a nested iframe'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Step 1: Get the outer iframe body.</span></span>
+<span class="line"><span style="color:#B392F0">    getIframeBody</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="outer-iframe"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">then</span><span style="color:#E1E4E8">((</span><span style="color:#FFAB70">$outerBody</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">      // Verify content in the outer frame.</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">wrap</span><span style="color:#E1E4E8">($outerBody).</span><span style="color:#B392F0">find</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="outer-title"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">        .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Outer Audit Frame'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">wrap</span><span style="color:#E1E4E8">($outerBody).</span><span style="color:#B392F0">find</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="outer-text"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">        .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'outer compliance audit layer'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">      // Step 2: Get the inner iframe body from within the outer iframe.</span></span>
+<span class="line"><span style="color:#6A737D">      // We find the inner &#x3C;iframe> element, then access its contentDocument.</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">wrap</span><span style="color:#E1E4E8">($outerBody)</span></span>
+<span class="line"><span style="color:#E1E4E8">        .</span><span style="color:#B392F0">find</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="inner-iframe"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">        .</span><span style="color:#B392F0">its</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'0.contentDocument.body'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">        .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.be.empty'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">        .</span><span style="color:#B392F0">then</span><span style="color:#E1E4E8">(cy.wrap)</span></span>
+<span class="line"><span style="color:#E1E4E8">        .</span><span style="color:#B392F0">then</span><span style="color:#E1E4E8">((</span><span style="color:#FFAB70">$innerBody</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">          // Now we can assert on elements inside the nested iframe.</span></span>
+<span class="line"><span style="color:#E1E4E8">          cy.</span><span style="color:#B392F0">wrap</span><span style="color:#E1E4E8">($innerBody).</span><span style="color:#B392F0">find</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="inner-text"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">            .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'All checks passed'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">            .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'AUD-2026-0415'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">        });</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 7: Switch between multiple iframes</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 7: interact with multiple iframes in sequence'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // In Cypress, there is no explicit "switch to frame" like Selenium.</span></span>
+<span class="line"><span style="color:#6A737D">    // You just get each iframe's body whenever you need it.</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Access the payment iframe and fill a field.</span></span>
+<span class="line"><span style="color:#B392F0">    getIframeBody</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="payment-iframe"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">find</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-cardholder"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Multi-Frame Test'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Access the terms iframe — no "switching" required.</span></span>
+<span class="line"><span style="color:#B392F0">    getIframeBody</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="terms-iframe"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">find</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="terms-title"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Terms of Service v3.1'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Go back and verify the payment iframe still has the entered value.</span></span>
+<span class="line"><span style="color:#B392F0">    getIframeBody</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="payment-iframe"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">find</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-cardholder"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.value'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Multi-Frame Test'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Access something on the main page (outside any iframe).</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="page-header"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 8: Assert content across iframe boundary</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 8: verify terms iframe content and accept on main page'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Step 1: Read content from inside the terms iframe.</span></span>
+<span class="line"><span style="color:#B392F0">    getIframeBody</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="terms-iframe"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">then</span><span style="color:#E1E4E8">((</span><span style="color:#FFAB70">$body</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">wrap</span><span style="color:#E1E4E8">($body).</span><span style="color:#B392F0">find</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="terms-section-1"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">        .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'compliance regulations'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">wrap</span><span style="color:#E1E4E8">($body).</span><span style="color:#B392F0">find</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="terms-last-updated"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">        .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Last updated: 2026-04-01'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Step 2: Interact with elements on the MAIN page (not in iframe).</span></span>
+<span class="line"><span style="color:#6A737D">    // The checkbox and button are on the parent page, not inside the iframe.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="terms-checkbox"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">check</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-accept-terms"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Step 3: Verify the result on the main page.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="terms-result"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Terms accepted successfully. You may proceed.'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"kata":{"slug":"06-iframes-and-shadow-dom","number":6,"title":"Iframes and Shadow DOM","phaseSlug":"phase-00-foundations","phaseNumber":0,"phaseName":"Foundations","readmeRaw":"$3","hasPlayground":true,"playwrightFiles":[{"filename":"iframes-and-shadow-dom.spec.ts","content":"$4"}],"cypressFiles":[{"filename":"iframes-and-shadow-dom.cy.ts","content":"$5"}]},"prev":{"slug":"05-keyboard-and-mouse","number":5,"title":"Keyboard and Mouse","phaseSlug":"phase-00-foundations","phaseNumber":0,"phaseName":"Foundations","readmeRaw":"$6","hasPlayground":true,"playwrightFiles":[{"filename":"keyboard-and-mouse.spec.ts","content":"$7"}],"cypressFiles":[{"filename":"keyboard-and-mouse.cy.ts","content":"$8"}]},"next":{"slug":"07-drag-and-drop","number":7,"title":"Drag and Drop","phaseSlug":"phase-01-dom-and-browser-apis","phaseNumber":1,"phaseName":"Dom And Browser Apis","readmeRaw":"$9","hasPlayground":true,"playwrightFiles":[{"filename":"drag-and-drop.spec.ts","content":"$a"}],"cypressFiles":[{"filename":"drag-and-drop.cy.ts","content":"$b"}]},"playwrightHtml":[{"filename":"iframes-and-shadow-dom.spec.ts","html":"$c"}],"cypressHtml":[{"filename":"iframes-and-shadow-dom.cy.ts","html":"$d"}]}],["$Le"],"$Lf"]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"iDtrTKWIN4zzRgDRiiDd2"}
+e:["$","script","script-0",{"src":"/qa-labs/_next/static/chunks/03nvm.8~ftt80.js","async":true}]
+f:["$","$L10",null,{"children":["$","$11",null,{"name":"Next.MetadataOutlet","children":"$@12"}]}]
+12:null

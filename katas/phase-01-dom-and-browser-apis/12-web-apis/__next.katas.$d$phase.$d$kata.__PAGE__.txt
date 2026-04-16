@@ -1,0 +1,2507 @@
+1:"$Sreact.fragment"
+2:I[31749,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js","/qa-labs/_next/static/chunks/03nvm.8~ftt80.js"],"KataPageClient"]
+10:I[49583,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js"],"OutletBoundary"]
+11:"$Sreact.suspense"
+3:T1d90,# Kata 12: Web APIs
+
+## What You Will Learn
+
+- How to test clipboard operations (copy/paste) with browser automation
+- How to mock the Geolocation API and verify displayed coordinates
+- How to handle native browser dialogs (alert, confirm, prompt) in tests
+- How to grant/deny permissions (camera, microphone) in test contexts
+- How to verify file downloads in test automation
+- How to read/write localStorage from tests
+- The differences between Playwright and Cypress approaches to each API
+
+## Prerequisites
+
+- Completed Phase 00 katas
+- Completed Kata 11 (DOM Mutations)
+
+## Concepts Explained
+
+### Clipboard API
+
+The Clipboard API (`navigator.clipboard`) lets web pages read from and write to the system clipboard. In tests, you verify clipboard content using `page.evaluate()` (Playwright) or `cy.window()` (Cypress).
+
+```typescript
+// PLAYWRIGHT — read clipboard content after a copy action
+const clipboardText = await page.evaluate(() => navigator.clipboard.readText());
+expect(clipboardText).toBe('1234-5678-9012-3456');
+
+// CYPRESS — clipboard testing via window
+cy.window().then((win) => {
+  win.navigator.clipboard.readText().then((text) => {
+    expect(text).to.eq('1234-5678-9012-3456');
+  });
+});
+```
+
+### Geolocation API
+
+The Geolocation API (`navigator.geolocation`) returns the user's position. In tests, you mock it to return predictable coordinates.
+
+```typescript
+// PLAYWRIGHT — grant permission and set geolocation before navigating
+await context.grantPermissions(['geolocation']);
+await context.setGeolocation({ latitude: 28.6139, longitude: 77.2090 });
+
+// CYPRESS — stub geolocation in the browser window
+cy.visit(url, {
+  onBeforeLoad(win) {
+    cy.stub(win.navigator.geolocation, 'getCurrentPosition')
+      .callsFake((cb) => cb({ coords: { latitude: 28.6139, longitude: 77.2090 } }));
+  },
+});
+```
+
+### Browser Dialogs (alert, confirm, prompt)
+
+Native browser dialogs block JavaScript execution. Test frameworks handle them differently:
+
+```typescript
+// PLAYWRIGHT — listen for dialog events BEFORE triggering them
+page.on('dialog', async (dialog) => {
+  // dialog.type() is 'alert', 'confirm', or 'prompt'
+  // dialog.message() is the dialog text
+  await dialog.accept();  // or dialog.dismiss()
+});
+
+// CYPRESS — stub window methods
+cy.on('window:alert', (text) => {
+  expect(text).to.contain('Payment');
+});
+cy.on('window:confirm', () => true);  // return true = accept, false = dismiss
+```
+
+### Permissions API
+
+The Permissions API controls access to device features like camera and microphone:
+
+```typescript
+// PLAYWRIGHT — grant permissions via browser context
+await context.grantPermissions(['camera']);
+
+// CYPRESS — permissions must be handled differently (no built-in API)
+// Typically you stub the getUserMedia call
+```
+
+### File Downloads
+
+Verifying downloads requires intercepting the browser's download mechanism:
+
+```typescript
+// PLAYWRIGHT — wait for the download event
+const downloadPromise = page.waitForEvent('download');
+await page.getByTestId('btn-download').click();
+const download = await downloadPromise;
+expect(download.suggestedFilename()).toBe('statement.csv');
+
+// CYPRESS — verify the download link attributes
+cy.get('[data-testid="btn-download"]').click();
+// Verify the download status message
+```
+
+### Web Storage (localStorage)
+
+localStorage persists key-value pairs in the browser:
+
+```typescript
+// PLAYWRIGHT — read/write localStorage via evaluate
+await page.evaluate(() => localStorage.setItem('theme', 'dark'));
+const value = await page.evaluate(() => localStorage.getItem('theme'));
+
+// CYPRESS — access localStorage via cy.window()
+cy.window().then((win) => {
+  win.localStorage.setItem('theme', 'dark');
+  expect(win.localStorage.getItem('theme')).to.eq('dark');
+});
+```
+
+## Playground
+
+The playground demonstrates six browser APIs:
+
+1. **Clipboard** — "Copy Account Number" button + paste target input
+2. **Geolocation** — "Detect Location" button showing latitude/longitude
+3. **Browser Dialogs** — alert, confirm, and prompt buttons with result display
+4. **Permissions** — camera access request with granted/denied status
+5. **Web Storage** — save/load/clear data in localStorage
+6. **File Download** — generates and downloads a CSV statement file
+
+## Exercises
+
+### Exercise 1: Copy to Clipboard and Verify
+Click "Copy Account Number" and verify the clipboard contains the account number.
+
+### Exercise 2: Mock Geolocation and Verify Coordinates
+Mock the geolocation API to return Delhi coordinates (28.6139, 77.2090), click "Detect Location", and verify the displayed lat/lng.
+
+### Exercise 3: Handle Alert Dialog
+Set up a dialog handler, click "Show Alert", and verify the alert message text and that the result shows "Alert was dismissed."
+
+### Exercise 4: Handle Confirm Dialog (Accept and Dismiss)
+Test both accepting and dismissing the confirm dialog. Verify the result text changes accordingly ("Transfer confirmed." vs "Transfer cancelled.").
+
+### Exercise 5: Handle Prompt Dialog with Input
+Set up a prompt handler that enters a custom amount, click "Show Prompt", and verify the result displays the entered amount.
+
+### Exercise 6: Grant/Deny Camera Permission
+Grant camera permission in the test context, click "Request Camera Access", and verify the status shows "Granted". Then test the denied case.
+
+### Exercise 7: Verify File Download
+Click "Download Statement (CSV)", verify the download is triggered, and check the suggested filename.
+
+### Exercise 8: Read/Write localStorage
+Write a key-value pair to localStorage, reload the page, read it back, and verify the value persists.
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/web-apis.spec.ts`
+
+### Cypress Solution
+
+See `cypress/web-apis.cy.ts`
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Not setting up dialog handler before triggering | Dialog blocks JS, handler must be registered first | Call `page.on('dialog')` before `.click()` |
+| Reading clipboard without granting permission | Browser may deny clipboard access | Use `context.grantPermissions(['clipboard-read'])` in Playwright |
+| Not mocking geolocation before page load | The page calls geolocation on button click | Mock it before or during page visit |
+| Forgetting to await dialog.accept() | Dialog stays open, blocking the page | Always `await dialog.accept()` or `dialog.dismiss()` |
+| Using cy.wait(ms) for download verification | Downloads may take varying time | Use status messages or file existence checks |
+
+## Quick Reference
+
+### Playwright Web API Methods
+
+| API | Method | Example |
+|-----|--------|---------|
+| Clipboard | `page.evaluate(() => navigator.clipboard.readText())` | Read clipboard content |
+| Geolocation | `context.setGeolocation({ latitude, longitude })` | Mock location |
+| Permissions | `context.grantPermissions(['camera'])` | Grant device access |
+| Dialogs | `page.on('dialog', handler)` | Handle alert/confirm/prompt |
+| Download | `page.waitForEvent('download')` | Intercept file download |
+| Storage | `page.evaluate(() => localStorage.getItem(key))` | Read localStorage |
+
+### Cypress Web API Methods
+
+| API | Method | Example |
+|-----|--------|---------|
+| Clipboard | `cy.window().its('navigator.clipboard')` | Access clipboard |
+| Geolocation | `cy.stub(win.navigator.geolocation, ...)` | Mock location |
+| Dialogs | `cy.on('window:alert', handler)` | Handle alert |
+| Confirm | `cy.on('window:confirm', () => true/false)` | Accept/dismiss |
+| Storage | `cy.window().then(win => win.localStorage)` | Access localStorage |
+4:T2eec,import { test, expect } from '@playwright/test';
+
+// Path to the playground HTML served by the dev server.
+const PLAYGROUND = '/phase-01-dom-and-browser-apis/12-web-apis/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Copy to Clipboard and Verify
+//
+// We grant clipboard permissions, click the copy button, then read
+// the clipboard content using page.evaluate() to call the browser's
+// Clipboard API.
+// --------------------------------------------------------------------------
+test('exercise 1: copy account number to clipboard', async ({ page, context }) => {
+  // Grant clipboard-read and clipboard-write permissions so the page
+  // can access the clipboard without a user gesture prompt.
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+
+  await page.goto(PLAYGROUND);
+
+  // Click the "Copy Account Number" button.
+  await page.getByTestId('btn-copy-account').click();
+
+  // Verify the status message shows "Copied to clipboard!".
+  await expect(page.getByTestId('copy-status')).toHaveText('Copied to clipboard!');
+
+  // Read the clipboard content using page.evaluate().
+  // navigator.clipboard.readText() is an async browser API that returns
+  // the current clipboard text.
+  const clipboardText = await page.evaluate(() => navigator.clipboard.readText());
+
+  // Verify the clipboard contains the expected account number.
+  expect(clipboardText).toBe('1234-5678-9012-3456');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Mock Geolocation and Verify Coordinates
+//
+// We set a fake geolocation on the browser context BEFORE navigating.
+// When the page calls navigator.geolocation.getCurrentPosition(),
+// it receives our mocked coordinates instead of real GPS data.
+// --------------------------------------------------------------------------
+test('exercise 2: mock geolocation and verify displayed coordinates', async ({ page, context }) => {
+  // Grant geolocation permission so the page doesn't show a prompt.
+  await context.grantPermissions(['geolocation']);
+
+  // Set the fake geolocation — these are coordinates for New Delhi, India.
+  await context.setGeolocation({ latitude: 28.6139, longitude: 77.2090 });
+
+  await page.goto(PLAYGROUND);
+
+  // Click "Detect Location".
+  await page.getByTestId('btn-detect-location').click();
+
+  // Verify the displayed latitude and longitude match our mocked values.
+  // toFixed(4) in the playground formats them as "28.6139" and "77.2090".
+  await expect(page.getByTestId('location-lat')).toHaveText('28.6139');
+  await expect(page.getByTestId('location-lng')).toHaveText('77.2090');
+
+  // Verify the result box shows a success message.
+  await expect(page.getByTestId('location-result')).toContainText('Location detected');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Handle Alert Dialog
+//
+// page.on('dialog') registers a listener that fires whenever the page
+// triggers alert(), confirm(), or prompt(). We MUST register the
+// listener BEFORE clicking the button, because the dialog blocks JS.
+// --------------------------------------------------------------------------
+test('exercise 3: handle alert dialog and verify message', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Variable to capture the alert message text.
+  let alertMessage = '';
+
+  // Register the dialog handler BEFORE triggering the alert.
+  // dialog.type() tells us which kind of dialog it is ('alert', 'confirm', 'prompt').
+  // dialog.message() returns the text shown in the dialog.
+  // dialog.accept() dismisses the dialog (same as clicking OK).
+  page.on('dialog', async (dialog) => {
+    alertMessage = dialog.message();
+    await dialog.accept();
+  });
+
+  // Click the button that triggers alert().
+  await page.getByTestId('btn-trigger-alert').click();
+
+  // Verify the alert had the expected message.
+  expect(alertMessage).toBe('Payment of Rs 5,000 has been processed successfully!');
+
+  // Verify the page updated after the dialog was dismissed.
+  await expect(page.getByTestId('dialog-result')).toHaveText('Alert was dismissed.');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Handle Confirm Dialog (Accept and Dismiss)
+//
+// confirm() returns true when accepted (OK) and false when dismissed
+// (Cancel). We test both cases to verify the page reacts correctly.
+// --------------------------------------------------------------------------
+test('exercise 4a: accept confirm dialog', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Accept the confirm dialog by calling dialog.accept().
+  page.on('dialog', async (dialog) => {
+    expect(dialog.type()).toBe('confirm');
+    expect(dialog.message()).toContain('Rs 50,000');
+    await dialog.accept();   // User clicks "OK"
+  });
+
+  await page.getByTestId('btn-trigger-confirm').click();
+
+  // When confirm returns true, the page shows "Transfer confirmed."
+  await expect(page.getByTestId('dialog-result')).toHaveText('Transfer confirmed.');
+});
+
+test('exercise 4b: dismiss confirm dialog', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Dismiss the confirm dialog by calling dialog.dismiss().
+  page.on('dialog', async (dialog) => {
+    await dialog.dismiss();  // User clicks "Cancel"
+  });
+
+  await page.getByTestId('btn-trigger-confirm').click();
+
+  // When confirm returns false, the page shows "Transfer cancelled."
+  await expect(page.getByTestId('dialog-result')).toHaveText('Transfer cancelled.');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Handle Prompt Dialog with Input
+//
+// prompt() shows a text input. We use dialog.accept(text) to enter
+// a value, simulating the user typing into the prompt and clicking OK.
+// --------------------------------------------------------------------------
+test('exercise 5: handle prompt dialog and enter text', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Register the dialog handler. For prompt dialogs, accept() takes
+  // an optional string argument — the text to enter in the prompt input.
+  page.on('dialog', async (dialog) => {
+    expect(dialog.type()).toBe('prompt');
+    // dialog.defaultValue() returns the pre-filled text (if any).
+    expect(dialog.defaultValue()).toBe('1000');
+    // Accept with a custom value.
+    await dialog.accept('25000');
+  });
+
+  await page.getByTestId('btn-trigger-prompt').click();
+
+  // Verify the page displays the entered amount.
+  await expect(
+    page.getByTestId('dialog-result')
+  ).toHaveText('Transfer amount set to Rs 25000');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Grant Camera Permission and Verify
+//
+// context.grantPermissions() pre-grants browser permissions so the
+// getUserMedia() call succeeds without showing a prompt. We verify
+// the UI status changes from "Not requested" to "Granted".
+// --------------------------------------------------------------------------
+test('exercise 6a: grant camera permission and verify UI', async ({ page, context }) => {
+  // Grant camera permission BEFORE navigating. This satisfies the browser
+  // permission model so no prompt appears.
+  await context.grantPermissions(['camera']);
+
+  // Headless Chromium does not have a real camera device, so even after
+  // granting permission, navigator.mediaDevices.getUserMedia({ video: true })
+  // would fail with NotFoundError. We stub getUserMedia to return a
+  // minimal fake MediaStream so the success branch runs. addInitScript
+  // injects this BEFORE any page script executes.
+  //
+  // The function body runs in the browser page context, where TypeScript
+  // types do not apply. We cast getUserMedia via `any` to avoid a type
+  // error while still overriding the method at runtime.
+  await page.addInitScript(() => {
+    const fakeStream = { getTracks: () => [{ stop: () => {} }] };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (navigator.mediaDevices as any).getUserMedia = async () => fakeStream;
+  });
+
+  await page.goto(PLAYGROUND);
+
+  // Click "Request Camera Access".
+  await page.getByTestId('btn-request-camera').click();
+
+  // Verify the status changed to "Granted".
+  await expect(page.getByTestId('permission-status')).toHaveText('Granted');
+  await expect(page.getByTestId('permission-result')).toContainText('Camera access granted');
+});
+
+test('exercise 6b: deny camera permission and verify UI', async ({ page, context }) => {
+  // Clear all permissions — this means getUserMedia() will be denied.
+  await context.clearPermissions();
+
+  await page.goto(PLAYGROUND);
+
+  await page.getByTestId('btn-request-camera').click();
+
+  // When permission is denied, the status shows "Denied".
+  await expect(page.getByTestId('permission-status')).toHaveText('Denied');
+  await expect(page.getByTestId('permission-result')).toContainText('Camera access denied');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Verify File Download
+//
+// page.waitForEvent('download') returns a Download object when the
+// browser initiates a file download. We can check the suggested
+// filename and even read the downloaded file's content.
+// --------------------------------------------------------------------------
+test('exercise 7: verify CSV download triggers', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Start waiting for the download event BEFORE clicking the button.
+  // This is similar to how we handle dialogs — register the listener first.
+  const downloadPromise = page.waitForEvent('download');
+
+  // Click the download button.
+  await page.getByTestId('btn-download-statement').click();
+
+  // Await the download object.
+  const download = await downloadPromise;
+
+  // Verify the suggested filename.
+  // suggestedFilename() returns the value of the <a download="..."> attribute.
+  expect(download.suggestedFilename()).toBe('statement-april-2026.csv');
+
+  // Optionally, read the downloaded file's content to verify it.
+  // download.path() returns the path to the temporary file on disk.
+  const path = await download.path();
+  expect(path).toBeTruthy();
+
+  // Verify the download status message on the page.
+  await expect(
+    page.getByTestId('download-status')
+  ).toContainText('Download started');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Read/Write localStorage
+//
+// page.evaluate() runs JavaScript in the browser context, giving us
+// direct access to localStorage. We write a value, verify it persists,
+// and confirm the UI reflects the stored data.
+// --------------------------------------------------------------------------
+test('exercise 8: read and write localStorage', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Write a value to localStorage via page.evaluate().
+  // This runs in the browser context, same as typing in the DevTools console.
+  await page.evaluate(() => {
+    localStorage.setItem('preferred_currency', 'INR');
+  });
+
+  // Read it back and verify.
+  const value = await page.evaluate(() => localStorage.getItem('preferred_currency'));
+  expect(value).toBe('INR');
+
+  // Now use the UI to save a value.
+  await page.getByTestId('storage-key').fill('theme');
+  await page.getByTestId('storage-value').fill('dark');
+  await page.getByTestId('btn-storage-save').click();
+
+  // Verify the UI shows the saved confirmation.
+  await expect(
+    page.getByTestId('storage-result')
+  ).toHaveText('Saved: "theme" = "dark"');
+
+  // Verify it was actually stored in localStorage.
+  const storedTheme = await page.evaluate(() => localStorage.getItem('theme'));
+  expect(storedTheme).toBe('dark');
+
+  // Use the "Load" button to read it back via the UI.
+  await page.getByTestId('btn-storage-load').click();
+  await expect(
+    page.getByTestId('storage-result')
+  ).toHaveText('Loaded: "theme" = "dark"');
+});
+5:T2932,// Path to the playground HTML served by the dev server.
+const PLAYGROUND = '/phase-01-dom-and-browser-apis/12-web-apis/playground/';
+
+describe('Kata 12: Web APIs', () => {
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Copy to Clipboard and Verify
+  //
+  // We stub navigator.clipboard.writeText to capture what was copied.
+  // Direct clipboard access in Cypress is tricky due to browser security,
+  // so we use a stub to intercept the call instead.
+  // --------------------------------------------------------------------------
+  it('exercise 1: copy account number to clipboard', () => {
+    cy.visit(PLAYGROUND, {
+      // onBeforeLoad runs before the page's JavaScript executes.
+      // We use it to set up stubs on the window object.
+      onBeforeLoad(win) {
+        // Stub writeText so we can verify what was copied.
+        // callsFake makes the stub behave like a real function.
+        cy.stub(win.navigator.clipboard, 'writeText')
+          .as('clipboardWrite')           // alias for later assertions
+          .resolves();                    // make it resolve (async success)
+      },
+    });
+
+    // Click the copy button.
+    cy.get('[data-testid="btn-copy-account"]').click();
+
+    // Verify the status text updates.
+    cy.get('[data-testid="copy-status"]')
+      .should('have.text', 'Copied to clipboard!');
+
+    // Verify our stub was called with the account number.
+    // @clipboardWrite is the alias we set above.
+    cy.get('@clipboardWrite')
+      .should('have.been.calledWith', '1234-5678-9012-3456');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Mock Geolocation and Verify Coordinates
+  //
+  // We stub navigator.geolocation.getCurrentPosition to call the success
+  // callback with our fake coordinates. This avoids needing real GPS.
+  // --------------------------------------------------------------------------
+  it('exercise 2: mock geolocation and verify displayed coordinates', () => {
+    cy.visit(PLAYGROUND, {
+      onBeforeLoad(win) {
+        // Stub getCurrentPosition to immediately call the success callback
+        // with our fake coordinates for New Delhi.
+        cy.stub(win.navigator.geolocation, 'getCurrentPosition')
+          .callsFake((successCallback) => {
+            successCallback({
+              coords: {
+                latitude: 28.6139,
+                longitude: 77.2090,
+                accuracy: 10,
+              },
+            });
+          });
+      },
+    });
+
+    // Click "Detect Location".
+    cy.get('[data-testid="btn-detect-location"]').click();
+
+    // Verify the displayed coordinates match our mocked values.
+    cy.get('[data-testid="location-lat"]')
+      .should('have.text', '28.6139');
+
+    cy.get('[data-testid="location-lng"]')
+      .should('have.text', '77.2090');
+
+    // Verify the result box shows success.
+    cy.get('[data-testid="location-result"]')
+      .should('contain.text', 'Location detected');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Handle Alert Dialog
+  //
+  // Cypress auto-accepts alerts by default. To verify the alert message,
+  // we use cy.on('window:alert') which receives the alert text.
+  // --------------------------------------------------------------------------
+  it('exercise 3: handle alert dialog and verify message', () => {
+    cy.visit(PLAYGROUND);
+
+    // Set up a stub for the alert. cy.on('window:alert') fires whenever
+    // the page calls alert(). We wrap it in a stub so we can assert on it.
+    const alertStub = cy.stub().as('alertHandler');
+    cy.on('window:alert', alertStub);
+
+    // Click the button that triggers alert().
+    cy.get('[data-testid="btn-trigger-alert"]').click();
+
+    // Verify the stub was called with the expected message.
+    cy.get('@alertHandler')
+      .should('have.been.calledWith', 'Payment of Rs 5,000 has been processed successfully!');
+
+    // Verify the page updated after the alert was dismissed.
+    cy.get('[data-testid="dialog-result"]')
+      .should('have.text', 'Alert was dismissed.');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4a: Accept Confirm Dialog
+  //
+  // cy.on('window:confirm') receives the confirm message. Return true
+  // to accept (OK) or false to dismiss (Cancel).
+  // --------------------------------------------------------------------------
+  it('exercise 4a: accept confirm dialog', () => {
+    cy.visit(PLAYGROUND);
+
+    // Return true from the confirm handler to simulate clicking "OK".
+    // This makes confirm() return true in the page's JavaScript.
+    cy.on('window:confirm', (text) => {
+      expect(text).to.contain('Rs 50,000');
+      return true;   // Accept the dialog
+    });
+
+    cy.get('[data-testid="btn-trigger-confirm"]').click();
+
+    // When confirmed, the page shows "Transfer confirmed."
+    cy.get('[data-testid="dialog-result"]')
+      .should('have.text', 'Transfer confirmed.');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4b: Dismiss Confirm Dialog
+  // --------------------------------------------------------------------------
+  it('exercise 4b: dismiss confirm dialog', () => {
+    cy.visit(PLAYGROUND);
+
+    // Return false from the confirm handler to simulate clicking "Cancel".
+    cy.on('window:confirm', () => false);
+
+    cy.get('[data-testid="btn-trigger-confirm"]').click();
+
+    // When cancelled, the page shows "Transfer cancelled."
+    cy.get('[data-testid="dialog-result"]')
+      .should('have.text', 'Transfer cancelled.');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Handle Prompt Dialog with Input
+  //
+  // Cypress does not have built-in prompt handling like Playwright.
+  // We stub window.prompt to return a custom value.
+  // --------------------------------------------------------------------------
+  it('exercise 5: handle prompt dialog and enter text', () => {
+    cy.visit(PLAYGROUND);
+
+    // Stub window.prompt to return a specific value.
+    // This replaces the native prompt() so no dialog appears.
+    cy.window().then((win) => {
+      cy.stub(win, 'prompt').returns('25000');
+    });
+
+    cy.get('[data-testid="btn-trigger-prompt"]').click();
+
+    // Verify the page displays the entered amount.
+    cy.get('[data-testid="dialog-result"]')
+      .should('have.text', 'Transfer amount set to Rs 25000');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Grant/Deny Camera Permission
+  //
+  // Cypress cannot directly grant browser permissions like Playwright.
+  // We stub navigator.mediaDevices.getUserMedia to simulate grant/deny.
+  // --------------------------------------------------------------------------
+  it('exercise 6a: simulate camera permission granted', () => {
+    cy.visit(PLAYGROUND, {
+      onBeforeLoad(win) {
+        // Stub getUserMedia to resolve with a fake MediaStream.
+        // We create a minimal mock with a getTracks() method that
+        // returns an array with a stoppable track.
+        cy.stub(win.navigator.mediaDevices, 'getUserMedia')
+          .resolves({
+            getTracks: () => [{ stop: () => {} }],
+          } as unknown as MediaStream);
+      },
+    });
+
+    cy.get('[data-testid="btn-request-camera"]').click();
+
+    // Verify the status shows "Granted".
+    cy.get('[data-testid="permission-status"]')
+      .should('have.text', 'Granted');
+
+    cy.get('[data-testid="permission-result"]')
+      .should('contain.text', 'Camera access granted');
+  });
+
+  it('exercise 6b: simulate camera permission denied', () => {
+    cy.visit(PLAYGROUND, {
+      onBeforeLoad(win) {
+        // Stub getUserMedia to reject with an error (permission denied).
+        cy.stub(win.navigator.mediaDevices, 'getUserMedia')
+          .rejects(new DOMException('Permission denied', 'NotAllowedError'));
+      },
+    });
+
+    cy.get('[data-testid="btn-request-camera"]').click();
+
+    // Verify the status shows "Denied".
+    cy.get('[data-testid="permission-status"]')
+      .should('have.text', 'Denied');
+
+    cy.get('[data-testid="permission-result"]')
+      .should('contain.text', 'Camera access denied');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Verify File Download
+  //
+  // Cypress does not have a built-in download event like Playwright.
+  // We verify the download was triggered by checking the status message
+  // and the download link attributes.
+  // --------------------------------------------------------------------------
+  it('exercise 7: verify download is triggered', () => {
+    cy.visit(PLAYGROUND);
+
+    // Click the download button.
+    cy.get('[data-testid="btn-download-statement"]').click();
+
+    // Verify the download status message.
+    cy.get('[data-testid="download-status"]')
+      .should('contain.text', 'Download started')
+      .and('contain.text', 'statement-april-2026.csv');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Read/Write localStorage
+  //
+  // cy.window() gives access to the browser's window object, which
+  // includes localStorage. We can read/write directly.
+  // --------------------------------------------------------------------------
+  it('exercise 8: read and write localStorage', () => {
+    cy.visit(PLAYGROUND);
+
+    // Write a value to localStorage via cy.window().
+    cy.window().then((win) => {
+      win.localStorage.setItem('preferred_currency', 'INR');
+    });
+
+    // Read it back and verify.
+    cy.window().then((win) => {
+      expect(win.localStorage.getItem('preferred_currency')).to.eq('INR');
+    });
+
+    // Use the UI to save a key-value pair.
+    cy.get('[data-testid="storage-key"]').type('theme');
+    cy.get('[data-testid="storage-value"]').type('dark');
+    cy.get('[data-testid="btn-storage-save"]').click();
+
+    // Verify the UI shows confirmation.
+    cy.get('[data-testid="storage-result"]')
+      .should('have.text', 'Saved: "theme" = "dark"');
+
+    // Verify it was actually stored in localStorage.
+    cy.window().then((win) => {
+      expect(win.localStorage.getItem('theme')).to.eq('dark');
+    });
+
+    // Use the "Load" button to read it back via the UI.
+    cy.get('[data-testid="btn-storage-load"]').click();
+    cy.get('[data-testid="storage-result"]')
+      .should('have.text', 'Loaded: "theme" = "dark"');
+  });
+
+});
+6:T1b37,# Kata 11: DOM Mutations
+
+## What You Will Learn
+
+- How to test dynamically inserted DOM elements (elements that appear after page load)
+- How to verify elements are removed from the DOM
+- How to detect text content changes on existing elements
+- How to verify CSS class changes and attribute mutations
+- How to handle auto-updating UI (timers, live feeds, counters)
+- Why Playwright's auto-retry assertions and Cypress's `.should()` are ideal for mutation testing
+
+## Prerequisites
+
+- Completed Phase 00 katas (especially Kata 03: Waits and Timing)
+- Basic understanding of how the DOM works (elements, attributes, text nodes)
+
+## Concepts Explained
+
+### What Are DOM Mutations?
+
+A DOM mutation is any change to the page's structure after initial load:
+
+- **Insertion**: A new element is added (e.g., a notification appears)
+- **Removal**: An element is deleted (e.g., dismissing a notification)
+- **Text change**: An element's text content updates (e.g., a live price ticker)
+- **Attribute change**: An element's attribute changes (e.g., `data-priority="normal"` becomes `data-priority="high"`)
+- **Class change**: An element gains or loses a CSS class (e.g., `.read` is added)
+
+### Why DOM Mutations Matter for QA
+
+Modern web apps are dynamic. Content loads asynchronously, notifications pop in, prices update in real time, and elements appear/disappear based on user actions. Your tests must handle all of this without flaking.
+
+### Testing Strategy
+
+```typescript
+// PLAYWRIGHT — auto-retry assertions handle mutations naturally
+
+// Wait for an element to appear (insertion)
+await expect(page.getByTestId('notification-item')).toHaveCount(3);
+
+// Wait for text to change (text mutation)
+await expect(page.getByTestId('live-price')).not.toHaveText('22,450.00');
+
+// Wait for an element to disappear (removal)
+await expect(page.getByTestId('notification-item')).toHaveCount(0);
+
+// Verify class changes (attribute mutation)
+await expect(page.getByTestId('notification-item').first()).toHaveClass(/read/);
+
+// Verify attribute changes
+await expect(page.getByTestId('status-message')).toHaveAttribute('data-priority', 'high');
+```
+
+```typescript
+// CYPRESS — .should() retries automatically
+
+// Wait for element to appear
+cy.get('[data-testid="notification-item"]').should('have.length', 3);
+
+// Wait for text to change
+cy.get('[data-testid="live-price"]').should('not.have.text', '22,450.00');
+
+// Wait for element to disappear
+cy.get('[data-testid="notification-item"]').should('have.length', 0);
+
+// Verify class changes
+cy.get('[data-testid="notification-item"]').first().should('have.class', 'read');
+
+// Verify attribute changes
+cy.get('[data-testid="status-message"]').should('have.attr', 'data-priority', 'high');
+```
+
+### Key Insight: Auto-Retry Is Your Friend
+
+Both Playwright and Cypress re-check assertions automatically until they pass (or timeout). This means you do NOT need to use `MutationObserver` or polling loops in your tests. Just assert the expected state and the framework handles the waiting.
+
+## Playground
+
+The playground simulates a fintech notification center:
+
+1. **Live Notification Feed** — new notifications auto-appear every 3 seconds
+2. **Unread Counter** — updates automatically when notifications arrive or are dismissed
+3. **Unread Badge** — shows/hides based on whether there are unread notifications
+4. **Mark All Read** — changes styling of all notifications (adds `.read` class)
+5. **Dismiss Button** — removes individual notifications from the DOM
+6. **Live Price Ticker** — text content changes every 2 seconds
+7. **Dynamic Status Area** — elements can be added, removed, and modified on demand
+8. **Attribute Toggle** — `data-priority` attribute toggles between "normal" and "high"
+
+## Exercises
+
+### Exercise 1: Wait for New Notification (DOM Insertion)
+Wait for the first notification to appear in the feed. The feed auto-adds notifications every 3 seconds, so you need to wait for at least one to arrive.
+
+### Exercise 2: Verify Notification Count Increments
+Wait for multiple notifications to accumulate and verify the unread counter matches.
+
+### Exercise 3: Dismiss a Notification (DOM Removal)
+Wait for a notification to appear, dismiss it, and verify it is removed from the DOM.
+
+### Exercise 4: Mark All as Read (CSS Class Change)
+Wait for notifications to appear, click "Mark All Read", and verify every notification gains the `.read` class (which changes its styling).
+
+### Exercise 5: Wait for Price Text to Change (Text Mutation)
+Capture the initial price text, then wait for it to change (it updates every 2 seconds).
+
+### Exercise 6: Verify Badge Visibility Based on Count
+Verify the unread badge is visible when there are unread notifications, then mark all as read and verify the badge hides.
+
+### Exercise 7: Wait for Multiple Notifications to Accumulate
+Wait until at least 3 notifications have appeared in the feed.
+
+### Exercise 8: Verify Element Attribute Changes Dynamically
+Click the "Toggle Priority" button and verify the `data-priority` attribute changes from `"normal"` to `"high"`.
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/dom-mutations.spec.ts`
+
+### Cypress Solution
+
+See `cypress/dom-mutations.cy.ts`
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Using `page.waitForTimeout(3000)` to wait for notification | Brittle — timing varies | Use `expect().toHaveCount()` with auto-retry |
+| Checking count immediately after dismiss | DOM removal may not be instant | Use `expect().toHaveCount(n - 1)` which auto-retries |
+| Checking exact price value | Price is random, changes every 2s | Assert it changed from initial value with `not.toHaveText()` |
+| Not waiting for element before dismissing | Notification may not exist yet | Wait for it with `.toBeVisible()` first |
+| Asserting `.read` class before clicking button | Class hasn't been added yet | Click "Mark All Read" first, then assert |
+
+## Quick Reference
+
+### Playwright DOM Mutation Assertions
+
+| Assertion | Use case |
+|-----------|----------|
+| `toHaveCount(n)` | Wait for exactly N matching elements |
+| `toHaveText(text)` | Wait for element text to match |
+| `not.toHaveText(text)` | Wait for element text to change from a known value |
+| `toHaveClass(/pattern/)` | Wait for element to have a CSS class |
+| `toHaveAttribute(name, value)` | Wait for attribute to have a specific value |
+| `toBeVisible()` / `toBeHidden()` | Wait for element to show/hide |
+
+### Cypress DOM Mutation Assertions
+
+| Assertion | Use case |
+|-----------|----------|
+| `should('have.length', n)` | Wait for exactly N matching elements |
+| `should('have.text', text)` | Wait for element text to match |
+| `should('not.have.text', text)` | Wait for text to change |
+| `should('have.class', cls)` | Wait for CSS class to be added |
+| `should('have.attr', name, value)` | Wait for attribute value |
+| `should('be.visible')` / `should('not.be.visible')` | Wait for show/hide |
+7:T2378,import { test, expect } from '@playwright/test';
+
+// Path to the playground HTML served by the dev server.
+// The path is relative to the web server root (the project root).
+const PLAYGROUND = '/phase-01-dom-and-browser-apis/11-dom-mutations/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Wait for New Notification (DOM Insertion)
+//
+// The feed auto-adds a notification every 3 seconds via setInterval.
+// We use toHaveCount() which auto-retries until the expected number of
+// elements exist in the DOM.
+// --------------------------------------------------------------------------
+test('exercise 1: wait for a new notification to appear', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Initially the feed is empty (no notifications yet).
+  // We wait for at least one notification to be inserted into the DOM.
+  // toHaveCount() retries automatically — no sleep needed.
+  // A notification appears after 3s, well within the default 5s timeout.
+  await expect(
+    page.getByTestId('notification-item')
+  ).toHaveCount(1, { timeout: 5000 });
+
+  // Verify the notification has visible text content.
+  await expect(
+    page.getByTestId('notification-text').first()
+  ).toBeVisible();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Verify Notification Count Increments
+//
+// Wait for a notification to arrive, then read the unread counter.
+// The counter is updated by JavaScript each time a notification is added.
+// --------------------------------------------------------------------------
+test('exercise 2: verify unread count increments with new notifications', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Wait for the first notification to arrive (DOM insertion).
+  await expect(
+    page.getByTestId('notification-item')
+  ).toHaveCount(1, { timeout: 5000 });
+
+  // The unread-count text should now be "1".
+  // toHaveText() auto-retries until the text matches.
+  await expect(
+    page.getByTestId('unread-count')
+  ).toHaveText('1');
+
+  // Wait for a second notification (another 3 seconds).
+  await expect(
+    page.getByTestId('notification-item')
+  ).toHaveCount(2, { timeout: 5000 });
+
+  // The unread-count text should now be "2".
+  await expect(
+    page.getByTestId('unread-count')
+  ).toHaveText('2');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Dismiss a Notification (DOM Removal)
+//
+// Wait for a notification to appear, click its dismiss button,
+// then verify the notification element is removed from the DOM.
+// --------------------------------------------------------------------------
+test('exercise 3: dismiss a notification and verify removal', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Wait for the first notification to appear.
+  await expect(
+    page.getByTestId('notification-item')
+  ).toHaveCount(1, { timeout: 5000 });
+
+  // Pause the feed so no new notifications arrive while we test.
+  await page.getByTestId('btn-pause-feed').click();
+
+  // Click the dismiss button on the first (and only) notification.
+  // The dismiss button removes the parent notification from the DOM.
+  await page.getByTestId('btn-dismiss').first().click();
+
+  // Verify the notification is gone — count should be 0.
+  // toHaveCount(0) retries until no matching elements remain.
+  await expect(
+    page.getByTestId('notification-item')
+  ).toHaveCount(0);
+
+  // The unread count should also be 0 after dismissal.
+  await expect(
+    page.getByTestId('unread-count')
+  ).toHaveText('0');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Mark All as Read (CSS Class Change)
+//
+// When you click "Mark All Read", each notification element gains the
+// CSS class "read". We verify this class change using toHaveClass().
+// --------------------------------------------------------------------------
+test('exercise 4: mark all as read and verify class change', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Wait for the first notification.
+  await expect(
+    page.getByTestId('notification-item')
+  ).toHaveCount(1, { timeout: 5000 });
+
+  // Pause the feed so the count stays stable.
+  await page.getByTestId('btn-pause-feed').click();
+
+  // Verify the notification does NOT have the "read" class yet.
+  // toHaveClass checks the element's className attribute.
+  const firstNotification = page.getByTestId('notification-item').first();
+  await expect(firstNotification).not.toHaveClass(/read/);
+
+  // Click "Mark All Read".
+  await page.getByTestId('btn-mark-all-read').click();
+
+  // Verify the notification now has the "read" class.
+  // The CSS class changes the background, border, and text color.
+  await expect(firstNotification).toHaveClass(/read/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Wait for Price Text to Change (Text Mutation)
+//
+// The live price updates every 2 seconds. We capture the initial value,
+// then use not.toHaveText() to wait until it changes.
+// --------------------------------------------------------------------------
+test('exercise 5: wait for live price text to change', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Read the initial price text.
+  const initialPrice = await page.getByTestId('live-price').textContent();
+
+  // not.toHaveText() auto-retries until the text is different from the
+  // initial value. The price updates every 2s, so it should change
+  // well within the default 5s timeout.
+  await expect(
+    page.getByTestId('live-price')
+  ).not.toHaveText(initialPrice!, { timeout: 5000 });
+
+  // Also verify the timestamp updates (proving the feed is live).
+  await expect(
+    page.getByTestId('price-timestamp')
+  ).not.toHaveText('--:--:--');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Verify Badge Visibility Based on Count
+//
+// The unread badge is visible when unreadCount > 0 and hidden when 0.
+// We verify the show/hide behavior using toBeVisible/toBeHidden.
+// --------------------------------------------------------------------------
+test('exercise 6: badge shows when unread, hides when all read', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Wait for a notification to arrive.
+  await expect(
+    page.getByTestId('notification-item')
+  ).toHaveCount(1, { timeout: 5000 });
+
+  // Badge should be visible (there are unread notifications).
+  await expect(
+    page.getByTestId('unread-badge')
+  ).toBeVisible();
+
+  // Pause the feed and mark all as read.
+  await page.getByTestId('btn-pause-feed').click();
+  await page.getByTestId('btn-mark-all-read').click();
+
+  // Badge should now be hidden (CSS class "hidden" is added,
+  // which sets display: none).
+  await expect(
+    page.getByTestId('unread-badge')
+  ).toBeHidden();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Wait for Multiple Notifications to Accumulate
+//
+// Notifications arrive every 3 seconds. We wait for at least 3 to appear.
+// This requires a longer timeout since 3 notifications = ~9 seconds.
+// --------------------------------------------------------------------------
+test('exercise 7: wait for at least 3 notifications', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // toHaveCount(3) retries until exactly 3 notification-item elements
+  // exist. With a 3s interval, this takes ~9s, so we set timeout to 15s.
+  await expect(
+    page.getByTestId('notification-item')
+  ).toHaveCount(3, { timeout: 15000 });
+
+  // Verify the total count display matches.
+  await expect(
+    page.getByTestId('total-count')
+  ).toHaveText('3');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Verify Element Attribute Changes Dynamically
+//
+// The "Toggle Priority" button changes data-priority from "normal"
+// to "high" on the status message. We verify this with toHaveAttribute().
+// --------------------------------------------------------------------------
+test('exercise 8: verify attribute changes on toggle', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify initial attribute value.
+  // toHaveAttribute(name, value) checks a specific attribute on the element.
+  await expect(
+    page.getByTestId('status-message')
+  ).toHaveAttribute('data-priority', 'normal');
+
+  // Click the "Toggle Priority" button.
+  await page.getByTestId('btn-change-attr').click();
+
+  // Verify the attribute changed to "high".
+  await expect(
+    page.getByTestId('status-message')
+  ).toHaveAttribute('data-priority', 'high');
+
+  // Also verify the text content changed as a result.
+  await expect(
+    page.getByTestId('status-message')
+  ).toHaveText('System status: High priority — maintenance scheduled');
+
+  // Toggle back and verify it reverts.
+  await page.getByTestId('btn-change-attr').click();
+  await expect(
+    page.getByTestId('status-message')
+  ).toHaveAttribute('data-priority', 'normal');
+});
+8:T212c,// Path to the playground HTML served by the dev server.
+const PLAYGROUND = '/phase-01-dom-and-browser-apis/11-dom-mutations/playground/';
+
+describe('Kata 11: DOM Mutations', () => {
+
+  beforeEach(() => {
+    // Visit the playground before each test.
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Wait for New Notification (DOM Insertion)
+  //
+  // The feed auto-adds a notification every 3 seconds via setInterval.
+  // cy.get() + .should('have.length', n) retries automatically until
+  // the expected number of elements exist in the DOM.
+  // --------------------------------------------------------------------------
+  it('exercise 1: wait for a new notification to appear', () => {
+    // Wait for at least 1 notification to be inserted.
+    // { timeout: 5000 } gives Cypress up to 5 seconds to retry.
+    // The notification arrives after 3s, so this passes comfortably.
+    cy.get('[data-testid="notification-item"]', { timeout: 5000 })
+      .should('have.length', 1);
+
+    // Verify the notification contains visible text.
+    cy.get('[data-testid="notification-text"]').first()
+      .should('be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Verify Notification Count Increments
+  //
+  // Wait for notifications and verify the counter text updates.
+  // .should('have.text', '1') retries until the text matches.
+  // --------------------------------------------------------------------------
+  it('exercise 2: verify unread count increments with new notifications', () => {
+    // Wait for the first notification.
+    cy.get('[data-testid="notification-item"]', { timeout: 5000 })
+      .should('have.length', 1);
+
+    // Unread count should be "1".
+    cy.get('[data-testid="unread-count"]')
+      .should('have.text', '1');
+
+    // Wait for the second notification.
+    cy.get('[data-testid="notification-item"]', { timeout: 5000 })
+      .should('have.length', 2);
+
+    // Unread count should be "2".
+    cy.get('[data-testid="unread-count"]')
+      .should('have.text', '2');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Dismiss a Notification (DOM Removal)
+  //
+  // Wait for a notification, click dismiss, and verify it's gone.
+  // .should('have.length', 0) retries until no elements remain.
+  // --------------------------------------------------------------------------
+  it('exercise 3: dismiss a notification and verify removal', () => {
+    // Wait for the first notification.
+    cy.get('[data-testid="notification-item"]', { timeout: 5000 })
+      .should('have.length', 1);
+
+    // Pause the feed so no new notifications arrive.
+    cy.get('[data-testid="btn-pause-feed"]').click();
+
+    // Click the dismiss button on the first notification.
+    // The dismiss button removes the notification element from the DOM.
+    cy.get('[data-testid="btn-dismiss"]').first().click();
+
+    // Verify the notification is removed — count is now 0.
+    cy.get('[data-testid="notification-item"]')
+      .should('have.length', 0);
+
+    // Unread count should also be 0.
+    cy.get('[data-testid="unread-count"]')
+      .should('have.text', '0');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Mark All as Read (CSS Class Change)
+  //
+  // "Mark All Read" adds the CSS class "read" to every notification.
+  // .should('have.class', 'read') retries until the class is present.
+  // --------------------------------------------------------------------------
+  it('exercise 4: mark all as read and verify class change', () => {
+    // Wait for the first notification.
+    cy.get('[data-testid="notification-item"]', { timeout: 5000 })
+      .should('have.length', 1);
+
+    // Pause the feed.
+    cy.get('[data-testid="btn-pause-feed"]').click();
+
+    // Verify the notification does NOT have the "read" class yet.
+    cy.get('[data-testid="notification-item"]').first()
+      .should('not.have.class', 'read');
+
+    // Click "Mark All Read".
+    cy.get('[data-testid="btn-mark-all-read"]').click();
+
+    // Verify the notification now has the "read" class.
+    // This class changes background, border, and text color via CSS.
+    cy.get('[data-testid="notification-item"]').first()
+      .should('have.class', 'read');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Wait for Price Text to Change (Text Mutation)
+  //
+  // The live price updates every 2 seconds. We capture the initial text,
+  // then use .should('not.have.text', initial) to wait for it to change.
+  // --------------------------------------------------------------------------
+  it('exercise 5: wait for live price text to change', () => {
+    // Read the initial price text using .invoke('text').
+    // .then() gives us the text value to use in the next assertion.
+    cy.get('[data-testid="live-price"]')
+      .invoke('text')
+      .then((initialPrice) => {
+        // .should('not.have.text', initialPrice) retries until the
+        // element's text is different from the initial value.
+        // Price updates every 2s, so this passes within 5s.
+        cy.get('[data-testid="live-price"]', { timeout: 5000 })
+          .should('not.have.text', initialPrice);
+      });
+
+    // Also verify the timestamp has been set.
+    cy.get('[data-testid="price-timestamp"]')
+      .should('not.have.text', '--:--:--');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Verify Badge Visibility Based on Count
+  //
+  // Badge is visible when unread > 0, hidden when unread = 0.
+  // The badge uses display:none (via CSS class "hidden") to hide.
+  // --------------------------------------------------------------------------
+  it('exercise 6: badge shows when unread, hides when all read', () => {
+    // Wait for a notification so there's something to mark as read.
+    cy.get('[data-testid="notification-item"]', { timeout: 5000 })
+      .should('have.length', 1);
+
+    // Badge should be visible (unread count > 0).
+    cy.get('[data-testid="unread-badge"]')
+      .should('be.visible');
+
+    // Pause the feed and mark all as read.
+    cy.get('[data-testid="btn-pause-feed"]').click();
+    cy.get('[data-testid="btn-mark-all-read"]').click();
+
+    // Badge should now be hidden (CSS class "hidden" sets display:none).
+    cy.get('[data-testid="unread-badge"]')
+      .should('not.be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Wait for Multiple Notifications to Accumulate
+  //
+  // Notifications arrive every 3 seconds. We wait for 3 to appear.
+  // With a 3s interval, 3 notifications take ~9s, so we use a 15s timeout.
+  // --------------------------------------------------------------------------
+  it('exercise 7: wait for at least 3 notifications', () => {
+    // .should('have.length', 3) retries until exactly 3 elements match.
+    cy.get('[data-testid="notification-item"]', { timeout: 15000 })
+      .should('have.length', 3);
+
+    // Verify the total count display matches.
+    cy.get('[data-testid="total-count"]')
+      .should('have.text', '3');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Verify Element Attribute Changes Dynamically
+  //
+  // "Toggle Priority" changes data-priority from "normal" to "high".
+  // .should('have.attr', name, value) retries until the attribute matches.
+  // --------------------------------------------------------------------------
+  it('exercise 8: verify attribute changes on toggle', () => {
+    // Verify initial attribute value.
+    cy.get('[data-testid="status-message"]')
+      .should('have.attr', 'data-priority', 'normal');
+
+    // Click "Toggle Priority".
+    cy.get('[data-testid="btn-change-attr"]').click();
+
+    // Verify the attribute changed to "high".
+    cy.get('[data-testid="status-message"]')
+      .should('have.attr', 'data-priority', 'high');
+
+    // Verify the text content also changed.
+    cy.get('[data-testid="status-message"]')
+      .should('have.text', 'System status: High priority — maintenance scheduled');
+
+    // Toggle back and verify it reverts.
+    cy.get('[data-testid="btn-change-attr"]').click();
+    cy.get('[data-testid="status-message"]')
+      .should('have.attr', 'data-priority', 'normal');
+  });
+
+});
+9:T1d89,# Kata 13: Form Validation
+
+## What You Will Learn
+
+- How to submit a form and verify inline validation error messages
+- How to fill in form fields with valid and invalid data
+- How to check for specific error message text below each field
+- How to verify error styling (red border) on invalid inputs
+- How to verify a successful submission clears all errors
+
+## Prerequisites
+
+- Completed Katas 01-12
+- Understanding of DOM selectors, assertions, and user interaction commands
+
+## Concepts Explained
+
+### Filling Form Fields
+
+```typescript
+// PLAYWRIGHT
+// fill(value) clears the field and types the new value.
+// It waits for the element to be editable before typing.
+await page.getByTestId('input-email').fill('aisha@example.com');
+
+// CYPRESS
+// clear() removes existing text, then type() types new text.
+// type() simulates real key presses one character at a time.
+cy.get('[data-testid="input-email"]').clear().type('aisha@example.com');
+```
+
+### Submitting a Form
+
+```typescript
+// PLAYWRIGHT
+// click() on the submit button triggers the form's submit event.
+await page.getByTestId('btn-submit').click();
+
+// CYPRESS
+cy.get('[data-testid="btn-submit"]').click();
+```
+
+### Verifying Inline Error Messages
+
+```typescript
+// PLAYWRIGHT
+// toBeVisible() checks the element is rendered and not hidden.
+// The playground uses display:none by default and adds a 'visible'
+// class to show the error message.
+await expect(page.getByTestId('error-email')).toBeVisible();
+await expect(page.getByTestId('error-email')).toHaveText('Please enter a valid email address.');
+
+// CYPRESS
+cy.get('[data-testid="error-email"]').should('be.visible');
+cy.get('[data-testid="error-email"]').should('have.text', 'Please enter a valid email address.');
+```
+
+### Verifying Error Styling (CSS Class)
+
+```typescript
+// PLAYWRIGHT
+// toHaveClass(regex) checks the element's className matches.
+await expect(page.getByTestId('input-email')).toHaveClass(/input-error/);
+
+// CYPRESS
+cy.get('[data-testid="input-email"]').should('have.class', 'input-error');
+```
+
+### Selecting a Dropdown Option
+
+```typescript
+// PLAYWRIGHT
+// selectOption(value) selects the <option> with the matching value attribute.
+await page.getByTestId('input-nationality').selectOption('US');
+
+// CYPRESS
+// select(value) selects the <option> with the matching value.
+cy.get('[data-testid="input-nationality"]').select('US');
+```
+
+## Playground
+
+The playground is a "KYC Personal Details" form with client-side validation. It contains:
+
+1. **Full Name** — required text input, 3-50 characters.
+2. **Email Address** — required, validated against an email regex pattern.
+3. **Phone Number** — required, must be 10-15 digits (may start with +, dashes/spaces allowed).
+4. **Date of Birth** — required date input.
+5. **Nationality** — required dropdown with country options.
+6. **Government ID Number** — required text input, 5-20 characters.
+7. **Submit Button** — triggers client-side validation.
+8. **Status Banner** — shows green "success" or red "error" message after submission.
+9. **Inline Errors** — each field has a hidden error message that appears when validation fails, with a red border on the input.
+
+### Validation Rules
+
+| Field | Rule | Error Message |
+|-------|------|---------------|
+| Full Name | Required, 3-50 chars | "Full name is required (3-50 characters)." |
+| Email | Required, email regex | "Please enter a valid email address." |
+| Phone | Required, 10-15 digits | "Phone must be 10-15 digits (may start with +)." |
+| Date of Birth | Required | "Date of birth is required." |
+| Nationality | Required (non-empty) | "Please select your nationality." |
+| ID Number | Required, 5-20 chars | "ID number must be 5-20 characters." |
+
+## Exercises
+
+### Exercise 1: Submit Empty Form and Verify All Errors Appear
+Click the submit button without filling any fields. Verify that all six error messages are visible.
+
+### Exercise 2: Fill Valid Data and Verify Success Message
+Fill every field with valid data and submit. Verify the success banner appears with the correct text.
+
+### Exercise 3: Enter Invalid Email and Verify Error
+Fill all fields with valid data except email (use "notanemail"). Submit and verify only the email error appears.
+
+### Exercise 4: Enter Invalid Phone and Verify Error
+Fill all fields with valid data except phone (use "123"). Submit and verify only the phone error appears.
+
+### Exercise 5: Enter Name Below Minimum Length
+Fill all fields with valid data except name (use "AB" which is only 2 characters). Submit and verify the name error appears.
+
+### Exercise 6: Verify Exact Error Message Text
+Submit the empty form and verify each error message contains the exact expected text from the validation rules table above.
+
+### Exercise 7: Verify Error Styling (Red Border)
+Submit the empty form and verify that every required input has the "input-error" CSS class, indicating a red border.
+
+### Exercise 8: Successful Submission Clears Errors
+First submit the empty form to trigger errors. Then fill all fields with valid data and submit again. Verify all errors are gone and the success banner is shown.
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/form-validation.spec.ts`
+
+### Cypress Solution
+
+See `cypress/form-validation.cy.ts`
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Using type() without clear() first | If the field already has text, type() appends to it | Always clear() before type() in Cypress; Playwright's fill() auto-clears |
+| Checking error visibility before submitting | Errors are hidden until the form is submitted | Click the submit button first, then check for errors |
+| Forgetting novalidate on the form | Browser's built-in validation popups interfere with custom messages | The playground uses novalidate so only JS validation runs |
+| Not checking both error text and visibility | An element can exist but be hidden (display:none) | Use toBeVisible() / should('be.visible') alongside text checks |
+| Selecting dropdown by display text instead of value | selectOption() and select() expect the value attribute by default | Use the value attribute (e.g. 'US'), not the display text ('United States') |
+
+## Quick Reference
+
+### Playwright Form Interaction
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Fill text input | `locator.fill(value)` | `await input.fill('Aisha Patel')` |
+| Select dropdown | `locator.selectOption(value)` | `await dropdown.selectOption('US')` |
+| Click submit | `locator.click()` | `await btn.click()` |
+| Check visible | `expect(loc).toBeVisible()` | `await expect(error).toBeVisible()` |
+| Check hidden | `expect(loc).toBeHidden()` | `await expect(error).toBeHidden()` |
+| Check text | `expect(loc).toHaveText(str)` | `await expect(error).toHaveText('...')` |
+| Check class | `expect(loc).toHaveClass(regex)` | `await expect(input).toHaveClass(/input-error/)` |
+
+### Cypress Form Interaction
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Fill text input | `.clear().type(value)` | `cy.get(sel).clear().type('Aisha Patel')` |
+| Select dropdown | `.select(value)` | `cy.get(sel).select('US')` |
+| Click submit | `.click()` | `cy.get(sel).click()` |
+| Check visible | `.should('be.visible')` | `cy.get(sel).should('be.visible')` |
+| Check hidden | `.should('not.be.visible')` | `cy.get(sel).should('not.be.visible')` |
+| Check text | `.should('have.text', str)` | `cy.get(sel).should('have.text', '...')` |
+| Check class | `.should('have.class', name)` | `cy.get(sel).should('have.class', 'input-error')` |
+a:T28a8,import { test, expect } from '@playwright/test';
+
+// The base URL for our playground page. All tests navigate here first.
+const PLAYGROUND = '/phase-02-forms/13-form-validation/playground/';
+
+// --------------------------------------------------------------------------
+// Helper: Fill every field with valid data.
+// --------------------------------------------------------------------------
+// This helper fills all six required fields with data that passes validation.
+// Individual tests can then override a single field to test that one rule.
+//
+// Parameters:
+//   page — the Playwright Page object from the test fixture.
+async function fillValidData(page: import('@playwright/test').Page) {
+  // fill(value) clears the input and types the new value in one step.
+  await page.getByTestId('input-full-name').fill('Aisha Patel');
+
+  await page.getByTestId('input-email').fill('aisha@example.com');
+
+  await page.getByTestId('input-phone').fill('+1-555-123-4567');
+
+  // For date inputs, fill() accepts an ISO date string (YYYY-MM-DD).
+  await page.getByTestId('input-dob').fill('1990-05-15');
+
+  // selectOption(value) picks the <option> whose value attribute matches.
+  await page.getByTestId('input-nationality').selectOption('IN');
+
+  await page.getByTestId('input-id-number').fill('A12345678');
+}
+
+// --------------------------------------------------------------------------
+// Exercise 1: Submit Empty Form and Verify All Errors Appear
+// --------------------------------------------------------------------------
+// Clicking submit without filling anything should show all six error messages.
+test('exercise 1: submit empty form and verify all errors appear', async ({ page }) => {
+  // Navigate to the playground.
+  await page.goto(PLAYGROUND);
+
+  // Click the submit button without entering any data.
+  // click() simulates a left-click on the element's center point.
+  await page.getByTestId('btn-submit').click();
+
+  // Verify every error message is now visible.
+  // toBeVisible() checks that the element is rendered and has non-zero size.
+  await expect(page.getByTestId('error-full-name')).toBeVisible();
+  await expect(page.getByTestId('error-email')).toBeVisible();
+  await expect(page.getByTestId('error-phone')).toBeVisible();
+  await expect(page.getByTestId('error-dob')).toBeVisible();
+  await expect(page.getByTestId('error-nationality')).toBeVisible();
+  await expect(page.getByTestId('error-id-number')).toBeVisible();
+
+  // Verify the form-level error banner is also shown.
+  await expect(page.getByTestId('form-status')).toBeVisible();
+  await expect(page.getByTestId('form-status')).toContainText('Please fix the errors');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Fill Valid Data and Verify Success Message
+// --------------------------------------------------------------------------
+// When all fields pass validation, a success banner should appear.
+test('exercise 2: fill valid data and verify success message', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Fill all fields with valid data using our helper.
+  await fillValidData(page);
+
+  // Submit the form.
+  await page.getByTestId('btn-submit').click();
+
+  // Verify the success banner is shown.
+  // toHaveClass(regex) checks the element's className matches the pattern.
+  await expect(page.getByTestId('form-status')).toHaveClass(/success/);
+  await expect(page.getByTestId('form-status')).toContainText('submitted successfully');
+
+  // Verify NO error messages are visible.
+  await expect(page.getByTestId('error-full-name')).toBeHidden();
+  await expect(page.getByTestId('error-email')).toBeHidden();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Enter Invalid Email and Verify Error
+// --------------------------------------------------------------------------
+// An invalid email (missing @ or domain) should trigger the email error only.
+test('exercise 3: invalid email triggers email error', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Fill valid data first, then override email with an invalid value.
+  await fillValidData(page);
+  // fill() replaces the entire input content. "notanemail" has no @ symbol
+  // so it fails the email regex check.
+  await page.getByTestId('input-email').fill('notanemail');
+
+  await page.getByTestId('btn-submit').click();
+
+  // Only the email error should be visible.
+  await expect(page.getByTestId('error-email')).toBeVisible();
+
+  // Other errors should NOT be visible since their fields have valid data.
+  await expect(page.getByTestId('error-full-name')).toBeHidden();
+  await expect(page.getByTestId('error-phone')).toBeHidden();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Enter Invalid Phone and Verify Error
+// --------------------------------------------------------------------------
+// A phone number with too few digits should trigger the phone error only.
+test('exercise 4: invalid phone triggers phone error', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  await fillValidData(page);
+  // "123" is only 3 digits, well below the 10-digit minimum.
+  await page.getByTestId('input-phone').fill('123');
+
+  await page.getByTestId('btn-submit').click();
+
+  // Only the phone error should be visible.
+  await expect(page.getByTestId('error-phone')).toBeVisible();
+
+  // Other errors should remain hidden.
+  await expect(page.getByTestId('error-email')).toBeHidden();
+  await expect(page.getByTestId('error-full-name')).toBeHidden();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Enter Name Below Minimum Length
+// --------------------------------------------------------------------------
+// The name field requires at least 3 characters. "AB" is only 2.
+test('exercise 5: name below minimum length triggers error', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  await fillValidData(page);
+  // "AB" is 2 characters — below the 3-character minimum.
+  await page.getByTestId('input-full-name').fill('AB');
+
+  await page.getByTestId('btn-submit').click();
+
+  // The name error should appear.
+  await expect(page.getByTestId('error-full-name')).toBeVisible();
+
+  // Other fields should still be valid.
+  await expect(page.getByTestId('error-email')).toBeHidden();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Verify Exact Error Message Text
+// --------------------------------------------------------------------------
+// Each error message must contain the exact expected text.
+test('exercise 6: verify exact error message text', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Submit empty form to trigger all errors.
+  await page.getByTestId('btn-submit').click();
+
+  // toHaveText(expected) checks that textContent exactly matches.
+  await expect(page.getByTestId('error-full-name')).toHaveText(
+    'Full name is required (3-50 characters).'
+  );
+  await expect(page.getByTestId('error-email')).toHaveText(
+    'Please enter a valid email address.'
+  );
+  await expect(page.getByTestId('error-phone')).toHaveText(
+    'Phone must be 10-15 digits (may start with +).'
+  );
+  await expect(page.getByTestId('error-dob')).toHaveText(
+    'Date of birth is required.'
+  );
+  await expect(page.getByTestId('error-nationality')).toHaveText(
+    'Please select your nationality.'
+  );
+  await expect(page.getByTestId('error-id-number')).toHaveText(
+    'ID number must be 5-20 characters.'
+  );
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Verify Error Styling (Red Border)
+// --------------------------------------------------------------------------
+// When validation fails, each input should have the "input-error" CSS class
+// which applies a red border.
+test('exercise 7: verify error styling on invalid inputs', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Submit empty form.
+  await page.getByTestId('btn-submit').click();
+
+  // toHaveClass(regex) checks if the element's className contains the pattern.
+  // /input-error/ is a regex that matches if "input-error" appears anywhere
+  // in the class string.
+  await expect(page.getByTestId('input-full-name')).toHaveClass(/input-error/);
+  await expect(page.getByTestId('input-email')).toHaveClass(/input-error/);
+  await expect(page.getByTestId('input-phone')).toHaveClass(/input-error/);
+  await expect(page.getByTestId('input-dob')).toHaveClass(/input-error/);
+  await expect(page.getByTestId('input-nationality')).toHaveClass(/input-error/);
+  await expect(page.getByTestId('input-id-number')).toHaveClass(/input-error/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Successful Submission Clears Errors
+// --------------------------------------------------------------------------
+// First trigger errors by submitting empty, then fill valid data and submit
+// again. All errors should disappear and the success banner should show.
+test('exercise 8: successful submission clears previous errors', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Step 1: Submit the empty form to trigger all error messages.
+  await page.getByTestId('btn-submit').click();
+
+  // Confirm errors are visible.
+  await expect(page.getByTestId('error-full-name')).toBeVisible();
+  await expect(page.getByTestId('form-status')).toHaveClass(/error/);
+
+  // Step 2: Fill all fields with valid data.
+  await fillValidData(page);
+
+  // Step 3: Submit again.
+  await page.getByTestId('btn-submit').click();
+
+  // All error messages should now be hidden.
+  await expect(page.getByTestId('error-full-name')).toBeHidden();
+  await expect(page.getByTestId('error-email')).toBeHidden();
+  await expect(page.getByTestId('error-phone')).toBeHidden();
+  await expect(page.getByTestId('error-dob')).toBeHidden();
+  await expect(page.getByTestId('error-nationality')).toBeHidden();
+  await expect(page.getByTestId('error-id-number')).toBeHidden();
+
+  // All inputs should no longer have the error class.
+  await expect(page.getByTestId('input-full-name')).not.toHaveClass(/input-error/);
+
+  // The success banner should be shown.
+  await expect(page.getByTestId('form-status')).toHaveClass(/success/);
+  await expect(page.getByTestId('form-status')).toContainText('submitted successfully');
+});
+b:T23c0,const PLAYGROUND = '/phase-02-forms/13-form-validation/playground/';
+
+describe('Kata 13: Form Validation', () => {
+
+  // beforeEach runs before every test in this describe block.
+  // We navigate to the playground so each test starts with a fresh page.
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Helper: Fill every field with valid data.
+  // --------------------------------------------------------------------------
+  // Uses Cypress clear() + type() for text fields, select() for dropdowns.
+  // clear() removes existing text so type() starts from an empty field.
+  function fillValidData() {
+    // clear() empties the input, then type() simulates keystrokes.
+    cy.get('[data-testid="input-full-name"]').clear().type('Aisha Patel');
+    cy.get('[data-testid="input-email"]').clear().type('aisha@example.com');
+    cy.get('[data-testid="input-phone"]').clear().type('+1-555-123-4567');
+    // For date inputs in Cypress, type() with an ISO date string works.
+    cy.get('[data-testid="input-dob"]').clear().type('1990-05-15');
+    // select(value) chooses the <option> whose value attribute matches.
+    cy.get('[data-testid="input-nationality"]').select('IN');
+    cy.get('[data-testid="input-id-number"]').clear().type('A12345678');
+  }
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Submit Empty Form and Verify All Errors Appear
+  // --------------------------------------------------------------------------
+  it('exercise 1: submit empty form and verify all errors appear', () => {
+    // Click the submit button without filling any fields.
+    cy.get('[data-testid="btn-submit"]').click();
+
+    // Verify every error message is now visible.
+    // should('be.visible') asserts the element is rendered and visible.
+    cy.get('[data-testid="error-full-name"]').should('be.visible');
+    cy.get('[data-testid="error-email"]').should('be.visible');
+    cy.get('[data-testid="error-phone"]').should('be.visible');
+    cy.get('[data-testid="error-dob"]').should('be.visible');
+    cy.get('[data-testid="error-nationality"]').should('be.visible');
+    cy.get('[data-testid="error-id-number"]').should('be.visible');
+
+    // Verify the form-level error banner is shown.
+    cy.get('[data-testid="form-status"]')
+      .should('be.visible')
+      .and('contain.text', 'Please fix the errors');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Fill Valid Data and Verify Success Message
+  // --------------------------------------------------------------------------
+  it('exercise 2: fill valid data and verify success message', () => {
+    // Fill all fields with valid data.
+    fillValidData();
+
+    // Submit the form.
+    cy.get('[data-testid="btn-submit"]').click();
+
+    // Verify the success banner is shown with correct class and text.
+    // .should('have.class', 'success') checks the element has that CSS class.
+    cy.get('[data-testid="form-status"]')
+      .should('have.class', 'success')
+      .and('contain.text', 'submitted successfully');
+
+    // Verify error messages are hidden.
+    cy.get('[data-testid="error-full-name"]').should('not.be.visible');
+    cy.get('[data-testid="error-email"]').should('not.be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Enter Invalid Email and Verify Error
+  // --------------------------------------------------------------------------
+  it('exercise 3: invalid email triggers email error', () => {
+    fillValidData();
+    // Override email with an invalid value — "notanemail" has no @ symbol.
+    cy.get('[data-testid="input-email"]').clear().type('notanemail');
+
+    cy.get('[data-testid="btn-submit"]').click();
+
+    // Only the email error should be visible.
+    cy.get('[data-testid="error-email"]').should('be.visible');
+
+    // Other errors should be hidden.
+    cy.get('[data-testid="error-full-name"]').should('not.be.visible');
+    cy.get('[data-testid="error-phone"]').should('not.be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Enter Invalid Phone and Verify Error
+  // --------------------------------------------------------------------------
+  it('exercise 4: invalid phone triggers phone error', () => {
+    fillValidData();
+    // "123" is only 3 digits — below the 10-digit minimum.
+    cy.get('[data-testid="input-phone"]').clear().type('123');
+
+    cy.get('[data-testid="btn-submit"]').click();
+
+    // Only the phone error should be visible.
+    cy.get('[data-testid="error-phone"]').should('be.visible');
+    cy.get('[data-testid="error-email"]').should('not.be.visible');
+    cy.get('[data-testid="error-full-name"]').should('not.be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Enter Name Below Minimum Length
+  // --------------------------------------------------------------------------
+  it('exercise 5: name below minimum length triggers error', () => {
+    fillValidData();
+    // "AB" is 2 characters — below the 3-character minimum.
+    cy.get('[data-testid="input-full-name"]').clear().type('AB');
+
+    cy.get('[data-testid="btn-submit"]').click();
+
+    cy.get('[data-testid="error-full-name"]').should('be.visible');
+    cy.get('[data-testid="error-email"]').should('not.be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Verify Exact Error Message Text
+  // --------------------------------------------------------------------------
+  it('exercise 6: verify exact error message text', () => {
+    // Submit empty form to trigger all errors.
+    cy.get('[data-testid="btn-submit"]').click();
+
+    // should('have.text', str) checks textContent exactly matches the string.
+    cy.get('[data-testid="error-full-name"]')
+      .should('have.text', 'Full name is required (3-50 characters).');
+
+    cy.get('[data-testid="error-email"]')
+      .should('have.text', 'Please enter a valid email address.');
+
+    cy.get('[data-testid="error-phone"]')
+      .should('have.text', 'Phone must be 10-15 digits (may start with +).');
+
+    cy.get('[data-testid="error-dob"]')
+      .should('have.text', 'Date of birth is required.');
+
+    cy.get('[data-testid="error-nationality"]')
+      .should('have.text', 'Please select your nationality.');
+
+    cy.get('[data-testid="error-id-number"]')
+      .should('have.text', 'ID number must be 5-20 characters.');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Verify Error Styling (Red Border)
+  // --------------------------------------------------------------------------
+  it('exercise 7: verify error styling on invalid inputs', () => {
+    // Submit empty form.
+    cy.get('[data-testid="btn-submit"]').click();
+
+    // should('have.class', name) checks the element's classList contains name.
+    // The "input-error" class applies a red border via CSS.
+    cy.get('[data-testid="input-full-name"]').should('have.class', 'input-error');
+    cy.get('[data-testid="input-email"]').should('have.class', 'input-error');
+    cy.get('[data-testid="input-phone"]').should('have.class', 'input-error');
+    cy.get('[data-testid="input-dob"]').should('have.class', 'input-error');
+    cy.get('[data-testid="input-nationality"]').should('have.class', 'input-error');
+    cy.get('[data-testid="input-id-number"]').should('have.class', 'input-error');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Successful Submission Clears Errors
+  // --------------------------------------------------------------------------
+  it('exercise 8: successful submission clears previous errors', () => {
+    // Step 1: Submit the empty form to trigger all error messages.
+    cy.get('[data-testid="btn-submit"]').click();
+
+    // Confirm errors are visible.
+    cy.get('[data-testid="error-full-name"]').should('be.visible');
+    cy.get('[data-testid="form-status"]').should('have.class', 'error');
+
+    // Step 2: Fill all fields with valid data.
+    fillValidData();
+
+    // Step 3: Submit again.
+    cy.get('[data-testid="btn-submit"]').click();
+
+    // All error messages should now be hidden.
+    cy.get('[data-testid="error-full-name"]').should('not.be.visible');
+    cy.get('[data-testid="error-email"]').should('not.be.visible');
+    cy.get('[data-testid="error-phone"]').should('not.be.visible');
+    cy.get('[data-testid="error-dob"]').should('not.be.visible');
+    cy.get('[data-testid="error-nationality"]').should('not.be.visible');
+    cy.get('[data-testid="error-id-number"]').should('not.be.visible');
+
+    // Inputs should no longer have the error class.
+    cy.get('[data-testid="input-full-name"]').should('not.have.class', 'input-error');
+
+    // The success banner should be shown.
+    cy.get('[data-testid="form-status"]')
+      .should('have.class', 'success')
+      .and('contain.text', 'submitted successfully');
+  });
+
+});
+c:Tc260,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { test, expect } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> '@playwright/test'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// Path to the playground HTML served by the dev server.</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-01-dom-and-browser-apis/12-web-apis/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 1: Copy to Clipboard and Verify</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// We grant clipboard permissions, click the copy button, then read</span></span>
+<span class="line"><span style="color:#6A737D">// the clipboard content using page.evaluate() to call the browser's</span></span>
+<span class="line"><span style="color:#6A737D">// Clipboard API.</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: copy account number to clipboard'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8">, </span><span style="color:#FFAB70">context</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">  // Grant clipboard-read and clipboard-write permissions so the page</span></span>
+<span class="line"><span style="color:#6A737D">  // can access the clipboard without a user gesture prompt.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> context.</span><span style="color:#B392F0">grantPermissions</span><span style="color:#E1E4E8">([</span><span style="color:#9ECBFF">'clipboard-read'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'clipboard-write'</span><span style="color:#E1E4E8">]);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click the "Copy Account Number" button.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-copy-account'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the status message shows "Copied to clipboard!".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'copy-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Copied to clipboard!'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Read the clipboard content using page.evaluate().</span></span>
+<span class="line"><span style="color:#6A737D">  // navigator.clipboard.readText() is an async browser API that returns</span></span>
+<span class="line"><span style="color:#6A737D">  // the current clipboard text.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> clipboardText</span><span style="color:#F97583"> =</span><span style="color:#F97583"> await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">evaluate</span><span style="color:#E1E4E8">(() </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> navigator.clipboard.</span><span style="color:#B392F0">readText</span><span style="color:#E1E4E8">());</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the clipboard contains the expected account number.</span></span>
+<span class="line"><span style="color:#B392F0">  expect</span><span style="color:#E1E4E8">(clipboardText).</span><span style="color:#B392F0">toBe</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'1234-5678-9012-3456'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 2: Mock Geolocation and Verify Coordinates</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// We set a fake geolocation on the browser context BEFORE navigating.</span></span>
+<span class="line"><span style="color:#6A737D">// When the page calls navigator.geolocation.getCurrentPosition(),</span></span>
+<span class="line"><span style="color:#6A737D">// it receives our mocked coordinates instead of real GPS data.</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: mock geolocation and verify displayed coordinates'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8">, </span><span style="color:#FFAB70">context</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">  // Grant geolocation permission so the page doesn't show a prompt.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> context.</span><span style="color:#B392F0">grantPermissions</span><span style="color:#E1E4E8">([</span><span style="color:#9ECBFF">'geolocation'</span><span style="color:#E1E4E8">]);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Set the fake geolocation — these are coordinates for New Delhi, India.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> context.</span><span style="color:#B392F0">setGeolocation</span><span style="color:#E1E4E8">({ latitude: </span><span style="color:#79B8FF">28.6139</span><span style="color:#E1E4E8">, longitude: </span><span style="color:#79B8FF">77.2090</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click "Detect Location".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-detect-location'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the displayed latitude and longitude match our mocked values.</span></span>
+<span class="line"><span style="color:#6A737D">  // toFixed(4) in the playground formats them as "28.6139" and "77.2090".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'location-lat'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'28.6139'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'location-lng'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'77.2090'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the result box shows a success message.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'location-result'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Location detected'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 3: Handle Alert Dialog</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// page.on('dialog') registers a listener that fires whenever the page</span></span>
+<span class="line"><span style="color:#6A737D">// triggers alert(), confirm(), or prompt(). We MUST register the</span></span>
+<span class="line"><span style="color:#6A737D">// listener BEFORE clicking the button, because the dialog blocks JS.</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: handle alert dialog and verify message'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Variable to capture the alert message text.</span></span>
+<span class="line"><span style="color:#F97583">  let</span><span style="color:#E1E4E8"> alertMessage </span><span style="color:#F97583">=</span><span style="color:#9ECBFF"> ''</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Register the dialog handler BEFORE triggering the alert.</span></span>
+<span class="line"><span style="color:#6A737D">  // dialog.type() tells us which kind of dialog it is ('alert', 'confirm', 'prompt').</span></span>
+<span class="line"><span style="color:#6A737D">  // dialog.message() returns the text shown in the dialog.</span></span>
+<span class="line"><span style="color:#6A737D">  // dialog.accept() dismisses the dialog (same as clicking OK).</span></span>
+<span class="line"><span style="color:#E1E4E8">  page.</span><span style="color:#B392F0">on</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'dialog'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> (</span><span style="color:#FFAB70">dialog</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    alertMessage </span><span style="color:#F97583">=</span><span style="color:#E1E4E8"> dialog.</span><span style="color:#B392F0">message</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">    await</span><span style="color:#E1E4E8"> dialog.</span><span style="color:#B392F0">accept</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click the button that triggers alert().</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-trigger-alert'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the alert had the expected message.</span></span>
+<span class="line"><span style="color:#B392F0">  expect</span><span style="color:#E1E4E8">(alertMessage).</span><span style="color:#B392F0">toBe</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Payment of Rs 5,000 has been processed successfully!'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the page updated after the dialog was dismissed.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'dialog-result'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Alert was dismissed.'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 4: Handle Confirm Dialog (Accept and Dismiss)</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// confirm() returns true when accepted (OK) and false when dismissed</span></span>
+<span class="line"><span style="color:#6A737D">// (Cancel). We test both cases to verify the page reacts correctly.</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4a: accept confirm dialog'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Accept the confirm dialog by calling dialog.accept().</span></span>
+<span class="line"><span style="color:#E1E4E8">  page.</span><span style="color:#B392F0">on</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'dialog'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> (</span><span style="color:#FFAB70">dialog</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#B392F0">    expect</span><span style="color:#E1E4E8">(dialog.</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">()).</span><span style="color:#B392F0">toBe</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'confirm'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#B392F0">    expect</span><span style="color:#E1E4E8">(dialog.</span><span style="color:#B392F0">message</span><span style="color:#E1E4E8">()).</span><span style="color:#B392F0">toContain</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Rs 50,000'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">    await</span><span style="color:#E1E4E8"> dialog.</span><span style="color:#B392F0">accept</span><span style="color:#E1E4E8">();   </span><span style="color:#6A737D">// User clicks "OK"</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-trigger-confirm'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // When confirm returns true, the page shows "Transfer confirmed."</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'dialog-result'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Transfer confirmed.'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4b: dismiss confirm dialog'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Dismiss the confirm dialog by calling dialog.dismiss().</span></span>
+<span class="line"><span style="color:#E1E4E8">  page.</span><span style="color:#B392F0">on</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'dialog'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> (</span><span style="color:#FFAB70">dialog</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">    await</span><span style="color:#E1E4E8"> dialog.</span><span style="color:#B392F0">dismiss</span><span style="color:#E1E4E8">();  </span><span style="color:#6A737D">// User clicks "Cancel"</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-trigger-confirm'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // When confirm returns false, the page shows "Transfer cancelled."</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'dialog-result'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Transfer cancelled.'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 5: Handle Prompt Dialog with Input</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// prompt() shows a text input. We use dialog.accept(text) to enter</span></span>
+<span class="line"><span style="color:#6A737D">// a value, simulating the user typing into the prompt and clicking OK.</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: handle prompt dialog and enter text'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Register the dialog handler. For prompt dialogs, accept() takes</span></span>
+<span class="line"><span style="color:#6A737D">  // an optional string argument — the text to enter in the prompt input.</span></span>
+<span class="line"><span style="color:#E1E4E8">  page.</span><span style="color:#B392F0">on</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'dialog'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> (</span><span style="color:#FFAB70">dialog</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#B392F0">    expect</span><span style="color:#E1E4E8">(dialog.</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">()).</span><span style="color:#B392F0">toBe</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'prompt'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#6A737D">    // dialog.defaultValue() returns the pre-filled text (if any).</span></span>
+<span class="line"><span style="color:#B392F0">    expect</span><span style="color:#E1E4E8">(dialog.</span><span style="color:#B392F0">defaultValue</span><span style="color:#E1E4E8">()).</span><span style="color:#B392F0">toBe</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'1000'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#6A737D">    // Accept with a custom value.</span></span>
+<span class="line"><span style="color:#F97583">    await</span><span style="color:#E1E4E8"> dialog.</span><span style="color:#B392F0">accept</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'25000'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-trigger-prompt'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the page displays the entered amount.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'dialog-result'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">  ).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Transfer amount set to Rs 25000'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 6: Grant Camera Permission and Verify</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// context.grantPermissions() pre-grants browser permissions so the</span></span>
+<span class="line"><span style="color:#6A737D">// getUserMedia() call succeeds without showing a prompt. We verify</span></span>
+<span class="line"><span style="color:#6A737D">// the UI status changes from "Not requested" to "Granted".</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6a: grant camera permission and verify UI'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8">, </span><span style="color:#FFAB70">context</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">  // Grant camera permission BEFORE navigating. This satisfies the browser</span></span>
+<span class="line"><span style="color:#6A737D">  // permission model so no prompt appears.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> context.</span><span style="color:#B392F0">grantPermissions</span><span style="color:#E1E4E8">([</span><span style="color:#9ECBFF">'camera'</span><span style="color:#E1E4E8">]);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Headless Chromium does not have a real camera device, so even after</span></span>
+<span class="line"><span style="color:#6A737D">  // granting permission, navigator.mediaDevices.getUserMedia({ video: true })</span></span>
+<span class="line"><span style="color:#6A737D">  // would fail with NotFoundError. We stub getUserMedia to return a</span></span>
+<span class="line"><span style="color:#6A737D">  // minimal fake MediaStream so the success branch runs. addInitScript</span></span>
+<span class="line"><span style="color:#6A737D">  // injects this BEFORE any page script executes.</span></span>
+<span class="line"><span style="color:#6A737D">  //</span></span>
+<span class="line"><span style="color:#6A737D">  // The function body runs in the browser page context, where TypeScript</span></span>
+<span class="line"><span style="color:#6A737D">  // types do not apply. We cast getUserMedia via `any` to avoid a type</span></span>
+<span class="line"><span style="color:#6A737D">  // error while still overriding the method at runtime.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">addInitScript</span><span style="color:#E1E4E8">(() </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">    const</span><span style="color:#79B8FF"> fakeStream</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> { </span><span style="color:#B392F0">getTracks</span><span style="color:#E1E4E8">: () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> [{ </span><span style="color:#B392F0">stop</span><span style="color:#E1E4E8">: () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {} }] };</span></span>
+<span class="line"><span style="color:#6A737D">    // eslint-disable-next-line @typescript-eslint/no-explicit-any</span></span>
+<span class="line"><span style="color:#E1E4E8">    (navigator.mediaDevices </span><span style="color:#F97583">as</span><span style="color:#79B8FF"> any</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">getUserMedia</span><span style="color:#F97583"> =</span><span style="color:#F97583"> async</span><span style="color:#E1E4E8"> () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> fakeStream;</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click "Request Camera Access".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-request-camera'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the status changed to "Granted".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'permission-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Granted'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'permission-result'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Camera access granted'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6b: deny camera permission and verify UI'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8">, </span><span style="color:#FFAB70">context</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">  // Clear all permissions — this means getUserMedia() will be denied.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> context.</span><span style="color:#B392F0">clearPermissions</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-request-camera'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // When permission is denied, the status shows "Denied".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'permission-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Denied'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'permission-result'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Camera access denied'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 7: Verify File Download</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// page.waitForEvent('download') returns a Download object when the</span></span>
+<span class="line"><span style="color:#6A737D">// browser initiates a file download. We can check the suggested</span></span>
+<span class="line"><span style="color:#6A737D">// filename and even read the downloaded file's content.</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 7: verify CSV download triggers'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Start waiting for the download event BEFORE clicking the button.</span></span>
+<span class="line"><span style="color:#6A737D">  // This is similar to how we handle dialogs — register the listener first.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> downloadPromise</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">waitForEvent</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'download'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click the download button.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-download-statement'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Await the download object.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> download</span><span style="color:#F97583"> =</span><span style="color:#F97583"> await</span><span style="color:#E1E4E8"> downloadPromise;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the suggested filename.</span></span>
+<span class="line"><span style="color:#6A737D">  // suggestedFilename() returns the value of the &#x3C;a download="..."> attribute.</span></span>
+<span class="line"><span style="color:#B392F0">  expect</span><span style="color:#E1E4E8">(download.</span><span style="color:#B392F0">suggestedFilename</span><span style="color:#E1E4E8">()).</span><span style="color:#B392F0">toBe</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'statement-april-2026.csv'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Optionally, read the downloaded file's content to verify it.</span></span>
+<span class="line"><span style="color:#6A737D">  // download.path() returns the path to the temporary file on disk.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> path</span><span style="color:#F97583"> =</span><span style="color:#F97583"> await</span><span style="color:#E1E4E8"> download.</span><span style="color:#B392F0">path</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#B392F0">  expect</span><span style="color:#E1E4E8">(path).</span><span style="color:#B392F0">toBeTruthy</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the download status message on the page.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'download-status'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">  ).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Download started'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 8: Read/Write localStorage</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// page.evaluate() runs JavaScript in the browser context, giving us</span></span>
+<span class="line"><span style="color:#6A737D">// direct access to localStorage. We write a value, verify it persists,</span></span>
+<span class="line"><span style="color:#6A737D">// and confirm the UI reflects the stored data.</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 8: read and write localStorage'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Write a value to localStorage via page.evaluate().</span></span>
+<span class="line"><span style="color:#6A737D">  // This runs in the browser context, same as typing in the DevTools console.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">evaluate</span><span style="color:#E1E4E8">(() </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    localStorage.</span><span style="color:#B392F0">setItem</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'preferred_currency'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'INR'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Read it back and verify.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> value</span><span style="color:#F97583"> =</span><span style="color:#F97583"> await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">evaluate</span><span style="color:#E1E4E8">(() </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> localStorage.</span><span style="color:#B392F0">getItem</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'preferred_currency'</span><span style="color:#E1E4E8">));</span></span>
+<span class="line"><span style="color:#B392F0">  expect</span><span style="color:#E1E4E8">(value).</span><span style="color:#B392F0">toBe</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'INR'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Now use the UI to save a value.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'storage-key'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'theme'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'storage-value'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'dark'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-storage-save'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the UI shows the saved confirmation.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'storage-result'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">  ).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Saved: "theme" = "dark"'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify it was actually stored in localStorage.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> storedTheme</span><span style="color:#F97583"> =</span><span style="color:#F97583"> await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">evaluate</span><span style="color:#E1E4E8">(() </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> localStorage.</span><span style="color:#B392F0">getItem</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'theme'</span><span style="color:#E1E4E8">));</span></span>
+<span class="line"><span style="color:#B392F0">  expect</span><span style="color:#E1E4E8">(storedTheme).</span><span style="color:#B392F0">toBe</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'dark'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Use the "Load" button to read it back via the UI.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-storage-load'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'storage-result'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">  ).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Loaded: "theme" = "dark"'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>d:Tac56,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#6A737D">// Path to the playground HTML served by the dev server.</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-01-dom-and-browser-apis/12-web-apis/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">describe</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Kata 12: Web APIs'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 1: Copy to Clipboard and Verify</span></span>
+<span class="line"><span style="color:#6A737D">  //</span></span>
+<span class="line"><span style="color:#6A737D">  // We stub navigator.clipboard.writeText to capture what was copied.</span></span>
+<span class="line"><span style="color:#6A737D">  // Direct clipboard access in Cypress is tricky due to browser security,</span></span>
+<span class="line"><span style="color:#6A737D">  // so we use a stub to intercept the call instead.</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: copy account number to clipboard'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">, {</span></span>
+<span class="line"><span style="color:#6A737D">      // onBeforeLoad runs before the page's JavaScript executes.</span></span>
+<span class="line"><span style="color:#6A737D">      // We use it to set up stubs on the window object.</span></span>
+<span class="line"><span style="color:#B392F0">      onBeforeLoad</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">win</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#6A737D">        // Stub writeText so we can verify what was copied.</span></span>
+<span class="line"><span style="color:#6A737D">        // callsFake makes the stub behave like a real function.</span></span>
+<span class="line"><span style="color:#E1E4E8">        cy.</span><span style="color:#B392F0">stub</span><span style="color:#E1E4E8">(win.navigator.clipboard, </span><span style="color:#9ECBFF">'writeText'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">          .</span><span style="color:#B392F0">as</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'clipboardWrite'</span><span style="color:#E1E4E8">)           </span><span style="color:#6A737D">// alias for later assertions</span></span>
+<span class="line"><span style="color:#E1E4E8">          .</span><span style="color:#B392F0">resolves</span><span style="color:#E1E4E8">();                    </span><span style="color:#6A737D">// make it resolve (async success)</span></span>
+<span class="line"><span style="color:#E1E4E8">      },</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Click the copy button.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-copy-account"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the status text updates.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="copy-status"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Copied to clipboard!'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify our stub was called with the account number.</span></span>
+<span class="line"><span style="color:#6A737D">    // @clipboardWrite is the alias we set above.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'@clipboardWrite'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.been.calledWith'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'1234-5678-9012-3456'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 2: Mock Geolocation and Verify Coordinates</span></span>
+<span class="line"><span style="color:#6A737D">  //</span></span>
+<span class="line"><span style="color:#6A737D">  // We stub navigator.geolocation.getCurrentPosition to call the success</span></span>
+<span class="line"><span style="color:#6A737D">  // callback with our fake coordinates. This avoids needing real GPS.</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: mock geolocation and verify displayed coordinates'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">, {</span></span>
+<span class="line"><span style="color:#B392F0">      onBeforeLoad</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">win</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#6A737D">        // Stub getCurrentPosition to immediately call the success callback</span></span>
+<span class="line"><span style="color:#6A737D">        // with our fake coordinates for New Delhi.</span></span>
+<span class="line"><span style="color:#E1E4E8">        cy.</span><span style="color:#B392F0">stub</span><span style="color:#E1E4E8">(win.navigator.geolocation, </span><span style="color:#9ECBFF">'getCurrentPosition'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">          .</span><span style="color:#B392F0">callsFake</span><span style="color:#E1E4E8">((</span><span style="color:#FFAB70">successCallback</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#B392F0">            successCallback</span><span style="color:#E1E4E8">({</span></span>
+<span class="line"><span style="color:#E1E4E8">              coords: {</span></span>
+<span class="line"><span style="color:#E1E4E8">                latitude: </span><span style="color:#79B8FF">28.6139</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">                longitude: </span><span style="color:#79B8FF">77.2090</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">                accuracy: </span><span style="color:#79B8FF">10</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">              },</span></span>
+<span class="line"><span style="color:#E1E4E8">            });</span></span>
+<span class="line"><span style="color:#E1E4E8">          });</span></span>
+<span class="line"><span style="color:#E1E4E8">      },</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Click "Detect Location".</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-detect-location"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the displayed coordinates match our mocked values.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="location-lat"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'28.6139'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="location-lng"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'77.2090'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the result box shows success.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="location-result"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Location detected'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 3: Handle Alert Dialog</span></span>
+<span class="line"><span style="color:#6A737D">  //</span></span>
+<span class="line"><span style="color:#6A737D">  // Cypress auto-accepts alerts by default. To verify the alert message,</span></span>
+<span class="line"><span style="color:#6A737D">  // we use cy.on('window:alert') which receives the alert text.</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: handle alert dialog and verify message'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Set up a stub for the alert. cy.on('window:alert') fires whenever</span></span>
+<span class="line"><span style="color:#6A737D">    // the page calls alert(). We wrap it in a stub so we can assert on it.</span></span>
+<span class="line"><span style="color:#F97583">    const</span><span style="color:#79B8FF"> alertStub</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> cy.</span><span style="color:#B392F0">stub</span><span style="color:#E1E4E8">().</span><span style="color:#B392F0">as</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'alertHandler'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">on</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'window:alert'</span><span style="color:#E1E4E8">, alertStub);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Click the button that triggers alert().</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-trigger-alert"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the stub was called with the expected message.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'@alertHandler'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.been.calledWith'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Payment of Rs 5,000 has been processed successfully!'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the page updated after the alert was dismissed.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="dialog-result"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Alert was dismissed.'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 4a: Accept Confirm Dialog</span></span>
+<span class="line"><span style="color:#6A737D">  //</span></span>
+<span class="line"><span style="color:#6A737D">  // cy.on('window:confirm') receives the confirm message. Return true</span></span>
+<span class="line"><span style="color:#6A737D">  // to accept (OK) or false to dismiss (Cancel).</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4a: accept confirm dialog'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Return true from the confirm handler to simulate clicking "OK".</span></span>
+<span class="line"><span style="color:#6A737D">    // This makes confirm() return true in the page's JavaScript.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">on</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'window:confirm'</span><span style="color:#E1E4E8">, (</span><span style="color:#FFAB70">text</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#B392F0">      expect</span><span style="color:#E1E4E8">(text).to.</span><span style="color:#B392F0">contain</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Rs 50,000'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">      return</span><span style="color:#79B8FF"> true</span><span style="color:#E1E4E8">;   </span><span style="color:#6A737D">// Accept the dialog</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-trigger-confirm"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // When confirmed, the page shows "Transfer confirmed."</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="dialog-result"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Transfer confirmed.'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 4b: Dismiss Confirm Dialog</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4b: dismiss confirm dialog'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Return false from the confirm handler to simulate clicking "Cancel".</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">on</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'window:confirm'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#79B8FF"> false</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-trigger-confirm"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // When cancelled, the page shows "Transfer cancelled."</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="dialog-result"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Transfer cancelled.'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 5: Handle Prompt Dialog with Input</span></span>
+<span class="line"><span style="color:#6A737D">  //</span></span>
+<span class="line"><span style="color:#6A737D">  // Cypress does not have built-in prompt handling like Playwright.</span></span>
+<span class="line"><span style="color:#6A737D">  // We stub window.prompt to return a custom value.</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: handle prompt dialog and enter text'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Stub window.prompt to return a specific value.</span></span>
+<span class="line"><span style="color:#6A737D">    // This replaces the native prompt() so no dialog appears.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">window</span><span style="color:#E1E4E8">().</span><span style="color:#B392F0">then</span><span style="color:#E1E4E8">((</span><span style="color:#FFAB70">win</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">stub</span><span style="color:#E1E4E8">(win, </span><span style="color:#9ECBFF">'prompt'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">returns</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'25000'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-trigger-prompt"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the page displays the entered amount.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="dialog-result"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Transfer amount set to Rs 25000'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 6: Grant/Deny Camera Permission</span></span>
+<span class="line"><span style="color:#6A737D">  //</span></span>
+<span class="line"><span style="color:#6A737D">  // Cypress cannot directly grant browser permissions like Playwright.</span></span>
+<span class="line"><span style="color:#6A737D">  // We stub navigator.mediaDevices.getUserMedia to simulate grant/deny.</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6a: simulate camera permission granted'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">, {</span></span>
+<span class="line"><span style="color:#B392F0">      onBeforeLoad</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">win</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#6A737D">        // Stub getUserMedia to resolve with a fake MediaStream.</span></span>
+<span class="line"><span style="color:#6A737D">        // We create a minimal mock with a getTracks() method that</span></span>
+<span class="line"><span style="color:#6A737D">        // returns an array with a stoppable track.</span></span>
+<span class="line"><span style="color:#E1E4E8">        cy.</span><span style="color:#B392F0">stub</span><span style="color:#E1E4E8">(win.navigator.mediaDevices, </span><span style="color:#9ECBFF">'getUserMedia'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">          .</span><span style="color:#B392F0">resolves</span><span style="color:#E1E4E8">({</span></span>
+<span class="line"><span style="color:#B392F0">            getTracks</span><span style="color:#E1E4E8">: () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> [{ </span><span style="color:#B392F0">stop</span><span style="color:#E1E4E8">: () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {} }],</span></span>
+<span class="line"><span style="color:#E1E4E8">          } </span><span style="color:#F97583">as</span><span style="color:#79B8FF"> unknown</span><span style="color:#F97583"> as</span><span style="color:#B392F0"> MediaStream</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">      },</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-request-camera"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the status shows "Granted".</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="permission-status"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Granted'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="permission-result"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Camera access granted'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6b: simulate camera permission denied'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">, {</span></span>
+<span class="line"><span style="color:#B392F0">      onBeforeLoad</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">win</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#6A737D">        // Stub getUserMedia to reject with an error (permission denied).</span></span>
+<span class="line"><span style="color:#E1E4E8">        cy.</span><span style="color:#B392F0">stub</span><span style="color:#E1E4E8">(win.navigator.mediaDevices, </span><span style="color:#9ECBFF">'getUserMedia'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">          .</span><span style="color:#B392F0">rejects</span><span style="color:#E1E4E8">(</span><span style="color:#F97583">new</span><span style="color:#B392F0"> DOMException</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Permission denied'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'NotAllowedError'</span><span style="color:#E1E4E8">));</span></span>
+<span class="line"><span style="color:#E1E4E8">      },</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-request-camera"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the status shows "Denied".</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="permission-status"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Denied'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="permission-result"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Camera access denied'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 7: Verify File Download</span></span>
+<span class="line"><span style="color:#6A737D">  //</span></span>
+<span class="line"><span style="color:#6A737D">  // Cypress does not have a built-in download event like Playwright.</span></span>
+<span class="line"><span style="color:#6A737D">  // We verify the download was triggered by checking the status message</span></span>
+<span class="line"><span style="color:#6A737D">  // and the download link attributes.</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 7: verify download is triggered'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Click the download button.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-download-statement"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the download status message.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="download-status"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Download started'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'statement-april-2026.csv'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 8: Read/Write localStorage</span></span>
+<span class="line"><span style="color:#6A737D">  //</span></span>
+<span class="line"><span style="color:#6A737D">  // cy.window() gives access to the browser's window object, which</span></span>
+<span class="line"><span style="color:#6A737D">  // includes localStorage. We can read/write directly.</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 8: read and write localStorage'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Write a value to localStorage via cy.window().</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">window</span><span style="color:#E1E4E8">().</span><span style="color:#B392F0">then</span><span style="color:#E1E4E8">((</span><span style="color:#FFAB70">win</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">      win.localStorage.</span><span style="color:#B392F0">setItem</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'preferred_currency'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'INR'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Read it back and verify.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">window</span><span style="color:#E1E4E8">().</span><span style="color:#B392F0">then</span><span style="color:#E1E4E8">((</span><span style="color:#FFAB70">win</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#B392F0">      expect</span><span style="color:#E1E4E8">(win.localStorage.</span><span style="color:#B392F0">getItem</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'preferred_currency'</span><span style="color:#E1E4E8">)).to.</span><span style="color:#B392F0">eq</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'INR'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Use the UI to save a key-value pair.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="storage-key"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'theme'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="storage-value"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'dark'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-storage-save"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the UI shows confirmation.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="storage-result"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Saved: "theme" = "dark"'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify it was actually stored in localStorage.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">window</span><span style="color:#E1E4E8">().</span><span style="color:#B392F0">then</span><span style="color:#E1E4E8">((</span><span style="color:#FFAB70">win</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#B392F0">      expect</span><span style="color:#E1E4E8">(win.localStorage.</span><span style="color:#B392F0">getItem</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'theme'</span><span style="color:#E1E4E8">)).to.</span><span style="color:#B392F0">eq</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'dark'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Use the "Load" button to read it back via the UI.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-storage-load"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="storage-result"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Loaded: "theme" = "dark"'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"kata":{"slug":"12-web-apis","number":12,"title":"Web APIs","phaseSlug":"phase-01-dom-and-browser-apis","phaseNumber":1,"phaseName":"Dom And Browser Apis","readmeRaw":"$3","hasPlayground":true,"playwrightFiles":[{"filename":"web-apis.spec.ts","content":"$4"}],"cypressFiles":[{"filename":"web-apis.cy.ts","content":"$5"}]},"prev":{"slug":"11-dom-mutations","number":11,"title":"DOM Mutations","phaseSlug":"phase-01-dom-and-browser-apis","phaseNumber":1,"phaseName":"Dom And Browser Apis","readmeRaw":"$6","hasPlayground":true,"playwrightFiles":[{"filename":"dom-mutations.spec.ts","content":"$7"}],"cypressFiles":[{"filename":"dom-mutations.cy.ts","content":"$8"}]},"next":{"slug":"13-form-validation","number":13,"title":"Form Validation","phaseSlug":"phase-02-forms","phaseNumber":2,"phaseName":"Forms","readmeRaw":"$9","hasPlayground":true,"playwrightFiles":[{"filename":"form-validation.spec.ts","content":"$a"}],"cypressFiles":[{"filename":"form-validation.cy.ts","content":"$b"}]},"playwrightHtml":[{"filename":"web-apis.spec.ts","html":"$c"}],"cypressHtml":[{"filename":"web-apis.cy.ts","html":"$d"}]}],["$Le"],"$Lf"]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"iDtrTKWIN4zzRgDRiiDd2"}
+e:["$","script","script-0",{"src":"/qa-labs/_next/static/chunks/03nvm.8~ftt80.js","async":true}]
+f:["$","$L10",null,{"children":["$","$11",null,{"name":"Next.MetadataOutlet","children":"$@12"}]}]
+12:null

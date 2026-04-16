@@ -1,0 +1,1326 @@
+1:"$Sreact.fragment"
+2:I[31749,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js","/qa-labs/_next/static/chunks/03nvm.8~ftt80.js"],"KataPageClient"]
+c:I[49583,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js"],"OutletBoundary"]
+d:"$Sreact.suspense"
+3:T1284,# Kata 43: CI/CD Integration
+
+## What You Will Learn
+
+- How to run Playwright and Cypress tests in GitHub Actions
+- How to configure a CI workflow YAML file step by step
+- How to use matrix strategy for cross-browser testing
+- How to upload test artifacts (reports, screenshots, videos)
+- How to cache dependencies for faster CI runs
+- How to set up test reporting and failure notifications
+
+## Prerequisites
+
+- Completed Katas 01-42
+- Basic understanding of YAML syntax
+- A GitHub account (for GitHub Actions)
+- Understanding of what CI/CD means (Continuous Integration / Continuous Deployment)
+
+## Concepts Explained
+
+### What Is CI/CD?
+
+```
+CI (Continuous Integration):
+  Every time you push code to GitHub, automated checks run:
+  - Lint your code
+  - Run unit tests
+  - Run end-to-end tests (Playwright, Cypress)
+  - Build the application
+  If any check fails, the pull request is blocked.
+
+CD (Continuous Deployment):
+  If all checks pass, the code is automatically deployed to production
+  (or a staging environment for manual review).
+
+Why CI for QA?
+  - Tests run automatically on every push — no manual test runs
+  - Tests run in a clean environment — no "works on my machine" issues
+  - Parallel execution on CI machines — faster feedback
+  - Test results are visible to the whole team
+  - Broken tests block merges — prevents regressions
+```
+
+### GitHub Actions Workflow Structure
+
+```yaml
+# .github/workflows/test.yml
+#
+# A workflow is a YAML file that defines automated steps.
+# It lives in the .github/workflows/ directory of your repository.
+
+name: Tests                    # Display name in the GitHub UI
+
+on:                            # TRIGGER — when does this workflow run?
+  push:
+    branches: [main]           # Run on pushes to main
+  pull_request:
+    branches: [main]           # Run on PRs targeting main
+
+jobs:                          # JOBS — what to run
+  test:                        # Job name (you choose this)
+    runs-on: ubuntu-latest     # Machine type (Linux)
+    steps:                     # STEPS — sequential commands
+      - uses: actions/checkout@v4        # Clone the repo
+      - uses: actions/setup-node@v4      # Install Node.js
+      - run: npm ci                       # Install dependencies
+      - run: npx playwright test          # Run tests
+```
+
+### Key Concepts
+
+```
+RUNNER:
+  The machine that runs your workflow. GitHub provides:
+  - ubuntu-latest (Linux — most common, fastest)
+  - windows-latest (Windows)
+  - macos-latest (macOS — needed for Safari/WebKit)
+
+STEPS:
+  Sequential commands within a job. Each step either:
+  - uses: — runs a pre-built action (e.g., actions/checkout@v4)
+  - run: — executes a shell command (e.g., npm ci)
+
+MATRIX:
+  Run the same job multiple times with different parameters.
+  Use this for cross-browser testing (Chrome, Firefox, WebKit).
+
+ARTIFACTS:
+  Files saved from the CI run for later download.
+  Upload test reports, screenshots, and videos as artifacts.
+  Team members can download them from the GitHub UI.
+
+CACHING:
+  Save node_modules between runs to speed up npm install.
+  actions/cache@v4 handles this automatically.
+```
+
+## Reference Files
+
+This kata includes example workflow files in the `references/` directory.
+These are NOT active workflows (they are not in .github/workflows/).
+They are templates you can copy to your own repository.
+
+```
+references/
+  playwright-ci.yml    — GitHub Actions workflow for Playwright
+  cypress-ci.yml       — GitHub Actions workflow for Cypress
+  matrix-ci.yml        — Matrix strategy for cross-browser testing
+```
+
+## Exercises
+
+### Exercise 1: Read and Understand the Playwright CI Workflow
+Open `references/playwright-ci.yml` and understand each line.
+
+### Exercise 2: Read and Understand the Cypress CI Workflow
+Open `references/cypress-ci.yml` and understand each line.
+
+### Exercise 3: Matrix Strategy for Cross-Browser Testing
+Open `references/matrix-ci.yml` and understand matrix configuration.
+
+### Exercise 4: Artifact Upload
+Understand how to upload test reports and screenshots as CI artifacts.
+
+### Exercise 5: Caching for Faster Builds
+Understand how dependency caching reduces CI build times.
+
+### Exercise 6: Create Your Own Workflow
+Design a workflow that runs both Playwright and Cypress in the same CI pipeline.
+
+## Key Takeaways
+
+```
+- CI runs your tests automatically on every push/PR
+- GitHub Actions uses YAML files in .github/workflows/
+- Use matrix strategy for cross-browser testing
+- Upload artifacts (reports, screenshots) for debugging failed tests
+- Cache node_modules and Playwright browsers for faster CI runs
+- Start simple (one browser, one OS) and add complexity later
+- CI failures should block merges — that is the whole point
+```
+4:T2186,# Kata 42: Loop Parallel Testing
+
+## What You Will Learn
+
+- How to generate tests dynamically from a data array using loops
+- How to run the same test scenario against N different data sets in parallel
+- How to combine fixture files with parallel test generation
+- How this pattern enables testing the same form with many applicant profiles simultaneously
+- How to debug and identify failures in loop-generated tests
+- The difference between Playwright and Cypress loop patterns
+
+## Prerequisites
+
+- Completed Katas 01-41 (especially Kata 40: fixtures and Kata 41: parallel)
+- Understanding of for...of loops and array iteration
+- Understanding of parallel workers
+
+## Why This Pattern Matters
+
+```
+This is the KEY DIFFERENTIATOR pattern for QA automation at scale.
+
+Imagine you need to test a KYC form with 100 different applicant profiles:
+  - Different countries, document types, names, risk levels
+  - Each must be submitted and verified independently
+  - Doing this manually takes hours — automated takes minutes
+
+The pattern:
+  1. Define applicant profiles in a JSON fixture file
+  2. Loop over the array to generate one test per profile
+  3. Playwright runs all generated tests in parallel across workers
+
+  for (const applicant of applicants) {
+    test(`submit KYC for ${applicant.name}`, async ({ page }) => {
+      // Each iteration becomes a SEPARATE, INDEPENDENT test
+      // Playwright distributes them across workers automatically
+    });
+  }
+
+Result: 100 tests, 4 workers, each test takes 2 seconds
+  = ~50 seconds total instead of ~200 seconds sequential
+```
+
+## Concepts Explained
+
+### The Loop Pattern in Playwright
+
+```typescript
+// PLAYWRIGHT — generate tests at parse time with a for...of loop.
+//
+// When Playwright loads this file, it executes the loop and discovers
+// N tests (one per array element). These tests are then distributed
+// across workers for parallel execution.
+
+import applicants from './fixtures/applicants.json';
+
+for (const applicant of applicants) {
+  // Each iteration calls test() — registering a new test case.
+  // The test title includes the applicant name for easy identification.
+  test(`KYC: ${applicant.name}`, async ({ page }) => {
+    // This test body runs independently in its own worker.
+    // It has its own browser, page, and isolated state.
+  });
+}
+```
+
+### The Loop Pattern in Cypress
+
+```typescript
+// CYPRESS — use forEach (or for...of) to generate it() blocks.
+//
+// Cypress discovers tests synchronously when loading the spec file.
+// The forEach loop runs at file load time and registers all tests.
+
+const applicants = require('./fixtures/applicants.json');
+
+describe('KYC Submissions', () => {
+  applicants.forEach((applicant) => {
+    it(`submit KYC for ${applicant.name}`, () => {
+      // Each iteration creates a separate test case.
+      // Within this spec file, tests run sequentially.
+      // Across spec files, Cypress can run in parallel.
+    });
+  });
+});
+```
+
+### Data File Design
+
+```json
+// fixtures/applicants.json
+//
+// Each object represents one applicant profile.
+// Fields include both INPUT data and EXPECTED outcomes.
+//
+// Adding a new test case = adding a new object. No code changes needed.
+[
+  {
+    "name": "Aisha Patel",
+    "email": "aisha@example.com",
+    "country": "IN",
+    "docType": "passport",
+    "expectedRef": "KYC-001",
+    "expectedStatus": "success"
+  }
+]
+```
+
+### Parallel Execution Flow
+
+```
+ fixtures/applicants.json (5 applicants)
+          │
+          ▼
+ ┌──────────────────────────────┐
+ │  for (const a of applicants) │  ← parse time: generates 5 tests
+ │    test(`KYC: ${a.name}`)    │
+ └──────────────────────────────┘
+          │
+          ▼
+ ┌─────────────────────────────────────────────┐
+ │  Playwright distributes across workers:     │
+ │                                             │
+ │  Worker 1: Aisha Patel      ──► PASS        │
+ │  Worker 2: Carlos Rivera    ──► PASS        │
+ │  Worker 1: Yuki Tanaka      ──► PASS        │
+ │  Worker 2: Fatima Al-Hassan ──► PASS        │
+ │  Worker 1: Olga Petrov      ──► PASS        │
+ │                                             │
+ │  Total time: ~6 seconds (3 tests per worker)│
+ │  vs sequential: ~10 seconds                 │
+ └─────────────────────────────────────────────┘
+```
+
+## Exercises
+
+### Exercise 1: Generate Tests from a Fixture Array
+Loop over applicants.json and generate one test per applicant.
+
+### Exercise 2: Run Tests in Parallel
+Run the generated tests with multiple workers and observe distribution.
+
+### Exercise 3: Add a New Applicant (Data-Only Change)
+Add a new applicant to the JSON file — no code changes — and run again.
+
+### Exercise 4: Dynamic Mock Responses per Applicant
+Each test returns a unique mock response based on the applicant data.
+
+### Exercise 5: Error Scenario Tests from Data
+Include error scenarios in the fixture data and test them in the loop.
+
+### Exercise 6: Cypress Loop Pattern
+Implement the same pattern in Cypress using forEach.
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Putting the loop inside `test()` | The loop must run at file-load time to register separate tests; inside a test body it just runs iterations sequentially in one test | Place `for...of` at the module level (Playwright) or inside `describe` (Cypress) |
+| Sharing state between loop-generated tests | Each test gets its own worker/browser; referencing variables mutated by another test causes flaky failures | Treat each loop iteration as fully independent — no shared variables |
+| Forgetting to filter success vs error cases | Running all applicants through the same assertions causes false failures for intentional error scenarios | Split the array with `.filter()` and loop success and error cases separately |
+| Hardcoding expected values in assertions | Defeats the purpose of data-driven testing; adding a new applicant requires code changes | Store expected values (`expectedRef`, `expectedStatus`) in the fixture JSON |
+| Using `test.describe` around the loop in Playwright | Unnecessary nesting; the loop itself generates named tests | Use the loop directly at module level — no wrapping describe needed |
+| Not including the applicant name in the test title | When a test fails, you cannot tell which applicant caused it | Use template literals: `` test(`KYC: ${applicant.name}`) `` |
+
+## Quick Reference
+
+### Playwright Loop Pattern
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Import fixture data | `import data from './file.json'` | `import applicants from '../fixtures/applicants.json'` |
+| Generate tests from array | `for...of` at module level | `for (const a of applicants) { test(...) }` |
+| Filter by scenario type | `Array.filter()` | `applicants.filter(a => a.expectedStatus === 'success')` |
+| Mock per-applicant response | `page.route()` | `await page.route('/api/submit', route => route.fulfill({ body: ... }))` |
+| Run with parallel workers | `--workers=N` | `npx playwright test --workers=4` |
+| Identify worker in logs | `test.info().workerIndex` | `console.log(\`Worker ${test.info().workerIndex}\`)` |
+
+### Cypress Loop Pattern
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Import fixture data | `require()` | `const applicants = require('../fixtures/applicants.json')` |
+| Generate tests from array | `.forEach()` inside `describe` | `applicants.forEach(a => { it(...) })` |
+| Mock per-applicant response | `cy.intercept()` | `cy.intercept('POST', '/api/submit', { body: ... })` |
+| Run in parallel | Split spec files across CI machines | Cypress Cloud or manual CI job splitting |
+| Log to command panel | `cy.log()` | `cy.log(\`Testing ${applicant.name}\`)` |
+| Wait for intercepted request | `cy.wait()` | `cy.wait('@submitKyc')` |
+
+## Key Takeaways
+
+```
+- Loop + parallel = test N data sets simultaneously
+- Adding test cases = adding JSON objects (no code changes)
+- Playwright: for...of at module level generates independent tests
+- Cypress: forEach inside describe generates sequential tests per file
+- Each test must be fully independent — no shared browser state
+- This pattern scales: 5 applicants today, 500 tomorrow, same code
+```
+5:T1ece,import { test, expect } from '@playwright/test';
+import allApplicants from '../fixtures/applicants.json';
+
+// =============================================================================
+// Kata 42: Loop Parallel Testing — Playwright Tests
+// =============================================================================
+//
+// This file generates tests DYNAMICALLY from a JSON fixture file.
+// Each applicant in the array becomes a separate, independent test.
+// Playwright distributes these tests across workers for parallel execution.
+//
+// RUN:
+//   npx playwright test loop-parallel-testing.spec.ts --workers=4
+//
+// The --workers flag controls how many tests run simultaneously.
+// =============================================================================
+
+// Kata 42 ships its own flat KYC form playground, purpose-built for
+// loop + parallel testing. Each generated test intercepts /api/kyc/submit
+// with its own mock response derived from the fixture row.
+const PLAYGROUND = '/phase-08-parallel-and-ci/42-loop-parallel-testing/playground/';
+
+// Define the TypeScript interface for applicant data.
+interface Applicant {
+  name: string;
+  email: string;
+  country: string;
+  docType: string;
+  expectedRef: string;
+  expectedStatus: 'success' | 'error';
+  scenario: string;
+}
+
+// Cast the imported JSON to the typed array.
+const applicants: Applicant[] = allApplicants as Applicant[];
+
+// --------------------------------------------------------------------------
+// Exercise 1 & 2: Generate One Test Per Applicant — Runs in Parallel
+// --------------------------------------------------------------------------
+// This for...of loop runs at FILE LOAD TIME (not at test runtime).
+// Playwright discovers each test() call and adds it to the test plan.
+// With --workers=4, up to 4 tests run simultaneously.
+
+// Filter success scenarios for the main loop.
+const successApplicants = applicants.filter(a => a.expectedStatus === 'success');
+
+for (const applicant of successApplicants) {
+  test(`exercise 1-2: submit KYC for ${applicant.name} [${applicant.scenario}]`, async ({ page }) => {
+    // ----- SETUP: Mock the API response -----
+    // Each test intercepts the POST request and returns a mock response
+    // tailored to THIS specific applicant.
+    //
+    // page.route(url, handler) intercepts requests matching the URL pattern.
+    // route.fulfill() returns a fake response without hitting a real server.
+    await page.route('/api/kyc/submit', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        // The response includes this applicant's expected reference ID.
+        body: JSON.stringify({ referenceId: applicant.expectedRef })
+      });
+    });
+
+    // ----- ACT: Navigate and fill the form -----
+    await page.goto(PLAYGROUND);
+
+    // fill(value) clears the input first, then types the value.
+    await page.getByTestId('full-name-input').fill(applicant.name);
+    await page.getByTestId('email-input').fill(applicant.email);
+
+    // selectOption(value) picks a value from a <select> dropdown.
+    await page.getByTestId('country-select').selectOption(applicant.country);
+    await page.getByTestId('doc-type-select').selectOption(applicant.docType);
+
+    // Click the submit button.
+    await page.getByTestId('submit-btn').click();
+
+    // ----- ASSERT: Verify the result -----
+    // The success message should contain the expected reference ID.
+    await expect(page.getByTestId('submit-status')).toContainText(applicant.expectedRef);
+    await expect(page.getByTestId('submit-status')).toHaveClass(/status-success/);
+
+    // Log which worker ran this test (for observing parallel distribution).
+    const workerIndex = test.info().workerIndex;
+    // eslint-disable-next-line no-console
+    console.log(`[Worker ${workerIndex}] ${applicant.name} (${applicant.scenario}) — PASS`);
+  });
+}
+
+// --------------------------------------------------------------------------
+// Exercise 3: Adding a New Applicant
+// --------------------------------------------------------------------------
+// To add a new test case, you ONLY edit fixtures/applicants.json.
+// Add a new object to the array — no changes to this file needed.
+// The for...of loop automatically picks it up on the next run.
+//
+// TRY IT:
+//   1. Open fixtures/applicants.json
+//   2. Add: { "name": "New User", "email": "new@example.com", ... }
+//   3. Run the tests again — a new test appears automatically
+
+// --------------------------------------------------------------------------
+// Exercise 4: Dynamic Mock Responses Per Applicant
+// --------------------------------------------------------------------------
+// Each test already uses applicant-specific mock data (see Exercise 1-2).
+// This exercise highlights that the mock response is DIFFERENT per test.
+test('exercise 4: verify mock responses are unique per applicant', async ({ page }) => {
+  // Track which reference IDs we see across applicants.
+  const allRefs = successApplicants.map(a => a.expectedRef);
+
+  // All reference IDs should be unique.
+  const uniqueRefs = new Set(allRefs);
+
+  // expect(set.size).toBe(array.length) verifies all values are unique.
+  expect(uniqueRefs.size).toBe(allRefs.length);
+
+  await page.goto('data:text/html,<h1>Unique Refs Verified</h1>');
+  await expect(page.locator('h1')).toHaveText('Unique Refs Verified');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Error Scenario Tests from Data
+// --------------------------------------------------------------------------
+// The fixture file includes an error scenario (empty name).
+// We generate tests for error cases separately.
+const errorApplicants = applicants.filter(a => a.expectedStatus === 'error');
+
+for (const applicant of errorApplicants) {
+  test(`exercise 5: error scenario — ${applicant.scenario}`, async ({ page }) => {
+    // Mock an error response for invalid submissions.
+    await page.route('/api/kyc/submit', async (route) => {
+      await route.fulfill({
+        status: 400,
+        contentType: 'application/json',
+        body: JSON.stringify({ error: 'Validation failed' })
+      });
+    });
+
+    await page.goto(PLAYGROUND);
+
+    // Fill with the (possibly invalid) data from the fixture.
+    await page.getByTestId('full-name-input').fill(applicant.name || ' ');
+    await page.getByTestId('email-input').fill(applicant.email);
+    await page.getByTestId('country-select').selectOption(applicant.country);
+    await page.getByTestId('doc-type-select').selectOption(applicant.docType);
+
+    await page.getByTestId('submit-btn').click();
+
+    // Verify the error response is shown.
+    await expect(page.getByTestId('submit-status')).toHaveClass(/status-error/);
+  });
+}
+
+// --------------------------------------------------------------------------
+// Exercise 6: Summary — The Power of Loop + Parallel
+// --------------------------------------------------------------------------
+test('exercise 6: loop parallel pattern summary', async ({ page }) => {
+  await page.goto('data:text/html,<h1>Loop Parallel Summary</h1>');
+
+  // This file generated the following tests automatically:
+  // - 6 success tests (one per applicant with expectedStatus: 'success')
+  // - 1 error test (one applicant with expectedStatus: 'error')
+  // - 2 standalone tests (exercises 4 and 6)
+  //
+  // Total: 9 tests from ONE loop + ONE fixture file.
+  //
+  // To test 100 applicants: add 94 more objects to the JSON file.
+  // The code stays THE SAME. Only the data changes.
+  //
+  // With 4 workers: ~25 tests per worker, running simultaneously.
+
+  const totalGenerated = successApplicants.length + errorApplicants.length;
+  // eslint-disable-next-line no-console
+  console.log(`Generated ${totalGenerated} tests from fixture data`);
+
+  await expect(page.locator('h1')).toHaveText('Loop Parallel Summary');
+});
+6:T1b28,// =============================================================================
+// Kata 42: Loop Parallel Testing — Cypress Tests
+// =============================================================================
+//
+// This file generates tests dynamically from a JSON fixture file
+// using forEach. Each applicant gets its own it() test block.
+//
+// Within this spec file, tests run SEQUENTIALLY (Cypress limitation).
+// To achieve parallelism, run multiple spec files simultaneously
+// using Cypress Cloud or manual CI job splitting.
+// =============================================================================
+
+const PLAYGROUND = '/phase-08-parallel-and-ci/42-loop-parallel-testing/playground/';
+
+// Define the applicant type.
+interface Applicant {
+  name: string;
+  email: string;
+  country: string;
+  docType: string;
+  expectedRef: string;
+  expectedStatus: 'success' | 'error';
+  scenario: string;
+}
+
+// Import the fixture data directly for test generation.
+// require() works at file load time, before tests run.
+const applicants: Applicant[] = require('../fixtures/applicants.json');
+
+// Split applicants by expected status.
+const successApplicants = applicants.filter((a) => a.expectedStatus === 'success');
+const errorApplicants = applicants.filter((a) => a.expectedStatus === 'error');
+
+describe('Kata 42: Loop Parallel Testing', () => {
+
+  // --------------------------------------------------------------------------
+  // Exercise 1 & 2: Generate Tests from Fixture Data
+  // --------------------------------------------------------------------------
+  // forEach() iterates over the array and calls it() for each applicant.
+  // Cypress registers all tests at file load time, then runs them sequentially.
+  describe('exercise 1-2: success scenarios', () => {
+    successApplicants.forEach((applicant) => {
+      it(`submit KYC for ${applicant.name} [${applicant.scenario}]`, () => {
+        // Set up the mock API response for this specific applicant.
+        // cy.intercept(method, url, response) returns a fake response.
+        cy.intercept('POST', '/api/kyc/submit', {
+          statusCode: 200,
+          body: { referenceId: applicant.expectedRef }
+        }).as('submitKyc');
+
+        // Navigate to the KYC form.
+        cy.visit(PLAYGROUND);
+
+        // Fill the form with this applicant's data.
+        // .type(text) types into the input field.
+        cy.get('[data-testid="full-name-input"]').type(applicant.name);
+        cy.get('[data-testid="email-input"]').type(applicant.email);
+
+        // .select(value) picks an option from a <select> dropdown.
+        cy.get('[data-testid="country-select"]').select(applicant.country);
+        cy.get('[data-testid="doc-type-select"]').select(applicant.docType);
+
+        // Click submit.
+        cy.get('[data-testid="submit-btn"]').click();
+
+        // Wait for the intercepted request to complete.
+        cy.wait('@submitKyc');
+
+        // Verify the success message shows this applicant's reference.
+        cy.get('[data-testid="submit-status"]')
+          .should('contain.text', applicant.expectedRef)
+          .and('have.class', 'status-success');
+      });
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Adding a New Applicant
+  // --------------------------------------------------------------------------
+  // To add a new test:
+  //   1. Open fixtures/applicants.json
+  //   2. Add a new object with name, email, country, etc.
+  //   3. Run tests — a new it() block appears automatically
+  //
+  // No changes to this test file are needed. Data drives the tests.
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Verify Unique Mock Responses
+  // --------------------------------------------------------------------------
+  it('exercise 4: verify all applicant refs are unique', () => {
+    // Extract all expected reference IDs from the fixture.
+    const allRefs = successApplicants.map((a) => a.expectedRef);
+
+    // Create a Set (which removes duplicates) and check the size.
+    const uniqueRefs = new Set(allRefs);
+
+    // If all refs are unique, the Set size equals the array length.
+    expect(uniqueRefs.size).to.equal(allRefs.length);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Error Scenario Tests from Data
+  // --------------------------------------------------------------------------
+  describe('exercise 5: error scenarios', () => {
+    errorApplicants.forEach((applicant) => {
+      it(`error scenario: ${applicant.scenario}`, () => {
+        // Mock a 400 error response.
+        cy.intercept('POST', '/api/kyc/submit', {
+          statusCode: 400,
+          body: { error: 'Validation failed' }
+        }).as('submitKyc');
+
+        cy.visit(PLAYGROUND);
+
+        // Fill with the (possibly invalid) fixture data.
+        // If name is empty, type a space (Cypress requires non-empty type).
+        cy.get('[data-testid="full-name-input"]').type(applicant.name || ' ');
+        cy.get('[data-testid="email-input"]').type(applicant.email);
+        cy.get('[data-testid="country-select"]').select(applicant.country);
+        cy.get('[data-testid="doc-type-select"]').select(applicant.docType);
+
+        cy.get('[data-testid="submit-btn"]').click();
+        cy.wait('@submitKyc');
+
+        // Verify the error status is displayed.
+        cy.get('[data-testid="submit-status"]')
+          .should('have.class', 'status-error');
+      });
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Summary and Scaling Notes
+  // --------------------------------------------------------------------------
+  it('exercise 6: loop testing summary', () => {
+    // This file generated tests automatically:
+    //
+    // - Success tests: one per applicant with expectedStatus 'success'
+    // - Error tests: one per applicant with expectedStatus 'error'
+    //
+    // SCALING IN CYPRESS:
+    //   Since Cypress runs tests sequentially within a file, to achieve
+    //   parallelism with loop-generated tests, split them across files:
+    //
+    //   File 1: loop-applicants-group-1.cy.ts (applicants 1-25)
+    //   File 2: loop-applicants-group-2.cy.ts (applicants 26-50)
+    //   File 3: loop-applicants-group-3.cy.ts (applicants 51-75)
+    //   File 4: loop-applicants-group-4.cy.ts (applicants 76-100)
+    //
+    //   Then run all 4 files in parallel across CI machines.
+    //
+    // SCALING IN PLAYWRIGHT:
+    //   Just increase --workers. No file splitting needed.
+    //   Playwright distributes individual tests across workers automatically.
+
+    const totalTests = successApplicants.length + errorApplicants.length;
+    cy.log(`Generated ${totalTests} tests from fixture data`);
+
+    cy.visit('data:text/html,<h1>Loop Testing Complete</h1>');
+    cy.get('h1').should('have.text', 'Loop Testing Complete');
+  });
+});
+7:T222c,# Kata 44: Reporting and Debugging
+
+## What You Will Learn
+
+- How to generate and view HTML test reports in Playwright
+- How to use Playwright's Trace Viewer to debug failed tests step-by-step
+- How to configure video recording for test runs
+- How to capture and view screenshots on failure
+- How to capture browser console logs in tests
+- How to configure Cypress reporters (mochawesome) and debugging tools
+
+## Prerequisites
+
+- Completed Katas 01-43
+- Understanding of test execution and assertions
+- Basic familiarity with browser DevTools (console tab)
+
+## Concepts Explained
+
+### Why Reporting and Debugging Matter
+
+```
+When a test fails in CI, you cannot open a browser and click around.
+You need ARTIFACTS — saved evidence of what happened:
+
+  1. HTML REPORT     — shows pass/fail for every test, with error messages
+  2. SCREENSHOTS     — captures what the page looked like at the moment of failure
+  3. VIDEO           — records the entire test run (like a screen recording)
+  4. TRACE           — a detailed timeline of every action, network request, and DOM snapshot
+  5. CONSOLE LOGS    — captures browser console.log, console.error messages
+
+These artifacts are the difference between "the test failed" and
+"I know exactly WHY the test failed and HOW to fix it."
+```
+
+### Playwright Reporting
+
+```
+Playwright has several built-in reporters:
+
+REPORTER         WHAT IT DOES
+────────────────────────────────────────────────────────
+list             Prints test results to the terminal (default)
+dot              Minimal dot-based output (one dot per test)
+html             Generates an interactive HTML report
+json             Outputs results as JSON (for CI tools)
+junit            Outputs JUnit XML (for CI tools like Jenkins)
+line             Minimal single-line output per test
+
+Configure in playwright.config.ts:
+  reporter: 'html'
+
+Or use multiple reporters:
+  reporter: [
+    ['html', { open: 'never' }],
+    ['json', { outputFile: 'results.json' }],
+    ['junit', { outputFile: 'results.xml' }]
+  ]
+```
+
+### Playwright Trace Viewer
+
+```
+The Trace Viewer is Playwright's most powerful debugging tool.
+It records a TRACE of every action during a test:
+
+  - DOM snapshots before and after each action
+  - Network requests and responses
+  - Console logs
+  - Screenshots at every step
+  - Action timing and duration
+
+CONFIGURATION (playwright.config.ts):
+  use: {
+    trace: 'on-first-retry'  // record trace only on retries (recommended)
+    // trace: 'on'           // record trace for every test (slow, large files)
+    // trace: 'retain-on-failure' // keep trace only for failed tests
+  }
+
+VIEWING A TRACE:
+  npx playwright show-trace trace.zip
+
+Or open the HTML report — traces are linked from failed tests.
+```
+
+### Playwright Video Recording
+
+```
+Video records the entire browser viewport during a test.
+
+CONFIGURATION (playwright.config.ts):
+  use: {
+    video: 'on-first-retry'  // record video only on retries
+    // video: 'on'           // record every test (lots of disk space)
+    // video: 'retain-on-failure' // keep video only for failed tests
+  }
+
+Videos are saved to the test results directory.
+Open the HTML report to view videos inline.
+```
+
+### Playwright Screenshots
+
+```
+Playwright can capture screenshots automatically on failure:
+
+CONFIGURATION (playwright.config.ts):
+  use: {
+    screenshot: 'only-on-failure'  // capture on failure (recommended)
+    // screenshot: 'on'           // capture for every test
+    // screenshot: 'off'          // no automatic screenshots
+  }
+
+You can also capture screenshots manually in tests:
+  await page.screenshot({ path: 'debug.png' });
+  await page.screenshot({ path: 'full.png', fullPage: true });
+```
+
+### Cypress Reporting
+
+```
+Cypress uses Mocha reporters. The default is 'spec' (terminal output).
+
+MOCHAWESOME — popular HTML reporter for Cypress:
+  npm install --save-dev mochawesome mochawesome-merge mochawesome-report-generator
+
+  // cypress.config.ts
+  reporter: 'mochawesome',
+  reporterOptions: {
+    reportDir: 'cypress/results',
+    overwrite: false,
+    html: false,       // generate JSON, merge later
+    json: true
+  }
+
+  // After tests, generate the HTML report:
+  npx mochawesome-merge cypress/results/*.json > merged.json
+  npx mochawesome-report-generator merged.json
+
+CYPRESS VIDEO:
+  // cypress.config.ts
+  video: true    // record video of each spec file
+
+CYPRESS SCREENSHOTS:
+  Cypress automatically captures screenshots on failure.
+  Saved to cypress/screenshots/.
+  Disable with: screenshotOnRunFailure: false
+```
+
+## Exercises
+
+### Exercise 1: Generate and View an HTML Report (Playwright)
+Run tests with the HTML reporter and explore the report.
+
+### Exercise 2: Capture Console Logs
+Capture browser console.log messages during tests for debugging.
+
+### Exercise 3: Screenshot on Failure
+Configure and trigger automatic screenshots when tests fail.
+
+### Exercise 4: Trace Viewer (Playwright)
+Configure trace recording and explore a trace file.
+
+### Exercise 5: Cypress Screenshot and Video
+Use cy.screenshot() and configure video recording in Cypress.
+
+### Exercise 6: Debugging Cheatsheet
+Use the debugging cheatsheet to quickly diagnose common test failures.
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Setting `trace: 'on'` in production CI | Traces are large files; recording every test wastes disk and slows runs | Use `trace: 'on-first-retry'` or `trace: 'retain-on-failure'` |
+| Not uploading artifacts in CI | Reports, screenshots, and videos are lost when the CI runner is cleaned up | Upload `playwright-report/`, `test-results/`, `cypress/screenshots/` as CI artifacts |
+| Using `page.waitForTimeout()` instead of proper waits | Arbitrary delays are flaky and slow; they hide the real issue | Wait for a specific condition: `await expect(locator).toBeVisible()` |
+| Calling `cy.debug()` in headless mode | `cy.debug()` only works in interactive mode; in headless CI it does nothing useful | Use `cy.log()` and `console.log()` for CI, reserve `cy.debug()` for local development |
+| Setting up console spies after page load | `cy.spy(win.console, 'log')` only captures calls made after the spy is set up | Set up spies in `cy.on('window:before:load')` to capture initial page load messages |
+| Forgetting `--reporter=html` when generating reports | Without the flag, Playwright uses the default `list` reporter and no HTML report is generated | Always pass `--reporter=html` or configure it in `playwright.config.ts` |
+
+## Quick Reference
+
+### Playwright Debugging and Reporting
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Generate HTML report | `--reporter=html` | `npx playwright test --reporter=html` |
+| View HTML report | `show-report` | `npx playwright show-report` |
+| Record trace | `--trace=on` | `npx playwright test --trace=on` |
+| View trace | `show-trace` | `npx playwright show-trace test-results/.../trace.zip` |
+| Capture screenshot | `page.screenshot()` | `await page.screenshot({ path: 'debug.png' })` |
+| Attach to report | `test.info().attach()` | `await test.info().attach('name', { body, contentType: 'image/png' })` |
+| Capture console logs | `page.on('console')` | `page.on('console', msg => console.log(msg.text()))` |
+| Pause for Inspector | `page.pause()` | `await page.pause()` |
+| Add annotation | `test.info().annotations` | `test.info().annotations.push({ type: 'note', description: '...' })` |
+
+### Cypress Debugging and Reporting
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Log to command panel | `cy.log()` | `cy.log('Section: assertions')` |
+| Take screenshot | `cy.screenshot()` | `cy.screenshot('before-click', { overwrite: true })` |
+| Element screenshot | `.screenshot()` | `cy.get('#card').screenshot('card', { padding: 10 })` |
+| Enable video | `cypress.config.ts` | `e2e: { video: true }` |
+| Spy on console | `cy.spy()` | `cy.spy(win.console, 'log').as('consoleLog')` |
+| Pause test runner | `cy.pause()` | `cy.pause()` |
+| Open DevTools | `cy.debug()` | `cy.debug()` |
+| Custom log entry | `Cypress.log()` | `Cypress.log({ name: 'info', message: '...' })` |
+
+## Key Takeaways
+
+```
+- Always configure reporting BEFORE you need it — not after a failure
+- Playwright: HTML report + trace viewer = best debugging experience
+- Cypress: mochawesome + screenshots + video = good debugging setup
+- Use 'on-first-retry' for trace and video — balances detail and performance
+- Console log capture helps debug JavaScript errors in the app
+- Upload artifacts in CI (see Kata 43) so the team can access them
+- The debugging cheatsheet saves time when diagnosing common failures
+```
+8:T26b5,import { test, expect } from '@playwright/test';
+
+// =============================================================================
+// Kata 44: Reporting and Debugging — Playwright Tests
+// =============================================================================
+//
+// These tests demonstrate Playwright's debugging and reporting features.
+//
+// RUN WITH HTML REPORT:
+//   npx playwright test reporting-and-debugging.spec.ts --reporter=html
+//
+// VIEW THE REPORT:
+//   npx playwright show-report
+//
+// RUN WITH TRACE:
+//   npx playwright test reporting-and-debugging.spec.ts --trace=on
+//
+// VIEW A TRACE:
+//   npx playwright show-trace test-results/.../trace.zip
+// =============================================================================
+
+// --------------------------------------------------------------------------
+// Exercise 1: Generate an HTML Report
+// --------------------------------------------------------------------------
+// This test passes cleanly. Run it with --reporter=html and view the report.
+// The report shows test names, durations, and pass/fail status.
+test('exercise 1: generate HTML report (run with --reporter=html)', async ({ page }) => {
+  // Navigate to a simple page.
+  await page.goto('data:text/html,<h1>Report Demo</h1><p>This test generates a report.</p>');
+
+  // Simple assertions that will appear in the report.
+  await expect(page).toHaveTitle('');  // data: URLs have empty titles
+  await expect(page.locator('h1')).toHaveText('Report Demo');
+  await expect(page.locator('p')).toContainText('report');
+
+  // AFTER RUNNING:
+  //   npx playwright test reporting-and-debugging.spec.ts --reporter=html
+  //   npx playwright show-report
+  //
+  // The HTML report opens in your browser showing:
+  //   - Test name and duration
+  //   - Steps (goto, expect, etc.)
+  //   - Screenshots (if configured)
+  //   - Traces (if configured)
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Capture Browser Console Logs
+// --------------------------------------------------------------------------
+// This test captures console.log messages from the browser.
+// Useful for debugging JavaScript errors in the application.
+test('exercise 2: capture browser console logs', async ({ page }) => {
+  // Collect console messages from the browser.
+  // page.on('console', callback) registers a listener that fires
+  // whenever the page's JavaScript calls console.log, console.error, etc.
+  const consoleMessages: string[] = [];
+
+  page.on('console', (msg) => {
+    // msg.type() returns: 'log', 'error', 'warning', 'info', etc.
+    // msg.text() returns the message text.
+    consoleMessages.push(`[${msg.type()}] ${msg.text()}`);
+  });
+
+  // Navigate to a page that logs messages.
+  await page.goto('data:text/html,<h1>Console Demo</h1><script>console.log("Hello from page"); console.warn("Warning message"); console.error("Error message");</script>');
+
+  // Wait a moment for console messages to be captured.
+  await page.waitForTimeout(100);
+
+  // Verify we captured the messages.
+  // eslint-disable-next-line no-console
+  console.log('Captured console messages:');
+  for (const msg of consoleMessages) {
+    // eslint-disable-next-line no-console
+    console.log('  ', msg);
+  }
+
+  // Assert that we captured at least the log message.
+  expect(consoleMessages.some(m => m.includes('Hello from page'))).toBe(true);
+
+  // Check for error messages — useful for catching runtime errors.
+  const errors = consoleMessages.filter(m => m.startsWith('[error]'));
+  // eslint-disable-next-line no-console
+  console.log(`Found ${errors.length} error(s) in browser console`);
+  expect(errors.length).toBeGreaterThan(0);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Manual Screenshot Capture
+// --------------------------------------------------------------------------
+// Capture screenshots at specific points during the test.
+// These are saved as test attachments and appear in the HTML report.
+test('exercise 3: capture screenshots for debugging', async ({ page }) => {
+  await page.goto('data:text/html,<h1>Screenshot Demo</h1><p>Before interaction</p><button onclick="this.textContent=\'Clicked!\'">Click me</button>');
+
+  // page.screenshot(options) captures the current viewport.
+  //
+  // Options:
+  //   path     — file path to save the screenshot (e.g., 'debug.png')
+  //   fullPage — true to capture the full scrollable page (default: false)
+  //   type     — 'png' or 'jpeg' (default: 'png')
+  //   quality  — JPEG quality 0-100 (only for 'jpeg' type)
+
+  // Capture BEFORE interaction.
+  const beforeScreenshot = await page.screenshot();
+
+  // test.info().attach(name, options) attaches a file to the test report.
+  // When you view the HTML report, these attachments are visible.
+  await test.info().attach('before-click', {
+    body: beforeScreenshot,
+    contentType: 'image/png'
+  });
+
+  // Perform an interaction.
+  await page.locator('button').click();
+
+  // Capture AFTER interaction.
+  const afterScreenshot = await page.screenshot();
+  await test.info().attach('after-click', {
+    body: afterScreenshot,
+    contentType: 'image/png'
+  });
+
+  // Verify the button text changed.
+  await expect(page.locator('button')).toHaveText('Clicked!');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Trace Viewer Demo
+// --------------------------------------------------------------------------
+// When you run with --trace=on, Playwright records a trace file.
+// The trace contains DOM snapshots, network logs, and action timelines.
+test('exercise 4: trace viewer demo (run with --trace=on)', async ({ page }) => {
+  // Each action in this test will be recorded in the trace.
+  // The trace shows the DOM state BEFORE and AFTER each action.
+
+  // Step 1: Navigate (recorded in trace).
+  await page.goto('data:text/html,<h1>Trace Demo</h1><input data-testid="name" placeholder="Your name"><button data-testid="greet" onclick="document.getElementById(\'result\').textContent=\'Hello, \'+document.querySelector(\'[data-testid=name]\').value">Greet</button><p id="result" data-testid="result"></p>');
+
+  // Step 2: Fill an input (recorded — trace shows the value typed).
+  await page.getByTestId('name').fill('QA Learner');
+
+  // Step 3: Click a button (recorded — trace shows before/after DOM).
+  await page.getByTestId('greet').click();
+
+  // Step 4: Assert (recorded — trace shows the expected vs actual).
+  await expect(page.getByTestId('result')).toHaveText('Hello, QA Learner');
+
+  // AFTER RUNNING WITH --trace=on:
+  //   The trace is saved to test-results/.../trace.zip
+  //   View it with: npx playwright show-trace test-results/.../trace.zip
+  //
+  // Or open the HTML report — failed tests have traces linked automatically.
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Test Info and Annotations
+// --------------------------------------------------------------------------
+// Playwright allows you to add annotations and custom info to tests.
+// These appear in the HTML report.
+test('exercise 5: add annotations to the report', async ({ page }) => {
+  // test.info().annotations is an array of { type, description } objects.
+  // These appear in the HTML report next to the test.
+  test.info().annotations.push({
+    type: 'note',
+    description: 'This test demonstrates report annotations.'
+  });
+
+  test.info().annotations.push({
+    type: 'documentation',
+    description: 'See https://playwright.dev/docs/test-annotations for more.'
+  });
+
+  await page.goto('data:text/html,<h1>Annotations Demo</h1>');
+  await expect(page.locator('h1')).toHaveText('Annotations Demo');
+
+  // You can also use test.skip(), test.fixme(), test.slow() for special annotations:
+  //   test.skip(condition, 'reason')    — skip the test
+  //   test.fixme()                      — mark as known broken
+  //   test.slow()                       — triple the timeout
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Debugging a Failure
+// --------------------------------------------------------------------------
+// This test is designed to help you practice debugging.
+// Uncomment the failing assertion to see how reports, screenshots,
+// and traces help you diagnose the issue.
+test('exercise 6: practice debugging a failure', async ({ page }) => {
+  // Capture console errors — a common debugging technique.
+  const errors: string[] = [];
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') {
+      errors.push(msg.text());
+    }
+  });
+
+  await page.goto('data:text/html,<h1>Debug Practice</h1><p id="status">Loading...</p><script>setTimeout(() => { document.getElementById("status").textContent = "Ready"; }, 100);</script>');
+
+  // Wait for the dynamic content to load.
+  await expect(page.locator('#status')).toHaveText('Ready');
+
+  // Attach a debug screenshot to the report.
+  await test.info().attach('final-state', {
+    body: await page.screenshot(),
+    contentType: 'image/png'
+  });
+
+  // DEBUGGING TIPS:
+  // 1. Run with --reporter=html to see the HTML report
+  // 2. Run with --trace=on to see step-by-step DOM changes
+  // 3. Run with --debug to open the Playwright Inspector (interactive)
+  // 4. Run with --headed to see the browser during the test
+  // 5. Add await page.pause() to pause the test at a specific point
+  //
+  // COMMON CLI FLAGS:
+  //   npx playwright test --headed            ← see the browser
+  //   npx playwright test --debug             ← step through with Inspector
+  //   npx playwright test --trace=on          ← record a trace
+  //   npx playwright test --reporter=html     ← generate HTML report
+  //   npx playwright test --update-snapshots  ← update visual baselines
+
+  await expect(page.locator('h1')).toHaveText('Debug Practice');
+});
+9:T2082,// =============================================================================
+// Kata 44: Reporting and Debugging — Cypress Tests
+// =============================================================================
+//
+// These tests demonstrate Cypress's debugging and reporting features.
+//
+// CYPRESS REPORTERS:
+//   Default: 'spec' (terminal output)
+//   HTML:    mochawesome (npm install mochawesome)
+//
+// CYPRESS DEBUGGING:
+//   cy.debug()    — pauses and opens DevTools
+//   cy.pause()    — pauses the test runner
+//   .debug()      — chained, pauses with subject in console
+//   cy.log()      — prints to the Cypress command log
+// =============================================================================
+
+describe('Kata 44: Reporting and Debugging', () => {
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Cypress Command Log
+  // --------------------------------------------------------------------------
+  // cy.log() prints messages to the Cypress command log (left panel).
+  // These messages help trace test execution flow.
+  it('exercise 1: use cy.log for test tracing', () => {
+    // cy.log(message, ...args) prints to the Cypress command log.
+    // This is visible in the Cypress Test Runner's left panel.
+    // It does NOT print to the terminal — use console.log() for that.
+    cy.log('Starting exercise 1: command log demo');
+
+    cy.visit('data:text/html,<h1>Log Demo</h1><p>Test logging</p>');
+
+    cy.log('Page loaded successfully');
+
+    cy.get('h1').should('have.text', 'Log Demo');
+    cy.log('Heading assertion passed');
+
+    cy.get('p').should('contain.text', 'logging');
+    cy.log('Paragraph assertion passed');
+
+    // cy.log is also useful for marking sections of complex tests:
+    cy.log('--- SECTION: Form Interaction ---');
+    cy.log('--- SECTION: Assertion Phase ---');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Console Log Capture
+  // --------------------------------------------------------------------------
+  // Capture browser console.log messages for debugging.
+  it('exercise 2: capture browser console messages', () => {
+    // cy.on('window:console', callback) is NOT a real Cypress event.
+    // Instead, use cy.window() to access the console.
+    //
+    // The common pattern: stub console.log before visiting the page.
+    cy.visit('data:text/html,<h1>Console Demo</h1><script>console.log("App loaded"); console.warn("Watch out!"); console.error("Something broke");</script>');
+
+    // cy.window() gives access to the browser's window object.
+    // We can spy on console methods to capture messages.
+    cy.window().then((win) => {
+      // cy.spy(object, method) wraps a method with a spy.
+      // The spy records all calls without changing the method's behavior.
+      cy.spy(win.console, 'log').as('consoleLog');
+      cy.spy(win.console, 'error').as('consoleError');
+    });
+
+    // Trigger some console activity by reloading.
+    cy.reload();
+
+    // NOTE: Spies only capture calls AFTER they are set up.
+    // Messages logged before cy.spy() are not captured.
+    // To capture initial page load messages, set up spies in
+    // cy.on('window:before:load', (win) => { cy.spy(win.console, 'log'); })
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Screenshot Capture
+  // --------------------------------------------------------------------------
+  // cy.screenshot() captures the current state of the page.
+  it('exercise 3: capture screenshots at key points', () => {
+    cy.visit('data:text/html,<h1>Screenshot Demo</h1><p>Before interaction</p><button id="btn" onclick="this.textContent=\'Done!\'">Click</button>');
+
+    // cy.screenshot(name, options?) captures the viewport.
+    //
+    // Parameters:
+    //   name — filename for the screenshot (saved to cypress/screenshots/)
+    //
+    // Options:
+    //   capture: 'fullPage' | 'viewport' | 'runner'
+    //   overwrite: true/false — overwrite existing screenshot
+    //   clip: { x, y, width, height } — capture a specific region
+    //   padding: number — add padding around element screenshots
+
+    // Capture BEFORE interaction.
+    cy.screenshot('before-click', { overwrite: true });
+
+    // Perform an interaction.
+    cy.get('#btn').click();
+
+    // Capture AFTER interaction.
+    cy.screenshot('after-click', { overwrite: true });
+
+    // Verify the button text changed.
+    cy.get('#btn').should('have.text', 'Done!');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Element-Specific Screenshot
+  // --------------------------------------------------------------------------
+  it('exercise 4: screenshot a specific element', () => {
+    cy.visit('data:text/html,<div style="padding:2rem"><h1>Element Screenshot</h1><div id="card" style="padding:1rem;border:2px solid blue;border-radius:8px;background:#f0f8ff"><h2>KYC Card</h2><p>Applicant: Aisha Patel</p><p>Status: Approved</p></div></div>');
+
+    // cy.get(selector).screenshot(name) captures just the element.
+    // The screenshot is cropped to the element's bounding box.
+    cy.get('#card').screenshot('kyc-card', {
+      overwrite: true,
+      // padding — adds pixels around the element in the screenshot.
+      // Useful to capture context around the element.
+      padding: 10
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Cypress Video Configuration
+  // --------------------------------------------------------------------------
+  // Cypress can record a video of the entire spec file execution.
+  it('exercise 5: video recording (configure in cypress.config.ts)', () => {
+    // VIDEO CONFIGURATION:
+    //
+    // In cypress.config.ts:
+    //   e2e: {
+    //     video: true,              // enable video recording
+    //     videoCompression: 32,     // compression quality (0 = best, 51 = worst)
+    //     videosFolder: 'cypress/videos'  // where videos are saved
+    //   }
+    //
+    // Videos are recorded per SPEC FILE (not per test).
+    // The video captures the entire run of this file.
+    //
+    // Videos are saved to: cypress/videos/<spec-name>.mp4
+    //
+    // BEST PRACTICE:
+    //   - Enable video only in CI (not locally — too slow)
+    //   - Use compression to reduce file size
+    //   - Upload videos as CI artifacts (see Kata 43)
+    //
+    // DISABLE in interactive mode (cypress open):
+    //   Video is only recorded in headless mode (cypress run).
+
+    cy.log('Video is configured in cypress.config.ts, not in test code');
+    cy.visit('data:text/html,<h1>Video Demo</h1>');
+    cy.get('h1').should('have.text', 'Video Demo');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Debugging Techniques
+  // --------------------------------------------------------------------------
+  it('exercise 6: debugging techniques cheatsheet', () => {
+    cy.visit('data:text/html,<h1>Debug Practice</h1><p id="status">Loading...</p><script>setTimeout(function(){document.getElementById("status").textContent="Ready"},100)</script>');
+
+    // TECHNIQUE 1: cy.log() — print to command log
+    cy.log('Waiting for status to change...');
+
+    // TECHNIQUE 2: .then() with console.log — print to terminal
+    cy.get('#status').then(($el) => {
+      // eslint-disable-next-line no-console
+      console.log('Current status text:', $el.text());
+    });
+
+    // Wait for the dynamic update.
+    cy.get('#status').should('have.text', 'Ready');
+
+    // TECHNIQUE 3: cy.debug() — pauses test and opens DevTools
+    // Uncomment the line below to try it:
+    // cy.debug();
+
+    // TECHNIQUE 4: cy.pause() — pauses the test runner
+    // Uncomment the line below to try it:
+    // cy.pause();
+
+    // TECHNIQUE 5: .debug() — chained, logs the subject to console
+    // cy.get('#status').debug();
+
+    // TECHNIQUE 6: Cypress.log() — create custom log entries
+    Cypress.log({
+      name: 'custom-log',
+      message: 'Test completed successfully',
+      consoleProps: () => ({
+        'Status': 'Ready',
+        'Technique': 'Cypress.log with consoleProps'
+      })
+    });
+
+    cy.get('h1').should('have.text', 'Debug Practice');
+  });
+});
+0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"kata":{"slug":"43-ci-cd-integration","number":43,"title":"CI/CD Integration","phaseSlug":"phase-08-parallel-and-ci","phaseNumber":8,"phaseName":"Parallel And Ci","readmeRaw":"$3","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[]},"prev":{"slug":"42-loop-parallel-testing","number":42,"title":"Loop Parallel Testing","phaseSlug":"phase-08-parallel-and-ci","phaseNumber":8,"phaseName":"Parallel And Ci","readmeRaw":"$4","hasPlayground":true,"playwrightFiles":[{"filename":"loop-parallel-testing.spec.ts","content":"$5"}],"cypressFiles":[{"filename":"loop-parallel-testing.cy.ts","content":"$6"}]},"next":{"slug":"44-reporting-and-debugging","number":44,"title":"Reporting and Debugging","phaseSlug":"phase-08-parallel-and-ci","phaseNumber":8,"phaseName":"Parallel And Ci","readmeRaw":"$7","hasPlayground":false,"playwrightFiles":[{"filename":"reporting-and-debugging.spec.ts","content":"$8"}],"cypressFiles":[{"filename":"reporting-and-debugging.cy.ts","content":"$9"}]},"playwrightHtml":[],"cypressHtml":[]}],["$La"],"$Lb"]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"iDtrTKWIN4zzRgDRiiDd2"}
+a:["$","script","script-0",{"src":"/qa-labs/_next/static/chunks/03nvm.8~ftt80.js","async":true}]
+b:["$","$Lc",null,{"children":["$","$d",null,{"name":"Next.MetadataOutlet","children":"$@e"}]}]
+e:null

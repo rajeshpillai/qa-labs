@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kata 04: Clicks and Inputs | QA Labs</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #1e293b; padding: 2rem; }
+    .header { background: #0f172a; color: white; padding: 1rem 2rem; margin: -2rem -2rem 2rem; }
+    .header h1 { font-size: 1.25rem; }
+    .kata-badge { display: inline-block; background: #38bdf8; color: #0f172a; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 4px; margin-right: 0.5rem; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+    .section { margin-bottom: 2rem; padding: 1.5rem; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .section h2 { font-size: 1rem; color: #475569; margin-bottom: 1rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.5rem; }
+    button { padding: 0.5rem 1rem; border: none; border-radius: 6px; font-size: 0.875rem; cursor: pointer; margin-right: 0.5rem; margin-bottom: 0.5rem; }
+    .btn-primary { background: #3b82f6; color: white; }
+    .btn-secondary { background: #64748b; color: white; }
+    .btn-danger { background: #ef4444; color: white; }
+    .btn-success { background: #22c55e; color: white; }
+    input, select, textarea { padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.875rem; margin-bottom: 0.75rem; }
+    input[type="text"], input[type="number"], input[type="email"], input[type="password"], textarea, select { width: 100%; }
+    label { display: block; margin-bottom: 0.25rem; font-size: 0.875rem; color: #475569; }
+    .calc-display { background: #0f172a; color: #38bdf8; font-size: 2rem; padding: 1rem; border-radius: 8px; text-align: right; margin-bottom: 1rem; font-family: 'Courier New', monospace; min-height: 3.5rem; }
+    .calc-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.5rem; }
+    .calc-btn { padding: 0.75rem; font-size: 1.1rem; border: 1px solid #e2e8f0; border-radius: 6px; cursor: pointer; background: white; }
+    .calc-btn:hover { background: #f1f5f9; }
+    .calc-btn.operator { background: #3b82f6; color: white; border-color: #3b82f6; }
+    .calc-btn.equals { background: #22c55e; color: white; border-color: #22c55e; }
+    .calc-btn.clear { background: #ef4444; color: white; border-color: #ef4444; }
+    .alert { padding: 0.75rem 1rem; border-radius: 6px; margin-top: 0.75rem; font-size: 0.875rem; }
+    .alert-success { background: #dcfce7; color: #166534; }
+    .alert-info { background: #dbeafe; color: #1e40af; }
+    .checkbox-group label, .radio-group label { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; cursor: pointer; font-size: 0.875rem; }
+    .checkbox-group input, .radio-group input { width: auto; margin-bottom: 0; }
+    .range-container { display: flex; align-items: center; gap: 1rem; }
+    .range-container input[type="range"] { flex: 1; }
+    .editable { border: 1px solid #e2e8f0; padding: 0.75rem; border-radius: 6px; min-height: 60px; font-size: 0.875rem; outline: none; }
+    .editable:focus { border-color: #38bdf8; box-shadow: 0 0 0 2px rgba(56,189,248,0.2); }
+    .color-preview { width: 40px; height: 40px; border-radius: 6px; border: 1px solid #e2e8f0; display: inline-block; vertical-align: middle; }
+  </style>
+</head>
+<body>
+
+  <header class="header" data-testid="page-header">
+    <span class="kata-badge">KATA 04</span>
+    <h1>KYC Portal - Clicks and Inputs Practice</h1>
+  </header>
+
+  <div class="grid">
+    <!-- LEFT COLUMN -->
+    <div>
+
+      <!-- 1: Calculator -->
+      <div class="section" data-testid="calculator-section">
+        <h2>Risk Score Calculator</h2>
+        <div class="calc-display" data-testid="calc-display" id="calc-display">0</div>
+        <div class="calc-grid">
+          <button class="calc-btn" data-testid="calc-7" data-value="7">7</button>
+          <button class="calc-btn" data-testid="calc-8" data-value="8">8</button>
+          <button class="calc-btn" data-testid="calc-9" data-value="9">9</button>
+          <button class="calc-btn operator" data-testid="calc-divide" data-value="/">/</button>
+          <button class="calc-btn" data-testid="calc-4" data-value="4">4</button>
+          <button class="calc-btn" data-testid="calc-5" data-value="5">5</button>
+          <button class="calc-btn" data-testid="calc-6" data-value="6">6</button>
+          <button class="calc-btn operator" data-testid="calc-multiply" data-value="*">x</button>
+          <button class="calc-btn" data-testid="calc-1" data-value="1">1</button>
+          <button class="calc-btn" data-testid="calc-2" data-value="2">2</button>
+          <button class="calc-btn" data-testid="calc-3" data-value="3">3</button>
+          <button class="calc-btn operator" data-testid="calc-subtract" data-value="-">-</button>
+          <button class="calc-btn" data-testid="calc-0" data-value="0">0</button>
+          <button class="calc-btn" data-testid="calc-dot" data-value=".">.</button>
+          <button class="calc-btn equals" data-testid="calc-equals" id="calc-equals">=</button>
+          <button class="calc-btn operator" data-testid="calc-add" data-value="+">+</button>
+        </div>
+        <button class="calc-btn clear" data-testid="calc-clear" id="calc-clear" style="width: 100%; margin-top: 0.5rem;">C</button>
+      </div>
+
+      <!-- 2: Text Input Interactions -->
+      <div class="section" data-testid="text-input-section">
+        <h2>Text Input Interactions</h2>
+        <label for="input-name">Applicant Name</label>
+        <input type="text" id="input-name" data-testid="input-name" placeholder="Enter full name" />
+
+        <label for="input-email">Email</label>
+        <input type="email" id="input-email" data-testid="input-email" placeholder="you@example.com" />
+
+        <label for="input-password">Password</label>
+        <input type="password" id="input-password" data-testid="input-password" placeholder="Enter password" />
+
+        <label for="input-amount">Transaction Amount</label>
+        <input type="number" id="input-amount" data-testid="input-amount" placeholder="0.00" step="0.01" min="0" />
+
+        <label for="textarea-reason">Rejection Reason</label>
+        <textarea id="textarea-reason" data-testid="textarea-reason" rows="3" placeholder="Enter reason for rejection..."></textarea>
+
+        <div data-testid="input-summary" id="input-summary" style="margin-top: 0.5rem; font-size: 0.875rem; color: #64748b;">
+          <p>Name: <span data-testid="summary-name" id="summary-name">-</span></p>
+          <p>Email: <span data-testid="summary-email" id="summary-email">-</span></p>
+          <p>Amount: <span data-testid="summary-amount" id="summary-amount">-</span></p>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div>
+
+      <!-- 3: Select / Dropdown -->
+      <div class="section" data-testid="select-section">
+        <h2>Select & Dropdown</h2>
+        <label for="select-risk">Risk Category</label>
+        <select id="select-risk" data-testid="select-risk">
+          <option value="">Select risk level</option>
+          <option value="low">Low Risk</option>
+          <option value="medium">Medium Risk</option>
+          <option value="high">High Risk</option>
+          <option value="critical">Critical Risk</option>
+        </select>
+
+        <label for="select-country">Country of Origin</label>
+        <select id="select-country" data-testid="select-country" multiple size="4">
+          <option value="us">United States</option>
+          <option value="uk">United Kingdom</option>
+          <option value="in">India</option>
+          <option value="sg">Singapore</option>
+          <option value="jp">Japan</option>
+        </select>
+        <p style="font-size: 0.75rem; color: #94a3b8; margin-top: -0.5rem; margin-bottom: 0.75rem;">Hold Ctrl/Cmd to select multiple</p>
+
+        <p style="font-size: 0.875rem;">Selected risk: <strong data-testid="selected-risk" id="selected-risk">None</strong></p>
+      </div>
+
+      <!-- 4: Checkboxes & Radio Buttons -->
+      <div class="section" data-testid="checkbox-radio-section">
+        <h2>Checkboxes & Radio Buttons</h2>
+
+        <p style="font-size: 0.875rem; color: #475569; margin-bottom: 0.5rem;">Verification Steps</p>
+        <div class="checkbox-group">
+          <label><input type="checkbox" data-testid="check-identity" value="identity" /> Identity Verified</label>
+          <label><input type="checkbox" data-testid="check-address" value="address" /> Address Verified</label>
+          <label><input type="checkbox" data-testid="check-income" value="income" /> Income Verified</label>
+          <label><input type="checkbox" data-testid="check-sanctions" value="sanctions" /> Sanctions Cleared</label>
+        </div>
+
+        <p style="font-size: 0.875rem; color: #475569; margin-bottom: 0.5rem; margin-top: 1rem;">Decision</p>
+        <div class="radio-group">
+          <label><input type="radio" name="decision" data-testid="radio-approve" value="approve" /> Approve</label>
+          <label><input type="radio" name="decision" data-testid="radio-reject" value="reject" /> Reject</label>
+          <label><input type="radio" name="decision" data-testid="radio-escalate" value="escalate" /> Escalate</label>
+        </div>
+
+        <p style="font-size: 0.875rem; margin-top: 0.5rem;">Checked items: <strong data-testid="checked-count" id="checked-count">0</strong></p>
+        <p style="font-size: 0.875rem;">Decision: <strong data-testid="decision-value" id="decision-value">None</strong></p>
+      </div>
+
+      <!-- 5: Range Slider & Color Picker -->
+      <div class="section" data-testid="range-section">
+        <h2>Range & Color</h2>
+        <label for="risk-slider">Risk Threshold</label>
+        <div class="range-container">
+          <input type="range" id="risk-slider" data-testid="risk-slider" min="0" max="100" value="50" />
+          <span data-testid="slider-value" id="slider-value">50</span>
+        </div>
+
+        <label for="color-picker" style="margin-top: 1rem;">Brand Color</label>
+        <div style="display: flex; align-items: center; gap: 1rem;">
+          <input type="color" id="color-picker" data-testid="color-picker" value="#3b82f6" />
+          <div class="color-preview" data-testid="color-preview" id="color-preview" style="background: #3b82f6;"></div>
+          <span data-testid="color-value" id="color-value">#3b82f6</span>
+        </div>
+      </div>
+
+      <!-- 6: Click Variants -->
+      <div class="section" data-testid="click-variants-section">
+        <h2>Click Variants</h2>
+        <button class="btn-primary" data-testid="btn-single-click" id="btn-single-click">Single Click</button>
+        <button class="btn-primary" data-testid="btn-double-click" id="btn-double-click">Double Click</button>
+        <button class="btn-primary" data-testid="btn-right-click" id="btn-right-click">Right Click</button>
+
+        <div data-testid="click-result" id="click-result" style="margin-top: 0.75rem; font-size: 0.875rem; color: #64748b;">
+          Click a button above to see the result.
+        </div>
+
+        <!-- Context menu (appears on right click) -->
+        <div id="context-menu" data-testid="context-menu" style="display: none; position: absolute; background: white; border: 1px solid #e2e8f0; border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); padding: 0.25rem 0; z-index: 100;">
+          <div style="padding: 0.5rem 1rem; font-size: 0.875rem; cursor: pointer;" data-testid="ctx-approve">Approve</div>
+          <div style="padding: 0.5rem 1rem; font-size: 0.875rem; cursor: pointer;" data-testid="ctx-reject">Reject</div>
+          <div style="padding: 0.5rem 1rem; font-size: 0.875rem; cursor: pointer;" data-testid="ctx-escalate">Escalate</div>
+        </div>
+      </div>
+
+      <!-- 7: Content Editable -->
+      <div class="section" data-testid="editable-section">
+        <h2>Content Editable</h2>
+        <p style="font-size: 0.875rem; color: #475569; margin-bottom: 0.5rem;">Click to edit the note below:</p>
+        <div class="editable" contenteditable="true" data-testid="editable-div" id="editable-div">Click here to edit this compliance note.</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Calculator
+    let calcDisplay = '0';
+    let calcOperator = null;
+    let calcPrevious = null;
+    let calcReset = false;
+
+    document.querySelectorAll('.calc-btn[data-value]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const val = btn.getAttribute('data-value');
+        if (['+', '-', '*', '/'].includes(val)) {
+          calcOperator = val;
+          calcPrevious = parseFloat(calcDisplay);
+          calcReset = true;
+        } else {
+          if (calcReset || calcDisplay === '0') {
+            calcDisplay = val;
+            calcReset = false;
+          } else {
+            calcDisplay += val;
+          }
+        }
+        document.getElementById('calc-display').textContent = calcDisplay;
+      });
+    });
+
+    document.getElementById('calc-equals').addEventListener('click', () => {
+      if (calcOperator && calcPrevious !== null) {
+        const current = parseFloat(calcDisplay);
+        let result;
+        switch (calcOperator) {
+          case '+': result = calcPrevious + current; break;
+          case '-': result = calcPrevious - current; break;
+          case '*': result = calcPrevious * current; break;
+          case '/': result = current !== 0 ? calcPrevious / current : 'Error'; break;
+        }
+        calcDisplay = String(result);
+        calcOperator = null;
+        calcPrevious = null;
+        calcReset = true;
+        document.getElementById('calc-display').textContent = calcDisplay;
+      }
+    });
+
+    document.getElementById('calc-clear').addEventListener('click', () => {
+      calcDisplay = '0';
+      calcOperator = null;
+      calcPrevious = null;
+      document.getElementById('calc-display').textContent = '0';
+    });
+
+    // Live input summary
+    document.getElementById('input-name').addEventListener('input', (e) => {
+      document.getElementById('summary-name').textContent = e.target.value || '-';
+    });
+    document.getElementById('input-email').addEventListener('input', (e) => {
+      document.getElementById('summary-email').textContent = e.target.value || '-';
+    });
+    document.getElementById('input-amount').addEventListener('input', (e) => {
+      document.getElementById('summary-amount').textContent = e.target.value || '-';
+    });
+
+    // Select dropdown
+    document.getElementById('select-risk').addEventListener('change', (e) => {
+      const text = e.target.options[e.target.selectedIndex].text;
+      document.getElementById('selected-risk').textContent = e.target.value ? text : 'None';
+    });
+
+    // Checkboxes count
+    document.querySelectorAll('.checkbox-group input[type="checkbox"]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const count = document.querySelectorAll('.checkbox-group input:checked').length;
+        document.getElementById('checked-count').textContent = count;
+      });
+    });
+
+    // Radio buttons
+    document.querySelectorAll('.radio-group input[type="radio"]').forEach(rb => {
+      rb.addEventListener('change', (e) => {
+        document.getElementById('decision-value').textContent = e.target.value.charAt(0).toUpperCase() + e.target.value.slice(1);
+      });
+    });
+
+    // Range slider
+    document.getElementById('risk-slider').addEventListener('input', (e) => {
+      document.getElementById('slider-value').textContent = e.target.value;
+    });
+
+    // Color picker
+    document.getElementById('color-picker').addEventListener('input', (e) => {
+      document.getElementById('color-preview').style.background = e.target.value;
+      document.getElementById('color-value').textContent = e.target.value;
+    });
+
+    // Click variants
+    document.getElementById('btn-single-click').addEventListener('click', () => {
+      document.getElementById('click-result').textContent = 'Single click detected!';
+      document.getElementById('click-result').setAttribute('data-click-type', 'single');
+    });
+
+    document.getElementById('btn-double-click').addEventListener('dblclick', () => {
+      document.getElementById('click-result').textContent = 'Double click detected!';
+      document.getElementById('click-result').setAttribute('data-click-type', 'double');
+    });
+
+    document.getElementById('btn-right-click').addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const menu = document.getElementById('context-menu');
+      menu.style.display = 'block';
+      menu.style.left = e.pageX + 'px';
+      menu.style.top = e.pageY + 'px';
+      document.getElementById('click-result').textContent = 'Right click detected! Context menu shown.';
+      document.getElementById('click-result').setAttribute('data-click-type', 'right');
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('#context-menu') && !e.target.closest('#btn-right-click')) {
+        document.getElementById('context-menu').style.display = 'none';
+      }
+    });
+
+    document.querySelectorAll('#context-menu div').forEach(item => {
+      item.addEventListener('click', () => {
+        document.getElementById('click-result').textContent = 'Context action: ' + item.textContent;
+        document.getElementById('context-menu').style.display = 'none';
+      });
+    });
+  </script>
+
+</body>
+</html>

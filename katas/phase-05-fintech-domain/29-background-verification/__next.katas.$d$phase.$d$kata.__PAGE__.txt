@@ -1,0 +1,2100 @@
+1:"$Sreact.fragment"
+2:I[31749,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js","/qa-labs/_next/static/chunks/03nvm.8~ftt80.js"],"KataPageClient"]
+10:I[49583,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js"],"OutletBoundary"]
+11:"$Sreact.suspense"
+3:T1ab5,# Kata 29: Background Verification
+
+## What You Will Learn
+
+- How to test auto-updating status dashboards (simulating real-time updates)
+- How to wait for specific state changes in a multi-item list
+- How to verify progress bars update correctly as tasks complete
+- How to handle mixed outcomes (some checks pass, some fail)
+- How to verify estimated time countdowns
+- How to test the overall status derivation from individual check results
+- How to use generous timeouts for tests that depend on timed events
+
+## Prerequisites
+
+- Completed Katas 1-28
+- Understanding of `setInterval` and `setTimeout` patterns
+- Familiarity with auto-retry assertions in Playwright and Cypress
+
+## Concepts Explained
+
+### Auto-Updating Dashboards
+
+```
+Background verification dashboards update automatically as each
+check completes. In production, this uses WebSockets or polling.
+Our playground simulates this with setInterval/setTimeout.
+
+The key testing challenge: items update at unpredictable times.
+You must use auto-retrying assertions with generous timeouts
+rather than fixed waits.
+
+Pattern:
+  1. Start the checks
+  2. Wait for specific check statuses to change
+  3. Verify the overall progress and status
+
+Since checks run sequentially with cumulative delays:
+  Criminal:   ~2s
+  Credit:     ~5s (2s + 3s)
+  Employment: ~7s (2s + 3s + 2s)
+  Education:  ~9.5s (+ 2.5s)
+  Reference:  ~11.5s (+ 2s)
+
+Tests should use timeouts of 15-20 seconds for "all complete" assertions.
+```
+
+### Testing Progress Bars
+
+```
+Progress bars show a visual percentage. Test by:
+
+1. CHECKING THE TEXT PERCENTAGE
+   The percentage text (e.g., "60%") is easier to assert than CSS width.
+
+2. CHECKING THE WIDTH STYLE
+   The fill element's style.width property reflects the visual progress.
+   Use toHaveCSS() (Playwright) or .should('have.css') (Cypress).
+
+3. CHECKING AT MILESTONES
+   Verify progress at 0%, after first check (~20%), and at 100%.
+```
+
+### Testing Mixed Outcomes
+
+```
+The education check is configured to "fail" in the simulation.
+This means:
+  - Its status badge shows "Failed" with a red background
+  - The overall status shows "Completed with Issues" instead of
+    "All Checks Passed"
+  - 4 of 5 checks pass, 1 fails
+
+Tests should verify both the individual failure and its effect
+on the overall status.
+```
+
+## Playground
+
+The playground is a background check status tracker with:
+
+1. **Start Button** — triggers all five background checks to run sequentially
+2. **Progress Bar** — fills from 0% to 100% as checks complete, with percentage text
+3. **Estimated Time** — counts down from the total estimated time
+4. **Checks Completed** — shows "X / 5" completed count
+5. **Check List** — five individual checks, each with:
+   - Name (Criminal Record, Credit Score, Employment, Education, Reference)
+   - Detail text (updates with result info when done)
+   - Status badge (Pending -> In Progress -> Complete/Failed)
+6. **Overall Status** — "Not Started", "In Progress", "All Checks Passed", or "Completed with Issues"
+
+Check timing (cumulative delays):
+- Criminal Record: completes at ~2s
+- Credit Score: completes at ~5s
+- Employment: completes at ~7s
+- Education: completes at ~9.5s (FAILS)
+- Reference: completes at ~11.5s
+
+## Exercises
+
+### Exercise 1: Verify Initial Pending States
+Before starting checks, verify all five checks show "Pending" status and the progress is at 0%.
+
+### Exercise 2: Wait for First Check to Complete
+Start the checks and wait for the Criminal Record check to show "Complete". Verify its detail text updates.
+
+### Exercise 3: Verify Progress Bar Updates
+Start the checks. After the first check completes, verify the progress shows "20%". Wait for more checks and verify progress increases.
+
+### Exercise 4: Verify All Checks Complete
+Start the checks and wait for all five checks to finish. Verify the progress shows "100%" and the completed count shows "5 / 5".
+
+### Exercise 5: Handle Failed Check
+Wait for the Education check to complete. Verify its status shows "Failed" and the check item has the failed styling.
+
+### Exercise 6: Verify Estimated Time Updates
+Start the checks and verify the estimated time decreases over time. After all checks complete, verify it shows "0s".
+
+### Exercise 7: Verify Overall Status Changes
+Verify the overall status transitions from "Not Started" to "In Progress" to "Completed with Issues" (because Education fails).
+
+### Exercise 8: Complete Full Background Check Flow
+Start checks, wait for all to complete, verify each individual status, verify the progress bar is at 100%, and verify the overall outcome.
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/background-verification.spec.ts`
+
+### Cypress Solution
+
+See `cypress/background-verification.cy.ts`
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Using short timeouts | Checks take up to ~12s total to complete; default 5s timeout will fail | Use `{ timeout: 15000 }` or higher for "all complete" assertions |
+| Checking intermediate progress at exact moments | Progress updates are asynchronous; timing is approximate | Wait for the text to match rather than checking at a specific moment |
+| Expecting "All Checks Passed" | The education check is designed to fail | Expect "Completed with Issues" as the overall status |
+| Not waiting for "In Progress" state | The brief "In Progress" state may be missed if checked too late | Assert "In Progress" immediately after starting, before any check completes |
+| Testing checks in parallel order | Checks run sequentially with cumulative delays | Wait for each check in order: criminal, credit, employment, education, reference |
+
+## Quick Reference
+
+### Playwright Background Check Testing
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Wait for status | `toHaveText()` | `await expect(el).toHaveText('Complete', { timeout: 5000 })` |
+| Check progress % | `toHaveText()` | `await expect(el).toHaveText('100%', { timeout: 15000 })` |
+| Check CSS class | `toHaveClass()` | `await expect(item).toHaveClass(/completed/)` |
+| Check CSS style | `toHaveCSS()` | `await expect(fill).toHaveCSS('width', ...)` |
+| Long timeout | `{ timeout: N }` | `await expect(el).toHaveText('5 / 5', { timeout: 15000 })` |
+
+### Cypress Background Check Testing
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Wait for status | `.should('have.text')` | `cy.get(el, { timeout: 5000 }).should('have.text', 'Complete')` |
+| Check progress % | `.should('have.text')` | `cy.get(el, { timeout: 15000 }).should('have.text', '100%')` |
+| Check CSS class | `.should('have.class')` | `cy.get(item).should('have.class', 'completed')` |
+| Check CSS style | `.should('have.css')` | `cy.get(fill).should('have.css', 'width', ...)` |
+| Long timeout | `{ timeout: N }` | `cy.get(el, { timeout: 15000 }).should(...)` |
+4:T25ae,import { test, expect } from '@playwright/test';
+
+// The base URL for our playground page.
+const PLAYGROUND = '/phase-05-fintech-domain/29-background-verification/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Verify Initial Pending States
+// --------------------------------------------------------------------------
+// Before starting checks, verify all five checks show "Pending".
+test('exercise 1: verify initial pending states', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify all five check status badges show "Pending".
+  // toHaveText(text) checks the element's textContent matches exactly.
+  const checkIds = ['criminal', 'credit', 'employment', 'education', 'reference'];
+  for (const id of checkIds) {
+    await expect(page.getByTestId(`check-${id}-status`)).toHaveText('Pending');
+  }
+
+  // Verify progress is at 0%.
+  await expect(page.getByTestId('progress-percentage')).toHaveText('0%');
+  await expect(page.getByTestId('checks-completed')).toHaveText('0 / 5');
+
+  // Verify overall status is "Not Started".
+  await expect(page.getByTestId('overall-status')).toHaveText('Not Started');
+
+  // Verify the start button is enabled.
+  await expect(page.getByTestId('btn-start-checks')).toBeEnabled();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Wait for First Check to Complete
+// --------------------------------------------------------------------------
+// Start checks and wait for Criminal Record to show "Complete".
+test('exercise 2: wait for first check to complete', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Start the background checks.
+  await page.getByTestId('btn-start-checks').click();
+
+  // The criminal check should first transition to "In Progress".
+  // toHaveText() retries automatically until the text matches.
+  await expect(page.getByTestId('check-criminal-status')).toHaveText('In Progress', { timeout: 3000 });
+
+  // Then it should complete after ~2 seconds.
+  await expect(page.getByTestId('check-criminal-status')).toHaveText('Complete', { timeout: 5000 });
+
+  // Verify the detail text updated to show the result.
+  await expect(page.getByTestId('check-criminal-detail')).toHaveText('No records found');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Verify Progress Bar Updates
+// --------------------------------------------------------------------------
+// Start checks and verify progress increases as checks complete.
+test('exercise 3: verify progress bar updates', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+  await page.getByTestId('btn-start-checks').click();
+
+  // After the first check (criminal), progress should be 20%.
+  // toHaveText('20%') retries until the text matches.
+  await expect(page.getByTestId('progress-percentage')).toHaveText('20%', { timeout: 5000 });
+
+  // After two checks (criminal + credit), progress should be 40%.
+  await expect(page.getByTestId('progress-percentage')).toHaveText('40%', { timeout: 8000 });
+
+  // Verify the progress bar fill element has a non-zero width.
+  // We don't check the exact CSS value since it may be layout-dependent.
+  // Instead we verify the inline style contains the expected percentage.
+  const fill = page.getByTestId('progress-bar-fill');
+  // getAttribute('style') returns the element's inline style string.
+  const style = await fill.getAttribute('style');
+  expect(style).toContain('40%');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Verify All Checks Complete
+// --------------------------------------------------------------------------
+// Wait for all five checks to finish. Verify 100% and "5 / 5".
+test('exercise 4: verify all checks complete', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+  await page.getByTestId('btn-start-checks').click();
+
+  // Wait for all checks to complete. Total time ~11.5s, so use 15s timeout.
+  // toHaveText('100%') retries until progress reaches 100%.
+  await expect(page.getByTestId('progress-percentage')).toHaveText('100%', { timeout: 15000 });
+
+  // Verify the completed count shows all 5.
+  await expect(page.getByTestId('checks-completed')).toHaveText('5 / 5');
+
+  // Verify each check has a final status (Complete or Failed).
+  await expect(page.getByTestId('check-criminal-status')).toHaveText('Complete');
+  await expect(page.getByTestId('check-credit-status')).toHaveText('Complete');
+  await expect(page.getByTestId('check-employment-status')).toHaveText('Complete');
+  await expect(page.getByTestId('check-education-status')).toHaveText('Failed');
+  await expect(page.getByTestId('check-reference-status')).toHaveText('Complete');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Handle Failed Check
+// --------------------------------------------------------------------------
+// Wait for the Education check to complete and verify it shows "Failed".
+test('exercise 5: handle failed check', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+  await page.getByTestId('btn-start-checks').click();
+
+  // Wait for the education check to show "Failed".
+  // The education check completes at ~9.5s cumulative delay.
+  await expect(page.getByTestId('check-education-status')).toHaveText('Failed', { timeout: 12000 });
+
+  // Verify the check item has the "failed" CSS class.
+  // toHaveClass(/regex/) checks that the element's class matches the pattern.
+  await expect(page.getByTestId('check-education')).toHaveClass(/failed/);
+
+  // Verify the detail text shows the failure reason.
+  await expect(page.getByTestId('check-education-detail')).toHaveText('Could not verify degree');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Verify Estimated Time Updates
+// --------------------------------------------------------------------------
+// Verify the estimated time decreases and reaches "0s" when done.
+test('exercise 6: verify estimated time updates', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Before starting, estimated time should be "--".
+  await expect(page.getByTestId('estimated-time')).toHaveText('--');
+
+  // Start checks.
+  await page.getByTestId('btn-start-checks').click();
+
+  // The estimated time should start at a value > 0.
+  // We verify it's no longer "--".
+  await expect(page.getByTestId('estimated-time')).not.toHaveText('--', { timeout: 2000 });
+
+  // Read the initial estimated time.
+  const initialText = await page.getByTestId('estimated-time').textContent();
+  const initialSeconds = parseInt(initialText!);
+  expect(initialSeconds).toBeGreaterThan(0);
+
+  // Wait for all checks to complete, then verify time is "0s".
+  await expect(page.getByTestId('estimated-time')).toHaveText('0s', { timeout: 15000 });
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Verify Overall Status Changes
+// --------------------------------------------------------------------------
+// Verify the overall status transitions correctly through all phases.
+test('exercise 7: verify overall status changes', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Initial: "Not Started".
+  await expect(page.getByTestId('overall-status')).toHaveText('Not Started');
+  await expect(page.getByTestId('overall-status')).toHaveClass(/overall-pending/);
+
+  // Start checks.
+  await page.getByTestId('btn-start-checks').click();
+
+  // Should transition to "In Progress".
+  await expect(page.getByTestId('overall-status')).toHaveText('In Progress');
+  await expect(page.getByTestId('overall-status')).toHaveClass(/overall-in-progress/);
+
+  // Wait for all checks to complete.
+  // Because education fails, the final status should be "Completed with Issues".
+  await expect(page.getByTestId('overall-status')).toHaveText('Completed with Issues', { timeout: 15000 });
+  await expect(page.getByTestId('overall-status')).toHaveClass(/overall-failed/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Complete Full Background Check Flow
+// --------------------------------------------------------------------------
+// Start checks, wait for all to complete, verify everything.
+test('exercise 8: complete full background check flow', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+  await page.getByTestId('btn-start-checks').click();
+
+  // Wait for all checks to complete.
+  await expect(page.getByTestId('progress-percentage')).toHaveText('100%', { timeout: 15000 });
+
+  // Verify individual check results.
+  const expectedResults = [
+    { id: 'criminal', status: 'Complete', detail: 'No records found' },
+    { id: 'credit', status: 'Complete', detail: 'Score: 750 (Good)' },
+    { id: 'employment', status: 'Complete', detail: 'Verified: 3 employers' },
+    { id: 'education', status: 'Failed', detail: 'Could not verify degree' },
+    { id: 'reference', status: 'Complete', detail: '2 of 2 references confirmed' }
+  ];
+
+  for (const check of expectedResults) {
+    await expect(page.getByTestId(`check-${check.id}-status`)).toHaveText(check.status);
+    await expect(page.getByTestId(`check-${check.id}-detail`)).toHaveText(check.detail);
+  }
+
+  // Verify progress bar is full.
+  await expect(page.getByTestId('checks-completed')).toHaveText('5 / 5');
+
+  // Verify estimated time is 0.
+  await expect(page.getByTestId('estimated-time')).toHaveText('0s');
+
+  // Verify overall status reflects the failure.
+  await expect(page.getByTestId('overall-status')).toHaveText('Completed with Issues');
+});
+5:T21a6,const PLAYGROUND = '/phase-05-fintech-domain/29-background-verification/playground/';
+
+describe('Kata 29: Background Verification', () => {
+
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Verify Initial Pending States
+  // --------------------------------------------------------------------------
+  // Before starting checks, verify all five checks show "Pending".
+  it('exercise 1: verify initial pending states', () => {
+    // Verify all five checks show "Pending".
+    // .should('have.text', text) checks the element's text content.
+    const checkIds = ['criminal', 'credit', 'employment', 'education', 'reference'];
+    checkIds.forEach(id => {
+      cy.get(`[data-testid="check-${id}-status"]`).should('have.text', 'Pending');
+    });
+
+    // Verify progress is at 0%.
+    cy.get('[data-testid="progress-percentage"]').should('have.text', '0%');
+    cy.get('[data-testid="checks-completed"]').should('have.text', '0 / 5');
+
+    // Verify overall status.
+    cy.get('[data-testid="overall-status"]').should('have.text', 'Not Started');
+
+    // Verify start button is enabled.
+    cy.get('[data-testid="btn-start-checks"]').should('not.be.disabled');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Wait for First Check to Complete
+  // --------------------------------------------------------------------------
+  // Start checks and wait for Criminal Record to complete.
+  it('exercise 2: wait for first check to complete', () => {
+    cy.get('[data-testid="btn-start-checks"]').click();
+
+    // Should first transition to "In Progress".
+    // .should() retries automatically until the assertion passes.
+    cy.get('[data-testid="check-criminal-status"]', { timeout: 3000 })
+      .should('have.text', 'In Progress');
+
+    // Then complete after ~2 seconds.
+    cy.get('[data-testid="check-criminal-status"]', { timeout: 5000 })
+      .should('have.text', 'Complete');
+
+    // Verify detail text updated.
+    cy.get('[data-testid="check-criminal-detail"]')
+      .should('have.text', 'No records found');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Verify Progress Bar Updates
+  // --------------------------------------------------------------------------
+  // Verify progress increases as checks complete.
+  it('exercise 3: verify progress bar updates', () => {
+    cy.get('[data-testid="btn-start-checks"]').click();
+
+    // After first check: 20%.
+    cy.get('[data-testid="progress-percentage"]', { timeout: 5000 })
+      .should('have.text', '20%');
+
+    // After two checks: 40%.
+    cy.get('[data-testid="progress-percentage"]', { timeout: 8000 })
+      .should('have.text', '40%');
+
+    // Verify progress bar fill has non-zero width via inline style.
+    // .should('have.attr', 'style') checks the element's style attribute.
+    cy.get('[data-testid="progress-bar-fill"]')
+      .should('have.attr', 'style')
+      .and('contain', '40%');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Verify All Checks Complete
+  // --------------------------------------------------------------------------
+  // Wait for all five checks to finish.
+  it('exercise 4: verify all checks complete', () => {
+    cy.get('[data-testid="btn-start-checks"]').click();
+
+    // Wait for 100% progress. Total ~11.5s, so use 15s timeout.
+    // { timeout: 15000 } gives Cypress up to 15 seconds to retry.
+    cy.get('[data-testid="progress-percentage"]', { timeout: 15000 })
+      .should('have.text', '100%');
+
+    // Verify completed count.
+    cy.get('[data-testid="checks-completed"]').should('have.text', '5 / 5');
+
+    // Verify each check's final status.
+    cy.get('[data-testid="check-criminal-status"]').should('have.text', 'Complete');
+    cy.get('[data-testid="check-credit-status"]').should('have.text', 'Complete');
+    cy.get('[data-testid="check-employment-status"]').should('have.text', 'Complete');
+    cy.get('[data-testid="check-education-status"]').should('have.text', 'Failed');
+    cy.get('[data-testid="check-reference-status"]').should('have.text', 'Complete');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Handle Failed Check
+  // --------------------------------------------------------------------------
+  // Verify the Education check fails with the correct status and styling.
+  it('exercise 5: handle failed check', () => {
+    cy.get('[data-testid="btn-start-checks"]').click();
+
+    // Wait for education to fail (~9.5s cumulative).
+    cy.get('[data-testid="check-education-status"]', { timeout: 12000 })
+      .should('have.text', 'Failed');
+
+    // Verify the check item has the "failed" CSS class.
+    // .should('have.class', name) checks for a specific CSS class.
+    cy.get('[data-testid="check-education"]').should('have.class', 'failed');
+
+    // Verify failure detail text.
+    cy.get('[data-testid="check-education-detail"]')
+      .should('have.text', 'Could not verify degree');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Verify Estimated Time Updates
+  // --------------------------------------------------------------------------
+  // Verify the estimated time decreases and reaches "0s".
+  it('exercise 6: verify estimated time updates', () => {
+    // Before starting: "--".
+    cy.get('[data-testid="estimated-time"]').should('have.text', '--');
+
+    // Start checks.
+    cy.get('[data-testid="btn-start-checks"]').click();
+
+    // Should no longer be "--".
+    cy.get('[data-testid="estimated-time"]', { timeout: 2000 })
+      .should('not.have.text', '--');
+
+    // Read initial value and verify it's > 0.
+    cy.get('[data-testid="estimated-time"]').invoke('text').then((text) => {
+      const seconds = parseInt(text);
+      expect(seconds).to.be.greaterThan(0);
+    });
+
+    // Wait for all checks, then verify "0s".
+    cy.get('[data-testid="estimated-time"]', { timeout: 15000 })
+      .should('have.text', '0s');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Verify Overall Status Changes
+  // --------------------------------------------------------------------------
+  // Verify status transitions through all phases.
+  it('exercise 7: verify overall status changes', () => {
+    // Initial: "Not Started".
+    cy.get('[data-testid="overall-status"]')
+      .should('have.text', 'Not Started')
+      .and('have.class', 'overall-pending');
+
+    // Start checks.
+    cy.get('[data-testid="btn-start-checks"]').click();
+
+    // "In Progress".
+    cy.get('[data-testid="overall-status"]')
+      .should('have.text', 'In Progress')
+      .and('have.class', 'overall-in-progress');
+
+    // Final: "Completed with Issues" (because education fails).
+    cy.get('[data-testid="overall-status"]', { timeout: 15000 })
+      .should('have.text', 'Completed with Issues')
+      .and('have.class', 'overall-failed');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Complete Full Background Check Flow
+  // --------------------------------------------------------------------------
+  // Start, wait for all, verify everything.
+  it('exercise 8: complete full background check flow', () => {
+    cy.get('[data-testid="btn-start-checks"]').click();
+
+    // Wait for 100%.
+    cy.get('[data-testid="progress-percentage"]', { timeout: 15000 })
+      .should('have.text', '100%');
+
+    // Verify each check result.
+    const expected = [
+      { id: 'criminal', status: 'Complete', detail: 'No records found' },
+      { id: 'credit', status: 'Complete', detail: 'Score: 750 (Good)' },
+      { id: 'employment', status: 'Complete', detail: 'Verified: 3 employers' },
+      { id: 'education', status: 'Failed', detail: 'Could not verify degree' },
+      { id: 'reference', status: 'Complete', detail: '2 of 2 references confirmed' }
+    ];
+
+    expected.forEach(check => {
+      cy.get(`[data-testid="check-${check.id}-status"]`).should('have.text', check.status);
+      cy.get(`[data-testid="check-${check.id}-detail"]`).should('have.text', check.detail);
+    });
+
+    // Verify progress.
+    cy.get('[data-testid="checks-completed"]').should('have.text', '5 / 5');
+    cy.get('[data-testid="estimated-time"]').should('have.text', '0s');
+
+    // Verify overall status.
+    cy.get('[data-testid="overall-status"]').should('have.text', 'Completed with Issues');
+  });
+});
+6:T1b71,# Kata 28: Document Verification
+
+## What You Will Learn
+
+- How to test document upload and processing workflows
+- How to wait for asynchronous processing to complete (spinners, loading states)
+- How to verify extracted/auto-filled data from simulated OCR
+- How to test edit-and-confirm flows on extracted data
+- How to verify status transitions across multiple phases
+- How to test error states and retry flows
+- How to simulate invalid documents and verify failure handling
+
+## Prerequisites
+
+- Completed Katas 1-27
+- Understanding of file upload testing from Kata 26
+- Familiarity with async state transitions (loading, success, error)
+
+## Concepts Explained
+
+### Document Verification Workflow
+
+```
+In fintech, document verification typically follows this pattern:
+
+1. UPLOAD — User selects a document type and uploads an image/PDF
+2. PROCESSING — OCR (Optical Character Recognition) extracts text
+3. REVIEW — Extracted fields are shown for user review/correction
+4. CONFIRMED — User confirms the data is correct
+
+Each state has its own UI: upload form, spinner, extracted fields
+form, and confirmation message. Tests must verify each transition.
+```
+
+### Waiting for Async Processing
+
+```
+The OCR processing step takes time (simulated with a 2-second delay).
+Tests must wait for the spinner to disappear and the results to appear.
+
+Playwright:
+  // toBeVisible() retries until the element appears in the DOM.
+  // Use a generous timeout since processing takes 2 seconds.
+  await expect(page.getByTestId('extracted-fields')).toBeVisible({ timeout: 5000 });
+
+Cypress:
+  // .should('be.visible') retries until the assertion passes.
+  cy.get('[data-testid="extracted-fields"]', { timeout: 5000 })
+    .should('be.visible');
+
+Both frameworks automatically retry the assertion until the
+timeout expires, so you don't need explicit sleep/wait calls.
+```
+
+### Testing Editable Extracted Fields
+
+```
+After OCR, extracted fields are pre-filled but editable.
+Tests should:
+  1. Verify the auto-filled values are correct
+  2. Clear a field and type a new value
+  3. Confirm and verify the new value is accepted
+
+This tests a common fintech pattern where OCR may produce
+imperfect results that users need to correct.
+```
+
+## Playground
+
+The playground simulates a document upload + OCR verification flow:
+
+1. **Upload Section** — document type selector, file upload area, and "Process Document" button
+2. **Processing Spinner** — animated spinner with "Extracting text via OCR..." message shown during the 2-second simulated processing delay
+3. **Extracted Fields** — five auto-filled fields (name, DOB, ID number, address, expiry) with a "Confirm Verification" button
+4. **Confirmed Section** — success message after confirmation
+5. **Error Banner** — shown when an "invalid" document is uploaded (filename contains "invalid"), with a "Try Again" button
+
+Status transitions are tracked via:
+- A status badge (Upload / Processing / Review / Confirmed / Failed)
+- Step pills (Upload, Processing, Review, Confirmed) that show completed/active states
+
+OCR results vary by document type (passport, driver's license, national ID) for realistic testing.
+
+## Exercises
+
+### Exercise 1: Upload and Verify Processing Starts
+Select a document type, upload a file, click "Process Document". Verify the spinner appears and the status changes to "Processing".
+
+### Exercise 2: Wait for OCR Results
+Upload and process a document. Wait for the spinner to disappear and the extracted fields to appear. Verify the status changes to "Review".
+
+### Exercise 3: Verify Extracted Fields
+Process a passport document and verify all five extracted fields contain the expected OCR values (name, DOB, ID number, address, expiry).
+
+### Exercise 4: Edit Extracted Field
+After OCR extraction, clear the name field and type a new name. Confirm and verify the flow completes (the edit is accepted).
+
+### Exercise 5: Confirm Verification
+Complete the upload, processing, and review steps. Click "Confirm Verification" and verify the confirmed section appears with the success message.
+
+### Exercise 6: Verify Status Transitions
+Walk through the entire flow and verify the status badge text and step pills change correctly at each phase: Upload -> Processing -> Review -> Confirmed.
+
+### Exercise 7: Test With Invalid Document
+Upload a file whose name contains "invalid". Process it and verify the error banner appears with the failure message and the status shows "Failed".
+
+### Exercise 8: Retry After Failure
+Upload an invalid document, process it (triggers error), then click "Try Again". Verify the page resets to the upload state. Upload a valid document and verify it processes successfully.
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/document-verification.spec.ts`
+
+### Cypress Solution
+
+See `cypress/document-verification.cy.ts`
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Not waiting for processing to complete | The OCR simulation takes 2 seconds; asserting on extracted fields too early will fail | Wait for `extracted-fields` to be visible with `timeout: 5000` |
+| Asserting on the spinner after it disappears | The spinner is hidden after processing; checking it will fail | Assert the spinner is visible during processing, then wait for extracted fields |
+| Forgetting to select a document type | The OCR results depend on the document type selection | Always select a document type before processing |
+| Using the wrong filename for failure testing | Only filenames containing "invalid" trigger the failure path | Use a filename like "invalid-doc.pdf" to trigger errors |
+| Not resetting between retry tests | The retry resets the file input; you must re-upload | After clicking "Try Again", re-select document type and re-upload |
+
+## Quick Reference
+
+### Playwright Document Verification
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Upload file | `setInputFiles()` | `await page.getByTestId('file-input').setInputFiles(...)` |
+| Wait for spinner | `toBeVisible()` | `await expect(spinner).toBeVisible()` |
+| Wait for results | `toBeVisible()` | `await expect(fields).toBeVisible({ timeout: 5000 })` |
+| Check field value | `toHaveValue()` | `await expect(input).toHaveValue('Jane Doe')` |
+| Edit field | `fill()` | `await input.fill('New Name')` |
+| Check status | `toHaveText()` | `await expect(badge).toHaveText('Review')` |
+
+### Cypress Document Verification
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Upload file | `selectFile()` | `cy.get(input).selectFile(...)` |
+| Wait for spinner | `.should('be.visible')` | `cy.get(spinner).should('be.visible')` |
+| Wait for results | `.should('be.visible')` | `cy.get(fields, { timeout: 5000 }).should('be.visible')` |
+| Check field value | `.should('have.value')` | `cy.get(input).should('have.value', 'Jane Doe')` |
+| Edit field | `.clear().type()` | `cy.get(input).clear().type('New Name')` |
+| Check status | `.should('have.text')` | `cy.get(badge).should('have.text', 'Review')` |
+7:T2b48,import { test, expect } from '@playwright/test';
+
+// The base URL for our playground page.
+const PLAYGROUND = '/phase-05-fintech-domain/28-document-verification/playground/';
+
+// ─── Helper: uploadFile ──────────────────────────────────────────────
+// Selects a document type and uploads a simulated file.
+// setInputFiles() creates a synthetic file without needing a real file on disk.
+// The buffer parameter provides fake content for the file.
+async function uploadFile(page: any, docType: string = 'passport', fileName: string = 'passport.pdf') {
+  await page.getByTestId('select-doc-type').selectOption(docType);
+  await page.getByTestId('file-input').setInputFiles({
+    name: fileName,
+    mimeType: 'application/pdf',
+    buffer: Buffer.from('fake-content')
+  });
+}
+
+// ─── Helper: uploadAndProcess ────────────────────────────────────────
+// Uploads a file and clicks the Process button. Optionally waits for
+// the extracted fields to appear (indicating processing is complete).
+async function uploadAndProcess(page: any, docType: string = 'passport', fileName: string = 'passport.pdf', waitForResults: boolean = true) {
+  await uploadFile(page, docType, fileName);
+  await page.getByTestId('btn-process').click();
+  if (waitForResults) {
+    // Wait for the extracted fields section to become visible.
+    // The processing takes 2 seconds, so we allow up to 5 seconds.
+    await expect(page.getByTestId('extracted-fields')).toBeVisible({ timeout: 5000 });
+  }
+}
+
+// --------------------------------------------------------------------------
+// Exercise 1: Upload and Verify Processing Starts
+// --------------------------------------------------------------------------
+// Upload a file, click Process, verify the spinner and status change.
+test('exercise 1: upload and verify processing starts', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify initial status is "Upload".
+  await expect(page.getByTestId('current-status')).toHaveText('Upload');
+
+  // Upload a file.
+  await uploadFile(page);
+
+  // Verify the upload area shows the file is selected.
+  await expect(page.getByTestId('upload-filename')).toHaveText('passport.pdf');
+  await expect(page.getByTestId('upload-area')).toHaveClass(/has-file/);
+
+  // Click "Process Document".
+  await page.getByTestId('btn-process').click();
+
+  // Verify the spinner is visible.
+  // toBeVisible() checks the element is displayed in the viewport.
+  await expect(page.getByTestId('processing-spinner')).toBeVisible();
+  await expect(page.getByTestId('processing-text')).toHaveText('Extracting text via OCR...');
+
+  // Verify status changed to "Processing".
+  await expect(page.getByTestId('current-status')).toHaveText('Processing');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Wait for OCR Results
+// --------------------------------------------------------------------------
+// Upload, process, wait for the spinner to disappear and results to appear.
+test('exercise 2: wait for OCR results', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Upload and start processing.
+  await uploadFile(page);
+  await page.getByTestId('btn-process').click();
+
+  // Verify spinner is visible during processing.
+  await expect(page.getByTestId('processing-spinner')).toBeVisible();
+
+  // Wait for the extracted fields to appear (processing complete).
+  // toBeVisible() with timeout will retry until the element appears.
+  await expect(page.getByTestId('extracted-fields')).toBeVisible({ timeout: 5000 });
+
+  // Verify the spinner is now hidden.
+  await expect(page.getByTestId('processing-spinner')).toBeHidden();
+
+  // Verify status is now "Review".
+  await expect(page.getByTestId('current-status')).toHaveText('Review');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Verify Extracted Fields
+// --------------------------------------------------------------------------
+// Process a passport and verify all OCR-extracted field values.
+test('exercise 3: verify extracted fields', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+  await uploadAndProcess(page, 'passport');
+
+  // Verify each extracted field contains the expected OCR value.
+  // toHaveValue(value) checks the input element's current value.
+  await expect(page.getByTestId('extracted-name')).toHaveValue('Jane Alice Doe');
+  await expect(page.getByTestId('extracted-dob')).toHaveValue('15-Mar-1990');
+  await expect(page.getByTestId('extracted-id-number')).toHaveValue('P12345678');
+  await expect(page.getByTestId('extracted-address')).toHaveValue('123 Main St, New York, NY 10001');
+  await expect(page.getByTestId('extracted-expiry')).toHaveValue('15-Mar-2030');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Edit Extracted Field
+// --------------------------------------------------------------------------
+// After OCR, edit the name field, then confirm successfully.
+test('exercise 4: edit extracted field', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+  await uploadAndProcess(page, 'passport');
+
+  // Verify the original OCR name.
+  await expect(page.getByTestId('extracted-name')).toHaveValue('Jane Alice Doe');
+
+  // Clear the name field and type a corrected name.
+  // fill() clears the input first, then types the new value.
+  await page.getByTestId('extracted-name').fill('Jane A. Doe-Smith');
+
+  // Verify the field now has the new value.
+  await expect(page.getByTestId('extracted-name')).toHaveValue('Jane A. Doe-Smith');
+
+  // Confirm verification — should succeed even with edited fields.
+  await page.getByTestId('btn-confirm').click();
+  await expect(page.getByTestId('confirmed-section')).toBeVisible();
+  await expect(page.getByTestId('current-status')).toHaveText('Confirmed');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Confirm Verification
+// --------------------------------------------------------------------------
+// Complete the full flow and verify the confirmation page.
+test('exercise 5: confirm verification', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+  await uploadAndProcess(page, 'drivers-license', 'license.jpg');
+
+  // Click "Confirm Verification".
+  await page.getByTestId('btn-confirm').click();
+
+  // Verify the confirmed section is visible with the success message.
+  await expect(page.getByTestId('confirmed-section')).toBeVisible();
+  await expect(page.getByTestId('confirmed-title')).toHaveText('Document Verified');
+  await expect(page.getByTestId('confirmed-message')).toContainText('Verification complete');
+
+  // Verify the status badge shows "Confirmed".
+  await expect(page.getByTestId('current-status')).toHaveText('Confirmed');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Verify Status Transitions
+// --------------------------------------------------------------------------
+// Walk through the entire flow and verify status at each phase.
+test('exercise 6: verify status transitions', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Phase 1: Upload — initial state.
+  await expect(page.getByTestId('current-status')).toHaveText('Upload');
+  await expect(page.getByTestId('step-upload-pill')).toHaveClass(/active/);
+
+  // Upload a file and start processing.
+  await uploadFile(page);
+  await page.getByTestId('btn-process').click();
+
+  // Phase 2: Processing.
+  await expect(page.getByTestId('current-status')).toHaveText('Processing');
+  await expect(page.getByTestId('step-processing-pill')).toHaveClass(/active/);
+  await expect(page.getByTestId('step-upload-pill')).toHaveClass(/completed/);
+
+  // Phase 3: Review — wait for processing to complete.
+  await expect(page.getByTestId('extracted-fields')).toBeVisible({ timeout: 5000 });
+  await expect(page.getByTestId('current-status')).toHaveText('Review');
+  await expect(page.getByTestId('step-review-pill')).toHaveClass(/active/);
+  await expect(page.getByTestId('step-processing-pill')).toHaveClass(/completed/);
+
+  // Phase 4: Confirmed.
+  await page.getByTestId('btn-confirm').click();
+  await expect(page.getByTestId('current-status')).toHaveText('Confirmed');
+  await expect(page.getByTestId('step-confirmed-pill')).toHaveClass(/active/);
+  await expect(page.getByTestId('step-review-pill')).toHaveClass(/completed/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Test With Invalid Document
+// --------------------------------------------------------------------------
+// Upload an "invalid" document and verify the error state.
+test('exercise 7: test with invalid document', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Upload a file with "invalid" in the name — this triggers the failure path.
+  await uploadFile(page, 'passport', 'invalid-blurry-doc.pdf');
+  await page.getByTestId('btn-process').click();
+
+  // Wait for the error banner to appear (after 2s processing delay).
+  await expect(page.getByTestId('error-banner')).toBeVisible({ timeout: 5000 });
+
+  // Verify the error message text.
+  await expect(page.getByTestId('error-message')).toContainText('could not be processed');
+
+  // Verify the status shows "Failed".
+  await expect(page.getByTestId('current-status')).toHaveText('Failed');
+
+  // Verify the "Try Again" button is visible.
+  await expect(page.getByTestId('btn-retry')).toBeVisible();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Retry After Failure
+// --------------------------------------------------------------------------
+// Upload invalid doc, fail, retry, then succeed with a valid document.
+test('exercise 8: retry after failure', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // First attempt: invalid document.
+  await uploadFile(page, 'passport', 'invalid-doc.pdf');
+  await page.getByTestId('btn-process').click();
+  await expect(page.getByTestId('error-banner')).toBeVisible({ timeout: 5000 });
+  await expect(page.getByTestId('current-status')).toHaveText('Failed');
+
+  // Click "Try Again" to reset to upload state.
+  await page.getByTestId('btn-retry').click();
+
+  // Verify we're back to the upload state.
+  await expect(page.getByTestId('current-status')).toHaveText('Upload');
+  await expect(page.getByTestId('upload-section')).toBeVisible();
+  await expect(page.getByTestId('error-banner')).toBeHidden();
+
+  // Second attempt: valid document.
+  await uploadAndProcess(page, 'national-id', 'valid-id-card.pdf');
+
+  // Verify OCR results appear.
+  await expect(page.getByTestId('extracted-name')).toHaveValue('Maria Garcia Lopez');
+  await expect(page.getByTestId('current-status')).toHaveText('Review');
+
+  // Confirm verification.
+  await page.getByTestId('btn-confirm').click();
+  await expect(page.getByTestId('current-status')).toHaveText('Confirmed');
+});
+8:T2558,const PLAYGROUND = '/phase-05-fintech-domain/28-document-verification/playground/';
+
+// ─── Helper: uploadFile ──────────────────────────────────────────────
+// Selects a document type and simulates a file upload.
+// cy.get().selectFile() creates a synthetic file and triggers the change event.
+// { force: true } is needed because the file input is hidden (display:none).
+function uploadFile(docType: string = 'passport', fileName: string = 'passport.pdf') {
+  cy.get('[data-testid="select-doc-type"]').select(docType);
+  cy.get('[data-testid="file-input"]').selectFile({
+    contents: Cypress.Buffer.from('fake-content'),
+    fileName: fileName,
+    mimeType: 'application/pdf'
+  }, { force: true });
+}
+
+// ─── Helper: uploadAndProcess ────────────────────────────────────────
+// Uploads a file, clicks Process, and optionally waits for OCR results.
+function uploadAndProcess(docType: string = 'passport', fileName: string = 'passport.pdf', waitForResults: boolean = true) {
+  uploadFile(docType, fileName);
+  cy.get('[data-testid="btn-process"]').click();
+  if (waitForResults) {
+    // Wait for extracted fields to appear (2s processing delay).
+    cy.get('[data-testid="extracted-fields"]', { timeout: 5000 }).should('be.visible');
+  }
+}
+
+describe('Kata 28: Document Verification', () => {
+
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Upload and Verify Processing Starts
+  // --------------------------------------------------------------------------
+  it('exercise 1: upload and verify processing starts', () => {
+    // Verify initial status.
+    cy.get('[data-testid="current-status"]').should('have.text', 'Upload');
+
+    // Upload a file.
+    uploadFile();
+
+    // Verify file is shown.
+    cy.get('[data-testid="upload-filename"]').should('have.text', 'passport.pdf');
+    cy.get('[data-testid="upload-area"]').should('have.class', 'has-file');
+
+    // Click Process.
+    cy.get('[data-testid="btn-process"]').click();
+
+    // Verify spinner is visible.
+    cy.get('[data-testid="processing-spinner"]').should('be.visible');
+    cy.get('[data-testid="processing-text"]').should('have.text', 'Extracting text via OCR...');
+
+    // Verify status changed to Processing.
+    cy.get('[data-testid="current-status"]').should('have.text', 'Processing');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Wait for OCR Results
+  // --------------------------------------------------------------------------
+  it('exercise 2: wait for OCR results', () => {
+    uploadFile();
+    cy.get('[data-testid="btn-process"]').click();
+
+    // Verify spinner is visible during processing.
+    cy.get('[data-testid="processing-spinner"]').should('be.visible');
+
+    // Wait for extracted fields (processing takes 2s).
+    // { timeout: 5000 } gives Cypress enough time to retry.
+    cy.get('[data-testid="extracted-fields"]', { timeout: 5000 }).should('be.visible');
+
+    // Verify spinner is now hidden.
+    cy.get('[data-testid="processing-spinner"]').should('not.be.visible');
+
+    // Verify status is "Review".
+    cy.get('[data-testid="current-status"]').should('have.text', 'Review');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Verify Extracted Fields
+  // --------------------------------------------------------------------------
+  it('exercise 3: verify extracted fields', () => {
+    uploadAndProcess('passport');
+
+    // Verify each field value.
+    // .should('have.value', text) checks an input element's value attribute.
+    cy.get('[data-testid="extracted-name"]').should('have.value', 'Jane Alice Doe');
+    cy.get('[data-testid="extracted-dob"]').should('have.value', '15-Mar-1990');
+    cy.get('[data-testid="extracted-id-number"]').should('have.value', 'P12345678');
+    cy.get('[data-testid="extracted-address"]').should('have.value', '123 Main St, New York, NY 10001');
+    cy.get('[data-testid="extracted-expiry"]').should('have.value', '15-Mar-2030');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Edit Extracted Field
+  // --------------------------------------------------------------------------
+  it('exercise 4: edit extracted field', () => {
+    uploadAndProcess('passport');
+
+    // Verify original name.
+    cy.get('[data-testid="extracted-name"]').should('have.value', 'Jane Alice Doe');
+
+    // Clear and type a new name.
+    // .clear() removes existing text, .type() enters new text.
+    cy.get('[data-testid="extracted-name"]').clear().type('Jane A. Doe-Smith');
+    cy.get('[data-testid="extracted-name"]').should('have.value', 'Jane A. Doe-Smith');
+
+    // Confirm — should succeed with edited field.
+    cy.get('[data-testid="btn-confirm"]').click();
+    cy.get('[data-testid="confirmed-section"]').should('be.visible');
+    cy.get('[data-testid="current-status"]').should('have.text', 'Confirmed');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Confirm Verification
+  // --------------------------------------------------------------------------
+  it('exercise 5: confirm verification', () => {
+    uploadAndProcess('drivers-license', 'license.jpg');
+
+    // Click Confirm.
+    cy.get('[data-testid="btn-confirm"]').click();
+
+    // Verify confirmation page.
+    cy.get('[data-testid="confirmed-section"]').should('be.visible');
+    cy.get('[data-testid="confirmed-title"]').should('have.text', 'Document Verified');
+    cy.get('[data-testid="confirmed-message"]').should('contain.text', 'Verification complete');
+    cy.get('[data-testid="current-status"]').should('have.text', 'Confirmed');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Verify Status Transitions
+  // --------------------------------------------------------------------------
+  it('exercise 6: verify status transitions', () => {
+    // Phase 1: Upload.
+    cy.get('[data-testid="current-status"]').should('have.text', 'Upload');
+    cy.get('[data-testid="step-upload-pill"]').should('have.class', 'active');
+
+    // Upload and process.
+    uploadFile();
+    cy.get('[data-testid="btn-process"]').click();
+
+    // Phase 2: Processing.
+    cy.get('[data-testid="current-status"]').should('have.text', 'Processing');
+    cy.get('[data-testid="step-processing-pill"]').should('have.class', 'active');
+    cy.get('[data-testid="step-upload-pill"]').should('have.class', 'completed');
+
+    // Phase 3: Review.
+    cy.get('[data-testid="extracted-fields"]', { timeout: 5000 }).should('be.visible');
+    cy.get('[data-testid="current-status"]').should('have.text', 'Review');
+    cy.get('[data-testid="step-review-pill"]').should('have.class', 'active');
+    cy.get('[data-testid="step-processing-pill"]').should('have.class', 'completed');
+
+    // Phase 4: Confirmed.
+    cy.get('[data-testid="btn-confirm"]').click();
+    cy.get('[data-testid="current-status"]').should('have.text', 'Confirmed');
+    cy.get('[data-testid="step-confirmed-pill"]').should('have.class', 'active');
+    cy.get('[data-testid="step-review-pill"]').should('have.class', 'completed');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Test With Invalid Document
+  // --------------------------------------------------------------------------
+  it('exercise 7: test with invalid document', () => {
+    // Upload a file with "invalid" in the name to trigger failure.
+    uploadFile('passport', 'invalid-blurry-doc.pdf');
+    cy.get('[data-testid="btn-process"]').click();
+
+    // Wait for error banner (after 2s processing).
+    cy.get('[data-testid="error-banner"]', { timeout: 5000 }).should('be.visible');
+    cy.get('[data-testid="error-message"]').should('contain.text', 'could not be processed');
+    cy.get('[data-testid="current-status"]').should('have.text', 'Failed');
+    cy.get('[data-testid="btn-retry"]').should('be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Retry After Failure
+  // --------------------------------------------------------------------------
+  it('exercise 8: retry after failure', () => {
+    // First attempt: invalid.
+    uploadFile('passport', 'invalid-doc.pdf');
+    cy.get('[data-testid="btn-process"]').click();
+    cy.get('[data-testid="error-banner"]', { timeout: 5000 }).should('be.visible');
+    cy.get('[data-testid="current-status"]').should('have.text', 'Failed');
+
+    // Click "Try Again".
+    cy.get('[data-testid="btn-retry"]').click();
+
+    // Verify reset to upload state.
+    cy.get('[data-testid="current-status"]').should('have.text', 'Upload');
+    cy.get('[data-testid="upload-section"]').should('be.visible');
+    cy.get('[data-testid="error-banner"]').should('not.be.visible');
+
+    // Second attempt: valid document.
+    uploadAndProcess('national-id', 'valid-id-card.pdf');
+
+    // Verify OCR results.
+    cy.get('[data-testid="extracted-name"]').should('have.value', 'Maria Garcia Lopez');
+    cy.get('[data-testid="current-status"]').should('have.text', 'Review');
+
+    // Confirm.
+    cy.get('[data-testid="btn-confirm"]').click();
+    cy.get('[data-testid="current-status"]').should('have.text', 'Confirmed');
+  });
+});
+9:T1a16,# Kata 30: Risk Assessment
+
+## What You Will Learn
+
+- How to test data tables with computed values
+- How to verify recalculation when input values change
+- How to test threshold-based conditional logic (auto-approve, manual review, auto-reject)
+- How to verify color-coded risk indicators match their values
+- How to test override/edit workflows on computed data
+- How to verify export functionality
+- How to assert on precise numeric computations (weighted scores)
+
+## Prerequisites
+
+- Completed Katas 1-29
+- Understanding of form inputs and value assertions
+- Familiarity with table element testing
+
+## Concepts Explained
+
+### Risk Scorecard Pattern
+
+```
+A risk scorecard assigns scores to multiple risk factors, each with
+a weight. The total risk score determines the recommended action:
+
+  Factor           Score (0-100)   Weight   Weighted
+  Identity             15          0.25      3.75
+  Credit               20          0.20      4.00
+  Employment           10          0.20      2.00
+  Address               5          0.15      0.75
+  Sanctions             0          0.20      0.00
+                                   ----     -----
+  Total                            1.00     10.50
+
+Thresholds:
+  < 30  => Auto-Approve (low risk)
+  30-70 => Manual Review (medium risk)
+  > 70  => Auto-Reject (high risk)
+
+Testing must verify:
+  - Weighted scores are calculated correctly
+  - Total is the sum of all weighted scores
+  - Action changes when the total crosses a threshold
+  - Color coding matches the risk level
+```
+
+### Testing Computed Values
+
+```
+When a user changes a score input, the weighted score, total, risk
+level, and action all recalculate. Tests should:
+
+1. Read the initial computed values and verify them
+2. Change an input value
+3. Verify the weighted score recalculates
+4. Verify the total recalculates
+5. If the total crossed a threshold, verify the action changed
+
+Playwright:
+  await page.getByTestId('score-identity').fill('80');
+  // Trigger recalculation (the 'change' event fires on fill).
+  await expect(page.getByTestId('weighted-identity')).toHaveText('20.00');
+
+Cypress:
+  cy.get('[data-testid="score-identity"]').clear().type('80');
+  // Trigger change event to recalculate.
+  cy.get('[data-testid="score-identity"]').blur();
+  cy.get('[data-testid="weighted-identity"]').should('have.text', '20.00');
+```
+
+## Playground
+
+The playground is a risk scorecard dashboard with:
+
+1. **Risk Table** — five risk factors (Identity, Credit, Employment, Address, Sanctions) each with an editable score (0-100), weight, computed weighted score, and color-coded risk level
+2. **Total Row** — sum of all weighted scores with overall risk level
+3. **Risk Thresholds** — reference section showing the three threshold ranges
+4. **Action Card** — shows the recommended action (Auto-Approve, Manual Review, Auto-Reject) based on the total score, with color-coded background
+5. **Reset Button** — resets all scores to their default values
+6. **Export Button** — generates a JSON report of the current assessment
+
+Default scores: Identity=15, Credit=20, Employment=10, Address=5, Sanctions=0 (total=10.50, Auto-Approve).
+
+## Exercises
+
+### Exercise 1: Verify Risk Table Data
+Verify all five risk factors are displayed with correct default scores, weights, and weighted scores.
+
+### Exercise 2: Verify Computed Total
+Verify the total weighted score matches the sum of individual weighted scores. Verify the total risk level is "Low".
+
+### Exercise 3: Change a Score and Verify Recalculation
+Change the Identity score from 15 to 80. Verify the weighted score updates to 20.00 and the total recalculates.
+
+### Exercise 4: Verify Auto-Approve Threshold
+With default scores (total < 30), verify the action card shows "Auto-Approve" with the green styling.
+
+### Exercise 5: Verify Manual Review Threshold
+Set scores so the total falls between 30 and 70. Verify the action card changes to "Manual Review" with amber styling.
+
+### Exercise 6: Verify Auto-Reject Threshold
+Set scores so the total exceeds 70. Verify the action card changes to "Auto-Reject" with red styling.
+
+### Exercise 7: Override Score and Verify Action Changes
+Start with auto-approve, change scores to trigger manual review, then change again to trigger auto-reject. Verify the action updates each time.
+
+### Exercise 8: Verify Color Coding Matches Risk Level
+Set different scores for each factor and verify the risk level text ("Low", "Medium", "High") and CSS class match the score value.
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/risk-assessment.spec.ts`
+
+### Cypress Solution
+
+See `cypress/risk-assessment.cy.ts`
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Not triggering recalculation after changing a score | The `onchange` event fires when the input loses focus or on Playwright's `fill()` | Use `fill()` (Playwright) or `clear().type().blur()` (Cypress) |
+| Checking floating point values with exact equality | Floating point arithmetic can produce tiny rounding differences | Use `toFixed(2)` in assertions or check the displayed text |
+| Forgetting the threshold boundaries | 30 is manual review (not auto-approve), 70 is manual review (not auto-reject) | Thresholds: < 30 approve, 30-70 review, > 70 reject |
+| Not resetting between tests | Score changes from one test persist if not navigating fresh | Use `page.goto()` or `cy.visit()` in each test |
+
+## Quick Reference
+
+### Playwright Risk Table Testing
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Change score | `fill()` | `await page.getByTestId('score-identity').fill('50')` |
+| Verify weighted | `toHaveText()` | `await expect(el).toHaveText('12.50')` |
+| Verify total | `toHaveText()` | `await expect(total).toHaveText('35.00')` |
+| Verify CSS class | `toHaveClass()` | `await expect(el).toHaveClass(/risk-medium/)` |
+| Verify action | `toHaveText()` | `await expect(title).toHaveText('Manual Review')` |
+| Check input value | `toHaveValue()` | `await expect(input).toHaveValue('50')` |
+
+### Cypress Risk Table Testing
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Change score | `.clear().type().blur()` | `cy.get(input).clear().type('50').blur()` |
+| Verify weighted | `.should('have.text')` | `cy.get(el).should('have.text', '12.50')` |
+| Verify total | `.should('have.text')` | `cy.get(total).should('have.text', '35.00')` |
+| Verify CSS class | `.should('have.class')` | `cy.get(el).should('have.class', 'risk-medium')` |
+| Verify action | `.should('have.text')` | `cy.get(title).should('have.text', 'Manual Review')` |
+| Check input value | `.should('have.value')` | `cy.get(input).should('have.value', '50')` |
+a:T263f,import { test, expect } from '@playwright/test';
+
+// The base URL for our playground page.
+const PLAYGROUND = '/phase-05-fintech-domain/30-risk-assessment/playground/';
+
+// ─── Helper: setScore ────────────────────────────────────────────────
+// Changes a risk factor's score input and triggers recalculation.
+// locator.fill(value) clears the input, types the new value, and
+// dispatches a 'change' event which triggers recalculate().
+async function setScore(page: any, factorId: string, score: string) {
+  const input = page.getByTestId(`score-${factorId}`);
+  await input.fill(score);
+  // Dispatch a change event explicitly to ensure recalculation triggers.
+  // dispatchEvent(new Event('change')) fires the onchange handler.
+  await input.dispatchEvent('change');
+}
+
+// --------------------------------------------------------------------------
+// Exercise 1: Verify Risk Table Data
+// --------------------------------------------------------------------------
+// Verify all five risk factors with default scores, weights, and weighted scores.
+test('exercise 1: verify risk table data', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify the table is visible.
+  await expect(page.getByTestId('risk-table')).toBeVisible();
+
+  // Verify default score values.
+  // toHaveValue(value) checks the input element's current value.
+  await expect(page.getByTestId('score-identity')).toHaveValue('15');
+  await expect(page.getByTestId('score-credit')).toHaveValue('20');
+  await expect(page.getByTestId('score-employment')).toHaveValue('10');
+  await expect(page.getByTestId('score-address')).toHaveValue('5');
+  await expect(page.getByTestId('score-sanctions')).toHaveValue('0');
+
+  // Verify weights.
+  await expect(page.getByTestId('weight-identity')).toHaveText('0.25');
+  await expect(page.getByTestId('weight-credit')).toHaveText('0.20');
+  await expect(page.getByTestId('weight-employment')).toHaveText('0.20');
+  await expect(page.getByTestId('weight-address')).toHaveText('0.15');
+  await expect(page.getByTestId('weight-sanctions')).toHaveText('0.20');
+
+  // Verify weighted scores (score * weight).
+  await expect(page.getByTestId('weighted-identity')).toHaveText('3.75');
+  await expect(page.getByTestId('weighted-credit')).toHaveText('4.00');
+  await expect(page.getByTestId('weighted-employment')).toHaveText('2.00');
+  await expect(page.getByTestId('weighted-address')).toHaveText('0.75');
+  await expect(page.getByTestId('weighted-sanctions')).toHaveText('0.00');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Verify Computed Total
+// --------------------------------------------------------------------------
+// Verify the total weighted score and overall risk level.
+test('exercise 2: verify computed total', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Total = 3.75 + 4.00 + 2.00 + 0.75 + 0.00 = 10.50.
+  await expect(page.getByTestId('total-score')).toHaveText('10.50');
+
+  // Total 10.50 is below 30, so risk level is "Low".
+  await expect(page.getByTestId('total-level')).toHaveText('Low');
+
+  // Verify the total level has the low-risk CSS class.
+  await expect(page.getByTestId('total-level')).toHaveClass(/risk-low/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Change a Score and Verify Recalculation
+// --------------------------------------------------------------------------
+// Change Identity from 15 to 80, verify weighted and total update.
+test('exercise 3: change a score and verify recalculation', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Change Identity score to 80.
+  await setScore(page, 'identity', '80');
+
+  // Weighted should be 80 * 0.25 = 20.00.
+  await expect(page.getByTestId('weighted-identity')).toHaveText('20.00');
+
+  // New total = 20.00 + 4.00 + 2.00 + 0.75 + 0.00 = 26.75.
+  await expect(page.getByTestId('total-score')).toHaveText('26.75');
+
+  // Identity score 80 is "High" risk.
+  await expect(page.getByTestId('level-identity')).toHaveText('High');
+  await expect(page.getByTestId('level-identity')).toHaveClass(/risk-high/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Verify Auto-Approve Threshold
+// --------------------------------------------------------------------------
+// Default scores give total < 30, so action should be "Auto-Approve".
+test('exercise 4: verify auto-approve threshold', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Default total is 10.50 (< 30), so action is Auto-Approve.
+  await expect(page.getByTestId('action-title')).toHaveText('Auto-Approve');
+  await expect(page.getByTestId('action-description')).toContainText('automatically approved');
+
+  // Verify the action card has the green styling.
+  await expect(page.getByTestId('action-card')).toHaveClass(/result-auto-approve/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Verify Manual Review Threshold
+// --------------------------------------------------------------------------
+// Set scores to push total between 30 and 70.
+test('exercise 5: verify manual review threshold', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Set Identity to 80 and Credit to 80.
+  // Total = (80*0.25) + (80*0.20) + (10*0.20) + (5*0.15) + (0*0.20)
+  //       = 20 + 16 + 2 + 0.75 + 0 = 38.75 (between 30 and 70).
+  await setScore(page, 'identity', '80');
+  await setScore(page, 'credit', '80');
+
+  await expect(page.getByTestId('total-score')).toHaveText('38.75');
+
+  // Action should be "Manual Review".
+  await expect(page.getByTestId('action-title')).toHaveText('Manual Review');
+  await expect(page.getByTestId('action-description')).toContainText('manual review');
+
+  // Verify amber styling.
+  await expect(page.getByTestId('action-card')).toHaveClass(/result-manual-review/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Verify Auto-Reject Threshold
+// --------------------------------------------------------------------------
+// Set scores to push total above 70.
+test('exercise 6: verify auto-reject threshold', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Set all scores to 90.
+  // Total = (90*0.25) + (90*0.20) + (90*0.20) + (90*0.15) + (90*0.20)
+  //       = 22.5 + 18 + 18 + 13.5 + 18 = 90.00 (> 70).
+  for (const id of ['identity', 'credit', 'employment', 'address', 'sanctions']) {
+    await setScore(page, id, '90');
+  }
+
+  await expect(page.getByTestId('total-score')).toHaveText('90.00');
+
+  // Action should be "Auto-Reject".
+  await expect(page.getByTestId('action-title')).toHaveText('Auto-Reject');
+  await expect(page.getByTestId('action-description')).toContainText('automatically rejected');
+
+  // Verify red styling.
+  await expect(page.getByTestId('action-card')).toHaveClass(/result-auto-reject/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Override Score and Verify Action Changes
+// --------------------------------------------------------------------------
+// Transition through all three thresholds by changing scores.
+test('exercise 7: override score and verify action changes', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Start: Auto-Approve (default total 10.50).
+  await expect(page.getByTestId('action-title')).toHaveText('Auto-Approve');
+
+  // Move to Manual Review range.
+  await setScore(page, 'identity', '80');
+  await setScore(page, 'credit', '80');
+  // Total = 20 + 16 + 2 + 0.75 + 0 = 38.75.
+  await expect(page.getByTestId('action-title')).toHaveText('Manual Review');
+
+  // Move to Auto-Reject range.
+  await setScore(page, 'employment', '100');
+  await setScore(page, 'address', '100');
+  await setScore(page, 'sanctions', '100');
+  // Total = 20 + 16 + 20 + 15 + 20 = 91.
+  await expect(page.getByTestId('action-title')).toHaveText('Auto-Reject');
+
+  // Move back to Auto-Approve by resetting.
+  await page.getByTestId('btn-reset').click();
+  await expect(page.getByTestId('action-title')).toHaveText('Auto-Approve');
+  await expect(page.getByTestId('total-score')).toHaveText('10.50');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Verify Color Coding Matches Risk Level
+// --------------------------------------------------------------------------
+// Set different scores and verify the color classes match the risk levels.
+test('exercise 8: verify color coding matches risk level', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Set Identity to 10 (Low), Credit to 50 (Medium), Sanctions to 80 (High).
+  await setScore(page, 'identity', '10');
+  await setScore(page, 'credit', '50');
+  await setScore(page, 'sanctions', '80');
+
+  // Identity: 10 => Low, should have risk-low class.
+  await expect(page.getByTestId('level-identity')).toHaveText('Low');
+  await expect(page.getByTestId('level-identity')).toHaveClass(/risk-low/);
+
+  // Credit: 50 => Medium, should have risk-medium class.
+  await expect(page.getByTestId('level-credit')).toHaveText('Medium');
+  await expect(page.getByTestId('level-credit')).toHaveClass(/risk-medium/);
+
+  // Sanctions: 80 => High, should have risk-high class.
+  await expect(page.getByTestId('level-sanctions')).toHaveText('High');
+  await expect(page.getByTestId('level-sanctions')).toHaveClass(/risk-high/);
+
+  // Verify the export button works.
+  await page.getByTestId('btn-export').click();
+  await expect(page.getByTestId('export-section')).toBeVisible();
+  // The exported JSON should contain the action.
+  await expect(page.getByTestId('export-content')).toContainText('"action"');
+});
+b:T1eb9,const PLAYGROUND = '/phase-05-fintech-domain/30-risk-assessment/playground/';
+
+// ─── Helper: setScore ────────────────────────────────────────────────
+// Changes a risk factor's score and triggers recalculation.
+// .clear() removes existing text, .type() enters the new value.
+// .trigger('change') fires the onchange handler to recalculate.
+function setScore(factorId: string, score: string) {
+  cy.get(`[data-testid="score-${factorId}"]`).clear().type(score).trigger('change');
+}
+
+describe('Kata 30: Risk Assessment', () => {
+
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Verify Risk Table Data
+  // --------------------------------------------------------------------------
+  it('exercise 1: verify risk table data', () => {
+    // Verify the table is visible.
+    cy.get('[data-testid="risk-table"]').should('be.visible');
+
+    // Verify default score values.
+    // .should('have.value', val) checks an input's value.
+    cy.get('[data-testid="score-identity"]').should('have.value', '15');
+    cy.get('[data-testid="score-credit"]').should('have.value', '20');
+    cy.get('[data-testid="score-employment"]').should('have.value', '10');
+    cy.get('[data-testid="score-address"]').should('have.value', '5');
+    cy.get('[data-testid="score-sanctions"]').should('have.value', '0');
+
+    // Verify weights.
+    cy.get('[data-testid="weight-identity"]').should('have.text', '0.25');
+    cy.get('[data-testid="weight-credit"]').should('have.text', '0.20');
+    cy.get('[data-testid="weight-employment"]').should('have.text', '0.20');
+    cy.get('[data-testid="weight-address"]').should('have.text', '0.15');
+    cy.get('[data-testid="weight-sanctions"]').should('have.text', '0.20');
+
+    // Verify weighted scores.
+    cy.get('[data-testid="weighted-identity"]').should('have.text', '3.75');
+    cy.get('[data-testid="weighted-credit"]').should('have.text', '4.00');
+    cy.get('[data-testid="weighted-employment"]').should('have.text', '2.00');
+    cy.get('[data-testid="weighted-address"]').should('have.text', '0.75');
+    cy.get('[data-testid="weighted-sanctions"]').should('have.text', '0.00');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Verify Computed Total
+  // --------------------------------------------------------------------------
+  it('exercise 2: verify computed total', () => {
+    // Total = 3.75 + 4.00 + 2.00 + 0.75 + 0.00 = 10.50.
+    cy.get('[data-testid="total-score"]').should('have.text', '10.50');
+
+    // Risk level should be "Low" (< 30).
+    cy.get('[data-testid="total-level"]')
+      .should('have.text', 'Low')
+      .and('have.class', 'risk-low');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Change a Score and Verify Recalculation
+  // --------------------------------------------------------------------------
+  it('exercise 3: change a score and verify recalculation', () => {
+    // Change Identity to 80.
+    setScore('identity', '80');
+
+    // Weighted = 80 * 0.25 = 20.00.
+    cy.get('[data-testid="weighted-identity"]').should('have.text', '20.00');
+
+    // New total = 20.00 + 4.00 + 2.00 + 0.75 + 0.00 = 26.75.
+    cy.get('[data-testid="total-score"]').should('have.text', '26.75');
+
+    // Identity level is "High" (80 > 70).
+    cy.get('[data-testid="level-identity"]')
+      .should('have.text', 'High')
+      .and('have.class', 'risk-high');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Verify Auto-Approve Threshold
+  // --------------------------------------------------------------------------
+  it('exercise 4: verify auto-approve threshold', () => {
+    // Default total 10.50 < 30 => Auto-Approve.
+    cy.get('[data-testid="action-title"]').should('have.text', 'Auto-Approve');
+    cy.get('[data-testid="action-description"]')
+      .should('contain.text', 'automatically approved');
+    cy.get('[data-testid="action-card"]').should('have.class', 'result-auto-approve');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Verify Manual Review Threshold
+  // --------------------------------------------------------------------------
+  it('exercise 5: verify manual review threshold', () => {
+    // Set Identity=80, Credit=80 => total=38.75 (30-70 range).
+    setScore('identity', '80');
+    setScore('credit', '80');
+
+    cy.get('[data-testid="total-score"]').should('have.text', '38.75');
+    cy.get('[data-testid="action-title"]').should('have.text', 'Manual Review');
+    cy.get('[data-testid="action-description"]').should('contain.text', 'manual review');
+    cy.get('[data-testid="action-card"]').should('have.class', 'result-manual-review');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Verify Auto-Reject Threshold
+  // --------------------------------------------------------------------------
+  it('exercise 6: verify auto-reject threshold', () => {
+    // Set all scores to 90 => total=90.00 (> 70).
+    ['identity', 'credit', 'employment', 'address', 'sanctions'].forEach(id => {
+      setScore(id, '90');
+    });
+
+    cy.get('[data-testid="total-score"]').should('have.text', '90.00');
+    cy.get('[data-testid="action-title"]').should('have.text', 'Auto-Reject');
+    cy.get('[data-testid="action-description"]').should('contain.text', 'automatically rejected');
+    cy.get('[data-testid="action-card"]').should('have.class', 'result-auto-reject');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Override Score and Verify Action Changes
+  // --------------------------------------------------------------------------
+  it('exercise 7: override score and verify action changes', () => {
+    // Start: Auto-Approve.
+    cy.get('[data-testid="action-title"]').should('have.text', 'Auto-Approve');
+
+    // Move to Manual Review.
+    setScore('identity', '80');
+    setScore('credit', '80');
+    cy.get('[data-testid="action-title"]').should('have.text', 'Manual Review');
+
+    // Move to Auto-Reject.
+    setScore('employment', '100');
+    setScore('address', '100');
+    setScore('sanctions', '100');
+    cy.get('[data-testid="action-title"]').should('have.text', 'Auto-Reject');
+
+    // Reset back to Auto-Approve.
+    cy.get('[data-testid="btn-reset"]').click();
+    cy.get('[data-testid="action-title"]').should('have.text', 'Auto-Approve');
+    cy.get('[data-testid="total-score"]').should('have.text', '10.50');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Verify Color Coding Matches Risk Level
+  // --------------------------------------------------------------------------
+  it('exercise 8: verify color coding matches risk level', () => {
+    // Set Identity=10 (Low), Credit=50 (Medium), Sanctions=80 (High).
+    setScore('identity', '10');
+    setScore('credit', '50');
+    setScore('sanctions', '80');
+
+    // Identity: Low.
+    cy.get('[data-testid="level-identity"]')
+      .should('have.text', 'Low')
+      .and('have.class', 'risk-low');
+
+    // Credit: Medium.
+    cy.get('[data-testid="level-credit"]')
+      .should('have.text', 'Medium')
+      .and('have.class', 'risk-medium');
+
+    // Sanctions: High.
+    cy.get('[data-testid="level-sanctions"]')
+      .should('have.text', 'High')
+      .and('have.class', 'risk-high');
+
+    // Verify export works.
+    cy.get('[data-testid="btn-export"]').click();
+    cy.get('[data-testid="export-section"]').should('be.visible');
+    cy.get('[data-testid="export-content"]').should('contain.text', '"action"');
+  });
+});
+c:Ta955,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { test, expect } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> '@playwright/test'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// The base URL for our playground page.</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-05-fintech-domain/29-background-verification/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 1: Verify Initial Pending States</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Before starting checks, verify all five checks show "Pending".</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: verify initial pending states'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify all five check status badges show "Pending".</span></span>
+<span class="line"><span style="color:#6A737D">  // toHaveText(text) checks the element's textContent matches exactly.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> checkIds</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> [</span><span style="color:#9ECBFF">'criminal'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'credit'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'employment'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'education'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'reference'</span><span style="color:#E1E4E8">];</span></span>
+<span class="line"><span style="color:#F97583">  for</span><span style="color:#E1E4E8"> (</span><span style="color:#F97583">const</span><span style="color:#79B8FF"> id</span><span style="color:#F97583"> of</span><span style="color:#E1E4E8"> checkIds) {</span></span>
+<span class="line"><span style="color:#F97583">    await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`check-${</span><span style="color:#E1E4E8">id</span><span style="color:#9ECBFF">}-status`</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Pending'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify progress is at 0%.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'progress-percentage'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'0%'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'checks-completed'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'0 / 5'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify overall status is "Not Started".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'overall-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Not Started'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the start button is enabled.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-start-checks'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeEnabled</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 2: Wait for First Check to Complete</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Start checks and wait for Criminal Record to show "Complete".</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: wait for first check to complete'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Start the background checks.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-start-checks'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // The criminal check should first transition to "In Progress".</span></span>
+<span class="line"><span style="color:#6A737D">  // toHaveText() retries automatically until the text matches.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'check-criminal-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'In Progress'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">3000</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Then it should complete after ~2 seconds.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'check-criminal-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Complete'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the detail text updated to show the result.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'check-criminal-detail'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'No records found'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 3: Verify Progress Bar Updates</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Start checks and verify progress increases as checks complete.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: verify progress bar updates'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-start-checks'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // After the first check (criminal), progress should be 20%.</span></span>
+<span class="line"><span style="color:#6A737D">  // toHaveText('20%') retries until the text matches.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'progress-percentage'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'20%'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // After two checks (criminal + credit), progress should be 40%.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'progress-percentage'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'40%'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">8000</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the progress bar fill element has a non-zero width.</span></span>
+<span class="line"><span style="color:#6A737D">  // We don't check the exact CSS value since it may be layout-dependent.</span></span>
+<span class="line"><span style="color:#6A737D">  // Instead we verify the inline style contains the expected percentage.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> fill</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'progress-bar-fill'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#6A737D">  // getAttribute('style') returns the element's inline style string.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> style</span><span style="color:#F97583"> =</span><span style="color:#F97583"> await</span><span style="color:#E1E4E8"> fill.</span><span style="color:#B392F0">getAttribute</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'style'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#B392F0">  expect</span><span style="color:#E1E4E8">(style).</span><span style="color:#B392F0">toContain</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'40%'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 4: Verify All Checks Complete</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Wait for all five checks to finish. Verify 100% and "5 / 5".</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: verify all checks complete'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-start-checks'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Wait for all checks to complete. Total time ~11.5s, so use 15s timeout.</span></span>
+<span class="line"><span style="color:#6A737D">  // toHaveText('100%') retries until progress reaches 100%.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'progress-percentage'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'100%'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">15000</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the completed count shows all 5.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'checks-completed'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'5 / 5'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify each check has a final status (Complete or Failed).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'check-criminal-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Complete'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'check-credit-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Complete'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'check-employment-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Complete'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'check-education-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Failed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'check-reference-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Complete'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 5: Handle Failed Check</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Wait for the Education check to complete and verify it shows "Failed".</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: handle failed check'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-start-checks'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Wait for the education check to show "Failed".</span></span>
+<span class="line"><span style="color:#6A737D">  // The education check completes at ~9.5s cumulative delay.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'check-education-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Failed'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">12000</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the check item has the "failed" CSS class.</span></span>
+<span class="line"><span style="color:#6A737D">  // toHaveClass(/regex/) checks that the element's class matches the pattern.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'check-education'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">failed</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the detail text shows the failure reason.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'check-education-detail'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Could not verify degree'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 6: Verify Estimated Time Updates</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Verify the estimated time decreases and reaches "0s" when done.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: verify estimated time updates'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Before starting, estimated time should be "--".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'estimated-time'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'--'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Start checks.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-start-checks'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // The estimated time should start at a value > 0.</span></span>
+<span class="line"><span style="color:#6A737D">  // We verify it's no longer "--".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'estimated-time'</span><span style="color:#E1E4E8">)).not.</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'--'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">2000</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Read the initial estimated time.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> initialText</span><span style="color:#F97583"> =</span><span style="color:#F97583"> await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'estimated-time'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">textContent</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> initialSeconds</span><span style="color:#F97583"> =</span><span style="color:#B392F0"> parseInt</span><span style="color:#E1E4E8">(initialText</span><span style="color:#F97583">!</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#B392F0">  expect</span><span style="color:#E1E4E8">(initialSeconds).</span><span style="color:#B392F0">toBeGreaterThan</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Wait for all checks to complete, then verify time is "0s".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'estimated-time'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'0s'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">15000</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 7: Verify Overall Status Changes</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Verify the overall status transitions correctly through all phases.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 7: verify overall status changes'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Initial: "Not Started".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'overall-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Not Started'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'overall-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">overall-pending</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Start checks.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-start-checks'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Should transition to "In Progress".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'overall-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'In Progress'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'overall-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">overall-in-progress</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Wait for all checks to complete.</span></span>
+<span class="line"><span style="color:#6A737D">  // Because education fails, the final status should be "Completed with Issues".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'overall-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Completed with Issues'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">15000</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'overall-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">overall-failed</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 8: Complete Full Background Check Flow</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Start checks, wait for all to complete, verify everything.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 8: complete full background check flow'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-start-checks'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Wait for all checks to complete.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'progress-percentage'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'100%'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">15000</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify individual check results.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> expectedResults</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> [</span></span>
+<span class="line"><span style="color:#E1E4E8">    { id: </span><span style="color:#9ECBFF">'criminal'</span><span style="color:#E1E4E8">, status: </span><span style="color:#9ECBFF">'Complete'</span><span style="color:#E1E4E8">, detail: </span><span style="color:#9ECBFF">'No records found'</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">    { id: </span><span style="color:#9ECBFF">'credit'</span><span style="color:#E1E4E8">, status: </span><span style="color:#9ECBFF">'Complete'</span><span style="color:#E1E4E8">, detail: </span><span style="color:#9ECBFF">'Score: 750 (Good)'</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">    { id: </span><span style="color:#9ECBFF">'employment'</span><span style="color:#E1E4E8">, status: </span><span style="color:#9ECBFF">'Complete'</span><span style="color:#E1E4E8">, detail: </span><span style="color:#9ECBFF">'Verified: 3 employers'</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">    { id: </span><span style="color:#9ECBFF">'education'</span><span style="color:#E1E4E8">, status: </span><span style="color:#9ECBFF">'Failed'</span><span style="color:#E1E4E8">, detail: </span><span style="color:#9ECBFF">'Could not verify degree'</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">    { id: </span><span style="color:#9ECBFF">'reference'</span><span style="color:#E1E4E8">, status: </span><span style="color:#9ECBFF">'Complete'</span><span style="color:#E1E4E8">, detail: </span><span style="color:#9ECBFF">'2 of 2 references confirmed'</span><span style="color:#E1E4E8"> }</span></span>
+<span class="line"><span style="color:#E1E4E8">  ];</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  for</span><span style="color:#E1E4E8"> (</span><span style="color:#F97583">const</span><span style="color:#79B8FF"> check</span><span style="color:#F97583"> of</span><span style="color:#E1E4E8"> expectedResults) {</span></span>
+<span class="line"><span style="color:#F97583">    await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`check-${</span><span style="color:#E1E4E8">check</span><span style="color:#9ECBFF">.</span><span style="color:#E1E4E8">id</span><span style="color:#9ECBFF">}-status`</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(check.status);</span></span>
+<span class="line"><span style="color:#F97583">    await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`check-${</span><span style="color:#E1E4E8">check</span><span style="color:#9ECBFF">.</span><span style="color:#E1E4E8">id</span><span style="color:#9ECBFF">}-detail`</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(check.detail);</span></span>
+<span class="line"><span style="color:#E1E4E8">  }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify progress bar is full.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'checks-completed'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'5 / 5'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify estimated time is 0.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'estimated-time'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'0s'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify overall status reflects the failure.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'overall-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Completed with Issues'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>d:T98a8,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-05-fintech-domain/29-background-verification/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">describe</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Kata 29: Background Verification'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">  beforeEach</span><span style="color:#E1E4E8">(() </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 1: Verify Initial Pending States</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Before starting checks, verify all five checks show "Pending".</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: verify initial pending states'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Verify all five checks show "Pending".</span></span>
+<span class="line"><span style="color:#6A737D">    // .should('have.text', text) checks the element's text content.</span></span>
+<span class="line"><span style="color:#F97583">    const</span><span style="color:#79B8FF"> checkIds</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> [</span><span style="color:#9ECBFF">'criminal'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'credit'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'employment'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'education'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'reference'</span><span style="color:#E1E4E8">];</span></span>
+<span class="line"><span style="color:#E1E4E8">    checkIds.</span><span style="color:#B392F0">forEach</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">id</span><span style="color:#F97583"> =></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`[data-testid="check-${</span><span style="color:#E1E4E8">id</span><span style="color:#9ECBFF">}-status"]`</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Pending'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify progress is at 0%.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="progress-percentage"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'0%'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="checks-completed"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'0 / 5'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify overall status.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="overall-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Not Started'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify start button is enabled.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-start-checks"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.be.disabled'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 2: Wait for First Check to Complete</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Start checks and wait for Criminal Record to complete.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: wait for first check to complete'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-start-checks"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Should first transition to "In Progress".</span></span>
+<span class="line"><span style="color:#6A737D">    // .should() retries automatically until the assertion passes.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="check-criminal-status"]'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">3000</span><span style="color:#E1E4E8"> })</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'In Progress'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Then complete after ~2 seconds.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="check-criminal-status"]'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8"> })</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Complete'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify detail text updated.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="check-criminal-detail"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'No records found'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 3: Verify Progress Bar Updates</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Verify progress increases as checks complete.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: verify progress bar updates'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-start-checks"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // After first check: 20%.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="progress-percentage"]'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8"> })</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'20%'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // After two checks: 40%.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="progress-percentage"]'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">8000</span><span style="color:#E1E4E8"> })</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'40%'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify progress bar fill has non-zero width via inline style.</span></span>
+<span class="line"><span style="color:#6A737D">    // .should('have.attr', 'style') checks the element's style attribute.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="progress-bar-fill"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.attr'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'style'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'40%'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 4: Verify All Checks Complete</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Wait for all five checks to finish.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: verify all checks complete'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-start-checks"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Wait for 100% progress. Total ~11.5s, so use 15s timeout.</span></span>
+<span class="line"><span style="color:#6A737D">    // { timeout: 15000 } gives Cypress up to 15 seconds to retry.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="progress-percentage"]'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">15000</span><span style="color:#E1E4E8"> })</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'100%'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify completed count.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="checks-completed"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'5 / 5'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify each check's final status.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="check-criminal-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Complete'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="check-credit-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Complete'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="check-employment-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Complete'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="check-education-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Failed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="check-reference-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Complete'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 5: Handle Failed Check</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Verify the Education check fails with the correct status and styling.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: handle failed check'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-start-checks"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Wait for education to fail (~9.5s cumulative).</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="check-education-status"]'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">12000</span><span style="color:#E1E4E8"> })</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Failed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the check item has the "failed" CSS class.</span></span>
+<span class="line"><span style="color:#6A737D">    // .should('have.class', name) checks for a specific CSS class.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="check-education"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'failed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify failure detail text.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="check-education-detail"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Could not verify degree'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 6: Verify Estimated Time Updates</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Verify the estimated time decreases and reaches "0s".</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: verify estimated time updates'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Before starting: "--".</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="estimated-time"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'--'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Start checks.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-start-checks"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Should no longer be "--".</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="estimated-time"]'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">2000</span><span style="color:#E1E4E8"> })</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'--'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Read initial value and verify it's > 0.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="estimated-time"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">invoke</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'text'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">then</span><span style="color:#E1E4E8">((</span><span style="color:#FFAB70">text</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">      const</span><span style="color:#79B8FF"> seconds</span><span style="color:#F97583"> =</span><span style="color:#B392F0"> parseInt</span><span style="color:#E1E4E8">(text);</span></span>
+<span class="line"><span style="color:#B392F0">      expect</span><span style="color:#E1E4E8">(seconds).to.be.</span><span style="color:#B392F0">greaterThan</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Wait for all checks, then verify "0s".</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="estimated-time"]'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">15000</span><span style="color:#E1E4E8"> })</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'0s'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 7: Verify Overall Status Changes</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Verify status transitions through all phases.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 7: verify overall status changes'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Initial: "Not Started".</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="overall-status"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Not Started'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'overall-pending'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Start checks.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-start-checks"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // "In Progress".</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="overall-status"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'In Progress'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'overall-in-progress'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Final: "Completed with Issues" (because education fails).</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="overall-status"]'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">15000</span><span style="color:#E1E4E8"> })</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Completed with Issues'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'overall-failed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 8: Complete Full Background Check Flow</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Start, wait for all, verify everything.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 8: complete full background check flow'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-start-checks"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Wait for 100%.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="progress-percentage"]'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">15000</span><span style="color:#E1E4E8"> })</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'100%'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify each check result.</span></span>
+<span class="line"><span style="color:#F97583">    const</span><span style="color:#79B8FF"> expected</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> [</span></span>
+<span class="line"><span style="color:#E1E4E8">      { id: </span><span style="color:#9ECBFF">'criminal'</span><span style="color:#E1E4E8">, status: </span><span style="color:#9ECBFF">'Complete'</span><span style="color:#E1E4E8">, detail: </span><span style="color:#9ECBFF">'No records found'</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">      { id: </span><span style="color:#9ECBFF">'credit'</span><span style="color:#E1E4E8">, status: </span><span style="color:#9ECBFF">'Complete'</span><span style="color:#E1E4E8">, detail: </span><span style="color:#9ECBFF">'Score: 750 (Good)'</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">      { id: </span><span style="color:#9ECBFF">'employment'</span><span style="color:#E1E4E8">, status: </span><span style="color:#9ECBFF">'Complete'</span><span style="color:#E1E4E8">, detail: </span><span style="color:#9ECBFF">'Verified: 3 employers'</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">      { id: </span><span style="color:#9ECBFF">'education'</span><span style="color:#E1E4E8">, status: </span><span style="color:#9ECBFF">'Failed'</span><span style="color:#E1E4E8">, detail: </span><span style="color:#9ECBFF">'Could not verify degree'</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">      { id: </span><span style="color:#9ECBFF">'reference'</span><span style="color:#E1E4E8">, status: </span><span style="color:#9ECBFF">'Complete'</span><span style="color:#E1E4E8">, detail: </span><span style="color:#9ECBFF">'2 of 2 references confirmed'</span><span style="color:#E1E4E8"> }</span></span>
+<span class="line"><span style="color:#E1E4E8">    ];</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    expected.</span><span style="color:#B392F0">forEach</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">check</span><span style="color:#F97583"> =></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`[data-testid="check-${</span><span style="color:#E1E4E8">check</span><span style="color:#9ECBFF">.</span><span style="color:#E1E4E8">id</span><span style="color:#9ECBFF">}-status"]`</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, check.status);</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`[data-testid="check-${</span><span style="color:#E1E4E8">check</span><span style="color:#9ECBFF">.</span><span style="color:#E1E4E8">id</span><span style="color:#9ECBFF">}-detail"]`</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, check.detail);</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify progress.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="checks-completed"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'5 / 5'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="estimated-time"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'0s'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify overall status.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="overall-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Completed with Issues'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"kata":{"slug":"29-background-verification","number":29,"title":"Background Verification","phaseSlug":"phase-05-fintech-domain","phaseNumber":5,"phaseName":"Fintech Domain","readmeRaw":"$3","hasPlayground":true,"playwrightFiles":[{"filename":"background-verification.spec.ts","content":"$4"}],"cypressFiles":[{"filename":"background-verification.cy.ts","content":"$5"}]},"prev":{"slug":"28-document-verification","number":28,"title":"Document Verification","phaseSlug":"phase-05-fintech-domain","phaseNumber":5,"phaseName":"Fintech Domain","readmeRaw":"$6","hasPlayground":true,"playwrightFiles":[{"filename":"document-verification.spec.ts","content":"$7"}],"cypressFiles":[{"filename":"document-verification.cy.ts","content":"$8"}]},"next":{"slug":"30-risk-assessment","number":30,"title":"Risk Assessment","phaseSlug":"phase-05-fintech-domain","phaseNumber":5,"phaseName":"Fintech Domain","readmeRaw":"$9","hasPlayground":true,"playwrightFiles":[{"filename":"risk-assessment.spec.ts","content":"$a"}],"cypressFiles":[{"filename":"risk-assessment.cy.ts","content":"$b"}]},"playwrightHtml":[{"filename":"background-verification.spec.ts","html":"$c"}],"cypressHtml":[{"filename":"background-verification.cy.ts","html":"$d"}]}],["$Le"],"$Lf"]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"iDtrTKWIN4zzRgDRiiDd2"}
+e:["$","script","script-0",{"src":"/qa-labs/_next/static/chunks/03nvm.8~ftt80.js","async":true}]
+f:["$","$L10",null,{"children":["$","$11",null,{"name":"Next.MetadataOutlet","children":"$@12"}]}]
+12:null

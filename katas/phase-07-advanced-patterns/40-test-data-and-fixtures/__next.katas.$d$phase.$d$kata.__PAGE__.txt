@@ -1,0 +1,2398 @@
+1:"$Sreact.fragment"
+2:I[31749,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js","/qa-labs/_next/static/chunks/03nvm.8~ftt80.js"],"KataPageClient"]
+10:I[49583,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js"],"OutletBoundary"]
+11:"$Sreact.suspense"
+3:T13a5,# Kata 40: Test Data and Fixtures
+
+## What You Will Learn
+
+- How to manage test data using JSON fixture files
+- How to use Playwright's `test.each` for parameterized/data-driven tests
+- How to use Cypress's `cy.fixture()` to load test data
+- How to generate dynamic test data for edge cases
+- How to organize fixtures for large test suites
+- The difference between static fixtures and dynamic data factories
+
+## Prerequisites
+
+- Completed Katas 01-39
+- Understanding of JSON format
+- Familiarity with the KYC form from Kata 26
+
+## Concepts Explained
+
+### Why Manage Test Data Separately?
+
+```
+Hard-coded test data in tests is a common anti-pattern:
+
+  // BAD — data is scattered across tests
+  await page.fill('#name', 'Aisha Patel');
+  await page.fill('#email', 'aisha@example.com');
+
+Problems:
+  1. Same data repeated in multiple tests
+  2. Hard to test with many different data sets
+  3. No single source of truth for test data
+  4. Difficult to add new test cases
+
+Better approach: store data in FIXTURE FILES and load them in tests.
+
+  // GOOD — data comes from a fixture file
+  const applicants = require('./fixtures/applicants.json');
+  for (const applicant of applicants) {
+    test(`submit ${applicant.name}`, async ({ page }) => {
+      await page.fill('#name', applicant.name);
+    });
+  }
+```
+
+### Fixture Files
+
+```
+A fixture is a JSON file containing test data. It lives in a fixtures/
+directory alongside your test files.
+
+Example: fixtures/applicants.json
+[
+  {
+    "name": "Aisha Patel",
+    "email": "aisha@example.com",
+    "country": "IN",
+    "docType": "passport",
+    "expectedRisk": "High"
+  },
+  {
+    "name": "Carlos Rivera",
+    "email": "carlos@example.com",
+    "country": "US",
+    "docType": "drivers-license",
+    "expectedRisk": "Low"
+  }
+]
+
+Tests load this file and iterate over the array. Adding a new test case
+means adding a new object to the JSON — no code changes needed.
+```
+
+### Playwright: Parameterized Tests
+
+```typescript
+// PLAYWRIGHT — use a for...of loop or test array to generate tests.
+//
+// Playwright does NOT have test.each like Jest. Instead, you use
+// a standard JavaScript loop to generate test cases dynamically.
+
+import applicants from './fixtures/applicants.json';
+
+// Generate one test per applicant.
+for (const applicant of applicants) {
+  test(`submit KYC for ${applicant.name}`, async ({ page }) => {
+    // Each iteration creates a separate test with its own data.
+    await page.fill('#name', applicant.name);
+  });
+}
+```
+
+### Cypress: cy.fixture()
+
+```typescript
+// CYPRESS — cy.fixture(filePath) loads a JSON file from cypress/fixtures/.
+//
+// Signature:
+//   cy.fixture(filePath: string, encoding?: string): Chainable<any>
+//
+// The file path is relative to the cypress/fixtures/ directory.
+// cy.fixture() is asynchronous — use .then() to access the data.
+
+cy.fixture('applicants.json').then((applicants) => {
+  // applicants is the parsed JSON array.
+  cy.get('#name').type(applicants[0].name);
+});
+
+// You can also use fixtures in beforeEach with an alias:
+beforeEach(() => {
+  cy.fixture('applicants.json').as('applicants');
+});
+
+it('test with fixture', function() {
+  // Access via this.applicants (note: arrow functions don't work with `this`)
+  cy.get('#name').type(this.applicants[0].name);
+});
+```
+
+### Dynamic Data Factories
+
+```
+Sometimes you need data that is unique per test run (e.g., unique emails).
+A data factory generates fresh data:
+
+function createApplicant(overrides = {}) {
+  return {
+    name: `Test User ${Date.now()}`,
+    email: `test-${Date.now()}@example.com`,
+    country: 'US',
+    docType: 'passport',
+    ...overrides   // merge any custom fields
+  };
+}
+
+// Usage:
+const applicant = createApplicant({ name: 'Custom Name' });
+```
+
+## Playground
+
+This kata references the KYC form from Kata 26 at:
+`/phase-05-fintech-domain/26-kyc-onboarding-flow/playground/`
+
+## Exercises
+
+### Exercise 1: Load and Use a Fixture File
+Load applicants.json and use the first applicant's data in a test.
+
+### Exercise 2: Parameterized Tests (Loop Over Data)
+Generate one test per applicant from the fixture file.
+
+### Exercise 3: Cypress cy.fixture() with Aliases
+Use cy.fixture().as() to share data across tests in a describe block.
+
+### Exercise 4: Dynamic Data Factory
+Create a factory function that generates unique test data per run.
+
+### Exercise 5: Fixture Organization
+Use multiple fixture files for different scenarios (valid, invalid, edge cases).
+
+### Exercise 6: Data-Driven Assertions
+Use fixture data to drive not just form input but also expected outcomes.
+
+## Key Takeaways
+
+```
+- Store test data in JSON fixture files, not hard-coded in tests
+- Playwright: import JSON directly or use fs.readFileSync
+- Cypress: use cy.fixture() to load from cypress/fixtures/
+- Use loops to generate one test per data set (parameterized tests)
+- Data factories generate unique data for tests that need it
+- Organize fixtures by scenario: valid, invalid, edge-cases
+- Adding a test case = adding a JSON object, not writing new code
+```
+4:T2993,import { test, expect } from '@playwright/test';
+import applicants from './fixtures/applicants.json';
+
+// =============================================================================
+// Kata 40: Test Data and Fixtures — Playwright Tests
+// =============================================================================
+// These tests demonstrate how to use JSON fixture files for data-driven testing.
+//
+// The applicants.json file contains an array of applicant objects.
+// Each object has: name, email, country, docType, expectedRef, scenario.
+//
+// By loading data from a file, you can add new test cases by editing JSON
+// instead of writing new test code.
+// =============================================================================
+
+// Kata 40 ships its own flat KYC form playground, purpose-built for
+// data-driven / fixture-driven testing. The form posts to /api/kyc/submit
+// which every test intercepts with page.route().
+const PLAYGROUND = '/phase-07-advanced-patterns/40-test-data-and-fixtures/playground/';
+
+// Define the TypeScript type for an applicant object.
+// This gives us autocomplete and type checking when using the fixture data.
+interface Applicant {
+  name: string;
+  email: string;
+  country: string;
+  docType: string;
+  expectedRef: string;
+  scenario: string;
+}
+
+// Cast the imported JSON to our typed array.
+const typedApplicants: Applicant[] = applicants;
+
+// --------------------------------------------------------------------------
+// Exercise 1: Load and Use a Single Fixture Record
+// --------------------------------------------------------------------------
+// Load the first applicant from the fixture and use it in a test.
+test('exercise 1: use fixture data for a single applicant', async ({ page }) => {
+  // Access the first applicant from the fixture array.
+  // applicants[0] is the first object in the JSON array.
+  const applicant = typedApplicants[0];
+
+  // Intercept the POST request and return a mock response.
+  // We use the fixture's expectedRef field to make the mock dynamic.
+  await page.route('/api/kyc/submit', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ referenceId: applicant.expectedRef })
+    });
+  });
+
+  await page.goto(PLAYGROUND);
+
+  // Fill the form using data from the fixture.
+  // The data is NOT hard-coded — it comes from applicants.json.
+  await page.getByTestId('full-name-input').fill(applicant.name);
+  await page.getByTestId('email-input').fill(applicant.email);
+  await page.getByTestId('country-select').selectOption(applicant.country);
+  await page.getByTestId('doc-type-select').selectOption(applicant.docType);
+
+  await page.getByTestId('submit-btn').click();
+
+  // Assert using the expected reference from the fixture.
+  await expect(page.getByTestId('submit-status')).toContainText(applicant.expectedRef);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Parameterized Tests — Loop Over All Applicants
+// --------------------------------------------------------------------------
+// Generate one test per applicant by looping over the fixture array.
+// Each applicant gets its own independent test.
+//
+// Playwright does not have test.each like Jest. Instead, use a for...of loop
+// at the module level. Playwright discovers these tests at parse time.
+for (const applicant of typedApplicants) {
+  test(`exercise 2: submit KYC for ${applicant.name} (${applicant.scenario})`, async ({ page }) => {
+    // Each iteration creates a SEPARATE test with its own browser context.
+    // If one fails, the others still run.
+    await page.route('/api/kyc/submit', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ referenceId: applicant.expectedRef })
+      });
+    });
+
+    await page.goto(PLAYGROUND);
+
+    await page.getByTestId('full-name-input').fill(applicant.name);
+    await page.getByTestId('email-input').fill(applicant.email);
+    await page.getByTestId('country-select').selectOption(applicant.country);
+    await page.getByTestId('doc-type-select').selectOption(applicant.docType);
+
+    await page.getByTestId('submit-btn').click();
+
+    await expect(page.getByTestId('submit-status')).toContainText(applicant.expectedRef);
+    await expect(page.getByTestId('submit-status')).toHaveClass(/status-success/);
+  });
+}
+
+// --------------------------------------------------------------------------
+// Exercise 3: Dynamic Data Factory
+// --------------------------------------------------------------------------
+// Sometimes you need UNIQUE data per test run — e.g., unique emails
+// to avoid conflicts. A factory function generates fresh data.
+
+/**
+ * createApplicant — a factory function that generates test data.
+ *
+ * @param overrides — fields to customize (merged with defaults)
+ * @returns a complete applicant object with unique email
+ *
+ * The spread operator (...overrides) merges custom fields with defaults.
+ * If overrides.name is provided, it replaces the default name.
+ */
+function createApplicant(overrides: Partial<Applicant> = {}): Applicant {
+  // Date.now() returns milliseconds since epoch — unique per call.
+  const timestamp = Date.now();
+  return {
+    name: `Test User ${timestamp}`,
+    email: `test-${timestamp}@example.com`,
+    country: 'US',
+    docType: 'passport',
+    expectedRef: `KYC-DYN-${timestamp}`,
+    scenario: 'dynamic',
+    ...overrides   // any provided fields override the defaults
+  };
+}
+
+test('exercise 3: use dynamic data factory', async ({ page }) => {
+  // Create a unique applicant for this test run.
+  const applicant = createApplicant({ name: 'Dynamic Test User', country: 'IN' });
+
+  await page.route('/api/kyc/submit', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ referenceId: applicant.expectedRef })
+    });
+  });
+
+  await page.goto(PLAYGROUND);
+
+  await page.getByTestId('full-name-input').fill(applicant.name);
+  await page.getByTestId('email-input').fill(applicant.email);
+  await page.getByTestId('country-select').selectOption(applicant.country);
+  await page.getByTestId('doc-type-select').selectOption(applicant.docType);
+
+  await page.getByTestId('submit-btn').click();
+
+  await expect(page.getByTestId('submit-status')).toContainText(applicant.expectedRef);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Fixture-Driven Assertions
+// --------------------------------------------------------------------------
+// The fixture file can include EXPECTED OUTCOMES, not just inputs.
+// This makes the test fully data-driven — both input AND expected output
+// come from the fixture.
+test('exercise 4: data-driven assertions from fixture', async ({ page }) => {
+  // Use the third applicant from the fixture.
+  const applicant = typedApplicants[2];
+
+  await page.route('/api/kyc/submit', async (route) => {
+    // The mock response uses the fixture's expectedRef field.
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ referenceId: applicant.expectedRef })
+    });
+  });
+
+  await page.goto(PLAYGROUND);
+
+  await page.getByTestId('full-name-input').fill(applicant.name);
+  await page.getByTestId('email-input').fill(applicant.email);
+  await page.getByTestId('country-select').selectOption(applicant.country);
+  await page.getByTestId('doc-type-select').selectOption(applicant.docType);
+
+  await page.getByTestId('submit-btn').click();
+
+  // Both the INPUT and the EXPECTED OUTPUT come from the fixture.
+  // If you want a new test case, add a new object to applicants.json.
+  await expect(page.getByTestId('submit-status')).toContainText(applicant.expectedRef);
+  await expect(page.getByTestId('submit-status')).toHaveClass(/status-success/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Subset Filtering
+// --------------------------------------------------------------------------
+// Filter the fixture data to test only specific scenarios.
+const usApplicants = typedApplicants.filter(a => a.country === 'US');
+
+for (const applicant of usApplicants) {
+  test(`exercise 5: US-only test for ${applicant.name}`, async ({ page }) => {
+    await page.route('/api/kyc/submit', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ referenceId: applicant.expectedRef })
+      });
+    });
+
+    await page.goto(PLAYGROUND);
+
+    await page.getByTestId('full-name-input').fill(applicant.name);
+    await page.getByTestId('email-input').fill(applicant.email);
+    await page.getByTestId('country-select').selectOption(applicant.country);
+    await page.getByTestId('doc-type-select').selectOption(applicant.docType);
+
+    await page.getByTestId('submit-btn').click();
+
+    // Verify the country is US in the fixture (sanity check).
+    expect(applicant.country).toBe('US');
+    await expect(page.getByTestId('submit-status')).toContainText(applicant.expectedRef);
+  });
+}
+
+// --------------------------------------------------------------------------
+// Exercise 6: Multiple Fixture Files
+// --------------------------------------------------------------------------
+// In real projects, you might have separate fixtures for different scenarios:
+//   fixtures/valid-applicants.json
+//   fixtures/invalid-applicants.json
+//   fixtures/edge-case-applicants.json
+//
+// This test demonstrates using fixture data for error scenarios.
+test('exercise 6: test with error scenario data', async ({ page }) => {
+  // Simulate an invalid applicant by creating one with a factory.
+  const invalidApplicant = createApplicant({
+    name: '',           // empty name — should cause a validation error
+    email: 'invalid',   // invalid email format
+    scenario: 'invalid-data'
+  });
+
+  // In a real app, the server would reject invalid data.
+  await page.route('/api/kyc/submit', async (route) => {
+    await route.fulfill({
+      status: 400,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: 'Validation failed: name is required' })
+    });
+  });
+
+  await page.goto(PLAYGROUND);
+
+  await page.getByTestId('full-name-input').fill(invalidApplicant.name || ' ');
+  await page.getByTestId('email-input').fill(invalidApplicant.email);
+
+  await page.getByTestId('submit-btn').click();
+
+  // Verify the error response is displayed.
+  await expect(page.getByTestId('submit-status')).toHaveClass(/status-error/);
+});
+5:T24c4,// =============================================================================
+// Kata 40: Test Data and Fixtures — Cypress Tests
+// =============================================================================
+// These tests demonstrate Cypress's cy.fixture() for loading test data
+// and data-driven testing patterns.
+//
+// cy.fixture(path) loads a JSON file from the cypress/fixtures/ directory.
+// The path is relative to cypress/fixtures/.
+// =============================================================================
+
+const PLAYGROUND = '/phase-07-advanced-patterns/40-test-data-and-fixtures/playground/';
+
+// Define the applicant type for clarity.
+interface Applicant {
+  name: string;
+  email: string;
+  country: string;
+  docType: string;
+  expectedRef: string;
+  scenario: string;
+}
+
+describe('Kata 40: Test Data and Fixtures', () => {
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Load Fixture with cy.fixture()
+  // --------------------------------------------------------------------------
+  // cy.fixture() loads a JSON file and makes it available in the test.
+  it('exercise 1: load fixture and use first applicant', () => {
+    // cy.fixture(filePath) loads a JSON file from cypress/fixtures/.
+    // The path 'applicants.json' resolves to cypress/fixtures/applicants.json.
+    // .then() receives the parsed JSON data.
+    //
+    // NOTE: The fixture path here is relative to THIS kata's cypress/fixtures/
+    // directory. In a real project, you would configure the fixturesFolder
+    // in cypress.config.ts or use the full path.
+    cy.fixture('applicants.json').then((applicants: Applicant[]) => {
+      const applicant = applicants[0];
+
+      // Set up the mock response BEFORE visiting the page.
+      cy.intercept('POST', '/api/kyc/submit', {
+        statusCode: 200,
+        body: { referenceId: applicant.expectedRef }
+      }).as('submitKyc');
+
+      cy.visit(PLAYGROUND);
+
+      // Fill the form using fixture data.
+      cy.get('[data-testid="full-name-input"]').type(applicant.name);
+      cy.get('[data-testid="email-input"]').type(applicant.email);
+      cy.get('[data-testid="country-select"]').select(applicant.country);
+      cy.get('[data-testid="doc-type-select"]').select(applicant.docType);
+
+      cy.get('[data-testid="submit-btn"]').click();
+      cy.wait('@submitKyc');
+
+      // Assert using the fixture's expected reference.
+      cy.get('[data-testid="submit-status"]')
+        .should('contain.text', applicant.expectedRef)
+        .and('have.class', 'status-success');
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Parameterized Tests with forEach
+  // --------------------------------------------------------------------------
+  // In Cypress, you generate parameterized tests by loading the fixture
+  // OUTSIDE the test and looping with forEach.
+  //
+  // IMPORTANT: cy.fixture() is async and only works inside Cypress commands.
+  // For dynamic test generation, you can import the JSON directly.
+
+  // Import the fixture data directly for test generation.
+  // This works because the file is a static JSON file.
+  const applicants: Applicant[] = require('./fixtures/applicants.json');
+
+  applicants.forEach((applicant) => {
+    it(`exercise 2: submit KYC for ${applicant.name} (${applicant.scenario})`, () => {
+      cy.intercept('POST', '/api/kyc/submit', {
+        statusCode: 200,
+        body: { referenceId: applicant.expectedRef }
+      }).as('submitKyc');
+
+      cy.visit(PLAYGROUND);
+
+      cy.get('[data-testid="full-name-input"]').type(applicant.name);
+      cy.get('[data-testid="email-input"]').type(applicant.email);
+      cy.get('[data-testid="country-select"]').select(applicant.country);
+      cy.get('[data-testid="doc-type-select"]').select(applicant.docType);
+
+      cy.get('[data-testid="submit-btn"]').click();
+      cy.wait('@submitKyc');
+
+      cy.get('[data-testid="submit-status"]')
+        .should('contain.text', applicant.expectedRef)
+        .and('have.class', 'status-success');
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Fixture with Aliases (this.* pattern)
+  // --------------------------------------------------------------------------
+  // cy.fixture().as('alias') makes data available via this.alias.
+  // NOTE: You MUST use function() syntax, NOT arrow functions,
+  // because arrow functions don't have their own `this` context.
+  describe('exercise 3: fixture aliases', function () {
+    // Load the fixture in beforeEach and alias it.
+    beforeEach(function () {
+      // .as('applicantData') stores the fixture data on `this.applicantData`.
+      cy.fixture('applicants.json').as('applicantData');
+    });
+
+    it('should use aliased fixture data', function () {
+      // Access the fixture data via this.applicantData.
+      // This only works with function() — NOT with arrow functions () => {}.
+      const applicant = (this.applicantData as Applicant[])[1];
+
+      cy.intercept('POST', '/api/kyc/submit', {
+        statusCode: 200,
+        body: { referenceId: applicant.expectedRef }
+      }).as('submitKyc');
+
+      cy.visit(PLAYGROUND);
+
+      cy.get('[data-testid="full-name-input"]').type(applicant.name);
+      cy.get('[data-testid="email-input"]').type(applicant.email);
+      cy.get('[data-testid="country-select"]').select(applicant.country);
+
+      cy.get('[data-testid="submit-btn"]').click();
+      cy.wait('@submitKyc');
+
+      cy.get('[data-testid="submit-status"]')
+        .should('contain.text', applicant.expectedRef);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Dynamic Data Factory
+  // --------------------------------------------------------------------------
+  // A factory function creates unique data for each test run.
+  it('exercise 4: use dynamic data factory', () => {
+    /**
+     * createApplicant — generates a unique applicant object.
+     *
+     * @param overrides — custom fields to merge with defaults
+     * @returns a complete Applicant object with a unique timestamp-based email
+     */
+    function createApplicant(overrides: Partial<Applicant> = {}): Applicant {
+      const ts = Date.now();
+      return {
+        name: `Test User ${ts}`,
+        email: `test-${ts}@example.com`,
+        country: 'US',
+        docType: 'passport',
+        expectedRef: `KYC-DYN-${ts}`,
+        scenario: 'dynamic',
+        ...overrides  // spread operator merges overrides on top of defaults
+      };
+    }
+
+    const applicant = createApplicant({ name: 'Dynamic Cypress User' });
+
+    cy.intercept('POST', '/api/kyc/submit', {
+      statusCode: 200,
+      body: { referenceId: applicant.expectedRef }
+    }).as('submitKyc');
+
+    cy.visit(PLAYGROUND);
+
+    cy.get('[data-testid="full-name-input"]').type(applicant.name);
+    cy.get('[data-testid="email-input"]').type(applicant.email);
+    cy.get('[data-testid="country-select"]').select(applicant.country);
+
+    cy.get('[data-testid="submit-btn"]').click();
+    cy.wait('@submitKyc');
+
+    cy.get('[data-testid="submit-status"]')
+      .should('contain.text', applicant.expectedRef);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Filter Fixture Data
+  // --------------------------------------------------------------------------
+  // Run tests only for applicants matching a specific criteria.
+  const usApplicants = applicants.filter((a) => a.country === 'US');
+
+  usApplicants.forEach((applicant) => {
+    it(`exercise 5: US-only test for ${applicant.name}`, () => {
+      cy.intercept('POST', '/api/kyc/submit', {
+        statusCode: 200,
+        body: { referenceId: applicant.expectedRef }
+      }).as('submitKyc');
+
+      cy.visit(PLAYGROUND);
+
+      cy.get('[data-testid="full-name-input"]').type(applicant.name);
+      cy.get('[data-testid="email-input"]').type(applicant.email);
+      cy.get('[data-testid="country-select"]').select(applicant.country);
+      cy.get('[data-testid="doc-type-select"]').select(applicant.docType);
+
+      cy.get('[data-testid="submit-btn"]').click();
+      cy.wait('@submitKyc');
+
+      // Verify country is US (sanity check from fixture data).
+      expect(applicant.country).to.equal('US');
+
+      cy.get('[data-testid="submit-status"]')
+        .should('contain.text', applicant.expectedRef);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Error Scenario with Fixture Data
+  // --------------------------------------------------------------------------
+  // Use fixture data to drive error scenario tests.
+  it('exercise 6: test error scenario with factory data', () => {
+    // Simulate a server rejection for invalid data.
+    cy.intercept('POST', '/api/kyc/submit', {
+      statusCode: 400,
+      body: { error: 'Validation failed: name is required' }
+    }).as('submitKyc');
+
+    cy.visit(PLAYGROUND);
+
+    // Submit with minimal data to trigger an error.
+    cy.get('[data-testid="full-name-input"]').type(' ');
+    cy.get('[data-testid="email-input"]').type('bad-email');
+
+    cy.get('[data-testid="submit-btn"]').click();
+    cy.wait('@submitKyc');
+
+    // Verify the error response is displayed.
+    cy.get('[data-testid="submit-status"]')
+      .should('have.class', 'status-error');
+  });
+});
+6:T2048,# Kata 39: Accessibility Testing (a11y)
+
+## What You Will Learn
+
+- What accessibility (a11y) testing is and why it matters
+- How to use @axe-core/playwright to scan for a11y violations in Playwright
+- How to use cypress-axe to scan for a11y violations in Cypress
+- How to identify common a11y issues: missing labels, poor contrast, missing ARIA
+- How to fix a11y violations and verify the fixes in tests
+- How to target specific WCAG rules and elements
+
+## Prerequisites
+
+- Completed Katas 01-38
+- Basic understanding of HTML forms and semantic elements
+- No prior accessibility knowledge needed — this kata teaches from scratch
+
+## Plugin Setup
+
+### Playwright
+
+```bash
+# Install the axe-core integration for Playwright
+npm install --save-dev @axe-core/playwright
+```
+
+### Cypress
+
+```bash
+# Install cypress-axe and axe-core
+npm install --save-dev cypress-axe axe-core
+
+# In cypress/support/e2e.ts, add:
+# import 'cypress-axe';
+
+# In your test, inject axe first:
+# cy.injectAxe();   ← loads axe-core into the page
+# cy.checkA11y();   ← scans and fails if violations exist
+```
+
+## Concepts Explained
+
+### What Is Accessibility (a11y)?
+
+```
+Accessibility means designing websites so that EVERYONE can use them,
+including people who:
+  - Are blind or low-vision (use screen readers like NVDA, JAWS, VoiceOver)
+  - Have motor disabilities (navigate with keyboard only, no mouse)
+  - Are deaf or hard of hearing (need captions for audio)
+  - Have cognitive disabilities (need clear, simple language)
+
+"a11y" is shorthand for "accessibility" — 'a', 11 letters, 'y'.
+
+WCAG (Web Content Accessibility Guidelines) defines the rules.
+There are three levels:
+  - Level A   — minimum (all sites should meet this)
+  - Level AA  — standard (most regulations require this)
+  - Level AAA — ideal (aspirational, not required)
+```
+
+### Common a11y Issues (All Present in the Playground)
+
+```
+The playground in this kata has INTENTIONAL accessibility issues.
+Here is what is wrong and why it matters:
+
+1. MISSING FORM LABELS
+   <input> elements without <label> elements.
+   Screen readers cannot tell the user what the field is for.
+   Fix: add <label for="field-id">Label Text</label>
+
+2. MISSING ALT TEXT ON IMAGES
+   <img> without alt="description".
+   Screen readers say "image" but cannot describe what it shows.
+   Fix: add alt="Description of the image"
+
+3. POOR COLOR CONTRAST
+   Light gray text on white background — hard to read.
+   WCAG requires a contrast ratio of at least 4.5:1 for normal text.
+   Fix: use darker text colors
+
+4. MISSING ARIA ATTRIBUTES
+   Interactive elements without role, aria-label, or aria-describedby.
+   Screen readers cannot convey the element's purpose.
+   Fix: add appropriate ARIA attributes
+
+5. NO FOCUS INDICATORS
+   Removing outline:none on interactive elements.
+   Keyboard users cannot see which element is focused.
+   Fix: keep default focus styles or add custom ones
+
+6. MISSING PAGE LANDMARKS
+   No <main>, <nav>, <header> landmarks.
+   Screen readers cannot help users jump to page sections.
+   Fix: use semantic HTML elements
+```
+
+### axe-core Rules
+
+```
+axe-core is the industry-standard accessibility scanning engine.
+It checks for 90+ rules based on WCAG 2.0/2.1 A and AA.
+
+Each violation has:
+  - id        — rule identifier (e.g., 'label', 'color-contrast')
+  - impact    — severity: 'minor', 'moderate', 'serious', 'critical'
+  - help      — human-readable description of the issue
+  - helpUrl   — link to detailed documentation
+  - nodes     — array of DOM elements that violate the rule
+```
+
+## Playground
+
+The playground (`playground/index.html`) is a KYC form with **intentional
+accessibility issues**. Your exercises will:
+1. Scan the page and discover violations
+2. Understand what each violation means
+3. Fix the violations in the HTML
+4. Re-scan to verify the fixes
+
+## Exercises
+
+### Exercise 1: Run a Full a11y Scan
+Scan the entire page and see how many violations axe-core finds.
+
+### Exercise 2: Check Specific Rules
+Run axe with specific rules enabled (e.g., only 'label' or 'color-contrast').
+
+### Exercise 3: Scan a Specific Element
+Scan just the form section instead of the full page.
+
+### Exercise 4: Verify Missing Labels
+Check that form inputs have associated labels.
+
+### Exercise 5: Check Color Contrast
+Scan for color contrast violations and understand the contrast ratio.
+
+### Exercise 6: Fix and Re-Verify
+Fix a11y issues by injecting corrected HTML and re-scan to verify.
+
+## Key Takeaways
+
+```
+- Accessibility testing is automated checks for WCAG compliance
+- axe-core is the most widely used a11y engine (used by both Playwright and Cypress)
+- @axe-core/playwright provides AxeBuilder for Playwright tests
+- cypress-axe provides cy.injectAxe() and cy.checkA11y() for Cypress
+- Automated scans catch ~30-40% of a11y issues — manual testing still needed
+- Fix the easy ones first: labels, alt text, contrast, focus indicators
+- Every fix makes the web usable for more people
+```
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Forgetting to call `cy.injectAxe()` before `cy.checkA11y()` in Cypress | `checkA11y()` requires axe-core to be loaded in the page first; without injection it throws an error | Always call `cy.injectAxe()` after `cy.visit()` and before any `cy.checkA11y()` calls |
+| Running a11y scans before the page is fully rendered | Axe scans the current DOM; if elements have not loaded yet, violations will be missed | Wait for key elements to be visible before running the scan |
+| Assuming axe catches all accessibility issues | Automated tools detect only 30-40% of a11y problems; keyboard navigation, screen reader flow, and cognitive issues require manual testing | Use axe for automated checks but supplement with manual testing |
+| Ignoring violations with "moderate" or "minor" impact | Lower-impact violations still affect real users and can compound into serious barriers | Fix all violations; prioritize "critical" and "serious" first, but address all levels |
+| Not scoping scans to specific elements when debugging | Scanning the full page returns many violations at once, making it hard to isolate issues | Use `include`/`exclude` options to scan specific sections (e.g., just the form) |
+
+## Quick Reference
+
+### Playwright a11y Testing (@axe-core/playwright)
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Import AxeBuilder | `import` | `import AxeBuilder from '@axe-core/playwright'` |
+| Full page scan | `new AxeBuilder({ page }).analyze()` | `const results = await new AxeBuilder({ page }).analyze()` |
+| Check no violations | `expect().toEqual([])` | `expect(results.violations).toEqual([])` |
+| Scan specific element | `.include()` | `await new AxeBuilder({ page }).include('#form').analyze()` |
+| Exclude element | `.exclude()` | `await new AxeBuilder({ page }).exclude('#third-party').analyze()` |
+| Check specific rules | `.withRules()` | `await new AxeBuilder({ page }).withRules(['label', 'color-contrast']).analyze()` |
+| Filter by impact | `.options()` | `await new AxeBuilder({ page }).options({ resultTypes: ['violations'] }).analyze()` |
+
+### Cypress a11y Testing (cypress-axe)
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Inject axe-core | `cy.injectAxe()` | `cy.injectAxe()` |
+| Full page scan | `cy.checkA11y()` | `cy.checkA11y()` |
+| Scan specific element | `cy.checkA11y(selector)` | `cy.checkA11y('#form')` |
+| Exclude element | `cy.checkA11y(null, { exclude })` | `cy.checkA11y(null, { exclude: [['#third-party']] })` |
+| Check specific rules | `cy.checkA11y(null, { runOnly })` | `cy.checkA11y(null, { runOnly: ['label', 'color-contrast'] })` |
+| Custom violation handler | `cy.checkA11y(null, null, callback)` | `cy.checkA11y(null, null, (violations) => { cy.log(violations) })` |
+
+### Common WCAG Rules Checked by axe-core
+
+| Rule ID | What it checks | WCAG Level |
+|---------|---------------|------------|
+| `label` | Form inputs have associated labels | A |
+| `color-contrast` | Text has sufficient contrast ratio (4.5:1) | AA |
+| `image-alt` | Images have alt text | A |
+| `button-name` | Buttons have accessible names | A |
+| `link-name` | Links have discernible text | A |
+| `landmark-one-main` | Page has one main landmark | A |
+7:T2549,import { test, expect } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
+
+// =============================================================================
+// Kata 39: Accessibility Testing — Playwright Tests
+// =============================================================================
+// These tests use @axe-core/playwright to scan for accessibility violations.
+//
+// SETUP: npm install --save-dev @axe-core/playwright
+//
+// AxeBuilder is a class that configures and runs axe-core scans.
+// It returns a results object with violations, passes, and incomplete checks.
+// =============================================================================
+
+const PLAYGROUND = '/phase-07-advanced-patterns/39-accessibility-testing/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Full Page a11y Scan
+// --------------------------------------------------------------------------
+// Run axe-core on the entire page and examine the violations.
+test('exercise 1: scan entire page for a11y violations', async ({ page }) => {
+  // Navigate to the playground with intentional a11y issues.
+  await page.goto(PLAYGROUND);
+
+  // AxeBuilder(page) creates a new scanner attached to the current page.
+  // .analyze() runs the scan and returns a results object.
+  //
+  // Results object shape:
+  //   results.violations — array of rules that FAILED (issues found)
+  //   results.passes     — array of rules that PASSED
+  //   results.incomplete — array of rules that need manual review
+  //   results.inapplicable — array of rules that don't apply to this page
+  const results = await new AxeBuilder({ page }).analyze();
+
+  // Log violations for learning purposes.
+  // Each violation has: id, impact, description, help, helpUrl, nodes[].
+  // eslint-disable-next-line no-console
+  console.log('Violations found:', results.violations.length);
+  for (const violation of results.violations) {
+    // eslint-disable-next-line no-console
+    console.log(`  [${violation.impact}] ${violation.id}: ${violation.help}`);
+  }
+
+  // We EXPECT violations because the playground has intentional issues.
+  // In a real test, you would assert: expect(results.violations).toHaveLength(0);
+  // Here we assert that violations were found (proving the scan works).
+  expect(results.violations.length).toBeGreaterThan(0);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Check Specific Rules Only
+// --------------------------------------------------------------------------
+// You can run axe with only specific rules enabled.
+// This is useful when fixing issues one at a time.
+test('exercise 2: scan for label violations only', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // .withRules(['rule-id']) runs ONLY the specified rules.
+  // 'label' checks that every form input has an associated <label>.
+  const results = await new AxeBuilder({ page })
+    .withRules(['label'])  // only check the 'label' rule
+    .analyze();
+
+  // eslint-disable-next-line no-console
+  console.log('Label violations:', results.violations.length);
+
+  // The playground has multiple inputs without labels.
+  // Each violation.nodes[] array contains the specific DOM elements.
+  for (const violation of results.violations) {
+    // eslint-disable-next-line no-console
+    console.log(`  Found ${violation.nodes.length} elements without labels`);
+  }
+
+  // We expect the 'label' rule to have violations.
+  const labelViolation = results.violations.find(v => v.id === 'label');
+  expect(labelViolation).toBeDefined();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Scan a Specific Section
+// --------------------------------------------------------------------------
+// Instead of scanning the whole page, scan just one section.
+test('exercise 3: scan only the form section', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // .include(selector) limits the scan to elements matching the CSS selector.
+  // This is useful when you want to focus on one component at a time.
+  const results = await new AxeBuilder({ page })
+    .include('[data-testid="kyc-form-section"]')  // scan only the form
+    .analyze();
+
+  // eslint-disable-next-line no-console
+  console.log('Form section violations:', results.violations.length);
+  for (const violation of results.violations) {
+    // eslint-disable-next-line no-console
+    console.log(`  [${violation.impact}] ${violation.id}: ${violation.help}`);
+  }
+
+  // The form section should have violations (missing labels, contrast).
+  expect(results.violations.length).toBeGreaterThan(0);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Check for Missing Image Alt Text
+// --------------------------------------------------------------------------
+// The 'image-alt' rule checks that all <img> elements have alt attributes.
+test('exercise 4: check image alt text', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  const results = await new AxeBuilder({ page })
+    .withRules(['image-alt'])  // only check image alt text
+    .analyze();
+
+  // eslint-disable-next-line no-console
+  console.log('Image alt violations:', results.violations.length);
+
+  // The playground has an <img> without alt — this should be a violation.
+  const imageAltViolation = results.violations.find(v => v.id === 'image-alt');
+  expect(imageAltViolation).toBeDefined();
+
+  // Log which elements are missing alt text.
+  if (imageAltViolation) {
+    for (const node of imageAltViolation.nodes) {
+      // node.html contains the HTML of the violating element.
+      // eslint-disable-next-line no-console
+      console.log('  Missing alt on:', node.html.substring(0, 80) + '...');
+    }
+  }
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Check Color Contrast
+// --------------------------------------------------------------------------
+// The 'color-contrast' rule checks that text meets WCAG contrast ratios.
+test('exercise 5: check color contrast', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  const results = await new AxeBuilder({ page })
+    .withRules(['color-contrast'])
+    .analyze();
+
+  // eslint-disable-next-line no-console
+  console.log('Contrast violations:', results.violations.length);
+
+  // The .low-contrast text in the playground has insufficient contrast.
+  const contrastViolation = results.violations.find(v => v.id === 'color-contrast');
+
+  if (contrastViolation) {
+    for (const node of contrastViolation.nodes) {
+      // node.any[0].message contains the contrast ratio details.
+      // eslint-disable-next-line no-console
+      console.log('  Contrast issue:', node.any?.[0]?.message || 'see details');
+    }
+  }
+
+  // We expect a contrast violation from the .low-contrast text.
+  expect(contrastViolation).toBeDefined();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Fix Violations and Re-Scan
+// --------------------------------------------------------------------------
+// Inject fixes into the DOM and verify axe-core passes.
+// This simulates the fix-verify cycle developers go through.
+test('exercise 6: fix label violations and re-scan', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // STEP 1: Verify violations exist BEFORE the fix.
+  const beforeResults = await new AxeBuilder({ page })
+    .withRules(['label'])
+    .include('[data-testid="kyc-form-section"]')
+    .analyze();
+
+  expect(beforeResults.violations.length).toBeGreaterThan(0);
+  // eslint-disable-next-line no-console
+  console.log('Before fix — label violations:', beforeResults.violations.length);
+
+  // STEP 2: Fix the violations by adding labels.
+  // page.evaluate() runs JavaScript in the browser context.
+  // We add <label> elements before each input that is missing one.
+  await page.evaluate(() => {
+    // Define the fixes: each entry maps an input ID to its label text.
+    const fixes: Array<{ inputId: string; labelText: string }> = [
+      { inputId: 'full-name', labelText: 'Full Name' },
+      { inputId: 'email', labelText: 'Email Address' },
+      { inputId: 'phone', labelText: 'Phone Number' },
+      { inputId: 'country', labelText: 'Country' },
+      { inputId: 'notes', labelText: 'Additional Notes' }
+    ];
+
+    for (const fix of fixes) {
+      const input = document.getElementById(fix.inputId);
+      if (input && !document.querySelector(`label[for="${fix.inputId}"]`)) {
+        // Create a <label> element.
+        const label = document.createElement('label');
+        // 'for' connects the label to the input by ID.
+        label.setAttribute('for', fix.inputId);
+        label.textContent = fix.labelText;
+        label.style.display = 'block';
+        label.style.fontSize = '0.85rem';
+        label.style.fontWeight = '600';
+        label.style.color = '#475569';
+        label.style.marginBottom = '0.25rem';
+        // Insert the label before the input.
+        input.parentNode?.insertBefore(label, input);
+      }
+    }
+  });
+
+  // STEP 3: Re-scan to verify the fixes worked.
+  const afterResults = await new AxeBuilder({ page })
+    .withRules(['label'])
+    .include('[data-testid="kyc-form-section"]')
+    .analyze();
+
+  // eslint-disable-next-line no-console
+  console.log('After fix — label violations:', afterResults.violations.length);
+
+  // After adding labels, the 'label' rule should pass.
+  expect(afterResults.violations).toHaveLength(0);
+});
+8:T21bc,// =============================================================================
+// Kata 39: Accessibility Testing — Cypress Tests
+// =============================================================================
+//
+// These tests use cypress-axe to scan for accessibility violations.
+//
+// SETUP:
+//   1. npm install --save-dev cypress-axe axe-core
+//   2. In cypress/support/e2e.ts, add:
+//      import 'cypress-axe';
+//   3. In cypress/support/index.d.ts (or tsconfig), declare the types:
+//      /// <reference types="cypress-axe" />
+//
+// USAGE PATTERN:
+//   cy.injectAxe()  — loads axe-core into the page (call AFTER cy.visit)
+//   cy.checkA11y()  — runs the scan and fails if violations exist
+//   cy.checkA11y(selector, options) — scan specific element with options
+// =============================================================================
+
+const PLAYGROUND = '/phase-07-advanced-patterns/39-accessibility-testing/playground/';
+
+describe('Kata 39: Accessibility Testing', () => {
+
+  beforeEach(() => {
+    // Visit the playground before each test.
+    cy.visit(PLAYGROUND);
+
+    // cy.injectAxe() loads the axe-core library into the page.
+    // This MUST be called after cy.visit() and before cy.checkA11y().
+    // It injects a <script> tag with the axe-core code.
+    cy.injectAxe();
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Full Page a11y Scan (Expect Failures)
+  // --------------------------------------------------------------------------
+  // cy.checkA11y() scans the entire page and fails if violations are found.
+  // Since our playground has intentional issues, we configure it to LOG
+  // violations instead of failing the test.
+  it('exercise 1: scan entire page and log violations', () => {
+    // cy.checkA11y() with a callback lets us handle violations manually.
+    //
+    // Signature:
+    //   cy.checkA11y(
+    //     context?,    — CSS selector or element to scan (null = whole page)
+    //     options?,    — axe-core configuration options
+    //     callback?,   — function called with violations array
+    //     skipFailures? — if true, don't fail the test on violations
+    //   )
+    //
+    // We use skipFailures: true because the playground has intentional issues.
+    // In a real test, you would NOT set skipFailures — you want it to fail.
+    cy.checkA11y(
+      null,   // null = scan the entire page
+      {},     // no special options
+      (violations) => {
+        // This callback receives the violations array.
+        // Each violation has: id, impact, description, help, nodes[].
+        cy.log(`Found ${violations.length} a11y violations`);
+
+        // Log each violation for learning purposes.
+        violations.forEach((violation) => {
+          cy.log(
+            `[${violation.impact}] ${violation.id}: ${violation.help} (${violation.nodes.length} elements)`
+          );
+        });
+
+        // We EXPECT violations because the playground has issues.
+        expect(violations.length).to.be.greaterThan(0);
+      },
+      true  // skipFailures: true — don't fail the test on violations
+    );
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Check Specific Rules Only
+  // --------------------------------------------------------------------------
+  // Narrow the scan to a single rule to focus on one issue at a time.
+  it('exercise 2: check label rules only', () => {
+    // The second parameter is an axe-core options object.
+    // runOnly.values specifies which rules to check.
+    cy.checkA11y(
+      null,   // scan the whole page
+      {
+        runOnly: {
+          type: 'rule',
+          values: ['label']  // only check the 'label' rule
+        }
+      },
+      (violations) => {
+        cy.log(`Label violations: ${violations.length}`);
+
+        // The playground has inputs without labels.
+        const labelViolation = violations.find((v) => v.id === 'label');
+        if (labelViolation) {
+          cy.log(`${labelViolation.nodes.length} inputs missing labels`);
+        }
+        expect(labelViolation).to.not.be.undefined;
+      },
+      true  // don't fail the test
+    );
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Scan a Specific Section
+  // --------------------------------------------------------------------------
+  // Pass a CSS selector as the first argument to scan just that element.
+  it('exercise 3: scan only the form section', () => {
+    // The first parameter is a CSS selector string.
+    // Only elements within this selector are scanned.
+    cy.checkA11y(
+      '[data-testid="kyc-form-section"]',  // scan only the form
+      {},
+      (violations) => {
+        cy.log(`Form section violations: ${violations.length}`);
+        violations.forEach((v) => {
+          cy.log(`  [${v.impact}] ${v.id}: ${v.help}`);
+        });
+        expect(violations.length).to.be.greaterThan(0);
+      },
+      true
+    );
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Check for Missing Image Alt Text
+  // --------------------------------------------------------------------------
+  it('exercise 4: check image alt text', () => {
+    cy.checkA11y(
+      '[data-testid="profile-section"]',  // scan the profile section
+      {
+        runOnly: {
+          type: 'rule',
+          values: ['image-alt']  // only check image alt text
+        }
+      },
+      (violations) => {
+        cy.log(`Image alt violations: ${violations.length}`);
+        const imageViolation = violations.find((v) => v.id === 'image-alt');
+        expect(imageViolation).to.not.be.undefined;
+      },
+      true
+    );
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Check Color Contrast
+  // --------------------------------------------------------------------------
+  it('exercise 5: check color contrast', () => {
+    cy.checkA11y(
+      null,
+      {
+        runOnly: {
+          type: 'rule',
+          values: ['color-contrast']
+        }
+      },
+      (violations) => {
+        cy.log(`Contrast violations: ${violations.length}`);
+        const contrastViolation = violations.find((v) => v.id === 'color-contrast');
+        if (contrastViolation) {
+          cy.log(`${contrastViolation.nodes.length} elements with poor contrast`);
+        }
+        // The .low-contrast text should trigger a violation.
+        expect(contrastViolation).to.not.be.undefined;
+      },
+      true
+    );
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Fix Violations and Re-Scan
+  // --------------------------------------------------------------------------
+  // Inject fixes into the DOM and verify the violations are resolved.
+  it('exercise 6: fix label violations and verify', () => {
+    // STEP 1: Confirm violations exist.
+    cy.checkA11y(
+      '[data-testid="kyc-form-section"]',
+      { runOnly: { type: 'rule', values: ['label'] } },
+      (violations) => {
+        expect(violations.length).to.be.greaterThan(0);
+        cy.log(`Before fix: ${violations.length} label violations`);
+      },
+      true
+    );
+
+    // STEP 2: Fix by adding labels.
+    // cy.window().then(win => { ... }) gives access to the browser's window.
+    // We use standard DOM APIs to create and insert <label> elements.
+    cy.window().then((win) => {
+      const doc = win.document;
+      const fixes = [
+        { inputId: 'full-name', labelText: 'Full Name' },
+        { inputId: 'email', labelText: 'Email Address' },
+        { inputId: 'phone', labelText: 'Phone Number' },
+        { inputId: 'country', labelText: 'Country' },
+        { inputId: 'notes', labelText: 'Additional Notes' }
+      ];
+
+      fixes.forEach((fix) => {
+        const input = doc.getElementById(fix.inputId);
+        if (input && !doc.querySelector(`label[for="${fix.inputId}"]`)) {
+          const label = doc.createElement('label');
+          label.setAttribute('for', fix.inputId);
+          label.textContent = fix.labelText;
+          input.parentNode?.insertBefore(label, input);
+        }
+      });
+    });
+
+    // STEP 3: Re-inject axe (needed after DOM changes in some cases).
+    cy.injectAxe();
+
+    // STEP 4: Re-scan and verify labels pass.
+    cy.checkA11y(
+      '[data-testid="kyc-form-section"]',
+      { runOnly: { type: 'rule', values: ['label'] } },
+      (violations) => {
+        cy.log(`After fix: ${violations.length} label violations`);
+        expect(violations.length).to.equal(0);
+      },
+      true
+    );
+  });
+});
+9:T1d36,# Kata 41: Parallel Testing
+
+## What You Will Learn
+
+- How Playwright runs tests in parallel using workers
+- How to configure the number of workers and parallel behavior
+- How to use `test.describe.configure()` for serial vs parallel execution
+- How Playwright sharding splits tests across CI machines
+- How Cypress approaches parallelization (Cypress Cloud, manual splitting)
+- When to use parallel vs serial execution
+
+## Prerequisites
+
+- Completed Katas 01-40
+- Understanding of test structure (describe, test/it blocks)
+- Basic understanding of processes and threads
+
+## Concepts Explained
+
+### Why Parallel Testing?
+
+```
+If you have 100 tests and each takes 2 seconds:
+  - Sequential: 100 x 2s = 200 seconds (3+ minutes)
+  - 4 workers:  100 / 4 x 2s = 50 seconds
+
+Parallel testing runs multiple tests SIMULTANEOUSLY using worker processes.
+Each worker gets its own browser instance and runs tests independently.
+
+Benefits:
+  - Faster feedback — CI pipelines complete sooner
+  - Better resource utilization — uses all CPU cores
+  - Scales with hardware — more cores = more workers
+
+Risks:
+  - Tests must be INDEPENDENT — no shared state between tests
+  - Resource contention — too many workers can overload the machine
+  - Flakiness — race conditions in shared resources (databases, files)
+```
+
+### Playwright Parallel Architecture
+
+```
+Playwright uses WORKER PROCESSES to run tests in parallel.
+
+                     ┌─────────┐
+                     │ Playwright│
+                     │  Runner  │
+                     └────┬─────┘
+                          │
+            ┌─────────────┼─────────────┐
+            │             │             │
+      ┌─────┴─────┐ ┌─────┴─────┐ ┌─────┴─────┐
+      │  Worker 1  │ │  Worker 2  │ │  Worker 3  │
+      │  (process) │ │  (process) │ │  (process) │
+      └─────┬─────┘ └─────┬─────┘ └─────┬─────┘
+            │             │             │
+      ┌─────┴─────┐ ┌─────┴─────┐ ┌─────┴─────┐
+      │  Browser 1 │ │  Browser 2 │ │  Browser 3 │
+      └───────────┘ └───────────┘ └───────────┘
+
+Each worker:
+  - Is a separate Node.js process
+  - Has its own browser instance
+  - Runs tests independently
+  - Does NOT share memory with other workers
+```
+
+### Playwright Configuration Options
+
+```typescript
+// playwright.config.ts
+
+export default defineConfig({
+  // WORKERS — how many parallel worker processes to use.
+  //
+  // workers: 4        — use exactly 4 workers
+  // workers: '50%'    — use 50% of available CPU cores
+  // workers: undefined — default: 50% of cores (CI) or 100% (local)
+  //
+  // CLI override: npx playwright test --workers=2
+  workers: 4,
+
+  // FULLY PARALLEL — run ALL tests across ALL files in parallel.
+  //
+  // true  — tests from different files run simultaneously
+  // false — each file runs in one worker, files run in parallel
+  //
+  // Default: false (tests within a file run sequentially)
+  fullyParallel: true,
+
+  // RETRIES — retry failed tests automatically.
+  // Useful in parallel mode where flaky tests may occur.
+  retries: 1,
+
+  // REPORTER — 'html' generates an HTML report showing parallel execution.
+  reporter: 'html',
+});
+```
+
+### Playwright Sharding (CI Machines)
+
+```bash
+# SHARDING splits tests across MULTIPLE CI MACHINES.
+# Each machine runs a portion (shard) of the total test suite.
+#
+# Syntax: --shard=<current>/<total>
+#
+# Example: split tests across 3 CI machines
+# Machine 1: npx playwright test --shard=1/3
+# Machine 2: npx playwright test --shard=2/3
+# Machine 3: npx playwright test --shard=3/3
+#
+# Each machine gets roughly 1/3 of the test files.
+# Sharding + workers = maximum parallelism.
+#
+# CI example (GitHub Actions matrix):
+#   strategy:
+#     matrix:
+#       shard: [1/3, 2/3, 3/3]
+#   steps:
+#     - run: npx playwright test --shard=${{ matrix.shard }}
+```
+
+### Cypress Parallelization
+
+```
+Cypress parallelization works differently from Playwright:
+
+OPTION 1: Cypress Cloud (official, paid for teams)
+  - npx cypress run --record --parallel
+  - Cypress Cloud distributes spec files across CI machines
+  - Requires a Cypress Cloud account and record key
+  - Best load balancing — assigns specs based on historical run times
+
+OPTION 2: Manual splitting (free)
+  - Split spec files across CI jobs manually
+  - Job 1: cypress run --spec "cypress/e2e/auth/**"
+  - Job 2: cypress run --spec "cypress/e2e/dashboard/**"
+  - Simple but no automatic load balancing
+
+OPTION 3: Third-party tools
+  - sorry-cypress — open-source Cypress Cloud alternative
+  - currents.dev — paid alternative with better load balancing
+
+KEY DIFFERENCE FROM PLAYWRIGHT:
+  Cypress runs ONE spec file at a time per process.
+  Parallelism = multiple processes, each running different spec files.
+  Within a single spec file, tests run SEQUENTIALLY.
+```
+
+### test.describe.configure() — Playwright
+
+```typescript
+// PLAYWRIGHT — control parallel behavior per describe block.
+
+test.describe('serial tests', () => {
+  // test.describe.configure({ mode: 'serial' }) forces all tests
+  // in this block to run in order, one after another.
+  // If one fails, the rest are SKIPPED (they depend on the previous).
+  test.describe.configure({ mode: 'serial' });
+
+  test('step 1: create account', async ({ page }) => { /* ... */ });
+  test('step 2: verify email', async ({ page }) => { /* ... */ });
+  test('step 3: complete profile', async ({ page }) => { /* ... */ });
+});
+
+test.describe('parallel tests', () => {
+  // test.describe.configure({ mode: 'parallel' }) runs all tests
+  // in this block simultaneously across workers.
+  // Each test is fully independent.
+  test.describe.configure({ mode: 'parallel' });
+
+  test('test A', async ({ page }) => { /* ... */ });
+  test('test B', async ({ page }) => { /* ... */ });
+  test('test C', async ({ page }) => { /* ... */ });
+});
+```
+
+## Exercises
+
+### Exercise 1: Understand Default Parallel Behavior
+Run tests and observe how Playwright distributes them across workers.
+
+### Exercise 2: Configure Worker Count
+Experiment with different worker counts and measure execution time.
+
+### Exercise 3: Serial Mode with test.describe.configure
+Write tests that MUST run in order (dependent tests).
+
+### Exercise 4: Parallel Mode with test.describe.configure
+Write independent tests that can safely run in parallel.
+
+### Exercise 5: Sharding for CI
+Understand how to split tests across CI machines with --shard.
+
+### Exercise 6: Cypress Parallelization Strategies
+Compare Cypress parallelization options and write notes in tests.
+
+## Key Takeaways
+
+```
+- Playwright uses worker processes for parallel execution (default: 50% of cores)
+- fullyParallel: true runs ALL tests across ALL files simultaneously
+- test.describe.configure({ mode: 'serial' }) forces sequential execution
+- Sharding (--shard=1/3) splits tests across CI machines
+- Cypress parallelism requires Cypress Cloud or manual spec splitting
+- Tests MUST be independent for parallel execution to work correctly
+- More workers != always faster — too many can overload the machine
+```
+a:T2264,import { test, expect } from '@playwright/test';
+
+// =============================================================================
+// Kata 41: Parallel Testing — Playwright Tests
+// =============================================================================
+// These tests demonstrate parallel and serial execution modes.
+//
+// RUN WITH:
+//   npx playwright test parallel-testing.spec.ts --workers=4
+//   npx playwright test parallel-testing.spec.ts --workers=1
+//
+// Compare execution times to see the effect of parallelism.
+// =============================================================================
+
+// --------------------------------------------------------------------------
+// Exercise 1: Independent Tests (Safe for Parallel)
+// --------------------------------------------------------------------------
+// These tests are completely independent — each creates its own data
+// and has no dependency on other tests. They can run in any order.
+test.describe('exercise 1: independent tests (parallel-safe)', () => {
+  // test.describe.configure({ mode: 'parallel' }) tells Playwright
+  // to run ALL tests in this block simultaneously across workers.
+  //
+  // Each test gets its own browser page — no shared state.
+  test.describe.configure({ mode: 'parallel' });
+
+  test('test A: check page title', async ({ page }) => {
+    // Each test navigates independently.
+    await page.goto('data:text/html,<title>Test A</title><h1>Page A</h1>');
+    await expect(page).toHaveTitle('Test A');
+    // Simulate some work — in real tests this would be form interactions.
+    await expect(page.locator('h1')).toHaveText('Page A');
+  });
+
+  test('test B: check page heading', async ({ page }) => {
+    await page.goto('data:text/html,<title>Test B</title><h1>Page B</h1>');
+    await expect(page).toHaveTitle('Test B');
+    await expect(page.locator('h1')).toHaveText('Page B');
+  });
+
+  test('test C: check page content', async ({ page }) => {
+    await page.goto('data:text/html,<title>Test C</title><p>Content C</p>');
+    await expect(page).toHaveTitle('Test C');
+    await expect(page.locator('p')).toHaveText('Content C');
+  });
+
+  test('test D: check another page', async ({ page }) => {
+    await page.goto('data:text/html,<title>Test D</title><span>Item D</span>');
+    await expect(page).toHaveTitle('Test D');
+    await expect(page.locator('span')).toHaveText('Item D');
+  });
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Worker Info
+// --------------------------------------------------------------------------
+// Playwright provides test.info() to access runtime information
+// including the worker index.
+test.describe('exercise 2: observe worker distribution', () => {
+  test.describe.configure({ mode: 'parallel' });
+
+  // Generate 6 tests to see how they distribute across workers.
+  for (let i = 1; i <= 6; i++) {
+    test(`task ${i}: runs on a worker`, async ({ page }) => {
+      // test.info().workerIndex tells you WHICH worker is running this test.
+      // Workers are numbered starting from 0.
+      const workerIndex = test.info().workerIndex;
+
+      // eslint-disable-next-line no-console
+      console.log(`Task ${i} running on worker ${workerIndex}`);
+
+      // Each task visits a simple page to simulate work.
+      await page.goto(`data:text/html,<h1>Task ${i} on worker ${workerIndex}</h1>`);
+      await expect(page.locator('h1')).toContainText(`Task ${i}`);
+    });
+  }
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Serial Mode (Dependent Tests)
+// --------------------------------------------------------------------------
+// Some tests MUST run in order — e.g., a multi-step workflow where
+// step 2 depends on step 1 completing first.
+test.describe('exercise 3: serial mode (dependent tests)', () => {
+  // test.describe.configure({ mode: 'serial' }) forces sequential execution.
+  //
+  // If test 1 fails, tests 2 and 3 are SKIPPED because they depend on it.
+  // All tests in this block share the same worker (same process).
+  test.describe.configure({ mode: 'serial' });
+
+  // In serial mode, you might share state between tests via variables.
+  // This is the ONLY time shared variables are safe — because serial
+  // guarantees execution order.
+  let sharedValue = '';
+
+  test('step 1: create a value', async ({ page }) => {
+    // Simulate creating data that later tests need.
+    sharedValue = 'created-in-step-1';
+
+    await page.goto('data:text/html,<h1>Step 1 Complete</h1>');
+    await expect(page.locator('h1')).toHaveText('Step 1 Complete');
+
+    // eslint-disable-next-line no-console
+    console.log('Step 1: value set to', sharedValue);
+  });
+
+  test('step 2: read the value', async ({ page }) => {
+    // This test runs AFTER step 1 because of serial mode.
+    // It can safely read the shared variable.
+    expect(sharedValue).toBe('created-in-step-1');
+
+    // Update the value for step 3.
+    sharedValue = 'modified-in-step-2';
+
+    await page.goto('data:text/html,<h1>Step 2 Complete</h1>');
+    await expect(page.locator('h1')).toHaveText('Step 2 Complete');
+  });
+
+  test('step 3: verify final value', async ({ page }) => {
+    // This runs after step 2 — the value should be modified.
+    expect(sharedValue).toBe('modified-in-step-2');
+
+    await page.goto('data:text/html,<h1>Step 3 Complete</h1>');
+    await expect(page.locator('h1')).toHaveText('Step 3 Complete');
+  });
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Mixing Parallel and Serial in One File
+// --------------------------------------------------------------------------
+// You can have both parallel and serial blocks in the same test file.
+test.describe('exercise 4: parallel block', () => {
+  test.describe.configure({ mode: 'parallel' });
+
+  test('parallel A', async ({ page }) => {
+    await page.goto('data:text/html,<h1>Parallel A</h1>');
+    await expect(page.locator('h1')).toHaveText('Parallel A');
+  });
+
+  test('parallel B', async ({ page }) => {
+    await page.goto('data:text/html,<h1>Parallel B</h1>');
+    await expect(page.locator('h1')).toHaveText('Parallel B');
+  });
+});
+
+test.describe('exercise 4: serial block', () => {
+  test.describe.configure({ mode: 'serial' });
+
+  test('serial step 1', async ({ page }) => {
+    await page.goto('data:text/html,<h1>Serial 1</h1>');
+    await expect(page.locator('h1')).toHaveText('Serial 1');
+  });
+
+  test('serial step 2', async ({ page }) => {
+    await page.goto('data:text/html,<h1>Serial 2</h1>');
+    await expect(page.locator('h1')).toHaveText('Serial 2');
+  });
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Understanding Sharding
+// --------------------------------------------------------------------------
+// Sharding splits tests across CI machines. This test documents the concept.
+// You run sharding from the CLI, not from test code.
+//
+// TRY IT:
+//   npx playwright test parallel-testing.spec.ts --shard=1/2
+//   npx playwright test parallel-testing.spec.ts --shard=2/2
+//
+// Each command runs approximately HALF the tests from this file.
+test('exercise 5: sharding concept (run with --shard flag)', async ({ page }) => {
+  // This test exists to demonstrate sharding.
+  // Run the full file with --shard=1/2 and --shard=2/2 separately.
+  // Each shard gets different tests.
+
+  await page.goto('data:text/html,<h1>Sharding Demo</h1>');
+
+  // test.info().config shows the current configuration.
+  // In a sharded run, the shard info appears in the config.
+  const config = test.info().config;
+  // eslint-disable-next-line no-console
+  console.log('Shard info:', config.shard);
+  // eslint-disable-next-line no-console
+  console.log('Workers:', config.workers);
+
+  await expect(page.locator('h1')).toHaveText('Sharding Demo');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Best Practices Checklist
+// --------------------------------------------------------------------------
+// This test serves as a documentation test — it passes and documents
+// the rules for writing parallel-safe tests.
+test('exercise 6: parallel testing best practices', async ({ page }) => {
+  await page.goto('data:text/html,<h1>Best Practices</h1>');
+
+  // RULE 1: Tests must be independent — no shared state.
+  // RULE 2: Each test should set up its own data (no reliance on test order).
+  // RULE 3: Use unique identifiers (timestamps, UUIDs) to avoid conflicts.
+  // RULE 4: Mock external dependencies to avoid contention.
+  // RULE 5: Use serial mode ONLY when tests truly depend on each other.
+  // RULE 6: Start with 50% of CPU cores, tune based on test stability.
+
+  await expect(page.locator('h1')).toHaveText('Best Practices');
+});
+b:T200c,// =============================================================================
+// Kata 41: Parallel Testing — Cypress Tests
+// =============================================================================
+//
+// Cypress handles parallelization differently from Playwright.
+//
+// KEY DIFFERENCE:
+//   Playwright: runs individual TESTS in parallel across workers
+//   Cypress:    runs entire SPEC FILES in parallel across machines
+//
+// Within a single Cypress spec file, tests always run SEQUENTIALLY.
+// To achieve parallelism, you run multiple spec files simultaneously
+// on different machines or processes.
+//
+// PARALLELIZATION OPTIONS:
+//   1. Cypress Cloud:    npx cypress run --record --parallel
+//   2. Manual splitting: npx cypress run --spec "path/to/spec1.cy.ts"
+//   3. sorry-cypress:    open-source alternative to Cypress Cloud
+// =============================================================================
+
+describe('Kata 41: Parallel Testing Concepts', () => {
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Independent Tests (Parallel-Safe)
+  // --------------------------------------------------------------------------
+  // These tests are independent — they can run in any order.
+  // In Cypress, they run sequentially within this file, but the file
+  // itself can run in parallel with OTHER spec files.
+  it('exercise 1a: independent test A', () => {
+    cy.visit('data:text/html,<h1>Cypress Test A</h1>');
+    cy.get('h1').should('have.text', 'Cypress Test A');
+  });
+
+  it('exercise 1b: independent test B', () => {
+    cy.visit('data:text/html,<h1>Cypress Test B</h1>');
+    cy.get('h1').should('have.text', 'Cypress Test B');
+  });
+
+  it('exercise 1c: independent test C', () => {
+    cy.visit('data:text/html,<h1>Cypress Test C</h1>');
+    cy.get('h1').should('have.text', 'Cypress Test C');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Understanding Sequential Execution in Cypress
+  // --------------------------------------------------------------------------
+  // Unlike Playwright, Cypress does NOT run tests within a file in parallel.
+  // Tests in a describe block run one after another, top to bottom.
+  // This means shared state CAN work (but is still discouraged).
+  describe('exercise 2: sequential by design', () => {
+    let counter = 0;
+
+    it('runs first — increments counter', () => {
+      counter += 1;
+      // Cypress tests in a file run sequentially, so counter is reliably 1.
+      expect(counter).to.equal(1);
+    });
+
+    it('runs second — counter is already 1', () => {
+      counter += 1;
+      // Because the previous test ran first, counter is now 2.
+      expect(counter).to.equal(2);
+    });
+
+    it('runs third — counter is already 2', () => {
+      counter += 1;
+      expect(counter).to.equal(3);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Cypress Cloud Parallelization
+  // --------------------------------------------------------------------------
+  // This test documents how Cypress Cloud parallelization works.
+  it('exercise 3: Cypress Cloud parallel execution (documentation)', () => {
+    // Cypress Cloud parallelization is configured via the CLI, not in test code.
+    //
+    // STEP 1: Set up Cypress Cloud (https://cloud.cypress.io)
+    //   - Create a project and get a projectId
+    //   - Add projectId to cypress.config.ts
+    //
+    // STEP 2: Run with --record --parallel
+    //   npx cypress run --record --key <your-key> --parallel
+    //
+    // STEP 3: Cypress Cloud distributes spec files across CI machines
+    //   - Machine 1 gets: login.cy.ts, dashboard.cy.ts
+    //   - Machine 2 gets: kyc-form.cy.ts, settings.cy.ts
+    //   - Machine 3 gets: reports.cy.ts, profile.cy.ts
+    //
+    // Cypress Cloud uses HISTORICAL RUN TIMES to balance the load.
+    // Slow specs are assigned to machines first for optimal distribution.
+    //
+    // COST: Free for up to 500 test recordings/month, paid plans for more.
+
+    cy.visit('data:text/html,<h1>Cypress Cloud Parallelization</h1>');
+    cy.get('h1').should('contain.text', 'Parallelization');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Manual Spec Splitting for CI
+  // --------------------------------------------------------------------------
+  // Without Cypress Cloud, you can split specs manually in your CI config.
+  it('exercise 4: manual spec splitting (documentation)', () => {
+    // In your CI configuration (e.g., GitHub Actions), create multiple jobs:
+    //
+    // jobs:
+    //   test-group-1:
+    //     steps:
+    //       - run: npx cypress run --spec "cypress/e2e/auth/**"
+    //
+    //   test-group-2:
+    //     steps:
+    //       - run: npx cypress run --spec "cypress/e2e/forms/**"
+    //
+    //   test-group-3:
+    //     steps:
+    //       - run: npx cypress run --spec "cypress/e2e/api/**"
+    //
+    // PROS: Free, no external service needed
+    // CONS: Manual balancing — you decide which specs go in which group
+    //       If one group has slow specs, it becomes the bottleneck
+
+    cy.visit('data:text/html,<h1>Manual Spec Splitting</h1>');
+    cy.get('h1').should('contain.text', 'Manual');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Writing Parallel-Safe Tests
+  // --------------------------------------------------------------------------
+  // Even though Cypress runs tests sequentially in a file, writing
+  // parallel-safe tests is a best practice for when you add parallelism.
+  it('exercise 5: parallel-safe test pattern', () => {
+    // PARALLEL-SAFE means the test works regardless of execution order.
+    //
+    // GOOD PRACTICES:
+    //   1. Each test sets up its own state (beforeEach or in-test setup)
+    //   2. Each test tears down after itself (afterEach or automatic)
+    //   3. Use unique identifiers (timestamps) for test data
+    //   4. Never depend on another test having run first
+    //   5. Never depend on database state from another test
+    //
+    // BAD PRACTICES:
+    //   1. Sharing mutable variables between tests (see exercise 2 — fragile)
+    //   2. Assuming a specific execution order
+    //   3. Using the same user account across parallel workers
+    //   4. Writing to the same file from multiple tests
+
+    const uniqueId = `test-${Date.now()}`;
+    cy.visit(`data:text/html,<h1>Safe Test ${uniqueId}</h1>`);
+    cy.get('h1').should('contain.text', 'Safe Test');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Comparing Playwright vs Cypress Parallel
+  // --------------------------------------------------------------------------
+  it('exercise 6: comparison summary (documentation)', () => {
+    // ╔══════════════════╦═══════════════════╦═══════════════════╗
+    // ║ Feature          ║ Playwright        ║ Cypress           ║
+    // ╠══════════════════╬═══════════════════╬═══════════════════╣
+    // ║ Parallel unit    ║ Individual tests  ║ Spec files        ║
+    // ║ Workers          ║ Built-in          ║ External (CI)     ║
+    // ║ Config           ║ playwright.config  ║ CLI flags         ║
+    // ║ Sharding         ║ --shard=1/3       ║ --spec (manual)   ║
+    // ║ Serial mode      ║ describe.configure ║ Default behavior  ║
+    // ║ Cloud service    ║ Not needed        ║ Cypress Cloud     ║
+    // ║ Cost             ║ Free              ║ Free/Paid          ║
+    // ╚══════════════════╩═══════════════════╩═══════════════════╝
+
+    cy.visit('data:text/html,<h1>Playwright vs Cypress Parallel</h1>');
+    cy.get('h1').should('contain.text', 'Playwright vs Cypress');
+  });
+});
+c:Tb94b,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { test, expect } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> '@playwright/test'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> applicants </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> './fixtures/applicants.json'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// =============================================================================</span></span>
+<span class="line"><span style="color:#6A737D">// Kata 40: Test Data and Fixtures — Playwright Tests</span></span>
+<span class="line"><span style="color:#6A737D">// =============================================================================</span></span>
+<span class="line"><span style="color:#6A737D">// These tests demonstrate how to use JSON fixture files for data-driven testing.</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// The applicants.json file contains an array of applicant objects.</span></span>
+<span class="line"><span style="color:#6A737D">// Each object has: name, email, country, docType, expectedRef, scenario.</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// By loading data from a file, you can add new test cases by editing JSON</span></span>
+<span class="line"><span style="color:#6A737D">// instead of writing new test code.</span></span>
+<span class="line"><span style="color:#6A737D">// =============================================================================</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// Kata 40 ships its own flat KYC form playground, purpose-built for</span></span>
+<span class="line"><span style="color:#6A737D">// data-driven / fixture-driven testing. The form posts to /api/kyc/submit</span></span>
+<span class="line"><span style="color:#6A737D">// which every test intercepts with page.route().</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-07-advanced-patterns/40-test-data-and-fixtures/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// Define the TypeScript type for an applicant object.</span></span>
+<span class="line"><span style="color:#6A737D">// This gives us autocomplete and type checking when using the fixture data.</span></span>
+<span class="line"><span style="color:#F97583">interface</span><span style="color:#B392F0"> Applicant</span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#FFAB70">  name</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> string</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#FFAB70">  email</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> string</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#FFAB70">  country</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> string</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#FFAB70">  docType</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> string</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#FFAB70">  expectedRef</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> string</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#FFAB70">  scenario</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> string</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// Cast the imported JSON to our typed array.</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> typedApplicants</span><span style="color:#F97583">:</span><span style="color:#B392F0"> Applicant</span><span style="color:#E1E4E8">[] </span><span style="color:#F97583">=</span><span style="color:#E1E4E8"> applicants;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 1: Load and Use a Single Fixture Record</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Load the first applicant from the fixture and use it in a test.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: use fixture data for a single applicant'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">  // Access the first applicant from the fixture array.</span></span>
+<span class="line"><span style="color:#6A737D">  // applicants[0] is the first object in the JSON array.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> applicant</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> typedApplicants[</span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">];</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Intercept the POST request and return a mock response.</span></span>
+<span class="line"><span style="color:#6A737D">  // We use the fixture's expectedRef field to make the mock dynamic.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">route</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'/api/kyc/submit'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> (</span><span style="color:#FFAB70">route</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">    await</span><span style="color:#E1E4E8"> route.</span><span style="color:#B392F0">fulfill</span><span style="color:#E1E4E8">({</span></span>
+<span class="line"><span style="color:#E1E4E8">      status: </span><span style="color:#79B8FF">200</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      contentType: </span><span style="color:#9ECBFF">'application/json'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      body: </span><span style="color:#79B8FF">JSON</span><span style="color:#E1E4E8">.</span><span style="color:#B392F0">stringify</span><span style="color:#E1E4E8">({ referenceId: applicant.expectedRef })</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Fill the form using data from the fixture.</span></span>
+<span class="line"><span style="color:#6A737D">  // The data is NOT hard-coded — it comes from applicants.json.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'full-name-input'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(applicant.name);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'email-input'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(applicant.email);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'country-select'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">selectOption</span><span style="color:#E1E4E8">(applicant.country);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'doc-type-select'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">selectOption</span><span style="color:#E1E4E8">(applicant.docType);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'submit-btn'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Assert using the expected reference from the fixture.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'submit-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(applicant.expectedRef);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 2: Parameterized Tests — Loop Over All Applicants</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Generate one test per applicant by looping over the fixture array.</span></span>
+<span class="line"><span style="color:#6A737D">// Each applicant gets its own independent test.</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// Playwright does not have test.each like Jest. Instead, use a for...of loop</span></span>
+<span class="line"><span style="color:#6A737D">// at the module level. Playwright discovers these tests at parse time.</span></span>
+<span class="line"><span style="color:#F97583">for</span><span style="color:#E1E4E8"> (</span><span style="color:#F97583">const</span><span style="color:#79B8FF"> applicant</span><span style="color:#F97583"> of</span><span style="color:#E1E4E8"> typedApplicants) {</span></span>
+<span class="line"><span style="color:#B392F0">  test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`exercise 2: submit KYC for ${</span><span style="color:#E1E4E8">applicant</span><span style="color:#9ECBFF">.</span><span style="color:#E1E4E8">name</span><span style="color:#9ECBFF">} (${</span><span style="color:#E1E4E8">applicant</span><span style="color:#9ECBFF">.</span><span style="color:#E1E4E8">scenario</span><span style="color:#9ECBFF">})`</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Each iteration creates a SEPARATE test with its own browser context.</span></span>
+<span class="line"><span style="color:#6A737D">    // If one fails, the others still run.</span></span>
+<span class="line"><span style="color:#F97583">    await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">route</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'/api/kyc/submit'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> (</span><span style="color:#FFAB70">route</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">      await</span><span style="color:#E1E4E8"> route.</span><span style="color:#B392F0">fulfill</span><span style="color:#E1E4E8">({</span></span>
+<span class="line"><span style="color:#E1E4E8">        status: </span><span style="color:#79B8FF">200</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">        contentType: </span><span style="color:#9ECBFF">'application/json'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">        body: </span><span style="color:#79B8FF">JSON</span><span style="color:#E1E4E8">.</span><span style="color:#B392F0">stringify</span><span style="color:#E1E4E8">({ referenceId: applicant.expectedRef })</span></span>
+<span class="line"><span style="color:#E1E4E8">      });</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">    await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">    await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'full-name-input'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(applicant.name);</span></span>
+<span class="line"><span style="color:#F97583">    await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'email-input'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(applicant.email);</span></span>
+<span class="line"><span style="color:#F97583">    await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'country-select'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">selectOption</span><span style="color:#E1E4E8">(applicant.country);</span></span>
+<span class="line"><span style="color:#F97583">    await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'doc-type-select'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">selectOption</span><span style="color:#E1E4E8">(applicant.docType);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">    await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'submit-btn'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">    await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'submit-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(applicant.expectedRef);</span></span>
+<span class="line"><span style="color:#F97583">    await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'submit-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">status-success</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 3: Dynamic Data Factory</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Sometimes you need UNIQUE data per test run — e.g., unique emails</span></span>
+<span class="line"><span style="color:#6A737D">// to avoid conflicts. A factory function generates fresh data.</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">/**</span></span>
+<span class="line"><span style="color:#6A737D"> * createApplicant — a factory function that generates test data.</span></span>
+<span class="line"><span style="color:#6A737D"> *</span></span>
+<span class="line"><span style="color:#6A737D"> * </span><span style="color:#F97583">@param</span><span style="color:#E1E4E8"> overrides</span><span style="color:#6A737D"> — fields to customize (merged with defaults)</span></span>
+<span class="line"><span style="color:#6A737D"> * </span><span style="color:#F97583">@returns</span><span style="color:#6A737D"> a complete applicant object with unique email</span></span>
+<span class="line"><span style="color:#6A737D"> *</span></span>
+<span class="line"><span style="color:#6A737D"> * The spread operator (...overrides) merges custom fields with defaults.</span></span>
+<span class="line"><span style="color:#6A737D"> * If overrides.name is provided, it replaces the default name.</span></span>
+<span class="line"><span style="color:#6A737D"> */</span></span>
+<span class="line"><span style="color:#F97583">function</span><span style="color:#B392F0"> createApplicant</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">overrides</span><span style="color:#F97583">:</span><span style="color:#B392F0"> Partial</span><span style="color:#E1E4E8">&#x3C;</span><span style="color:#B392F0">Applicant</span><span style="color:#E1E4E8">> </span><span style="color:#F97583">=</span><span style="color:#E1E4E8"> {})</span><span style="color:#F97583">:</span><span style="color:#B392F0"> Applicant</span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">  // Date.now() returns milliseconds since epoch — unique per call.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> timestamp</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> Date.</span><span style="color:#B392F0">now</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  return</span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    name: </span><span style="color:#9ECBFF">`Test User ${</span><span style="color:#E1E4E8">timestamp</span><span style="color:#9ECBFF">}`</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">    email: </span><span style="color:#9ECBFF">`test-${</span><span style="color:#E1E4E8">timestamp</span><span style="color:#9ECBFF">}@example.com`</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">    country: </span><span style="color:#9ECBFF">'US'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">    docType: </span><span style="color:#9ECBFF">'passport'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">    expectedRef: </span><span style="color:#9ECBFF">`KYC-DYN-${</span><span style="color:#E1E4E8">timestamp</span><span style="color:#9ECBFF">}`</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">    scenario: </span><span style="color:#9ECBFF">'dynamic'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#F97583">    ...</span><span style="color:#E1E4E8">overrides   </span><span style="color:#6A737D">// any provided fields override the defaults</span></span>
+<span class="line"><span style="color:#E1E4E8">  };</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: use dynamic data factory'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">  // Create a unique applicant for this test run.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> applicant</span><span style="color:#F97583"> =</span><span style="color:#B392F0"> createApplicant</span><span style="color:#E1E4E8">({ name: </span><span style="color:#9ECBFF">'Dynamic Test User'</span><span style="color:#E1E4E8">, country: </span><span style="color:#9ECBFF">'IN'</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">route</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'/api/kyc/submit'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> (</span><span style="color:#FFAB70">route</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">    await</span><span style="color:#E1E4E8"> route.</span><span style="color:#B392F0">fulfill</span><span style="color:#E1E4E8">({</span></span>
+<span class="line"><span style="color:#E1E4E8">      status: </span><span style="color:#79B8FF">200</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      contentType: </span><span style="color:#9ECBFF">'application/json'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      body: </span><span style="color:#79B8FF">JSON</span><span style="color:#E1E4E8">.</span><span style="color:#B392F0">stringify</span><span style="color:#E1E4E8">({ referenceId: applicant.expectedRef })</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'full-name-input'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(applicant.name);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'email-input'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(applicant.email);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'country-select'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">selectOption</span><span style="color:#E1E4E8">(applicant.country);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'doc-type-select'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">selectOption</span><span style="color:#E1E4E8">(applicant.docType);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'submit-btn'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'submit-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(applicant.expectedRef);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 4: Fixture-Driven Assertions</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// The fixture file can include EXPECTED OUTCOMES, not just inputs.</span></span>
+<span class="line"><span style="color:#6A737D">// This makes the test fully data-driven — both input AND expected output</span></span>
+<span class="line"><span style="color:#6A737D">// come from the fixture.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: data-driven assertions from fixture'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">  // Use the third applicant from the fixture.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> applicant</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> typedApplicants[</span><span style="color:#79B8FF">2</span><span style="color:#E1E4E8">];</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">route</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'/api/kyc/submit'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> (</span><span style="color:#FFAB70">route</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // The mock response uses the fixture's expectedRef field.</span></span>
+<span class="line"><span style="color:#F97583">    await</span><span style="color:#E1E4E8"> route.</span><span style="color:#B392F0">fulfill</span><span style="color:#E1E4E8">({</span></span>
+<span class="line"><span style="color:#E1E4E8">      status: </span><span style="color:#79B8FF">200</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      contentType: </span><span style="color:#9ECBFF">'application/json'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      body: </span><span style="color:#79B8FF">JSON</span><span style="color:#E1E4E8">.</span><span style="color:#B392F0">stringify</span><span style="color:#E1E4E8">({ referenceId: applicant.expectedRef })</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'full-name-input'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(applicant.name);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'email-input'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(applicant.email);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'country-select'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">selectOption</span><span style="color:#E1E4E8">(applicant.country);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'doc-type-select'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">selectOption</span><span style="color:#E1E4E8">(applicant.docType);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'submit-btn'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Both the INPUT and the EXPECTED OUTPUT come from the fixture.</span></span>
+<span class="line"><span style="color:#6A737D">  // If you want a new test case, add a new object to applicants.json.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'submit-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(applicant.expectedRef);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'submit-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">status-success</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 5: Subset Filtering</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Filter the fixture data to test only specific scenarios.</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> usApplicants</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> typedApplicants.</span><span style="color:#B392F0">filter</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">a</span><span style="color:#F97583"> =></span><span style="color:#E1E4E8"> a.country </span><span style="color:#F97583">===</span><span style="color:#9ECBFF"> 'US'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">for</span><span style="color:#E1E4E8"> (</span><span style="color:#F97583">const</span><span style="color:#79B8FF"> applicant</span><span style="color:#F97583"> of</span><span style="color:#E1E4E8"> usApplicants) {</span></span>
+<span class="line"><span style="color:#B392F0">  test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`exercise 5: US-only test for ${</span><span style="color:#E1E4E8">applicant</span><span style="color:#9ECBFF">.</span><span style="color:#E1E4E8">name</span><span style="color:#9ECBFF">}`</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">    await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">route</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'/api/kyc/submit'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> (</span><span style="color:#FFAB70">route</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">      await</span><span style="color:#E1E4E8"> route.</span><span style="color:#B392F0">fulfill</span><span style="color:#E1E4E8">({</span></span>
+<span class="line"><span style="color:#E1E4E8">        status: </span><span style="color:#79B8FF">200</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">        contentType: </span><span style="color:#9ECBFF">'application/json'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">        body: </span><span style="color:#79B8FF">JSON</span><span style="color:#E1E4E8">.</span><span style="color:#B392F0">stringify</span><span style="color:#E1E4E8">({ referenceId: applicant.expectedRef })</span></span>
+<span class="line"><span style="color:#E1E4E8">      });</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">    await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">    await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'full-name-input'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(applicant.name);</span></span>
+<span class="line"><span style="color:#F97583">    await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'email-input'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(applicant.email);</span></span>
+<span class="line"><span style="color:#F97583">    await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'country-select'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">selectOption</span><span style="color:#E1E4E8">(applicant.country);</span></span>
+<span class="line"><span style="color:#F97583">    await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'doc-type-select'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">selectOption</span><span style="color:#E1E4E8">(applicant.docType);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">    await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'submit-btn'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the country is US in the fixture (sanity check).</span></span>
+<span class="line"><span style="color:#B392F0">    expect</span><span style="color:#E1E4E8">(applicant.country).</span><span style="color:#B392F0">toBe</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'US'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">    await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'submit-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(applicant.expectedRef);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 6: Multiple Fixture Files</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// In real projects, you might have separate fixtures for different scenarios:</span></span>
+<span class="line"><span style="color:#6A737D">//   fixtures/valid-applicants.json</span></span>
+<span class="line"><span style="color:#6A737D">//   fixtures/invalid-applicants.json</span></span>
+<span class="line"><span style="color:#6A737D">//   fixtures/edge-case-applicants.json</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// This test demonstrates using fixture data for error scenarios.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: test with error scenario data'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">  // Simulate an invalid applicant by creating one with a factory.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> invalidApplicant</span><span style="color:#F97583"> =</span><span style="color:#B392F0"> createApplicant</span><span style="color:#E1E4E8">({</span></span>
+<span class="line"><span style="color:#E1E4E8">    name: </span><span style="color:#9ECBFF">''</span><span style="color:#E1E4E8">,           </span><span style="color:#6A737D">// empty name — should cause a validation error</span></span>
+<span class="line"><span style="color:#E1E4E8">    email: </span><span style="color:#9ECBFF">'invalid'</span><span style="color:#E1E4E8">,   </span><span style="color:#6A737D">// invalid email format</span></span>
+<span class="line"><span style="color:#E1E4E8">    scenario: </span><span style="color:#9ECBFF">'invalid-data'</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // In a real app, the server would reject invalid data.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">route</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'/api/kyc/submit'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> (</span><span style="color:#FFAB70">route</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">    await</span><span style="color:#E1E4E8"> route.</span><span style="color:#B392F0">fulfill</span><span style="color:#E1E4E8">({</span></span>
+<span class="line"><span style="color:#E1E4E8">      status: </span><span style="color:#79B8FF">400</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      contentType: </span><span style="color:#9ECBFF">'application/json'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      body: </span><span style="color:#79B8FF">JSON</span><span style="color:#E1E4E8">.</span><span style="color:#B392F0">stringify</span><span style="color:#E1E4E8">({ error: </span><span style="color:#9ECBFF">'Validation failed: name is required'</span><span style="color:#E1E4E8"> })</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'full-name-input'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(invalidApplicant.name </span><span style="color:#F97583">||</span><span style="color:#9ECBFF"> ' '</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'email-input'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(invalidApplicant.email);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'submit-btn'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the error response is displayed.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'submit-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">status-error</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>d:Ta275,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#6A737D">// =============================================================================</span></span>
+<span class="line"><span style="color:#6A737D">// Kata 40: Test Data and Fixtures — Cypress Tests</span></span>
+<span class="line"><span style="color:#6A737D">// =============================================================================</span></span>
+<span class="line"><span style="color:#6A737D">// These tests demonstrate Cypress's cy.fixture() for loading test data</span></span>
+<span class="line"><span style="color:#6A737D">// and data-driven testing patterns.</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// cy.fixture(path) loads a JSON file from the cypress/fixtures/ directory.</span></span>
+<span class="line"><span style="color:#6A737D">// The path is relative to cypress/fixtures/.</span></span>
+<span class="line"><span style="color:#6A737D">// =============================================================================</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-07-advanced-patterns/40-test-data-and-fixtures/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// Define the applicant type for clarity.</span></span>
+<span class="line"><span style="color:#F97583">interface</span><span style="color:#B392F0"> Applicant</span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#FFAB70">  name</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> string</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#FFAB70">  email</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> string</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#FFAB70">  country</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> string</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#FFAB70">  docType</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> string</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#FFAB70">  expectedRef</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> string</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#FFAB70">  scenario</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> string</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">describe</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Kata 40: Test Data and Fixtures'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 1: Load Fixture with cy.fixture()</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // cy.fixture() loads a JSON file and makes it available in the test.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: load fixture and use first applicant'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // cy.fixture(filePath) loads a JSON file from cypress/fixtures/.</span></span>
+<span class="line"><span style="color:#6A737D">    // The path 'applicants.json' resolves to cypress/fixtures/applicants.json.</span></span>
+<span class="line"><span style="color:#6A737D">    // .then() receives the parsed JSON data.</span></span>
+<span class="line"><span style="color:#6A737D">    //</span></span>
+<span class="line"><span style="color:#6A737D">    // NOTE: The fixture path here is relative to THIS kata's cypress/fixtures/</span></span>
+<span class="line"><span style="color:#6A737D">    // directory. In a real project, you would configure the fixturesFolder</span></span>
+<span class="line"><span style="color:#6A737D">    // in cypress.config.ts or use the full path.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">fixture</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'applicants.json'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">then</span><span style="color:#E1E4E8">((</span><span style="color:#FFAB70">applicants</span><span style="color:#F97583">:</span><span style="color:#B392F0"> Applicant</span><span style="color:#E1E4E8">[]) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">      const</span><span style="color:#79B8FF"> applicant</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> applicants[</span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">];</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">      // Set up the mock response BEFORE visiting the page.</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">intercept</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'POST'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'/api/kyc/submit'</span><span style="color:#E1E4E8">, {</span></span>
+<span class="line"><span style="color:#E1E4E8">        statusCode: </span><span style="color:#79B8FF">200</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">        body: { referenceId: applicant.expectedRef }</span></span>
+<span class="line"><span style="color:#E1E4E8">      }).</span><span style="color:#B392F0">as</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'submitKyc'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">      // Fill the form using fixture data.</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="full-name-input"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(applicant.name);</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="email-input"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(applicant.email);</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="country-select"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">select</span><span style="color:#E1E4E8">(applicant.country);</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="doc-type-select"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">select</span><span style="color:#E1E4E8">(applicant.docType);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="submit-btn"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">wait</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'@submitKyc'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">      // Assert using the fixture's expected reference.</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="submit-status"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">        .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, applicant.expectedRef)</span></span>
+<span class="line"><span style="color:#E1E4E8">        .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'status-success'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 2: Parameterized Tests with forEach</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // In Cypress, you generate parameterized tests by loading the fixture</span></span>
+<span class="line"><span style="color:#6A737D">  // OUTSIDE the test and looping with forEach.</span></span>
+<span class="line"><span style="color:#6A737D">  //</span></span>
+<span class="line"><span style="color:#6A737D">  // IMPORTANT: cy.fixture() is async and only works inside Cypress commands.</span></span>
+<span class="line"><span style="color:#6A737D">  // For dynamic test generation, you can import the JSON directly.</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Import the fixture data directly for test generation.</span></span>
+<span class="line"><span style="color:#6A737D">  // This works because the file is a static JSON file.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> applicants</span><span style="color:#F97583">:</span><span style="color:#B392F0"> Applicant</span><span style="color:#E1E4E8">[] </span><span style="color:#F97583">=</span><span style="color:#B392F0"> require</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'./fixtures/applicants.json'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">  applicants.</span><span style="color:#B392F0">forEach</span><span style="color:#E1E4E8">((</span><span style="color:#FFAB70">applicant</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#B392F0">    it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`exercise 2: submit KYC for ${</span><span style="color:#E1E4E8">applicant</span><span style="color:#9ECBFF">.</span><span style="color:#E1E4E8">name</span><span style="color:#9ECBFF">} (${</span><span style="color:#E1E4E8">applicant</span><span style="color:#9ECBFF">.</span><span style="color:#E1E4E8">scenario</span><span style="color:#9ECBFF">})`</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">intercept</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'POST'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'/api/kyc/submit'</span><span style="color:#E1E4E8">, {</span></span>
+<span class="line"><span style="color:#E1E4E8">        statusCode: </span><span style="color:#79B8FF">200</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">        body: { referenceId: applicant.expectedRef }</span></span>
+<span class="line"><span style="color:#E1E4E8">      }).</span><span style="color:#B392F0">as</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'submitKyc'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="full-name-input"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(applicant.name);</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="email-input"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(applicant.email);</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="country-select"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">select</span><span style="color:#E1E4E8">(applicant.country);</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="doc-type-select"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">select</span><span style="color:#E1E4E8">(applicant.docType);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="submit-btn"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">wait</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'@submitKyc'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="submit-status"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">        .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, applicant.expectedRef)</span></span>
+<span class="line"><span style="color:#E1E4E8">        .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'status-success'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 3: Fixture with Aliases (this.* pattern)</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // cy.fixture().as('alias') makes data available via this.alias.</span></span>
+<span class="line"><span style="color:#6A737D">  // NOTE: You MUST use function() syntax, NOT arrow functions,</span></span>
+<span class="line"><span style="color:#6A737D">  // because arrow functions don't have their own `this` context.</span></span>
+<span class="line"><span style="color:#B392F0">  describe</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: fixture aliases'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">function</span><span style="color:#E1E4E8"> () {</span></span>
+<span class="line"><span style="color:#6A737D">    // Load the fixture in beforeEach and alias it.</span></span>
+<span class="line"><span style="color:#B392F0">    beforeEach</span><span style="color:#E1E4E8">(</span><span style="color:#F97583">function</span><span style="color:#E1E4E8"> () {</span></span>
+<span class="line"><span style="color:#6A737D">      // .as('applicantData') stores the fixture data on `this.applicantData`.</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">fixture</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'applicants.json'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">as</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'applicantData'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">    it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'should use aliased fixture data'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">function</span><span style="color:#E1E4E8"> () {</span></span>
+<span class="line"><span style="color:#6A737D">      // Access the fixture data via this.applicantData.</span></span>
+<span class="line"><span style="color:#6A737D">      // This only works with function() — NOT with arrow functions () => {}.</span></span>
+<span class="line"><span style="color:#F97583">      const</span><span style="color:#79B8FF"> applicant</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> (</span><span style="color:#79B8FF">this</span><span style="color:#E1E4E8">.applicantData </span><span style="color:#F97583">as</span><span style="color:#B392F0"> Applicant</span><span style="color:#E1E4E8">[])[</span><span style="color:#79B8FF">1</span><span style="color:#E1E4E8">];</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">intercept</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'POST'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'/api/kyc/submit'</span><span style="color:#E1E4E8">, {</span></span>
+<span class="line"><span style="color:#E1E4E8">        statusCode: </span><span style="color:#79B8FF">200</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">        body: { referenceId: applicant.expectedRef }</span></span>
+<span class="line"><span style="color:#E1E4E8">      }).</span><span style="color:#B392F0">as</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'submitKyc'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="full-name-input"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(applicant.name);</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="email-input"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(applicant.email);</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="country-select"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">select</span><span style="color:#E1E4E8">(applicant.country);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="submit-btn"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">wait</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'@submitKyc'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="submit-status"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">        .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, applicant.expectedRef);</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 4: Dynamic Data Factory</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // A factory function creates unique data for each test run.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: use dynamic data factory'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    /**</span></span>
+<span class="line"><span style="color:#6A737D">     * createApplicant — generates a unique applicant object.</span></span>
+<span class="line"><span style="color:#6A737D">     *</span></span>
+<span class="line"><span style="color:#6A737D">     * </span><span style="color:#F97583">@param</span><span style="color:#E1E4E8"> overrides</span><span style="color:#6A737D"> — custom fields to merge with defaults</span></span>
+<span class="line"><span style="color:#6A737D">     * </span><span style="color:#F97583">@returns</span><span style="color:#6A737D"> a complete Applicant object with a unique timestamp-based email</span></span>
+<span class="line"><span style="color:#6A737D">     */</span></span>
+<span class="line"><span style="color:#F97583">    function</span><span style="color:#B392F0"> createApplicant</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">overrides</span><span style="color:#F97583">:</span><span style="color:#B392F0"> Partial</span><span style="color:#E1E4E8">&#x3C;</span><span style="color:#B392F0">Applicant</span><span style="color:#E1E4E8">> </span><span style="color:#F97583">=</span><span style="color:#E1E4E8"> {})</span><span style="color:#F97583">:</span><span style="color:#B392F0"> Applicant</span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">      const</span><span style="color:#79B8FF"> ts</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> Date.</span><span style="color:#B392F0">now</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">      return</span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">        name: </span><span style="color:#9ECBFF">`Test User ${</span><span style="color:#E1E4E8">ts</span><span style="color:#9ECBFF">}`</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">        email: </span><span style="color:#9ECBFF">`test-${</span><span style="color:#E1E4E8">ts</span><span style="color:#9ECBFF">}@example.com`</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">        country: </span><span style="color:#9ECBFF">'US'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">        docType: </span><span style="color:#9ECBFF">'passport'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">        expectedRef: </span><span style="color:#9ECBFF">`KYC-DYN-${</span><span style="color:#E1E4E8">ts</span><span style="color:#9ECBFF">}`</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">        scenario: </span><span style="color:#9ECBFF">'dynamic'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#F97583">        ...</span><span style="color:#E1E4E8">overrides  </span><span style="color:#6A737D">// spread operator merges overrides on top of defaults</span></span>
+<span class="line"><span style="color:#E1E4E8">      };</span></span>
+<span class="line"><span style="color:#E1E4E8">    }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">    const</span><span style="color:#79B8FF"> applicant</span><span style="color:#F97583"> =</span><span style="color:#B392F0"> createApplicant</span><span style="color:#E1E4E8">({ name: </span><span style="color:#9ECBFF">'Dynamic Cypress User'</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">intercept</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'POST'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'/api/kyc/submit'</span><span style="color:#E1E4E8">, {</span></span>
+<span class="line"><span style="color:#E1E4E8">      statusCode: </span><span style="color:#79B8FF">200</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      body: { referenceId: applicant.expectedRef }</span></span>
+<span class="line"><span style="color:#E1E4E8">    }).</span><span style="color:#B392F0">as</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'submitKyc'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="full-name-input"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(applicant.name);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="email-input"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(applicant.email);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="country-select"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">select</span><span style="color:#E1E4E8">(applicant.country);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="submit-btn"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">wait</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'@submitKyc'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="submit-status"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, applicant.expectedRef);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 5: Filter Fixture Data</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Run tests only for applicants matching a specific criteria.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> usApplicants</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> applicants.</span><span style="color:#B392F0">filter</span><span style="color:#E1E4E8">((</span><span style="color:#FFAB70">a</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> a.country </span><span style="color:#F97583">===</span><span style="color:#9ECBFF"> 'US'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">  usApplicants.</span><span style="color:#B392F0">forEach</span><span style="color:#E1E4E8">((</span><span style="color:#FFAB70">applicant</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#B392F0">    it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`exercise 5: US-only test for ${</span><span style="color:#E1E4E8">applicant</span><span style="color:#9ECBFF">.</span><span style="color:#E1E4E8">name</span><span style="color:#9ECBFF">}`</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">intercept</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'POST'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'/api/kyc/submit'</span><span style="color:#E1E4E8">, {</span></span>
+<span class="line"><span style="color:#E1E4E8">        statusCode: </span><span style="color:#79B8FF">200</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">        body: { referenceId: applicant.expectedRef }</span></span>
+<span class="line"><span style="color:#E1E4E8">      }).</span><span style="color:#B392F0">as</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'submitKyc'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="full-name-input"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(applicant.name);</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="email-input"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(applicant.email);</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="country-select"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">select</span><span style="color:#E1E4E8">(applicant.country);</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="doc-type-select"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">select</span><span style="color:#E1E4E8">(applicant.docType);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="submit-btn"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">wait</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'@submitKyc'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">      // Verify country is US (sanity check from fixture data).</span></span>
+<span class="line"><span style="color:#B392F0">      expect</span><span style="color:#E1E4E8">(applicant.country).to.</span><span style="color:#B392F0">equal</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'US'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="submit-status"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">        .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, applicant.expectedRef);</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 6: Error Scenario with Fixture Data</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Use fixture data to drive error scenario tests.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: test error scenario with factory data'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Simulate a server rejection for invalid data.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">intercept</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'POST'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'/api/kyc/submit'</span><span style="color:#E1E4E8">, {</span></span>
+<span class="line"><span style="color:#E1E4E8">      statusCode: </span><span style="color:#79B8FF">400</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      body: { error: </span><span style="color:#9ECBFF">'Validation failed: name is required'</span><span style="color:#E1E4E8"> }</span></span>
+<span class="line"><span style="color:#E1E4E8">    }).</span><span style="color:#B392F0">as</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'submitKyc'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Submit with minimal data to trigger an error.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="full-name-input"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">' '</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="email-input"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'bad-email'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="submit-btn"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">wait</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'@submitKyc'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the error response is displayed.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="submit-status"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'status-error'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"kata":{"slug":"40-test-data-and-fixtures","number":40,"title":"Test Data and Fixtures","phaseSlug":"phase-07-advanced-patterns","phaseNumber":7,"phaseName":"Advanced Patterns","readmeRaw":"$3","hasPlayground":true,"playwrightFiles":[{"filename":"test-data-and-fixtures.spec.ts","content":"$4"}],"cypressFiles":[{"filename":"test-data-and-fixtures.cy.ts","content":"$5"}]},"prev":{"slug":"39-accessibility-testing","number":39,"title":"Accessibility Testing (a11y)","phaseSlug":"phase-07-advanced-patterns","phaseNumber":7,"phaseName":"Advanced Patterns","readmeRaw":"$6","hasPlayground":true,"playwrightFiles":[{"filename":"accessibility-testing.spec.ts","content":"$7"}],"cypressFiles":[{"filename":"accessibility-testing.cy.ts","content":"$8"}]},"next":{"slug":"41-parallel-testing","number":41,"title":"Parallel Testing","phaseSlug":"phase-08-parallel-and-ci","phaseNumber":8,"phaseName":"Parallel And Ci","readmeRaw":"$9","hasPlayground":false,"playwrightFiles":[{"filename":"parallel-testing.spec.ts","content":"$a"}],"cypressFiles":[{"filename":"parallel-testing.cy.ts","content":"$b"}]},"playwrightHtml":[{"filename":"test-data-and-fixtures.spec.ts","html":"$c"}],"cypressHtml":[{"filename":"test-data-and-fixtures.cy.ts","html":"$d"}]}],["$Le"],"$Lf"]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"iDtrTKWIN4zzRgDRiiDd2"}
+e:["$","script","script-0",{"src":"/qa-labs/_next/static/chunks/03nvm.8~ftt80.js","async":true}]
+f:["$","$L10",null,{"children":["$","$11",null,{"name":"Next.MetadataOutlet","children":"$@12"}]}]
+12:null

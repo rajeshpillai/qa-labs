@@ -1,0 +1,2201 @@
+1:"$Sreact.fragment"
+2:I[31749,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js","/qa-labs/_next/static/chunks/03nvm.8~ftt80.js"],"KataPageClient"]
+10:I[49583,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js"],"OutletBoundary"]
+11:"$Sreact.suspense"
+3:T1d9c,# Kata 10: Canvas and SVG
+
+## What You Will Learn
+
+- How to simulate mouse drawing on an HTML5 Canvas element
+- Verifying canvas content by inspecting pixel data (`getImageData`)
+- Clicking and hovering SVG elements (heat map cells, bar chart bars)
+- Reading SVG attributes (`data-value`, `height`) to verify chart data
+- Testing tooltip visibility on hover
+- Verifying canvas dimensions via attributes and runtime properties
+- Playwright: `page.mouse.move/down/up`, `page.evaluate()`, `boundingBox()`
+- Cypress: `.trigger('mousedown/mousemove/mouseup')`, `cy.window()`, `.invoke('attr')`
+
+## Prerequisites
+
+- Node.js 18+ installed
+- Completed Kata 01-09 or comfortable with selectors, assertions, and mouse events
+- Basic understanding of HTML5 Canvas and SVG
+
+## Concepts Explained
+
+### HTML5 Canvas
+
+The `<canvas>` element provides a bitmap drawing surface. JavaScript draws on it using the 2D rendering context:
+
+```javascript
+const canvas = document.getElementById('my-canvas');
+const ctx = canvas.getContext('2d');
+
+// Draw a line
+ctx.beginPath();         // start a new path
+ctx.moveTo(10, 10);      // move to starting point
+ctx.lineTo(100, 50);     // draw a line segment
+ctx.stroke();            // render the path
+
+// Clear the canvas
+ctx.clearRect(0, 0, canvas.width, canvas.height);
+```
+
+**Testing challenge**: Canvas content is pixels, not DOM elements. You cannot query individual shapes. Instead, you:
+1. Simulate mouse events to trigger drawing code
+2. Inspect pixel data via `getImageData` to check if the canvas is blank or has content
+
+### SVG (Scalable Vector Graphics)
+
+SVG elements *are* DOM elements, so you can query, click, and read attributes just like HTML elements:
+
+```html
+<rect data-testid="bar-jan" width="30" height="80" data-value="80" fill="#3b82f6" />
+```
+
+```typescript
+// Playwright
+await expect(page.getByTestId('bar-jan')).toHaveAttribute('data-value', '80');
+
+// Cypress
+cy.get('[data-testid="bar-jan"]').should('have.attr', 'data-value', '80');
+```
+
+### Simulating Canvas Drawing in Tests
+
+| Action | Playwright | Cypress |
+|--------|-----------|---------|
+| Move mouse | `page.mouse.move(x, y)` | `.trigger('mousemove', { offsetX, offsetY })` |
+| Press button | `page.mouse.down()` | `.trigger('mousedown', { offsetX, offsetY })` |
+| Release button | `page.mouse.up()` | `.trigger('mouseup')` |
+| Get element position | `locator.boundingBox()` | `$el[0].getBoundingClientRect()` |
+
+### Checking if a Canvas is Blank
+
+```javascript
+function isCanvasBlank(canvas) {
+  const ctx = canvas.getContext('2d');
+  // getImageData returns RGBA values for every pixel
+  const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+  // Check if all alpha values (every 4th byte) are zero
+  for (let i = 3; i < data.length; i += 4) {
+    if (data[i] !== 0) return false;
+  }
+  return true;
+}
+```
+
+## Playground
+
+Open the playground in your browser. It contains a **fintech signature and visualization page** with:
+
+1. **Signature pad** (Canvas) — draw with the mouse, clear with a button, capture to change status
+2. **SVG risk heat map** — 3x4 grid of colored cells, click to select, hover for tooltip
+3. **SVG bar chart** — monthly approval counts with data-value attributes
+4. **Canvas bar chart** — programmatically drawn bars for loan disbursements
+5. **Signature status** — changes from "Unsigned" to "Signed" after capture
+
+```bash
+# start the playground server
+npx serve katas -l 8080
+
+# open in browser
+# http://localhost:8080/phase-01-dom-and-browser-apis/10-canvas-and-svg/playground/
+```
+
+## Exercises
+
+### Exercise 1: Draw on Signature Canvas
+
+Simulate mouse events (mousedown, mousemove, mouseup) on the signature canvas and verify the `hasContent` flag becomes true.
+
+**Playwright hint**: use `page.mouse.move/down/up` with coordinates from `boundingBox()`
+**Cypress hint**: use `.trigger('mousedown', { offsetX, offsetY })` then `mousemove` and `mouseup`
+
+### Exercise 2: Verify Canvas is Not Blank After Drawing
+
+Call `isCanvasBlank()` before and after drawing to verify the canvas goes from blank to non-blank.
+
+### Exercise 3: Clear Signature and Verify Canvas is Blank
+
+Draw, then click Clear, then verify `isCanvasBlank()` returns true and status reverts to "Unsigned".
+
+### Exercise 4: Click SVG Element and Verify Selection
+
+Click a heat map cell and verify it gains the `selected` class. Click another and verify the selection moves.
+
+### Exercise 5: Read SVG Bar Chart Values
+
+Read `data-value` and `height` attributes from bar chart `<rect>` elements and verify they match expected values.
+
+### Exercise 6: Hover Over SVG Element and Verify Tooltip
+
+Hover over a heat map cell and verify the tooltip becomes visible with the correct text.
+
+### Exercise 7: Verify Canvas Dimensions
+
+Check the `width` and `height` attributes of both canvas elements, and verify them via runtime properties.
+
+### Exercise 8: Verify Signature Status After Drawing
+
+Draw on the canvas, click "Capture Signature", and verify the status changes from "Unsigned" to "Signed".
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/canvas-svg.spec.ts` — every line is commented to explain what it does.
+
+### Cypress Solution
+
+See `cypress/canvas-svg.cy.ts` — every line is commented to explain what it does.
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Clicking the canvas without mousedown/mousemove | Canvas drawing requires a sequence of mouse events, not a click | Use mousedown, then mousemove (multiple), then mouseup |
+| Using page coordinates for Cypress `.trigger()` | Cypress trigger uses `offsetX/offsetY` relative to the element | Use offset coordinates, not page coordinates |
+| Trying to query shapes inside a canvas | Canvas is pixels, not DOM — there are no child elements | Use `getImageData` to inspect pixel data |
+| Forgetting that SVG elements are in a different namespace | SVG elements are still DOM elements and support standard selectors | Use `cy.get` / `page.getByTestId` normally |
+| Not hovering before checking the tooltip | The tooltip only appears on mouseover | Use `.hover()` (Playwright) or `.trigger('mouseover')` (Cypress) |
+
+## Quick Reference
+
+### Playwright Canvas / SVG Methods
+
+| Method | Purpose | Example |
+|--------|---------|---------|
+| `page.mouse.move(x, y)` | Move mouse to absolute coordinates | `page.mouse.move(100, 200)` |
+| `page.mouse.down()` | Press left mouse button | `page.mouse.down()` |
+| `page.mouse.up()` | Release left mouse button | `page.mouse.up()` |
+| `locator.boundingBox()` | Get element position and size | `const box = await el.boundingBox()` |
+| `locator.hover()` | Move mouse to element centre | `page.getByTestId('cell').hover()` |
+| `page.evaluate(fn)` | Run JS in the browser | `page.evaluate(() => isCanvasBlank(c))` |
+| `toHaveAttribute(k, v)` | Assert DOM attribute value | `expect(el).toHaveAttribute('height', '120')` |
+
+### Cypress Canvas / SVG Methods
+
+| Method | Purpose | Example |
+|--------|---------|---------|
+| `.trigger(event, opts)` | Dispatch a DOM event | `.trigger('mousedown', { offsetX: 50, offsetY: 100 })` |
+| `cy.window()` | Yield the browser window object | `cy.window().its('hasContent')` |
+| `.should('have.attr')` | Assert element attribute | `.should('have.attr', 'data-value', '80')` |
+| `.should('have.class')` | Assert CSS class presence | `.should('have.class', 'selected')` |
+| `.invoke('attr', name)` | Read an attribute value | `.invoke('attr', 'height').should('equal', '120')` |
+| `.then($el => ...)` | Access raw DOM element | `.then($el => $el[0].width)` |
+4:T25bf,import { test, expect } from '@playwright/test';
+
+// The base path to this kata's playground.
+// The web server serves the katas/ directory, so the path starts from there.
+const PLAYGROUND = '/phase-01-dom-and-browser-apis/10-canvas-and-svg/playground/';
+
+// --------------------------------------------------------------------------
+// Helper: simulate a mouse stroke on a canvas element.
+// Dispatches mousedown, several mousemove events, then mouseup.
+// --------------------------------------------------------------------------
+async function drawOnCanvas(
+  page: import('@playwright/test').Page,
+  testId: string,
+) {
+  const canvas = page.getByTestId(testId);
+
+  // boundingBox returns { x, y, width, height } of the element in page
+  // coordinates. We use these to calculate absolute positions for mouse events.
+  const box = await canvas.boundingBox();
+  if (!box) throw new Error(`Canvas [data-testid="${testId}"] not found`);
+
+  // Start near the centre-left of the canvas
+  const startX = box.x + box.width * 0.2;
+  const startY = box.y + box.height * 0.5;
+
+  // page.mouse.move moves the virtual mouse to absolute coordinates.
+  await page.mouse.move(startX, startY);
+
+  // page.mouse.down presses the left button (triggers mousedown on canvas).
+  await page.mouse.down();
+
+  // Draw a short zigzag stroke across the canvas.
+  // Each move triggers mousemove, which calls ctx.lineTo + ctx.stroke.
+  const steps = 5;
+  for (let i = 1; i <= steps; i++) {
+    await page.mouse.move(
+      startX + i * 30,
+      startY + (i % 2 === 0 ? -20 : 20),
+      { steps: 3 },  // interpolate 3 sub-steps for smoother movement
+    );
+  }
+
+  // page.mouse.up releases the button (triggers mouseup).
+  await page.mouse.up();
+}
+
+// --------------------------------------------------------------------------
+// Exercise 1: Draw on the signature canvas
+// --------------------------------------------------------------------------
+test('exercise 1: draw on signature canvas via mouse events', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Use the helper to simulate a drawing stroke on the signature pad.
+  await drawOnCanvas(page, 'signature-pad');
+
+  // After drawing, the global hasContent flag is true.
+  // page.evaluate runs JavaScript in the browser and returns the result.
+  const hasContent = await page.evaluate(() => (window as any).hasContent);
+  expect(hasContent).toBe(true);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Verify canvas is not blank after drawing
+// --------------------------------------------------------------------------
+test('exercise 2: canvas is not blank after drawing', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Before drawing, the canvas should be blank.
+  // We call the helper function isCanvasBlank exposed on window.
+  const blankBefore = await page.evaluate(() => {
+    const c = document.querySelector('[data-testid="signature-pad"]') as HTMLCanvasElement;
+    return (window as any).isCanvasBlank(c);
+  });
+  expect(blankBefore).toBe(true);
+
+  // Draw a stroke
+  await drawOnCanvas(page, 'signature-pad');
+
+  // After drawing, the canvas should no longer be blank.
+  // isCanvasBlank checks every pixel's alpha channel — if any pixel is
+  // non-transparent, it returns false.
+  const blankAfter = await page.evaluate(() => {
+    const c = document.querySelector('[data-testid="signature-pad"]') as HTMLCanvasElement;
+    return (window as any).isCanvasBlank(c);
+  });
+  expect(blankAfter).toBe(false);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Clear signature and verify canvas is blank
+// --------------------------------------------------------------------------
+test('exercise 3: clear button resets the canvas', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Draw something first
+  await drawOnCanvas(page, 'signature-pad');
+
+  // Click the Clear button. It calls ctx.clearRect to wipe the canvas.
+  await page.getByTestId('clear-signature').click();
+
+  // Verify the canvas is blank again
+  const isBlank = await page.evaluate(() => {
+    const c = document.querySelector('[data-testid="signature-pad"]') as HTMLCanvasElement;
+    return (window as any).isCanvasBlank(c);
+  });
+  expect(isBlank).toBe(true);
+
+  // The signature status should revert to "Unsigned"
+  await expect(page.getByTestId('signature-status')).toHaveText('Unsigned');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Click SVG element and verify selection state
+// --------------------------------------------------------------------------
+test('exercise 4: click heat map cell to select it', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Click the Credit Q3 cell (risk score 91)
+  const cell = page.getByTestId('cell-credit-q3');
+  await cell.click();
+
+  // The click handler adds the "selected" class to the clicked cell.
+  await expect(cell).toHaveClass(/selected/);
+
+  // The "selected-cell" text should update with the cell's data-label.
+  await expect(page.getByTestId('selected-cell')).toHaveText('Credit Q3: 91');
+
+  // Click a different cell and verify the selection moves
+  const cell2 = page.getByTestId('cell-ops-q1');
+  await cell2.click();
+  await expect(cell2).toHaveClass(/selected/);
+  // The first cell should no longer be selected
+  await expect(cell).not.toHaveClass(/selected/);
+  await expect(page.getByTestId('selected-cell')).toHaveText('Ops Q1: 12');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Verify SVG bar chart values (read height attributes)
+// --------------------------------------------------------------------------
+test('exercise 5: read SVG bar chart data-value attributes', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Each bar has a data-value attribute encoding the approval count.
+  // getAttribute retrieves a DOM attribute as a string.
+  const janValue = await page.getByTestId('bar-jan').getAttribute('data-value');
+  expect(janValue).toBe('80');
+
+  const febValue = await page.getByTestId('bar-feb').getAttribute('data-value');
+  expect(febValue).toBe('120');
+
+  // We can also verify the height attribute, which encodes the visual bar size.
+  const febHeight = await page.getByTestId('bar-feb').getAttribute('height');
+  expect(febHeight).toBe('120');
+
+  // Check the tallest bar (May, value 140, height 140)
+  await expect(page.getByTestId('bar-may')).toHaveAttribute('data-value', '140');
+  await expect(page.getByTestId('bar-may')).toHaveAttribute('height', '140');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Hover over SVG element and verify tooltip
+// --------------------------------------------------------------------------
+test('exercise 6: hover over heat map cell shows tooltip', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // The tooltip is hidden by default (no "visible" class).
+  const tooltip = page.getByTestId('heatmap-tooltip');
+  await expect(tooltip).toBeHidden();
+
+  // Hover over the Market Q2 cell. locator.hover() moves the mouse
+  // to the centre of the element, firing mouseover and mousemove.
+  await page.getByTestId('cell-market-q2').hover();
+
+  // The mouseover handler adds class "visible" and sets the text.
+  await expect(tooltip).toBeVisible();
+  await expect(tooltip).toHaveText('Market Q2: 53');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Verify canvas dimensions
+// --------------------------------------------------------------------------
+test('exercise 7: verify canvas dimensions', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Check the signature pad dimensions via HTML attributes.
+  // toHaveAttribute verifies the attribute value as a string.
+  const sigPad = page.getByTestId('signature-pad');
+  await expect(sigPad).toHaveAttribute('width', '400');
+  await expect(sigPad).toHaveAttribute('height', '200');
+
+  // Check the chart canvas dimensions
+  const chartCanvas = page.getByTestId('chart-canvas');
+  await expect(chartCanvas).toHaveAttribute('width', '400');
+  await expect(chartCanvas).toHaveAttribute('height', '220');
+
+  // We can also read the runtime properties via evaluate.
+  // canvas.width and canvas.height return the drawing-surface size in pixels.
+  const dims = await page.evaluate(() => {
+    const c = document.querySelector('[data-testid="signature-pad"]') as HTMLCanvasElement;
+    return { w: c.width, h: c.height };
+  });
+  expect(dims.w).toBe(400);
+  expect(dims.h).toBe(200);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Verify signature status changes after drawing
+// --------------------------------------------------------------------------
+test('exercise 8: capture signature updates status to Signed', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Initially the status should be "Unsigned"
+  const status = page.getByTestId('signature-status');
+  await expect(status).toHaveText('Unsigned');
+  await expect(status).toHaveClass(/status-unsigned/);
+
+  // Draw a signature
+  await drawOnCanvas(page, 'signature-pad');
+
+  // Click "Capture Signature" — this updates the status to "Signed"
+  await page.getByTestId('capture-signature').click();
+
+  // Verify the status text and CSS class changed
+  await expect(status).toHaveText('Signed');
+  await expect(status).toHaveClass(/status-signed/);
+
+  // The capture button text should also change
+  await expect(page.getByTestId('capture-signature')).toHaveText('Signature Captured');
+});
+5:T2456,// The base path to this kata's playground.
+// Cypress prepends the baseUrl (http://localhost:8080) to this path.
+const PLAYGROUND = '/phase-01-dom-and-browser-apis/10-canvas-and-svg/playground/';
+
+// --------------------------------------------------------------------------
+// Helper: simulate a mouse drawing stroke on a canvas element.
+// Uses Cypress's .trigger() to dispatch mousedown, mousemove, mouseup.
+// trigger(event, options) dispatches a synthetic DOM event on the element.
+// --------------------------------------------------------------------------
+function drawOnCanvas(testId: string) {
+  // .trigger('mousedown', { ... }) fires a mousedown event at the given
+  // offsetX/offsetY coordinates relative to the element's top-left corner.
+  cy.get(`[data-testid="${testId}"]`)
+    .trigger('mousedown', { offsetX: 50, offsetY: 100 });
+
+  // Draw a short zigzag by dispatching several mousemove events.
+  // Each mousemove causes the canvas listener to call ctx.lineTo + ctx.stroke.
+  cy.get(`[data-testid="${testId}"]`)
+    .trigger('mousemove', { offsetX: 80,  offsetY: 80  })
+    .trigger('mousemove', { offsetX: 110, offsetY: 120 })
+    .trigger('mousemove', { offsetX: 140, offsetY: 80  })
+    .trigger('mousemove', { offsetX: 170, offsetY: 120 })
+    .trigger('mousemove', { offsetX: 200, offsetY: 100 });
+
+  // Release the mouse button to end the stroke.
+  cy.get(`[data-testid="${testId}"]`)
+    .trigger('mouseup');
+}
+
+describe('Kata 10: Canvas and SVG', () => {
+
+  // beforeEach runs before every test. We visit the playground page
+  // so each test starts with a fresh, unmodified page.
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Draw on the signature canvas
+  // --------------------------------------------------------------------------
+  it('exercise 1: draw on signature canvas via mouse events', () => {
+    // Use the helper to simulate a drawing stroke
+    drawOnCanvas('signature-pad');
+
+    // After drawing, the global hasContent flag should be true.
+    // cy.window() yields the browser's window object.
+    // .its('hasContent') reads the property from the window.
+    cy.window().its('hasContent').should('equal', true);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Verify canvas is not blank after drawing
+  // --------------------------------------------------------------------------
+  it('exercise 2: canvas is not blank after drawing', () => {
+    // Before drawing, confirm the canvas is blank.
+    // cy.window().then(win => ...) gives us the window object so we can
+    // call the isCanvasBlank helper function exposed by the playground.
+    cy.window().then((win: any) => {
+      const c = win.document.querySelector('[data-testid="signature-pad"]');
+      expect(win.isCanvasBlank(c)).to.be.true;
+    });
+
+    // Draw a stroke
+    drawOnCanvas('signature-pad');
+
+    // After drawing, the canvas should NOT be blank.
+    // isCanvasBlank scans every pixel's alpha channel.
+    cy.window().then((win: any) => {
+      const c = win.document.querySelector('[data-testid="signature-pad"]');
+      expect(win.isCanvasBlank(c)).to.be.false;
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Clear signature and verify canvas is blank
+  // --------------------------------------------------------------------------
+  it('exercise 3: clear button resets the canvas', () => {
+    // Draw something first
+    drawOnCanvas('signature-pad');
+
+    // Click the Clear button, which calls ctx.clearRect on the canvas.
+    cy.get('[data-testid="clear-signature"]').click();
+
+    // Verify the canvas is blank again
+    cy.window().then((win: any) => {
+      const c = win.document.querySelector('[data-testid="signature-pad"]');
+      expect(win.isCanvasBlank(c)).to.be.true;
+    });
+
+    // The signature status should revert to "Unsigned"
+    cy.get('[data-testid="signature-status"]').should('have.text', 'Unsigned');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Click SVG element and verify selection state
+  // --------------------------------------------------------------------------
+  it('exercise 4: click heat map cell to select it', () => {
+    // Click the Credit Q3 cell (risk score 91).
+    // SVG elements support .click() just like HTML elements in Cypress.
+    cy.get('[data-testid="cell-credit-q3"]').click();
+
+    // The click handler adds the "selected" class.
+    // .should('have.class', 'selected') checks the element's classList.
+    cy.get('[data-testid="cell-credit-q3"]')
+      .should('have.class', 'selected');
+
+    // The "selected-cell" label should show the cell's data-label text.
+    cy.get('[data-testid="selected-cell"]')
+      .should('have.text', 'Credit Q3: 91');
+
+    // Click a different cell and verify the selection moves
+    cy.get('[data-testid="cell-ops-q1"]').click();
+    cy.get('[data-testid="cell-ops-q1"]')
+      .should('have.class', 'selected');
+
+    // The previously selected cell should lose its "selected" class.
+    cy.get('[data-testid="cell-credit-q3"]')
+      .should('not.have.class', 'selected');
+
+    cy.get('[data-testid="selected-cell"]')
+      .should('have.text', 'Ops Q1: 12');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Verify SVG bar chart values (read height attributes)
+  // --------------------------------------------------------------------------
+  it('exercise 5: read SVG bar chart data-value attributes', () => {
+    // Each SVG <rect> bar has a data-value attribute with the approval count.
+    // .should('have.attr', name, value) asserts an attribute equals a value.
+    cy.get('[data-testid="bar-jan"]')
+      .should('have.attr', 'data-value', '80');
+
+    cy.get('[data-testid="bar-feb"]')
+      .should('have.attr', 'data-value', '120');
+
+    // Verify the height attribute matches the visual bar height.
+    // .invoke('attr', 'height') retrieves the attribute value.
+    cy.get('[data-testid="bar-feb"]')
+      .invoke('attr', 'height')
+      .should('equal', '120');
+
+    // Check the tallest bar (May)
+    cy.get('[data-testid="bar-may"]')
+      .should('have.attr', 'data-value', '140')
+      .and('have.attr', 'height', '140');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Hover over SVG element and verify tooltip
+  // --------------------------------------------------------------------------
+  it('exercise 6: hover over heat map cell shows tooltip', () => {
+    // The tooltip is hidden by default.
+    cy.get('[data-testid="heatmap-tooltip"]').should('not.be.visible');
+
+    // .trigger('mouseover') fires a mouseover event, which shows the tooltip.
+    // We use trigger instead of cy.realHover because trigger works reliably
+    // for synthetic DOM events that the playground listens for.
+    cy.get('[data-testid="cell-market-q2"]').trigger('mouseover');
+
+    // The mouseover handler sets the tooltip text and adds the "visible" class.
+    cy.get('[data-testid="heatmap-tooltip"]')
+      .should('be.visible')
+      .and('have.text', 'Market Q2: 53');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Verify canvas dimensions
+  // --------------------------------------------------------------------------
+  it('exercise 7: verify canvas dimensions', () => {
+    // Check the signature pad dimensions via HTML attributes.
+    cy.get('[data-testid="signature-pad"]')
+      .should('have.attr', 'width', '400')
+      .and('have.attr', 'height', '200');
+
+    // Check the chart canvas dimensions.
+    cy.get('[data-testid="chart-canvas"]')
+      .should('have.attr', 'width', '400')
+      .and('have.attr', 'height', '220');
+
+    // We can also read the runtime properties via the DOM.
+    // .then($el => ...) gives us the jQuery-wrapped element.
+    // $el[0] is the raw HTMLCanvasElement with .width and .height properties.
+    cy.get('[data-testid="signature-pad"]').then(($el) => {
+      const canvas = $el[0] as HTMLCanvasElement;
+      expect(canvas.width).to.equal(400);
+      expect(canvas.height).to.equal(200);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Verify signature status changes after drawing
+  // --------------------------------------------------------------------------
+  it('exercise 8: capture signature updates status to Signed', () => {
+    // Initially the status should be "Unsigned"
+    cy.get('[data-testid="signature-status"]')
+      .should('have.text', 'Unsigned')
+      .and('have.class', 'status-unsigned');
+
+    // Draw a signature
+    drawOnCanvas('signature-pad');
+
+    // Click "Capture Signature" to finalize
+    cy.get('[data-testid="capture-signature"]').click();
+
+    // Verify the status changed to "Signed"
+    cy.get('[data-testid="signature-status"]')
+      .should('have.text', 'Signed')
+      .and('have.class', 'status-signed');
+
+    // The capture button text should also update
+    cy.get('[data-testid="capture-signature"]')
+      .should('have.text', 'Signature Captured');
+  });
+});
+6:T1a49,# Kata 09: Scroll and Intersection
+
+## What You Will Learn
+
+- How to test infinite scroll powered by `IntersectionObserver`
+- Verifying lazy-loaded images swap from placeholder to real source
+- Testing "back to top" button visibility and scroll-to-top behaviour
+- Checking that a fixed header changes style (compact mode) on scroll
+- Validating scroll-spy navigation highlights the correct section
+- Asserting whether an element is inside or outside the viewport
+- Playwright: `scrollIntoViewIfNeeded()`, `page.evaluate()`, `waitForFunction()`
+- Cypress: `scrollIntoView()`, `cy.scrollTo()`, `cy.window().its('scrollY')`
+
+## Prerequisites
+
+- Node.js 18+ installed
+- Completed Kata 01-08 or comfortable with selectors, assertions, and waits
+- Basic understanding of the browser scroll model (`scrollY`, `getBoundingClientRect`)
+
+## Concepts Explained
+
+### IntersectionObserver
+
+The `IntersectionObserver` API lets JavaScript react when an element enters or leaves the viewport (or any scrollable ancestor). It is the modern way to implement:
+
+- **Infinite scroll** — load more data when a sentinel element becomes visible
+- **Lazy loading** — swap a placeholder image for the real source on visibility
+- **Scroll-spy** — highlight the nav link whose section is currently visible
+
+```javascript
+// Create an observer that fires when the target is 10% visible
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach((entry) => {
+    if (entry.isIntersecting) {
+      // The element just scrolled into view — do something
+    }
+  });
+}, { threshold: 0.1 });
+
+// Start observing a DOM element
+observer.observe(document.getElementById('sentinel'));
+```
+
+### Scrolling in Tests
+
+| Goal | Playwright | Cypress |
+|------|-----------|---------|
+| Scroll element into view | `locator.scrollIntoViewIfNeeded()` | `cy.get(sel).scrollIntoView()` |
+| Scroll to coordinates | `page.evaluate(() => window.scrollTo(0, 500))` | `cy.scrollTo(0, 500)` |
+| Read scroll position | `page.evaluate(() => window.scrollY)` | `cy.window().its('scrollY')` |
+| Wait for scroll position | `page.waitForFunction(() => window.scrollY === 0)` | `cy.window().its('scrollY').should('equal', 0)` |
+
+### Viewport Checks
+
+To verify whether an element is inside the viewport:
+
+```javascript
+const rect = element.getBoundingClientRect();
+const inViewport = rect.top < window.innerHeight && rect.bottom > 0;
+```
+
+## Playground
+
+Open the playground in your browser. It contains a **fintech transaction feed** with:
+
+1. **Fixed header** — shrinks to compact mode when you scroll past 100px
+2. **Scroll-spy nav** — right-side nav that highlights the current section
+3. **Lazy images** — four cheque image placeholders that load when scrolled into view
+4. **Infinite-scroll feed** — starts with 10 transactions, loads 10 more each time you reach the sentinel
+5. **Back-to-top button** — appears when scrolled past 300px, smooth-scrolls to top on click
+6. **Item count display** — shows how many transactions have been loaded
+
+```bash
+# start the playground server
+npx serve katas -l 8080
+
+# open in browser
+# http://localhost:8080/phase-01-dom-and-browser-apis/09-scroll-and-intersection/playground/
+```
+
+## Exercises
+
+### Exercise 1: Scroll to Bottom and Verify New Items Load
+
+Scroll the "load more" sentinel into view and verify the transaction list grows from 10 to 20 items.
+
+**Playwright hint**: `scrollIntoViewIfNeeded()` on the sentinel, then count `[data-testid^="tx-item-"]`
+**Cypress hint**: `cy.get(sentinel).scrollIntoView()`, then `.should('have.length', 20)`
+
+### Exercise 2: Lazy Image Loads on Scroll
+
+Scroll a lazy image into view and verify its `src` changes from the SVG placeholder to the real URL.
+
+**Playwright hint**: check `toHaveAttribute('data-loaded', 'true')`
+**Cypress hint**: `.should('have.attr', 'data-loaded', 'true')`
+
+### Exercise 3: Back-to-Top Button Appears
+
+Scroll down past 300px and verify the back-to-top button becomes visible.
+
+### Exercise 4: Click Back-to-Top and Verify Scroll Position
+
+Click the button and verify `window.scrollY` returns to 0.
+
+**Playwright hint**: `page.waitForFunction(() => window.scrollY === 0)`
+**Cypress hint**: `cy.window().its('scrollY').should('equal', 0)`
+
+### Exercise 5: Fixed Header Compact Mode
+
+Scroll past 100px and verify the header element gains the `compact` class. Scroll back and verify it is removed.
+
+### Exercise 6: Scroll-Spy Navigation
+
+Scroll to the feed section and verify the "Feed" nav link gains the `active` class while "Overview" loses it.
+
+### Exercise 7: Viewport Check
+
+Assert that the overview section is in the viewport on initial load, and the feed section is not.
+
+### Exercise 8: Loaded Item Count
+
+Trigger two rounds of infinite scroll and verify the displayed count reads "30" and 30 items exist in the DOM.
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/scroll.spec.ts` — every line is commented to explain what it does.
+
+### Cypress Solution
+
+See `cypress/scroll.cy.ts` — every line is commented to explain what it does.
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Using `window.scrollTo` without waiting | Smooth scroll is async — the assertion fires before scroll completes | Use `waitForFunction` (Playwright) or `.should()` retry (Cypress) |
+| Checking `display: none` with `toBeVisible` | Playwright's `toBeHidden` is the correct negative check | Use `toBeHidden()` or `not.toBeVisible()` |
+| Not waiting after `scrollIntoView` | IntersectionObserver callbacks are async | Use assertions with retries or explicit waits |
+| Checking class with string equality | The class attribute may contain multiple classes | Use regex (`/compact/`) or `.should('have.class', 'compact')` |
+
+## Quick Reference
+
+### Playwright Scroll Methods
+
+| Method | Purpose | Example |
+|--------|---------|---------|
+| `scrollIntoViewIfNeeded()` | Scroll element into viewport | `locator.scrollIntoViewIfNeeded()` |
+| `page.evaluate(fn)` | Run JS in browser (e.g., `window.scrollBy`) | `page.evaluate(() => window.scrollBy(0, 500))` |
+| `page.waitForFunction(fn)` | Wait until browser JS predicate is true | `page.waitForFunction(() => scrollY === 0)` |
+| `toHaveClass(/name/)` | Assert class via regex | `expect(el).toHaveClass(/compact/)` |
+
+### Cypress Scroll Methods
+
+| Method | Purpose | Example |
+|--------|---------|---------|
+| `.scrollIntoView()` | Scroll element into viewport | `cy.get(sel).scrollIntoView()` |
+| `cy.scrollTo(x, y)` | Scroll window to coordinates | `cy.scrollTo(0, 500)` |
+| `cy.window().its(prop)` | Read window property | `cy.window().its('scrollY').should('eq', 0)` |
+| `.should('have.class')` | Assert CSS class | `.should('have.class', 'compact')` |
+7:T23d2,import { test, expect } from '@playwright/test';
+
+// The base path to this kata's playground.
+// The web server serves the katas/ directory, so the path starts from there.
+const PLAYGROUND = '/phase-01-dom-and-browser-apis/09-scroll-and-intersection/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Scroll to bottom and verify new items load
+// --------------------------------------------------------------------------
+test('exercise 1: scroll to bottom triggers infinite scroll', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Wait for the initial 10 items to render.
+  // getByTestId finds the very first transaction item to confirm the list loaded.
+  await expect(page.getByTestId('tx-item-0')).toBeVisible();
+
+  // Confirm we start with exactly 10 items.
+  // locator('[data-testid^="tx-item-"]') matches every element whose
+  // data-testid starts with "tx-item-".
+  await expect(page.locator('[data-testid^="tx-item-"]')).toHaveCount(10);
+
+  // scrollIntoViewIfNeeded scrolls the minimum amount so the element
+  // becomes visible in the viewport. This triggers the IntersectionObserver
+  // on the sentinel, which loads 10 more items.
+  await page.getByTestId('load-more-sentinel').scrollIntoViewIfNeeded();
+
+  // Wait for the new items to appear. After one scroll-triggered load
+  // we expect 20 items total (10 initial + 10 loaded).
+  await expect(page.locator('[data-testid^="tx-item-"]')).toHaveCount(20, {
+    timeout: 5000,  // allow extra time for the simulated fetch delay
+  });
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Scroll a lazy image into view and verify src changes
+// --------------------------------------------------------------------------
+test('exercise 2: lazy image loads when scrolled into view', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Before scrolling, the image src should be the inline SVG placeholder.
+  // toHaveAttribute checks the current value of an HTML attribute.
+  const lazyImg = page.getByTestId('lazy-img-1');
+  await expect(lazyImg).toHaveAttribute('src', /data:image\/svg\+xml/);
+
+  // Scroll the image into view so the IntersectionObserver fires.
+  await lazyImg.scrollIntoViewIfNeeded();
+
+  // After the observer fires, data-loaded is set to "true" and src
+  // changes to the real URL from the data-src attribute.
+  await expect(lazyImg).toHaveAttribute('data-loaded', 'true', {
+    timeout: 5000,
+  });
+
+  // Verify the src is now the real image URL (picsum.photos), not the
+  // inline SVG placeholder.
+  await expect(lazyImg).not.toHaveAttribute('src', /data:image\/svg\+xml/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Scroll down and verify "back to top" button appears
+// --------------------------------------------------------------------------
+test('exercise 3: back-to-top button appears on scroll', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // The button exists in the DOM but is hidden (display: none) initially.
+  // toBeHidden asserts the element is not visible (display:none, visibility:hidden,
+  // or not in viewport don't count — Playwright checks computed visibility).
+  const btn = page.getByTestId('back-to-top');
+  await expect(btn).toBeHidden();
+
+  // Use page.evaluate to run JavaScript in the browser context.
+  // window.scrollBy scrolls relative to the current position.
+  await page.evaluate(() => window.scrollBy(0, 400));
+
+  // After scrolling past 300px the button should become visible.
+  // The CSS class "visible" is toggled by the scroll event listener.
+  await expect(btn).toBeVisible();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Click "back to top" and verify scroll position
+// --------------------------------------------------------------------------
+test('exercise 4: clicking back-to-top scrolls to top', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Scroll down first to make the button appear
+  await page.evaluate(() => window.scrollBy(0, 500));
+  const btn = page.getByTestId('back-to-top');
+  await expect(btn).toBeVisible();
+
+  // Click the button. It triggers window.scrollTo({ top: 0, behavior: 'smooth' }).
+  await btn.click();
+
+  // Wait until scrollY is 0. page.waitForFunction runs a predicate in the
+  // browser and resolves when it returns true.
+  await page.waitForFunction(() => window.scrollY === 0, null, {
+    timeout: 5000,
+  });
+
+  // Double-check with an assertion: evaluate returns the current scrollY value.
+  const scrollY = await page.evaluate(() => window.scrollY);
+  expect(scrollY).toBe(0);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Verify fixed header changes class on scroll
+// --------------------------------------------------------------------------
+test('exercise 5: header gains compact class on scroll', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  const header = page.getByTestId('header');
+
+  // Initially the header should NOT have the "compact" class.
+  // toHaveClass with a regex lets us check for the presence of a class.
+  await expect(header).not.toHaveClass(/compact/);
+
+  // Scroll past the 100px threshold that triggers compact mode
+  await page.evaluate(() => window.scrollBy(0, 150));
+
+  // Now the scroll event listener should have added "compact" to the classList.
+  await expect(header).toHaveClass(/compact/);
+
+  // Scroll back to top and verify compact is removed
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expect(header).not.toHaveClass(/compact/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Scroll to a specific section and verify nav highlights
+// --------------------------------------------------------------------------
+test('exercise 6: scroll-spy highlights current section in nav', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Initially the "Overview" nav link should be active (has class "active").
+  await expect(page.getByTestId('nav-overview')).toHaveClass(/active/);
+
+  // Scroll the feed section into view. The IntersectionObserver-based
+  // scroll-spy should update the active nav link.
+  await page.getByTestId('section-feed').scrollIntoViewIfNeeded();
+
+  // Wait for the observer to fire and update the nav.
+  // The "Feed" nav link should now be active.
+  await expect(page.getByTestId('nav-feed')).toHaveClass(/active/, {
+    timeout: 3000,
+  });
+
+  // The "Overview" link should no longer be active.
+  await expect(page.getByTestId('nav-overview')).not.toHaveClass(/active/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Verify element is / isn't in viewport
+// --------------------------------------------------------------------------
+test('exercise 7: check whether element is in viewport', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // page.evaluate runs arbitrary JavaScript in the browser context.
+  // getBoundingClientRect returns the element's position relative to the viewport.
+  // An element is "in the viewport" when its top is less than window.innerHeight
+  // and its bottom is greater than 0.
+  const isInViewport = await page.evaluate(() => {
+    const el = document.querySelector('[data-testid="section-overview"]');
+    if (!el) return false;
+    const rect = el.getBoundingClientRect();
+    return rect.top < window.innerHeight && rect.bottom > 0;
+  });
+  expect(isInViewport).toBe(true);
+
+  // The feed section should NOT be in the viewport initially (it is further down).
+  const feedInViewport = await page.evaluate(() => {
+    const el = document.querySelector('[data-testid="section-feed"]');
+    if (!el) return false;
+    const rect = el.getBoundingClientRect();
+    return rect.top < window.innerHeight && rect.bottom > 0;
+  });
+  expect(feedInViewport).toBe(false);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Scroll and verify total loaded items count
+// --------------------------------------------------------------------------
+test('exercise 8: verify loaded item count after multiple scrolls', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Confirm the initial count display shows 10 items.
+  // #loaded-count is a <span> inside the item-count div.
+  await expect(page.locator('#loaded-count')).toHaveText('10');
+
+  // Scroll the sentinel into view to trigger one load (10 more items).
+  await page.getByTestId('load-more-sentinel').scrollIntoViewIfNeeded();
+  await expect(page.locator('#loaded-count')).toHaveText('20', {
+    timeout: 5000,
+  });
+
+  // Scroll the sentinel again after the new items push it down.
+  // We need a small wait for the DOM to settle, then scroll again.
+  await page.getByTestId('load-more-sentinel').scrollIntoViewIfNeeded();
+  await expect(page.locator('#loaded-count')).toHaveText('30', {
+    timeout: 5000,
+  });
+
+  // Final check: 30 transaction items should exist in the DOM.
+  await expect(page.locator('[data-testid^="tx-item-"]')).toHaveCount(30);
+});
+8:T1f99,// The base path to this kata's playground.
+// Cypress prepends the baseUrl (http://localhost:8080) to this path.
+const PLAYGROUND = '/phase-01-dom-and-browser-apis/09-scroll-and-intersection/playground/';
+
+describe('Kata 09: Scroll and Intersection', () => {
+
+  // beforeEach runs before every test in this describe block.
+  // We visit the playground page so each test starts fresh.
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Scroll to bottom and verify new items load
+  // --------------------------------------------------------------------------
+  it('exercise 1: scroll to bottom triggers infinite scroll', () => {
+    // Confirm we start with 10 transaction items.
+    // [data-testid^="tx-item-"] is a CSS attribute selector that matches any
+    // element whose data-testid starts with "tx-item-".
+    cy.get('[data-testid^="tx-item-"]').should('have.length', 10);
+
+    // scrollIntoView() scrolls the DOM so that the matched element is visible
+    // in the viewport. This triggers the IntersectionObserver on the sentinel.
+    cy.get('[data-testid="load-more-sentinel"]').scrollIntoView();
+
+    // After the observer fires, 10 more items are appended (total 20).
+    // .should automatically retries until the assertion passes or times out.
+    cy.get('[data-testid^="tx-item-"]', { timeout: 5000 })
+      .should('have.length', 20);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Scroll a lazy image into view and verify src changes
+  // --------------------------------------------------------------------------
+  it('exercise 2: lazy image loads when scrolled into view', () => {
+    // Before scrolling, the img src should be the inline SVG placeholder.
+    // .invoke('attr', 'src') retrieves the current src attribute value.
+    cy.get('[data-testid="lazy-img-1"]')
+      .invoke('attr', 'src')
+      .should('match', /data:image\/svg\+xml/);
+
+    // scrollIntoView scrolls the element into the visible area, triggering
+    // the IntersectionObserver that swaps the placeholder for the real image.
+    cy.get('[data-testid="lazy-img-1"]').scrollIntoView();
+
+    // After the observer fires, data-loaded is set to "true".
+    cy.get('[data-testid="lazy-img-1"]', { timeout: 5000 })
+      .should('have.attr', 'data-loaded', 'true');
+
+    // The src should now be the real image URL, not the placeholder.
+    cy.get('[data-testid="lazy-img-1"]')
+      .invoke('attr', 'src')
+      .should('not.match', /data:image\/svg\+xml/);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Scroll down and verify "back to top" button appears
+  // --------------------------------------------------------------------------
+  it('exercise 3: back-to-top button appears on scroll', () => {
+    // The button is initially hidden (display: none via CSS).
+    // 'not.be.visible' checks computed visibility.
+    cy.get('[data-testid="back-to-top"]').should('not.be.visible');
+
+    // cy.scrollTo scrolls the window (or a scrollable container) to
+    // the given x, y coordinates. Here we scroll 400px down from the top.
+    cy.scrollTo(0, 400);
+
+    // After scrolling past 300px, the JS adds class "visible" which sets
+    // display: flex, making the button visible.
+    cy.get('[data-testid="back-to-top"]').should('be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Click "back to top" and verify scroll position
+  // --------------------------------------------------------------------------
+  it('exercise 4: clicking back-to-top scrolls to top', () => {
+    // Scroll down to reveal the button
+    cy.scrollTo(0, 500);
+    cy.get('[data-testid="back-to-top"]').should('be.visible');
+
+    // Click the button, which calls window.scrollTo({ top: 0 })
+    cy.get('[data-testid="back-to-top"]').click();
+
+    // cy.window() yields the browser's window object.
+    // We access its scrollY property to verify we scrolled to the top.
+    // The smooth scroll animation takes time, so we use should() which retries.
+    cy.window().its('scrollY').should('equal', 0);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Verify fixed header changes class on scroll
+  // --------------------------------------------------------------------------
+  it('exercise 5: header gains compact class on scroll', () => {
+    // Initially the header should not have the "compact" class.
+    cy.get('[data-testid="header"]').should('not.have.class', 'compact');
+
+    // Scroll past the 100px threshold
+    cy.scrollTo(0, 150);
+
+    // The scroll listener adds "compact" when scrollY > 100.
+    cy.get('[data-testid="header"]').should('have.class', 'compact');
+
+    // Scroll back to top and verify compact is removed
+    cy.scrollTo(0, 0);
+    cy.get('[data-testid="header"]').should('not.have.class', 'compact');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Scroll to a specific section and verify nav highlights
+  // --------------------------------------------------------------------------
+  it('exercise 6: scroll-spy highlights current section in nav', () => {
+    // Initially "Overview" nav link should be active
+    cy.get('[data-testid="nav-overview"]').should('have.class', 'active');
+
+    // Scroll the feed section into view
+    cy.get('[data-testid="section-feed"]').scrollIntoView();
+
+    // The IntersectionObserver-based scroll-spy updates the active class.
+    // "Feed" should now be active, and "Overview" should not.
+    cy.get('[data-testid="nav-feed"]', { timeout: 3000 })
+      .should('have.class', 'active');
+    cy.get('[data-testid="nav-overview"]')
+      .should('not.have.class', 'active');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Verify element is / isn't in viewport
+  // --------------------------------------------------------------------------
+  it('exercise 7: check whether element is in viewport', () => {
+    // In Cypress we can check if an element is in the viewport by comparing
+    // its bounding rect to the window dimensions.
+    // .then() gives us the jQuery-wrapped element so we can call native DOM methods.
+    cy.get('[data-testid="section-overview"]').then(($el) => {
+      // $el[0] is the raw DOM element. getBoundingClientRect returns its
+      // position relative to the viewport.
+      const rect = $el[0].getBoundingClientRect();
+      // If top < window.innerHeight and bottom > 0, the element is visible.
+      expect(rect.top).to.be.lessThan(window.innerHeight);
+      expect(rect.bottom).to.be.greaterThan(0);
+    });
+
+    // The feed section should NOT be visible initially (it is below the fold).
+    cy.get('[data-testid="section-feed"]').then(($el) => {
+      const rect = $el[0].getBoundingClientRect();
+      // The top of the feed section should be below the viewport bottom.
+      expect(rect.top).to.be.greaterThan(window.innerHeight);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Scroll and verify total loaded items count
+  // --------------------------------------------------------------------------
+  it('exercise 8: verify loaded item count after multiple scrolls', () => {
+    // Confirm the initial count display shows 10
+    cy.get('#loaded-count').should('have.text', '10');
+
+    // Scroll sentinel into view to trigger one load
+    cy.get('[data-testid="load-more-sentinel"]').scrollIntoView();
+    cy.get('#loaded-count', { timeout: 5000 }).should('have.text', '20');
+
+    // Scroll sentinel again after new items push it down
+    cy.get('[data-testid="load-more-sentinel"]').scrollIntoView();
+    cy.get('#loaded-count', { timeout: 5000 }).should('have.text', '30');
+
+    // Final verification: 30 items in the DOM
+    cy.get('[data-testid^="tx-item-"]').should('have.length', 30);
+  });
+});
+9:T1b37,# Kata 11: DOM Mutations
+
+## What You Will Learn
+
+- How to test dynamically inserted DOM elements (elements that appear after page load)
+- How to verify elements are removed from the DOM
+- How to detect text content changes on existing elements
+- How to verify CSS class changes and attribute mutations
+- How to handle auto-updating UI (timers, live feeds, counters)
+- Why Playwright's auto-retry assertions and Cypress's `.should()` are ideal for mutation testing
+
+## Prerequisites
+
+- Completed Phase 00 katas (especially Kata 03: Waits and Timing)
+- Basic understanding of how the DOM works (elements, attributes, text nodes)
+
+## Concepts Explained
+
+### What Are DOM Mutations?
+
+A DOM mutation is any change to the page's structure after initial load:
+
+- **Insertion**: A new element is added (e.g., a notification appears)
+- **Removal**: An element is deleted (e.g., dismissing a notification)
+- **Text change**: An element's text content updates (e.g., a live price ticker)
+- **Attribute change**: An element's attribute changes (e.g., `data-priority="normal"` becomes `data-priority="high"`)
+- **Class change**: An element gains or loses a CSS class (e.g., `.read` is added)
+
+### Why DOM Mutations Matter for QA
+
+Modern web apps are dynamic. Content loads asynchronously, notifications pop in, prices update in real time, and elements appear/disappear based on user actions. Your tests must handle all of this without flaking.
+
+### Testing Strategy
+
+```typescript
+// PLAYWRIGHT — auto-retry assertions handle mutations naturally
+
+// Wait for an element to appear (insertion)
+await expect(page.getByTestId('notification-item')).toHaveCount(3);
+
+// Wait for text to change (text mutation)
+await expect(page.getByTestId('live-price')).not.toHaveText('22,450.00');
+
+// Wait for an element to disappear (removal)
+await expect(page.getByTestId('notification-item')).toHaveCount(0);
+
+// Verify class changes (attribute mutation)
+await expect(page.getByTestId('notification-item').first()).toHaveClass(/read/);
+
+// Verify attribute changes
+await expect(page.getByTestId('status-message')).toHaveAttribute('data-priority', 'high');
+```
+
+```typescript
+// CYPRESS — .should() retries automatically
+
+// Wait for element to appear
+cy.get('[data-testid="notification-item"]').should('have.length', 3);
+
+// Wait for text to change
+cy.get('[data-testid="live-price"]').should('not.have.text', '22,450.00');
+
+// Wait for element to disappear
+cy.get('[data-testid="notification-item"]').should('have.length', 0);
+
+// Verify class changes
+cy.get('[data-testid="notification-item"]').first().should('have.class', 'read');
+
+// Verify attribute changes
+cy.get('[data-testid="status-message"]').should('have.attr', 'data-priority', 'high');
+```
+
+### Key Insight: Auto-Retry Is Your Friend
+
+Both Playwright and Cypress re-check assertions automatically until they pass (or timeout). This means you do NOT need to use `MutationObserver` or polling loops in your tests. Just assert the expected state and the framework handles the waiting.
+
+## Playground
+
+The playground simulates a fintech notification center:
+
+1. **Live Notification Feed** — new notifications auto-appear every 3 seconds
+2. **Unread Counter** — updates automatically when notifications arrive or are dismissed
+3. **Unread Badge** — shows/hides based on whether there are unread notifications
+4. **Mark All Read** — changes styling of all notifications (adds `.read` class)
+5. **Dismiss Button** — removes individual notifications from the DOM
+6. **Live Price Ticker** — text content changes every 2 seconds
+7. **Dynamic Status Area** — elements can be added, removed, and modified on demand
+8. **Attribute Toggle** — `data-priority` attribute toggles between "normal" and "high"
+
+## Exercises
+
+### Exercise 1: Wait for New Notification (DOM Insertion)
+Wait for the first notification to appear in the feed. The feed auto-adds notifications every 3 seconds, so you need to wait for at least one to arrive.
+
+### Exercise 2: Verify Notification Count Increments
+Wait for multiple notifications to accumulate and verify the unread counter matches.
+
+### Exercise 3: Dismiss a Notification (DOM Removal)
+Wait for a notification to appear, dismiss it, and verify it is removed from the DOM.
+
+### Exercise 4: Mark All as Read (CSS Class Change)
+Wait for notifications to appear, click "Mark All Read", and verify every notification gains the `.read` class (which changes its styling).
+
+### Exercise 5: Wait for Price Text to Change (Text Mutation)
+Capture the initial price text, then wait for it to change (it updates every 2 seconds).
+
+### Exercise 6: Verify Badge Visibility Based on Count
+Verify the unread badge is visible when there are unread notifications, then mark all as read and verify the badge hides.
+
+### Exercise 7: Wait for Multiple Notifications to Accumulate
+Wait until at least 3 notifications have appeared in the feed.
+
+### Exercise 8: Verify Element Attribute Changes Dynamically
+Click the "Toggle Priority" button and verify the `data-priority` attribute changes from `"normal"` to `"high"`.
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/dom-mutations.spec.ts`
+
+### Cypress Solution
+
+See `cypress/dom-mutations.cy.ts`
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Using `page.waitForTimeout(3000)` to wait for notification | Brittle — timing varies | Use `expect().toHaveCount()` with auto-retry |
+| Checking count immediately after dismiss | DOM removal may not be instant | Use `expect().toHaveCount(n - 1)` which auto-retries |
+| Checking exact price value | Price is random, changes every 2s | Assert it changed from initial value with `not.toHaveText()` |
+| Not waiting for element before dismissing | Notification may not exist yet | Wait for it with `.toBeVisible()` first |
+| Asserting `.read` class before clicking button | Class hasn't been added yet | Click "Mark All Read" first, then assert |
+
+## Quick Reference
+
+### Playwright DOM Mutation Assertions
+
+| Assertion | Use case |
+|-----------|----------|
+| `toHaveCount(n)` | Wait for exactly N matching elements |
+| `toHaveText(text)` | Wait for element text to match |
+| `not.toHaveText(text)` | Wait for element text to change from a known value |
+| `toHaveClass(/pattern/)` | Wait for element to have a CSS class |
+| `toHaveAttribute(name, value)` | Wait for attribute to have a specific value |
+| `toBeVisible()` / `toBeHidden()` | Wait for element to show/hide |
+
+### Cypress DOM Mutation Assertions
+
+| Assertion | Use case |
+|-----------|----------|
+| `should('have.length', n)` | Wait for exactly N matching elements |
+| `should('have.text', text)` | Wait for element text to match |
+| `should('not.have.text', text)` | Wait for text to change |
+| `should('have.class', cls)` | Wait for CSS class to be added |
+| `should('have.attr', name, value)` | Wait for attribute value |
+| `should('be.visible')` / `should('not.be.visible')` | Wait for show/hide |
+a:T2378,import { test, expect } from '@playwright/test';
+
+// Path to the playground HTML served by the dev server.
+// The path is relative to the web server root (the project root).
+const PLAYGROUND = '/phase-01-dom-and-browser-apis/11-dom-mutations/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Wait for New Notification (DOM Insertion)
+//
+// The feed auto-adds a notification every 3 seconds via setInterval.
+// We use toHaveCount() which auto-retries until the expected number of
+// elements exist in the DOM.
+// --------------------------------------------------------------------------
+test('exercise 1: wait for a new notification to appear', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Initially the feed is empty (no notifications yet).
+  // We wait for at least one notification to be inserted into the DOM.
+  // toHaveCount() retries automatically — no sleep needed.
+  // A notification appears after 3s, well within the default 5s timeout.
+  await expect(
+    page.getByTestId('notification-item')
+  ).toHaveCount(1, { timeout: 5000 });
+
+  // Verify the notification has visible text content.
+  await expect(
+    page.getByTestId('notification-text').first()
+  ).toBeVisible();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Verify Notification Count Increments
+//
+// Wait for a notification to arrive, then read the unread counter.
+// The counter is updated by JavaScript each time a notification is added.
+// --------------------------------------------------------------------------
+test('exercise 2: verify unread count increments with new notifications', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Wait for the first notification to arrive (DOM insertion).
+  await expect(
+    page.getByTestId('notification-item')
+  ).toHaveCount(1, { timeout: 5000 });
+
+  // The unread-count text should now be "1".
+  // toHaveText() auto-retries until the text matches.
+  await expect(
+    page.getByTestId('unread-count')
+  ).toHaveText('1');
+
+  // Wait for a second notification (another 3 seconds).
+  await expect(
+    page.getByTestId('notification-item')
+  ).toHaveCount(2, { timeout: 5000 });
+
+  // The unread-count text should now be "2".
+  await expect(
+    page.getByTestId('unread-count')
+  ).toHaveText('2');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Dismiss a Notification (DOM Removal)
+//
+// Wait for a notification to appear, click its dismiss button,
+// then verify the notification element is removed from the DOM.
+// --------------------------------------------------------------------------
+test('exercise 3: dismiss a notification and verify removal', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Wait for the first notification to appear.
+  await expect(
+    page.getByTestId('notification-item')
+  ).toHaveCount(1, { timeout: 5000 });
+
+  // Pause the feed so no new notifications arrive while we test.
+  await page.getByTestId('btn-pause-feed').click();
+
+  // Click the dismiss button on the first (and only) notification.
+  // The dismiss button removes the parent notification from the DOM.
+  await page.getByTestId('btn-dismiss').first().click();
+
+  // Verify the notification is gone — count should be 0.
+  // toHaveCount(0) retries until no matching elements remain.
+  await expect(
+    page.getByTestId('notification-item')
+  ).toHaveCount(0);
+
+  // The unread count should also be 0 after dismissal.
+  await expect(
+    page.getByTestId('unread-count')
+  ).toHaveText('0');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Mark All as Read (CSS Class Change)
+//
+// When you click "Mark All Read", each notification element gains the
+// CSS class "read". We verify this class change using toHaveClass().
+// --------------------------------------------------------------------------
+test('exercise 4: mark all as read and verify class change', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Wait for the first notification.
+  await expect(
+    page.getByTestId('notification-item')
+  ).toHaveCount(1, { timeout: 5000 });
+
+  // Pause the feed so the count stays stable.
+  await page.getByTestId('btn-pause-feed').click();
+
+  // Verify the notification does NOT have the "read" class yet.
+  // toHaveClass checks the element's className attribute.
+  const firstNotification = page.getByTestId('notification-item').first();
+  await expect(firstNotification).not.toHaveClass(/read/);
+
+  // Click "Mark All Read".
+  await page.getByTestId('btn-mark-all-read').click();
+
+  // Verify the notification now has the "read" class.
+  // The CSS class changes the background, border, and text color.
+  await expect(firstNotification).toHaveClass(/read/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Wait for Price Text to Change (Text Mutation)
+//
+// The live price updates every 2 seconds. We capture the initial value,
+// then use not.toHaveText() to wait until it changes.
+// --------------------------------------------------------------------------
+test('exercise 5: wait for live price text to change', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Read the initial price text.
+  const initialPrice = await page.getByTestId('live-price').textContent();
+
+  // not.toHaveText() auto-retries until the text is different from the
+  // initial value. The price updates every 2s, so it should change
+  // well within the default 5s timeout.
+  await expect(
+    page.getByTestId('live-price')
+  ).not.toHaveText(initialPrice!, { timeout: 5000 });
+
+  // Also verify the timestamp updates (proving the feed is live).
+  await expect(
+    page.getByTestId('price-timestamp')
+  ).not.toHaveText('--:--:--');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Verify Badge Visibility Based on Count
+//
+// The unread badge is visible when unreadCount > 0 and hidden when 0.
+// We verify the show/hide behavior using toBeVisible/toBeHidden.
+// --------------------------------------------------------------------------
+test('exercise 6: badge shows when unread, hides when all read', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Wait for a notification to arrive.
+  await expect(
+    page.getByTestId('notification-item')
+  ).toHaveCount(1, { timeout: 5000 });
+
+  // Badge should be visible (there are unread notifications).
+  await expect(
+    page.getByTestId('unread-badge')
+  ).toBeVisible();
+
+  // Pause the feed and mark all as read.
+  await page.getByTestId('btn-pause-feed').click();
+  await page.getByTestId('btn-mark-all-read').click();
+
+  // Badge should now be hidden (CSS class "hidden" is added,
+  // which sets display: none).
+  await expect(
+    page.getByTestId('unread-badge')
+  ).toBeHidden();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Wait for Multiple Notifications to Accumulate
+//
+// Notifications arrive every 3 seconds. We wait for at least 3 to appear.
+// This requires a longer timeout since 3 notifications = ~9 seconds.
+// --------------------------------------------------------------------------
+test('exercise 7: wait for at least 3 notifications', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // toHaveCount(3) retries until exactly 3 notification-item elements
+  // exist. With a 3s interval, this takes ~9s, so we set timeout to 15s.
+  await expect(
+    page.getByTestId('notification-item')
+  ).toHaveCount(3, { timeout: 15000 });
+
+  // Verify the total count display matches.
+  await expect(
+    page.getByTestId('total-count')
+  ).toHaveText('3');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Verify Element Attribute Changes Dynamically
+//
+// The "Toggle Priority" button changes data-priority from "normal"
+// to "high" on the status message. We verify this with toHaveAttribute().
+// --------------------------------------------------------------------------
+test('exercise 8: verify attribute changes on toggle', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify initial attribute value.
+  // toHaveAttribute(name, value) checks a specific attribute on the element.
+  await expect(
+    page.getByTestId('status-message')
+  ).toHaveAttribute('data-priority', 'normal');
+
+  // Click the "Toggle Priority" button.
+  await page.getByTestId('btn-change-attr').click();
+
+  // Verify the attribute changed to "high".
+  await expect(
+    page.getByTestId('status-message')
+  ).toHaveAttribute('data-priority', 'high');
+
+  // Also verify the text content changed as a result.
+  await expect(
+    page.getByTestId('status-message')
+  ).toHaveText('System status: High priority — maintenance scheduled');
+
+  // Toggle back and verify it reverts.
+  await page.getByTestId('btn-change-attr').click();
+  await expect(
+    page.getByTestId('status-message')
+  ).toHaveAttribute('data-priority', 'normal');
+});
+b:T212c,// Path to the playground HTML served by the dev server.
+const PLAYGROUND = '/phase-01-dom-and-browser-apis/11-dom-mutations/playground/';
+
+describe('Kata 11: DOM Mutations', () => {
+
+  beforeEach(() => {
+    // Visit the playground before each test.
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Wait for New Notification (DOM Insertion)
+  //
+  // The feed auto-adds a notification every 3 seconds via setInterval.
+  // cy.get() + .should('have.length', n) retries automatically until
+  // the expected number of elements exist in the DOM.
+  // --------------------------------------------------------------------------
+  it('exercise 1: wait for a new notification to appear', () => {
+    // Wait for at least 1 notification to be inserted.
+    // { timeout: 5000 } gives Cypress up to 5 seconds to retry.
+    // The notification arrives after 3s, so this passes comfortably.
+    cy.get('[data-testid="notification-item"]', { timeout: 5000 })
+      .should('have.length', 1);
+
+    // Verify the notification contains visible text.
+    cy.get('[data-testid="notification-text"]').first()
+      .should('be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Verify Notification Count Increments
+  //
+  // Wait for notifications and verify the counter text updates.
+  // .should('have.text', '1') retries until the text matches.
+  // --------------------------------------------------------------------------
+  it('exercise 2: verify unread count increments with new notifications', () => {
+    // Wait for the first notification.
+    cy.get('[data-testid="notification-item"]', { timeout: 5000 })
+      .should('have.length', 1);
+
+    // Unread count should be "1".
+    cy.get('[data-testid="unread-count"]')
+      .should('have.text', '1');
+
+    // Wait for the second notification.
+    cy.get('[data-testid="notification-item"]', { timeout: 5000 })
+      .should('have.length', 2);
+
+    // Unread count should be "2".
+    cy.get('[data-testid="unread-count"]')
+      .should('have.text', '2');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Dismiss a Notification (DOM Removal)
+  //
+  // Wait for a notification, click dismiss, and verify it's gone.
+  // .should('have.length', 0) retries until no elements remain.
+  // --------------------------------------------------------------------------
+  it('exercise 3: dismiss a notification and verify removal', () => {
+    // Wait for the first notification.
+    cy.get('[data-testid="notification-item"]', { timeout: 5000 })
+      .should('have.length', 1);
+
+    // Pause the feed so no new notifications arrive.
+    cy.get('[data-testid="btn-pause-feed"]').click();
+
+    // Click the dismiss button on the first notification.
+    // The dismiss button removes the notification element from the DOM.
+    cy.get('[data-testid="btn-dismiss"]').first().click();
+
+    // Verify the notification is removed — count is now 0.
+    cy.get('[data-testid="notification-item"]')
+      .should('have.length', 0);
+
+    // Unread count should also be 0.
+    cy.get('[data-testid="unread-count"]')
+      .should('have.text', '0');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Mark All as Read (CSS Class Change)
+  //
+  // "Mark All Read" adds the CSS class "read" to every notification.
+  // .should('have.class', 'read') retries until the class is present.
+  // --------------------------------------------------------------------------
+  it('exercise 4: mark all as read and verify class change', () => {
+    // Wait for the first notification.
+    cy.get('[data-testid="notification-item"]', { timeout: 5000 })
+      .should('have.length', 1);
+
+    // Pause the feed.
+    cy.get('[data-testid="btn-pause-feed"]').click();
+
+    // Verify the notification does NOT have the "read" class yet.
+    cy.get('[data-testid="notification-item"]').first()
+      .should('not.have.class', 'read');
+
+    // Click "Mark All Read".
+    cy.get('[data-testid="btn-mark-all-read"]').click();
+
+    // Verify the notification now has the "read" class.
+    // This class changes background, border, and text color via CSS.
+    cy.get('[data-testid="notification-item"]').first()
+      .should('have.class', 'read');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Wait for Price Text to Change (Text Mutation)
+  //
+  // The live price updates every 2 seconds. We capture the initial text,
+  // then use .should('not.have.text', initial) to wait for it to change.
+  // --------------------------------------------------------------------------
+  it('exercise 5: wait for live price text to change', () => {
+    // Read the initial price text using .invoke('text').
+    // .then() gives us the text value to use in the next assertion.
+    cy.get('[data-testid="live-price"]')
+      .invoke('text')
+      .then((initialPrice) => {
+        // .should('not.have.text', initialPrice) retries until the
+        // element's text is different from the initial value.
+        // Price updates every 2s, so this passes within 5s.
+        cy.get('[data-testid="live-price"]', { timeout: 5000 })
+          .should('not.have.text', initialPrice);
+      });
+
+    // Also verify the timestamp has been set.
+    cy.get('[data-testid="price-timestamp"]')
+      .should('not.have.text', '--:--:--');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Verify Badge Visibility Based on Count
+  //
+  // Badge is visible when unread > 0, hidden when unread = 0.
+  // The badge uses display:none (via CSS class "hidden") to hide.
+  // --------------------------------------------------------------------------
+  it('exercise 6: badge shows when unread, hides when all read', () => {
+    // Wait for a notification so there's something to mark as read.
+    cy.get('[data-testid="notification-item"]', { timeout: 5000 })
+      .should('have.length', 1);
+
+    // Badge should be visible (unread count > 0).
+    cy.get('[data-testid="unread-badge"]')
+      .should('be.visible');
+
+    // Pause the feed and mark all as read.
+    cy.get('[data-testid="btn-pause-feed"]').click();
+    cy.get('[data-testid="btn-mark-all-read"]').click();
+
+    // Badge should now be hidden (CSS class "hidden" sets display:none).
+    cy.get('[data-testid="unread-badge"]')
+      .should('not.be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Wait for Multiple Notifications to Accumulate
+  //
+  // Notifications arrive every 3 seconds. We wait for 3 to appear.
+  // With a 3s interval, 3 notifications take ~9s, so we use a 15s timeout.
+  // --------------------------------------------------------------------------
+  it('exercise 7: wait for at least 3 notifications', () => {
+    // .should('have.length', 3) retries until exactly 3 elements match.
+    cy.get('[data-testid="notification-item"]', { timeout: 15000 })
+      .should('have.length', 3);
+
+    // Verify the total count display matches.
+    cy.get('[data-testid="total-count"]')
+      .should('have.text', '3');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Verify Element Attribute Changes Dynamically
+  //
+  // "Toggle Priority" changes data-priority from "normal" to "high".
+  // .should('have.attr', name, value) retries until the attribute matches.
+  // --------------------------------------------------------------------------
+  it('exercise 8: verify attribute changes on toggle', () => {
+    // Verify initial attribute value.
+    cy.get('[data-testid="status-message"]')
+      .should('have.attr', 'data-priority', 'normal');
+
+    // Click "Toggle Priority".
+    cy.get('[data-testid="btn-change-attr"]').click();
+
+    // Verify the attribute changed to "high".
+    cy.get('[data-testid="status-message"]')
+      .should('have.attr', 'data-priority', 'high');
+
+    // Verify the text content also changed.
+    cy.get('[data-testid="status-message"]')
+      .should('have.text', 'System status: High priority — maintenance scheduled');
+
+    // Toggle back and verify it reverts.
+    cy.get('[data-testid="btn-change-attr"]').click();
+    cy.get('[data-testid="status-message"]')
+      .should('have.attr', 'data-priority', 'normal');
+  });
+
+});
+c:Taf4e,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { test, expect } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> '@playwright/test'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// The base path to this kata's playground.</span></span>
+<span class="line"><span style="color:#6A737D">// The web server serves the katas/ directory, so the path starts from there.</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-01-dom-and-browser-apis/10-canvas-and-svg/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Helper: simulate a mouse stroke on a canvas element.</span></span>
+<span class="line"><span style="color:#6A737D">// Dispatches mousedown, several mousemove events, then mouseup.</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#F97583">async</span><span style="color:#F97583"> function</span><span style="color:#B392F0"> drawOnCanvas</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#FFAB70">  page</span><span style="color:#F97583">:</span><span style="color:#F97583"> import</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'@playwright/test'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">Page</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#FFAB70">  testId</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> string</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> canvas</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(testId);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // boundingBox returns { x, y, width, height } of the element in page</span></span>
+<span class="line"><span style="color:#6A737D">  // coordinates. We use these to calculate absolute positions for mouse events.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> box</span><span style="color:#F97583"> =</span><span style="color:#F97583"> await</span><span style="color:#E1E4E8"> canvas.</span><span style="color:#B392F0">boundingBox</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  if</span><span style="color:#E1E4E8"> (</span><span style="color:#F97583">!</span><span style="color:#E1E4E8">box) </span><span style="color:#F97583">throw</span><span style="color:#F97583"> new</span><span style="color:#B392F0"> Error</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`Canvas [data-testid="${</span><span style="color:#E1E4E8">testId</span><span style="color:#9ECBFF">}"] not found`</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Start near the centre-left of the canvas</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> startX</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> box.x </span><span style="color:#F97583">+</span><span style="color:#E1E4E8"> box.width </span><span style="color:#F97583">*</span><span style="color:#79B8FF"> 0.2</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> startY</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> box.y </span><span style="color:#F97583">+</span><span style="color:#E1E4E8"> box.height </span><span style="color:#F97583">*</span><span style="color:#79B8FF"> 0.5</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // page.mouse.move moves the virtual mouse to absolute coordinates.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.mouse.</span><span style="color:#B392F0">move</span><span style="color:#E1E4E8">(startX, startY);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // page.mouse.down presses the left button (triggers mousedown on canvas).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.mouse.</span><span style="color:#B392F0">down</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Draw a short zigzag stroke across the canvas.</span></span>
+<span class="line"><span style="color:#6A737D">  // Each move triggers mousemove, which calls ctx.lineTo + ctx.stroke.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> steps</span><span style="color:#F97583"> =</span><span style="color:#79B8FF"> 5</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">  for</span><span style="color:#E1E4E8"> (</span><span style="color:#F97583">let</span><span style="color:#E1E4E8"> i </span><span style="color:#F97583">=</span><span style="color:#79B8FF"> 1</span><span style="color:#E1E4E8">; i </span><span style="color:#F97583">&#x3C;=</span><span style="color:#E1E4E8"> steps; i</span><span style="color:#F97583">++</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#F97583">    await</span><span style="color:#E1E4E8"> page.mouse.</span><span style="color:#B392F0">move</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#E1E4E8">      startX </span><span style="color:#F97583">+</span><span style="color:#E1E4E8"> i </span><span style="color:#F97583">*</span><span style="color:#79B8FF"> 30</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      startY </span><span style="color:#F97583">+</span><span style="color:#E1E4E8"> (i </span><span style="color:#F97583">%</span><span style="color:#79B8FF"> 2</span><span style="color:#F97583"> ===</span><span style="color:#79B8FF"> 0</span><span style="color:#F97583"> ?</span><span style="color:#F97583"> -</span><span style="color:#79B8FF">20</span><span style="color:#F97583"> :</span><span style="color:#79B8FF"> 20</span><span style="color:#E1E4E8">),</span></span>
+<span class="line"><span style="color:#E1E4E8">      { steps: </span><span style="color:#79B8FF">3</span><span style="color:#E1E4E8"> },  </span><span style="color:#6A737D">// interpolate 3 sub-steps for smoother movement</span></span>
+<span class="line"><span style="color:#E1E4E8">    );</span></span>
+<span class="line"><span style="color:#E1E4E8">  }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // page.mouse.up releases the button (triggers mouseup).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.mouse.</span><span style="color:#B392F0">up</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 1: Draw on the signature canvas</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: draw on signature canvas via mouse events'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Use the helper to simulate a drawing stroke on the signature pad.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> drawOnCanvas</span><span style="color:#E1E4E8">(page, </span><span style="color:#9ECBFF">'signature-pad'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // After drawing, the global hasContent flag is true.</span></span>
+<span class="line"><span style="color:#6A737D">  // page.evaluate runs JavaScript in the browser and returns the result.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> hasContent</span><span style="color:#F97583"> =</span><span style="color:#F97583"> await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">evaluate</span><span style="color:#E1E4E8">(() </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> (window </span><span style="color:#F97583">as</span><span style="color:#79B8FF"> any</span><span style="color:#E1E4E8">).hasContent);</span></span>
+<span class="line"><span style="color:#B392F0">  expect</span><span style="color:#E1E4E8">(hasContent).</span><span style="color:#B392F0">toBe</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">true</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 2: Verify canvas is not blank after drawing</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: canvas is not blank after drawing'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Before drawing, the canvas should be blank.</span></span>
+<span class="line"><span style="color:#6A737D">  // We call the helper function isCanvasBlank exposed on window.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> blankBefore</span><span style="color:#F97583"> =</span><span style="color:#F97583"> await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">evaluate</span><span style="color:#E1E4E8">(() </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">    const</span><span style="color:#79B8FF"> c</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> document.</span><span style="color:#B392F0">querySelector</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="signature-pad"]'</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">as</span><span style="color:#B392F0"> HTMLCanvasElement</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">    return</span><span style="color:#E1E4E8"> (window </span><span style="color:#F97583">as</span><span style="color:#79B8FF"> any</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">isCanvasBlank</span><span style="color:#E1E4E8">(c);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"><span style="color:#B392F0">  expect</span><span style="color:#E1E4E8">(blankBefore).</span><span style="color:#B392F0">toBe</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">true</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Draw a stroke</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> drawOnCanvas</span><span style="color:#E1E4E8">(page, </span><span style="color:#9ECBFF">'signature-pad'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // After drawing, the canvas should no longer be blank.</span></span>
+<span class="line"><span style="color:#6A737D">  // isCanvasBlank checks every pixel's alpha channel — if any pixel is</span></span>
+<span class="line"><span style="color:#6A737D">  // non-transparent, it returns false.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> blankAfter</span><span style="color:#F97583"> =</span><span style="color:#F97583"> await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">evaluate</span><span style="color:#E1E4E8">(() </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">    const</span><span style="color:#79B8FF"> c</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> document.</span><span style="color:#B392F0">querySelector</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="signature-pad"]'</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">as</span><span style="color:#B392F0"> HTMLCanvasElement</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">    return</span><span style="color:#E1E4E8"> (window </span><span style="color:#F97583">as</span><span style="color:#79B8FF"> any</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">isCanvasBlank</span><span style="color:#E1E4E8">(c);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"><span style="color:#B392F0">  expect</span><span style="color:#E1E4E8">(blankAfter).</span><span style="color:#B392F0">toBe</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">false</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 3: Clear signature and verify canvas is blank</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: clear button resets the canvas'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Draw something first</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> drawOnCanvas</span><span style="color:#E1E4E8">(page, </span><span style="color:#9ECBFF">'signature-pad'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click the Clear button. It calls ctx.clearRect to wipe the canvas.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'clear-signature'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the canvas is blank again</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> isBlank</span><span style="color:#F97583"> =</span><span style="color:#F97583"> await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">evaluate</span><span style="color:#E1E4E8">(() </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">    const</span><span style="color:#79B8FF"> c</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> document.</span><span style="color:#B392F0">querySelector</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="signature-pad"]'</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">as</span><span style="color:#B392F0"> HTMLCanvasElement</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">    return</span><span style="color:#E1E4E8"> (window </span><span style="color:#F97583">as</span><span style="color:#79B8FF"> any</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">isCanvasBlank</span><span style="color:#E1E4E8">(c);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"><span style="color:#B392F0">  expect</span><span style="color:#E1E4E8">(isBlank).</span><span style="color:#B392F0">toBe</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">true</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // The signature status should revert to "Unsigned"</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'signature-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Unsigned'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 4: Click SVG element and verify selection state</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: click heat map cell to select it'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click the Credit Q3 cell (risk score 91)</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> cell</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'cell-credit-q3'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> cell.</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // The click handler adds the "selected" class to the clicked cell.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(cell).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">selected</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // The "selected-cell" text should update with the cell's data-label.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'selected-cell'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Credit Q3: 91'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click a different cell and verify the selection moves</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> cell2</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'cell-ops-q1'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> cell2.</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(cell2).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">selected</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#6A737D">  // The first cell should no longer be selected</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(cell).not.</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">selected</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'selected-cell'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Ops Q1: 12'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 5: Verify SVG bar chart values (read height attributes)</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: read SVG bar chart data-value attributes'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Each bar has a data-value attribute encoding the approval count.</span></span>
+<span class="line"><span style="color:#6A737D">  // getAttribute retrieves a DOM attribute as a string.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> janValue</span><span style="color:#F97583"> =</span><span style="color:#F97583"> await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'bar-jan'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">getAttribute</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'data-value'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#B392F0">  expect</span><span style="color:#E1E4E8">(janValue).</span><span style="color:#B392F0">toBe</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'80'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> febValue</span><span style="color:#F97583"> =</span><span style="color:#F97583"> await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'bar-feb'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">getAttribute</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'data-value'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#B392F0">  expect</span><span style="color:#E1E4E8">(febValue).</span><span style="color:#B392F0">toBe</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'120'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // We can also verify the height attribute, which encodes the visual bar size.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> febHeight</span><span style="color:#F97583"> =</span><span style="color:#F97583"> await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'bar-feb'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">getAttribute</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'height'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#B392F0">  expect</span><span style="color:#E1E4E8">(febHeight).</span><span style="color:#B392F0">toBe</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'120'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Check the tallest bar (May, value 140, height 140)</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'bar-may'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveAttribute</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'data-value'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'140'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'bar-may'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveAttribute</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'height'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'140'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 6: Hover over SVG element and verify tooltip</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: hover over heat map cell shows tooltip'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // The tooltip is hidden by default (no "visible" class).</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> tooltip</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'heatmap-tooltip'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(tooltip).</span><span style="color:#B392F0">toBeHidden</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Hover over the Market Q2 cell. locator.hover() moves the mouse</span></span>
+<span class="line"><span style="color:#6A737D">  // to the centre of the element, firing mouseover and mousemove.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'cell-market-q2'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">hover</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // The mouseover handler adds class "visible" and sets the text.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(tooltip).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(tooltip).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Market Q2: 53'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 7: Verify canvas dimensions</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 7: verify canvas dimensions'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Check the signature pad dimensions via HTML attributes.</span></span>
+<span class="line"><span style="color:#6A737D">  // toHaveAttribute verifies the attribute value as a string.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> sigPad</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'signature-pad'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(sigPad).</span><span style="color:#B392F0">toHaveAttribute</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'width'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'400'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(sigPad).</span><span style="color:#B392F0">toHaveAttribute</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'height'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'200'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Check the chart canvas dimensions</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> chartCanvas</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'chart-canvas'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(chartCanvas).</span><span style="color:#B392F0">toHaveAttribute</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'width'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'400'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(chartCanvas).</span><span style="color:#B392F0">toHaveAttribute</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'height'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'220'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // We can also read the runtime properties via evaluate.</span></span>
+<span class="line"><span style="color:#6A737D">  // canvas.width and canvas.height return the drawing-surface size in pixels.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> dims</span><span style="color:#F97583"> =</span><span style="color:#F97583"> await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">evaluate</span><span style="color:#E1E4E8">(() </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">    const</span><span style="color:#79B8FF"> c</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> document.</span><span style="color:#B392F0">querySelector</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="signature-pad"]'</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">as</span><span style="color:#B392F0"> HTMLCanvasElement</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">    return</span><span style="color:#E1E4E8"> { w: c.width, h: c.height };</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"><span style="color:#B392F0">  expect</span><span style="color:#E1E4E8">(dims.w).</span><span style="color:#B392F0">toBe</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">400</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#B392F0">  expect</span><span style="color:#E1E4E8">(dims.h).</span><span style="color:#B392F0">toBe</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">200</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 8: Verify signature status changes after drawing</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 8: capture signature updates status to Signed'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Initially the status should be "Unsigned"</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> status</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'signature-status'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(status).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Unsigned'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(status).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">status-unsigned</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Draw a signature</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> drawOnCanvas</span><span style="color:#E1E4E8">(page, </span><span style="color:#9ECBFF">'signature-pad'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click "Capture Signature" — this updates the status to "Signed"</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'capture-signature'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the status text and CSS class changed</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(status).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Signed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(status).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">status-signed</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // The capture button text should also change</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'capture-signature'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Signature Captured'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>d:T9774,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#6A737D">// The base path to this kata's playground.</span></span>
+<span class="line"><span style="color:#6A737D">// Cypress prepends the baseUrl (http://localhost:8080) to this path.</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-01-dom-and-browser-apis/10-canvas-and-svg/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Helper: simulate a mouse drawing stroke on a canvas element.</span></span>
+<span class="line"><span style="color:#6A737D">// Uses Cypress's .trigger() to dispatch mousedown, mousemove, mouseup.</span></span>
+<span class="line"><span style="color:#6A737D">// trigger(event, options) dispatches a synthetic DOM event on the element.</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#F97583">function</span><span style="color:#B392F0"> drawOnCanvas</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">testId</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> string</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#6A737D">  // .trigger('mousedown', { ... }) fires a mousedown event at the given</span></span>
+<span class="line"><span style="color:#6A737D">  // offsetX/offsetY coordinates relative to the element's top-left corner.</span></span>
+<span class="line"><span style="color:#E1E4E8">  cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`[data-testid="${</span><span style="color:#E1E4E8">testId</span><span style="color:#9ECBFF">}"]`</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">    .</span><span style="color:#B392F0">trigger</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'mousedown'</span><span style="color:#E1E4E8">, { offsetX: </span><span style="color:#79B8FF">50</span><span style="color:#E1E4E8">, offsetY: </span><span style="color:#79B8FF">100</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Draw a short zigzag by dispatching several mousemove events.</span></span>
+<span class="line"><span style="color:#6A737D">  // Each mousemove causes the canvas listener to call ctx.lineTo + ctx.stroke.</span></span>
+<span class="line"><span style="color:#E1E4E8">  cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`[data-testid="${</span><span style="color:#E1E4E8">testId</span><span style="color:#9ECBFF">}"]`</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">    .</span><span style="color:#B392F0">trigger</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'mousemove'</span><span style="color:#E1E4E8">, { offsetX: </span><span style="color:#79B8FF">80</span><span style="color:#E1E4E8">,  offsetY: </span><span style="color:#79B8FF">80</span><span style="color:#E1E4E8">  })</span></span>
+<span class="line"><span style="color:#E1E4E8">    .</span><span style="color:#B392F0">trigger</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'mousemove'</span><span style="color:#E1E4E8">, { offsetX: </span><span style="color:#79B8FF">110</span><span style="color:#E1E4E8">, offsetY: </span><span style="color:#79B8FF">120</span><span style="color:#E1E4E8"> })</span></span>
+<span class="line"><span style="color:#E1E4E8">    .</span><span style="color:#B392F0">trigger</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'mousemove'</span><span style="color:#E1E4E8">, { offsetX: </span><span style="color:#79B8FF">140</span><span style="color:#E1E4E8">, offsetY: </span><span style="color:#79B8FF">80</span><span style="color:#E1E4E8">  })</span></span>
+<span class="line"><span style="color:#E1E4E8">    .</span><span style="color:#B392F0">trigger</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'mousemove'</span><span style="color:#E1E4E8">, { offsetX: </span><span style="color:#79B8FF">170</span><span style="color:#E1E4E8">, offsetY: </span><span style="color:#79B8FF">120</span><span style="color:#E1E4E8"> })</span></span>
+<span class="line"><span style="color:#E1E4E8">    .</span><span style="color:#B392F0">trigger</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'mousemove'</span><span style="color:#E1E4E8">, { offsetX: </span><span style="color:#79B8FF">200</span><span style="color:#E1E4E8">, offsetY: </span><span style="color:#79B8FF">100</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Release the mouse button to end the stroke.</span></span>
+<span class="line"><span style="color:#E1E4E8">  cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`[data-testid="${</span><span style="color:#E1E4E8">testId</span><span style="color:#9ECBFF">}"]`</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">    .</span><span style="color:#B392F0">trigger</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'mouseup'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">describe</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Kata 10: Canvas and SVG'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // beforeEach runs before every test. We visit the playground page</span></span>
+<span class="line"><span style="color:#6A737D">  // so each test starts with a fresh, unmodified page.</span></span>
+<span class="line"><span style="color:#B392F0">  beforeEach</span><span style="color:#E1E4E8">(() </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 1: Draw on the signature canvas</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: draw on signature canvas via mouse events'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Use the helper to simulate a drawing stroke</span></span>
+<span class="line"><span style="color:#B392F0">    drawOnCanvas</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'signature-pad'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // After drawing, the global hasContent flag should be true.</span></span>
+<span class="line"><span style="color:#6A737D">    // cy.window() yields the browser's window object.</span></span>
+<span class="line"><span style="color:#6A737D">    // .its('hasContent') reads the property from the window.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">window</span><span style="color:#E1E4E8">().</span><span style="color:#B392F0">its</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'hasContent'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'equal'</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">true</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 2: Verify canvas is not blank after drawing</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: canvas is not blank after drawing'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Before drawing, confirm the canvas is blank.</span></span>
+<span class="line"><span style="color:#6A737D">    // cy.window().then(win => ...) gives us the window object so we can</span></span>
+<span class="line"><span style="color:#6A737D">    // call the isCanvasBlank helper function exposed by the playground.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">window</span><span style="color:#E1E4E8">().</span><span style="color:#B392F0">then</span><span style="color:#E1E4E8">((</span><span style="color:#FFAB70">win</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> any</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">      const</span><span style="color:#79B8FF"> c</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> win.document.</span><span style="color:#B392F0">querySelector</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="signature-pad"]'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#B392F0">      expect</span><span style="color:#E1E4E8">(win.</span><span style="color:#B392F0">isCanvasBlank</span><span style="color:#E1E4E8">(c)).to.be.true;</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Draw a stroke</span></span>
+<span class="line"><span style="color:#B392F0">    drawOnCanvas</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'signature-pad'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // After drawing, the canvas should NOT be blank.</span></span>
+<span class="line"><span style="color:#6A737D">    // isCanvasBlank scans every pixel's alpha channel.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">window</span><span style="color:#E1E4E8">().</span><span style="color:#B392F0">then</span><span style="color:#E1E4E8">((</span><span style="color:#FFAB70">win</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> any</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">      const</span><span style="color:#79B8FF"> c</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> win.document.</span><span style="color:#B392F0">querySelector</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="signature-pad"]'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#B392F0">      expect</span><span style="color:#E1E4E8">(win.</span><span style="color:#B392F0">isCanvasBlank</span><span style="color:#E1E4E8">(c)).to.be.false;</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 3: Clear signature and verify canvas is blank</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: clear button resets the canvas'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Draw something first</span></span>
+<span class="line"><span style="color:#B392F0">    drawOnCanvas</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'signature-pad'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Click the Clear button, which calls ctx.clearRect on the canvas.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="clear-signature"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the canvas is blank again</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">window</span><span style="color:#E1E4E8">().</span><span style="color:#B392F0">then</span><span style="color:#E1E4E8">((</span><span style="color:#FFAB70">win</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> any</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">      const</span><span style="color:#79B8FF"> c</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> win.document.</span><span style="color:#B392F0">querySelector</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="signature-pad"]'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#B392F0">      expect</span><span style="color:#E1E4E8">(win.</span><span style="color:#B392F0">isCanvasBlank</span><span style="color:#E1E4E8">(c)).to.be.true;</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // The signature status should revert to "Unsigned"</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="signature-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Unsigned'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 4: Click SVG element and verify selection state</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: click heat map cell to select it'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Click the Credit Q3 cell (risk score 91).</span></span>
+<span class="line"><span style="color:#6A737D">    // SVG elements support .click() just like HTML elements in Cypress.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="cell-credit-q3"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // The click handler adds the "selected" class.</span></span>
+<span class="line"><span style="color:#6A737D">    // .should('have.class', 'selected') checks the element's classList.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="cell-credit-q3"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'selected'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // The "selected-cell" label should show the cell's data-label text.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="selected-cell"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Credit Q3: 91'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Click a different cell and verify the selection moves</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="cell-ops-q1"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="cell-ops-q1"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'selected'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // The previously selected cell should lose its "selected" class.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="cell-credit-q3"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'selected'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="selected-cell"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Ops Q1: 12'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 5: Verify SVG bar chart values (read height attributes)</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: read SVG bar chart data-value attributes'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Each SVG &#x3C;rect> bar has a data-value attribute with the approval count.</span></span>
+<span class="line"><span style="color:#6A737D">    // .should('have.attr', name, value) asserts an attribute equals a value.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="bar-jan"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.attr'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'data-value'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'80'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="bar-feb"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.attr'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'data-value'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'120'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the height attribute matches the visual bar height.</span></span>
+<span class="line"><span style="color:#6A737D">    // .invoke('attr', 'height') retrieves the attribute value.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="bar-feb"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">invoke</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'attr'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'height'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'equal'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'120'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Check the tallest bar (May)</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="bar-may"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.attr'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'data-value'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'140'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.attr'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'height'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'140'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 6: Hover over SVG element and verify tooltip</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: hover over heat map cell shows tooltip'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // The tooltip is hidden by default.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="heatmap-tooltip"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // .trigger('mouseover') fires a mouseover event, which shows the tooltip.</span></span>
+<span class="line"><span style="color:#6A737D">    // We use trigger instead of cy.realHover because trigger works reliably</span></span>
+<span class="line"><span style="color:#6A737D">    // for synthetic DOM events that the playground listens for.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="cell-market-q2"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">trigger</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'mouseover'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // The mouseover handler sets the tooltip text and adds the "visible" class.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="heatmap-tooltip"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Market Q2: 53'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 7: Verify canvas dimensions</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 7: verify canvas dimensions'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Check the signature pad dimensions via HTML attributes.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="signature-pad"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.attr'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'width'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'400'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.attr'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'height'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'200'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Check the chart canvas dimensions.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="chart-canvas"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.attr'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'width'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'400'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.attr'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'height'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'220'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // We can also read the runtime properties via the DOM.</span></span>
+<span class="line"><span style="color:#6A737D">    // .then($el => ...) gives us the jQuery-wrapped element.</span></span>
+<span class="line"><span style="color:#6A737D">    // $el[0] is the raw HTMLCanvasElement with .width and .height properties.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="signature-pad"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">then</span><span style="color:#E1E4E8">((</span><span style="color:#FFAB70">$el</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">      const</span><span style="color:#79B8FF"> canvas</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> $el[</span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">] </span><span style="color:#F97583">as</span><span style="color:#B392F0"> HTMLCanvasElement</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#B392F0">      expect</span><span style="color:#E1E4E8">(canvas.width).to.</span><span style="color:#B392F0">equal</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">400</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#B392F0">      expect</span><span style="color:#E1E4E8">(canvas.height).to.</span><span style="color:#B392F0">equal</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">200</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 8: Verify signature status changes after drawing</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 8: capture signature updates status to Signed'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Initially the status should be "Unsigned"</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="signature-status"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Unsigned'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'status-unsigned'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Draw a signature</span></span>
+<span class="line"><span style="color:#B392F0">    drawOnCanvas</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'signature-pad'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Click "Capture Signature" to finalize</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="capture-signature"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the status changed to "Signed"</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="signature-status"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Signed'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'status-signed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // The capture button text should also update</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="capture-signature"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Signature Captured'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"kata":{"slug":"10-canvas-and-svg","number":10,"title":"Canvas and SVG","phaseSlug":"phase-01-dom-and-browser-apis","phaseNumber":1,"phaseName":"Dom And Browser Apis","readmeRaw":"$3","hasPlayground":true,"playwrightFiles":[{"filename":"canvas-svg.spec.ts","content":"$4"}],"cypressFiles":[{"filename":"canvas-svg.cy.ts","content":"$5"}]},"prev":{"slug":"09-scroll-and-intersection","number":9,"title":"Scroll and Intersection","phaseSlug":"phase-01-dom-and-browser-apis","phaseNumber":1,"phaseName":"Dom And Browser Apis","readmeRaw":"$6","hasPlayground":true,"playwrightFiles":[{"filename":"scroll.spec.ts","content":"$7"}],"cypressFiles":[{"filename":"scroll.cy.ts","content":"$8"}]},"next":{"slug":"11-dom-mutations","number":11,"title":"DOM Mutations","phaseSlug":"phase-01-dom-and-browser-apis","phaseNumber":1,"phaseName":"Dom And Browser Apis","readmeRaw":"$9","hasPlayground":true,"playwrightFiles":[{"filename":"dom-mutations.spec.ts","content":"$a"}],"cypressFiles":[{"filename":"dom-mutations.cy.ts","content":"$b"}]},"playwrightHtml":[{"filename":"canvas-svg.spec.ts","html":"$c"}],"cypressHtml":[{"filename":"canvas-svg.cy.ts","html":"$d"}]}],["$Le"],"$Lf"]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"iDtrTKWIN4zzRgDRiiDd2"}
+e:["$","script","script-0",{"src":"/qa-labs/_next/static/chunks/03nvm.8~ftt80.js","async":true}]
+f:["$","$L10",null,{"children":["$","$11",null,{"name":"Next.MetadataOutlet","children":"$@12"}]}]
+12:null

@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kata 06: Iframes and Shadow DOM | QA Labs</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #1e293b; padding: 2rem; }
+    .header { background: #0f172a; color: white; padding: 1rem 2rem; margin: -2rem -2rem 2rem; }
+    .header h1 { font-size: 1.25rem; }
+    .kata-badge { display: inline-block; background: #38bdf8; color: #0f172a; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 4px; margin-right: 0.5rem; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+    .section { margin-bottom: 2rem; padding: 1.5rem; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .section h2 { font-size: 1rem; color: #475569; margin-bottom: 1rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.5rem; }
+    .full-width { grid-column: 1 / -1; }
+    iframe { border: 2px solid #e2e8f0; border-radius: 6px; width: 100%; }
+    .alert { padding: 0.75rem 1rem; border-radius: 6px; margin-top: 0.75rem; font-size: 0.875rem; }
+    .alert-success { background: #dcfce7; color: #166534; }
+    .alert-info { background: #dbeafe; color: #1e40af; }
+  </style>
+</head>
+<body>
+
+  <header class="header" data-testid="page-header">
+    <span class="kata-badge">KATA 06</span>
+    <h1>Compliance Portal - Iframes and Shadow DOM</h1>
+  </header>
+
+  <div class="grid">
+    <!-- LEFT COLUMN -->
+    <div>
+
+      <!-- 1: Payment Form Iframe -->
+      <div class="section" data-testid="payment-iframe-section">
+        <h2>Embedded Payment Form</h2>
+        <iframe
+          data-testid="payment-iframe"
+          title="Payment Form"
+          height="380"
+          srcdoc="
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <style>
+                * { margin: 0; padding: 0; box-sizing: border-box; }
+                body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; padding: 1rem; background: #fefce8; color: #1e293b; }
+                h3 { font-size: 0.95rem; color: #854d0e; margin-bottom: 1rem; }
+                label { display: block; margin-bottom: 0.25rem; font-size: 0.85rem; color: #475569; }
+                input, select { width: 100%; padding: 0.4rem; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 0.85rem; margin-bottom: 0.75rem; }
+                button { padding: 0.5rem 1rem; background: #f59e0b; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem; }
+                button:hover { background: #d97706; }
+                .result { padding: 0.5rem; border-radius: 4px; margin-top: 0.75rem; font-size: 0.85rem; display: none; }
+                .result.show { display: block; background: #dcfce7; color: #166534; }
+              </style>
+            </head>
+            <body>
+              <h3 data-testid=&quot;payment-title&quot;>Secure Payment Gateway</h3>
+              <form id=&quot;payment-form&quot; onsubmit=&quot;return handlePayment(event)&quot;>
+                <label for=&quot;cardholder&quot;>Cardholder Name</label>
+                <input type=&quot;text&quot; id=&quot;cardholder&quot; data-testid=&quot;input-cardholder&quot; placeholder=&quot;Jane Doe&quot;>
+
+                <label for=&quot;card-number&quot;>Card Number</label>
+                <input type=&quot;text&quot; id=&quot;card-number&quot; data-testid=&quot;input-card-number&quot; placeholder=&quot;4242 4242 4242 4242&quot; maxlength=&quot;19&quot;>
+
+                <label for=&quot;amount&quot;>Amount (USD)</label>
+                <input type=&quot;number&quot; id=&quot;amount&quot; data-testid=&quot;input-amount&quot; placeholder=&quot;0.00&quot; step=&quot;0.01&quot;>
+
+                <label for=&quot;currency&quot;>Currency</label>
+                <select id=&quot;currency&quot; data-testid=&quot;select-currency&quot;>
+                  <option value=&quot;USD&quot;>USD</option>
+                  <option value=&quot;EUR&quot;>EUR</option>
+                  <option value=&quot;GBP&quot;>GBP</option>
+                </select>
+
+                <button type=&quot;submit&quot; data-testid=&quot;btn-submit-payment&quot;>Process Payment</button>
+              </form>
+              <div id=&quot;payment-result&quot; class=&quot;result&quot; data-testid=&quot;payment-result&quot;></div>
+              <script>
+                function handlePayment(e) {
+                  e.preventDefault();
+                  var name = document.getElementById('cardholder').value;
+                  var amount = document.getElementById('amount').value;
+                  var currency = document.getElementById('currency').value;
+                  var el = document.getElementById('payment-result');
+                  el.textContent = 'Payment of ' + amount + ' ' + currency + ' processed for ' + name;
+                  el.className = 'result show';
+                  return false;
+                }
+              </script>
+            </body>
+            </html>
+          "
+        ></iframe>
+      </div>
+
+      <!-- 3: Nested Iframe -->
+      <div class="section" data-testid="nested-iframe-section">
+        <h2>Nested Compliance Audit (Iframe in Iframe)</h2>
+        <iframe
+          data-testid="outer-iframe"
+          title="Outer Audit Frame"
+          height="280"
+          srcdoc="
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <style>
+                * { margin: 0; padding: 0; box-sizing: border-box; }
+                body { font-family: sans-serif; padding: 1rem; background: #f0fdf4; color: #1e293b; }
+                h3 { font-size: 0.95rem; color: #166534; margin-bottom: 0.75rem; }
+                p { font-size: 0.85rem; margin-bottom: 0.75rem; }
+                iframe { width: 100%; border: 2px dashed #86efac; border-radius: 4px; }
+              </style>
+            </head>
+            <body>
+              <h3 data-testid=&quot;outer-title&quot;>Outer Audit Frame</h3>
+              <p data-testid=&quot;outer-text&quot;>This is the outer compliance audit layer.</p>
+              <iframe
+                data-testid=&quot;inner-iframe&quot;
+                title=&quot;Inner Audit Frame&quot;
+                height=&quot;120&quot;
+                srcdoc=&quot;
+                  <!DOCTYPE html>
+                  <html>
+                  <head><style>body { font-family: sans-serif; padding: 0.75rem; background: #fef3c7; }</style></head>
+                  <body>
+                    <p data-testid='inner-text'>Inner audit: All checks passed. Ref: AUD-2026-0415</p>
+                    <button data-testid='inner-btn' onclick='this.textContent = &amp;quot;Acknowledged&amp;quot;'>Acknowledge</button>
+                  </body>
+                  </html>
+                &quot;
+              ></iframe>
+            </body>
+            </html>
+          "
+        ></iframe>
+      </div>
+
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div>
+
+      <!-- 2: Terms & Conditions Iframe -->
+      <div class="section" data-testid="terms-iframe-section">
+        <h2>Terms and Conditions</h2>
+        <iframe
+          data-testid="terms-iframe"
+          title="Terms and Conditions"
+          height="220"
+          srcdoc="
+            <!DOCTYPE html>
+            <html>
+            <head>
+              <style>
+                * { margin: 0; padding: 0; box-sizing: border-box; }
+                body { font-family: sans-serif; padding: 1rem; background: #f0f9ff; color: #1e293b; font-size: 0.85rem; }
+                h3 { font-size: 0.95rem; color: #1e40af; margin-bottom: 0.75rem; }
+                p { margin-bottom: 0.5rem; line-height: 1.5; }
+                .section-num { font-weight: 700; color: #3b82f6; }
+              </style>
+            </head>
+            <body>
+              <h3 data-testid=&quot;terms-title&quot;>Terms of Service v3.1</h3>
+              <p data-testid=&quot;terms-section-1&quot;><span class=&quot;section-num&quot;>1.</span> By using this portal, you agree to all compliance regulations set forth by the regulatory authority.</p>
+              <p data-testid=&quot;terms-section-2&quot;><span class=&quot;section-num&quot;>2.</span> All transactions are subject to anti-money laundering (AML) checks and may be delayed up to 48 hours.</p>
+              <p data-testid=&quot;terms-section-3&quot;><span class=&quot;section-num&quot;>3.</span> Users must maintain accurate records and report suspicious activity within 24 hours.</p>
+              <p data-testid=&quot;terms-last-updated&quot;>Last updated: 2026-04-01</p>
+            </body>
+            </html>
+          "
+        ></iframe>
+        <div data-testid="terms-acceptance-area" style="margin-top: 0.75rem;">
+          <label style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; cursor: pointer;">
+            <input type="checkbox" data-testid="terms-checkbox" id="terms-checkbox">
+            I have read and accept the Terms of Service
+          </label>
+          <button
+            data-testid="btn-accept-terms"
+            id="btn-accept-terms"
+            style="margin-top: 0.5rem; padding: 0.4rem 0.75rem; background: #3b82f6; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem;"
+            onclick="handleTermsAcceptance()"
+          >Accept Terms</button>
+          <div id="terms-result" data-testid="terms-result" class="alert" style="display: none;"></div>
+        </div>
+      </div>
+
+      <!-- 4: Shadow DOM Component -->
+      <div class="section" data-testid="shadow-dom-section">
+        <h2>Shadow DOM: Compliance Widget</h2>
+        <compliance-widget data-testid="compliance-widget"></compliance-widget>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Shadow DOM Component Definition -->
+  <script>
+    class ComplianceWidget extends HTMLElement {
+      constructor() {
+        super();
+        // Attach a shadow root to this element.
+        const shadow = this.attachShadow({ mode: 'open' });
+
+        shadow.innerHTML = `
+          <style>
+            :host { display: block; }
+            .widget-container { background: #faf5ff; border: 2px solid #c084fc; border-radius: 8px; padding: 1rem; }
+            h3 { font-size: 0.95rem; color: #7c3aed; margin-bottom: 1rem; font-family: sans-serif; }
+            label { display: block; margin-bottom: 0.25rem; font-size: 0.85rem; color: #475569; font-family: sans-serif; }
+            input, select { width: 100%; padding: 0.4rem; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 0.85rem; margin-bottom: 0.75rem; box-sizing: border-box; }
+            button { padding: 0.5rem 1rem; background: #7c3aed; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 0.85rem; font-family: sans-serif; }
+            button:hover { background: #6d28d9; }
+            .status { padding: 0.5rem; border-radius: 4px; margin-top: 0.75rem; font-size: 0.85rem; display: none; font-family: sans-serif; }
+            .status.show { display: block; background: #dcfce7; color: #166534; }
+            .status.error { display: block; background: #fee2e2; color: #991b1b; }
+          </style>
+          <div class="widget-container">
+            <h3 data-testid="widget-title">Compliance Check</h3>
+            <form id="compliance-form">
+              <label for="entity-name">Entity Name</label>
+              <input type="text" id="entity-name" data-testid="input-entity-name" placeholder="Acme Corp">
+
+              <label for="entity-id">Entity ID</label>
+              <input type="text" id="entity-id" data-testid="input-entity-id" placeholder="ENT-000001">
+
+              <label for="check-type">Check Type</label>
+              <select id="check-type" data-testid="select-check-type">
+                <option value="">-- Select --</option>
+                <option value="aml">AML Screening</option>
+                <option value="kyc">KYC Verification</option>
+                <option value="sanctions">Sanctions Check</option>
+              </select>
+
+              <button type="button" data-testid="btn-run-check" id="btn-run-check">Run Compliance Check</button>
+            </form>
+            <div id="check-status" class="status" data-testid="check-status"></div>
+          </div>
+        `;
+
+        // Wire up the button.
+        shadow.getElementById('btn-run-check').addEventListener('click', () => {
+          const entityName = shadow.getElementById('entity-name').value;
+          const entityId = shadow.getElementById('entity-id').value;
+          const checkType = shadow.getElementById('check-type').value;
+          const statusEl = shadow.getElementById('check-status');
+
+          if (!entityName || !entityId || !checkType) {
+            statusEl.textContent = 'All fields are required.';
+            statusEl.className = 'status error';
+            return;
+          }
+
+          statusEl.textContent = checkType.toUpperCase() + ' check passed for ' + entityName + ' (' + entityId + ')';
+          statusEl.className = 'status show';
+        });
+      }
+    }
+
+    // Register the custom element.
+    customElements.define('compliance-widget', ComplianceWidget);
+
+    // Terms acceptance handler (on main page, not in iframe).
+    function handleTermsAcceptance() {
+      const checkbox = document.getElementById('terms-checkbox');
+      const resultEl = document.getElementById('terms-result');
+      if (checkbox.checked) {
+        resultEl.textContent = 'Terms accepted successfully. You may proceed.';
+        resultEl.className = 'alert alert-success';
+        resultEl.style.display = 'block';
+      } else {
+        resultEl.textContent = 'You must check the box to accept the terms.';
+        resultEl.className = 'alert alert-info';
+        resultEl.style.display = 'block';
+      }
+    }
+  </script>
+
+</body>
+</html>

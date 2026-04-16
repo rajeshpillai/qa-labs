@@ -1,0 +1,2220 @@
+1:"$Sreact.fragment"
+2:I[31749,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js","/qa-labs/_next/static/chunks/03nvm.8~ftt80.js"],"KataPageClient"]
+10:I[49583,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js"],"OutletBoundary"]
+11:"$Sreact.suspense"
+3:T1b71,# Kata 28: Document Verification
+
+## What You Will Learn
+
+- How to test document upload and processing workflows
+- How to wait for asynchronous processing to complete (spinners, loading states)
+- How to verify extracted/auto-filled data from simulated OCR
+- How to test edit-and-confirm flows on extracted data
+- How to verify status transitions across multiple phases
+- How to test error states and retry flows
+- How to simulate invalid documents and verify failure handling
+
+## Prerequisites
+
+- Completed Katas 1-27
+- Understanding of file upload testing from Kata 26
+- Familiarity with async state transitions (loading, success, error)
+
+## Concepts Explained
+
+### Document Verification Workflow
+
+```
+In fintech, document verification typically follows this pattern:
+
+1. UPLOAD — User selects a document type and uploads an image/PDF
+2. PROCESSING — OCR (Optical Character Recognition) extracts text
+3. REVIEW — Extracted fields are shown for user review/correction
+4. CONFIRMED — User confirms the data is correct
+
+Each state has its own UI: upload form, spinner, extracted fields
+form, and confirmation message. Tests must verify each transition.
+```
+
+### Waiting for Async Processing
+
+```
+The OCR processing step takes time (simulated with a 2-second delay).
+Tests must wait for the spinner to disappear and the results to appear.
+
+Playwright:
+  // toBeVisible() retries until the element appears in the DOM.
+  // Use a generous timeout since processing takes 2 seconds.
+  await expect(page.getByTestId('extracted-fields')).toBeVisible({ timeout: 5000 });
+
+Cypress:
+  // .should('be.visible') retries until the assertion passes.
+  cy.get('[data-testid="extracted-fields"]', { timeout: 5000 })
+    .should('be.visible');
+
+Both frameworks automatically retry the assertion until the
+timeout expires, so you don't need explicit sleep/wait calls.
+```
+
+### Testing Editable Extracted Fields
+
+```
+After OCR, extracted fields are pre-filled but editable.
+Tests should:
+  1. Verify the auto-filled values are correct
+  2. Clear a field and type a new value
+  3. Confirm and verify the new value is accepted
+
+This tests a common fintech pattern where OCR may produce
+imperfect results that users need to correct.
+```
+
+## Playground
+
+The playground simulates a document upload + OCR verification flow:
+
+1. **Upload Section** — document type selector, file upload area, and "Process Document" button
+2. **Processing Spinner** — animated spinner with "Extracting text via OCR..." message shown during the 2-second simulated processing delay
+3. **Extracted Fields** — five auto-filled fields (name, DOB, ID number, address, expiry) with a "Confirm Verification" button
+4. **Confirmed Section** — success message after confirmation
+5. **Error Banner** — shown when an "invalid" document is uploaded (filename contains "invalid"), with a "Try Again" button
+
+Status transitions are tracked via:
+- A status badge (Upload / Processing / Review / Confirmed / Failed)
+- Step pills (Upload, Processing, Review, Confirmed) that show completed/active states
+
+OCR results vary by document type (passport, driver's license, national ID) for realistic testing.
+
+## Exercises
+
+### Exercise 1: Upload and Verify Processing Starts
+Select a document type, upload a file, click "Process Document". Verify the spinner appears and the status changes to "Processing".
+
+### Exercise 2: Wait for OCR Results
+Upload and process a document. Wait for the spinner to disappear and the extracted fields to appear. Verify the status changes to "Review".
+
+### Exercise 3: Verify Extracted Fields
+Process a passport document and verify all five extracted fields contain the expected OCR values (name, DOB, ID number, address, expiry).
+
+### Exercise 4: Edit Extracted Field
+After OCR extraction, clear the name field and type a new name. Confirm and verify the flow completes (the edit is accepted).
+
+### Exercise 5: Confirm Verification
+Complete the upload, processing, and review steps. Click "Confirm Verification" and verify the confirmed section appears with the success message.
+
+### Exercise 6: Verify Status Transitions
+Walk through the entire flow and verify the status badge text and step pills change correctly at each phase: Upload -> Processing -> Review -> Confirmed.
+
+### Exercise 7: Test With Invalid Document
+Upload a file whose name contains "invalid". Process it and verify the error banner appears with the failure message and the status shows "Failed".
+
+### Exercise 8: Retry After Failure
+Upload an invalid document, process it (triggers error), then click "Try Again". Verify the page resets to the upload state. Upload a valid document and verify it processes successfully.
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/document-verification.spec.ts`
+
+### Cypress Solution
+
+See `cypress/document-verification.cy.ts`
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Not waiting for processing to complete | The OCR simulation takes 2 seconds; asserting on extracted fields too early will fail | Wait for `extracted-fields` to be visible with `timeout: 5000` |
+| Asserting on the spinner after it disappears | The spinner is hidden after processing; checking it will fail | Assert the spinner is visible during processing, then wait for extracted fields |
+| Forgetting to select a document type | The OCR results depend on the document type selection | Always select a document type before processing |
+| Using the wrong filename for failure testing | Only filenames containing "invalid" trigger the failure path | Use a filename like "invalid-doc.pdf" to trigger errors |
+| Not resetting between retry tests | The retry resets the file input; you must re-upload | After clicking "Try Again", re-select document type and re-upload |
+
+## Quick Reference
+
+### Playwright Document Verification
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Upload file | `setInputFiles()` | `await page.getByTestId('file-input').setInputFiles(...)` |
+| Wait for spinner | `toBeVisible()` | `await expect(spinner).toBeVisible()` |
+| Wait for results | `toBeVisible()` | `await expect(fields).toBeVisible({ timeout: 5000 })` |
+| Check field value | `toHaveValue()` | `await expect(input).toHaveValue('Jane Doe')` |
+| Edit field | `fill()` | `await input.fill('New Name')` |
+| Check status | `toHaveText()` | `await expect(badge).toHaveText('Review')` |
+
+### Cypress Document Verification
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Upload file | `selectFile()` | `cy.get(input).selectFile(...)` |
+| Wait for spinner | `.should('be.visible')` | `cy.get(spinner).should('be.visible')` |
+| Wait for results | `.should('be.visible')` | `cy.get(fields, { timeout: 5000 }).should('be.visible')` |
+| Check field value | `.should('have.value')` | `cy.get(input).should('have.value', 'Jane Doe')` |
+| Edit field | `.clear().type()` | `cy.get(input).clear().type('New Name')` |
+| Check status | `.should('have.text')` | `cy.get(badge).should('have.text', 'Review')` |
+4:T2b48,import { test, expect } from '@playwright/test';
+
+// The base URL for our playground page.
+const PLAYGROUND = '/phase-05-fintech-domain/28-document-verification/playground/';
+
+// ─── Helper: uploadFile ──────────────────────────────────────────────
+// Selects a document type and uploads a simulated file.
+// setInputFiles() creates a synthetic file without needing a real file on disk.
+// The buffer parameter provides fake content for the file.
+async function uploadFile(page: any, docType: string = 'passport', fileName: string = 'passport.pdf') {
+  await page.getByTestId('select-doc-type').selectOption(docType);
+  await page.getByTestId('file-input').setInputFiles({
+    name: fileName,
+    mimeType: 'application/pdf',
+    buffer: Buffer.from('fake-content')
+  });
+}
+
+// ─── Helper: uploadAndProcess ────────────────────────────────────────
+// Uploads a file and clicks the Process button. Optionally waits for
+// the extracted fields to appear (indicating processing is complete).
+async function uploadAndProcess(page: any, docType: string = 'passport', fileName: string = 'passport.pdf', waitForResults: boolean = true) {
+  await uploadFile(page, docType, fileName);
+  await page.getByTestId('btn-process').click();
+  if (waitForResults) {
+    // Wait for the extracted fields section to become visible.
+    // The processing takes 2 seconds, so we allow up to 5 seconds.
+    await expect(page.getByTestId('extracted-fields')).toBeVisible({ timeout: 5000 });
+  }
+}
+
+// --------------------------------------------------------------------------
+// Exercise 1: Upload and Verify Processing Starts
+// --------------------------------------------------------------------------
+// Upload a file, click Process, verify the spinner and status change.
+test('exercise 1: upload and verify processing starts', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify initial status is "Upload".
+  await expect(page.getByTestId('current-status')).toHaveText('Upload');
+
+  // Upload a file.
+  await uploadFile(page);
+
+  // Verify the upload area shows the file is selected.
+  await expect(page.getByTestId('upload-filename')).toHaveText('passport.pdf');
+  await expect(page.getByTestId('upload-area')).toHaveClass(/has-file/);
+
+  // Click "Process Document".
+  await page.getByTestId('btn-process').click();
+
+  // Verify the spinner is visible.
+  // toBeVisible() checks the element is displayed in the viewport.
+  await expect(page.getByTestId('processing-spinner')).toBeVisible();
+  await expect(page.getByTestId('processing-text')).toHaveText('Extracting text via OCR...');
+
+  // Verify status changed to "Processing".
+  await expect(page.getByTestId('current-status')).toHaveText('Processing');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Wait for OCR Results
+// --------------------------------------------------------------------------
+// Upload, process, wait for the spinner to disappear and results to appear.
+test('exercise 2: wait for OCR results', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Upload and start processing.
+  await uploadFile(page);
+  await page.getByTestId('btn-process').click();
+
+  // Verify spinner is visible during processing.
+  await expect(page.getByTestId('processing-spinner')).toBeVisible();
+
+  // Wait for the extracted fields to appear (processing complete).
+  // toBeVisible() with timeout will retry until the element appears.
+  await expect(page.getByTestId('extracted-fields')).toBeVisible({ timeout: 5000 });
+
+  // Verify the spinner is now hidden.
+  await expect(page.getByTestId('processing-spinner')).toBeHidden();
+
+  // Verify status is now "Review".
+  await expect(page.getByTestId('current-status')).toHaveText('Review');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Verify Extracted Fields
+// --------------------------------------------------------------------------
+// Process a passport and verify all OCR-extracted field values.
+test('exercise 3: verify extracted fields', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+  await uploadAndProcess(page, 'passport');
+
+  // Verify each extracted field contains the expected OCR value.
+  // toHaveValue(value) checks the input element's current value.
+  await expect(page.getByTestId('extracted-name')).toHaveValue('Jane Alice Doe');
+  await expect(page.getByTestId('extracted-dob')).toHaveValue('15-Mar-1990');
+  await expect(page.getByTestId('extracted-id-number')).toHaveValue('P12345678');
+  await expect(page.getByTestId('extracted-address')).toHaveValue('123 Main St, New York, NY 10001');
+  await expect(page.getByTestId('extracted-expiry')).toHaveValue('15-Mar-2030');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Edit Extracted Field
+// --------------------------------------------------------------------------
+// After OCR, edit the name field, then confirm successfully.
+test('exercise 4: edit extracted field', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+  await uploadAndProcess(page, 'passport');
+
+  // Verify the original OCR name.
+  await expect(page.getByTestId('extracted-name')).toHaveValue('Jane Alice Doe');
+
+  // Clear the name field and type a corrected name.
+  // fill() clears the input first, then types the new value.
+  await page.getByTestId('extracted-name').fill('Jane A. Doe-Smith');
+
+  // Verify the field now has the new value.
+  await expect(page.getByTestId('extracted-name')).toHaveValue('Jane A. Doe-Smith');
+
+  // Confirm verification — should succeed even with edited fields.
+  await page.getByTestId('btn-confirm').click();
+  await expect(page.getByTestId('confirmed-section')).toBeVisible();
+  await expect(page.getByTestId('current-status')).toHaveText('Confirmed');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Confirm Verification
+// --------------------------------------------------------------------------
+// Complete the full flow and verify the confirmation page.
+test('exercise 5: confirm verification', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+  await uploadAndProcess(page, 'drivers-license', 'license.jpg');
+
+  // Click "Confirm Verification".
+  await page.getByTestId('btn-confirm').click();
+
+  // Verify the confirmed section is visible with the success message.
+  await expect(page.getByTestId('confirmed-section')).toBeVisible();
+  await expect(page.getByTestId('confirmed-title')).toHaveText('Document Verified');
+  await expect(page.getByTestId('confirmed-message')).toContainText('Verification complete');
+
+  // Verify the status badge shows "Confirmed".
+  await expect(page.getByTestId('current-status')).toHaveText('Confirmed');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Verify Status Transitions
+// --------------------------------------------------------------------------
+// Walk through the entire flow and verify status at each phase.
+test('exercise 6: verify status transitions', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Phase 1: Upload — initial state.
+  await expect(page.getByTestId('current-status')).toHaveText('Upload');
+  await expect(page.getByTestId('step-upload-pill')).toHaveClass(/active/);
+
+  // Upload a file and start processing.
+  await uploadFile(page);
+  await page.getByTestId('btn-process').click();
+
+  // Phase 2: Processing.
+  await expect(page.getByTestId('current-status')).toHaveText('Processing');
+  await expect(page.getByTestId('step-processing-pill')).toHaveClass(/active/);
+  await expect(page.getByTestId('step-upload-pill')).toHaveClass(/completed/);
+
+  // Phase 3: Review — wait for processing to complete.
+  await expect(page.getByTestId('extracted-fields')).toBeVisible({ timeout: 5000 });
+  await expect(page.getByTestId('current-status')).toHaveText('Review');
+  await expect(page.getByTestId('step-review-pill')).toHaveClass(/active/);
+  await expect(page.getByTestId('step-processing-pill')).toHaveClass(/completed/);
+
+  // Phase 4: Confirmed.
+  await page.getByTestId('btn-confirm').click();
+  await expect(page.getByTestId('current-status')).toHaveText('Confirmed');
+  await expect(page.getByTestId('step-confirmed-pill')).toHaveClass(/active/);
+  await expect(page.getByTestId('step-review-pill')).toHaveClass(/completed/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Test With Invalid Document
+// --------------------------------------------------------------------------
+// Upload an "invalid" document and verify the error state.
+test('exercise 7: test with invalid document', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Upload a file with "invalid" in the name — this triggers the failure path.
+  await uploadFile(page, 'passport', 'invalid-blurry-doc.pdf');
+  await page.getByTestId('btn-process').click();
+
+  // Wait for the error banner to appear (after 2s processing delay).
+  await expect(page.getByTestId('error-banner')).toBeVisible({ timeout: 5000 });
+
+  // Verify the error message text.
+  await expect(page.getByTestId('error-message')).toContainText('could not be processed');
+
+  // Verify the status shows "Failed".
+  await expect(page.getByTestId('current-status')).toHaveText('Failed');
+
+  // Verify the "Try Again" button is visible.
+  await expect(page.getByTestId('btn-retry')).toBeVisible();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Retry After Failure
+// --------------------------------------------------------------------------
+// Upload invalid doc, fail, retry, then succeed with a valid document.
+test('exercise 8: retry after failure', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // First attempt: invalid document.
+  await uploadFile(page, 'passport', 'invalid-doc.pdf');
+  await page.getByTestId('btn-process').click();
+  await expect(page.getByTestId('error-banner')).toBeVisible({ timeout: 5000 });
+  await expect(page.getByTestId('current-status')).toHaveText('Failed');
+
+  // Click "Try Again" to reset to upload state.
+  await page.getByTestId('btn-retry').click();
+
+  // Verify we're back to the upload state.
+  await expect(page.getByTestId('current-status')).toHaveText('Upload');
+  await expect(page.getByTestId('upload-section')).toBeVisible();
+  await expect(page.getByTestId('error-banner')).toBeHidden();
+
+  // Second attempt: valid document.
+  await uploadAndProcess(page, 'national-id', 'valid-id-card.pdf');
+
+  // Verify OCR results appear.
+  await expect(page.getByTestId('extracted-name')).toHaveValue('Maria Garcia Lopez');
+  await expect(page.getByTestId('current-status')).toHaveText('Review');
+
+  // Confirm verification.
+  await page.getByTestId('btn-confirm').click();
+  await expect(page.getByTestId('current-status')).toHaveText('Confirmed');
+});
+5:T2558,const PLAYGROUND = '/phase-05-fintech-domain/28-document-verification/playground/';
+
+// ─── Helper: uploadFile ──────────────────────────────────────────────
+// Selects a document type and simulates a file upload.
+// cy.get().selectFile() creates a synthetic file and triggers the change event.
+// { force: true } is needed because the file input is hidden (display:none).
+function uploadFile(docType: string = 'passport', fileName: string = 'passport.pdf') {
+  cy.get('[data-testid="select-doc-type"]').select(docType);
+  cy.get('[data-testid="file-input"]').selectFile({
+    contents: Cypress.Buffer.from('fake-content'),
+    fileName: fileName,
+    mimeType: 'application/pdf'
+  }, { force: true });
+}
+
+// ─── Helper: uploadAndProcess ────────────────────────────────────────
+// Uploads a file, clicks Process, and optionally waits for OCR results.
+function uploadAndProcess(docType: string = 'passport', fileName: string = 'passport.pdf', waitForResults: boolean = true) {
+  uploadFile(docType, fileName);
+  cy.get('[data-testid="btn-process"]').click();
+  if (waitForResults) {
+    // Wait for extracted fields to appear (2s processing delay).
+    cy.get('[data-testid="extracted-fields"]', { timeout: 5000 }).should('be.visible');
+  }
+}
+
+describe('Kata 28: Document Verification', () => {
+
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Upload and Verify Processing Starts
+  // --------------------------------------------------------------------------
+  it('exercise 1: upload and verify processing starts', () => {
+    // Verify initial status.
+    cy.get('[data-testid="current-status"]').should('have.text', 'Upload');
+
+    // Upload a file.
+    uploadFile();
+
+    // Verify file is shown.
+    cy.get('[data-testid="upload-filename"]').should('have.text', 'passport.pdf');
+    cy.get('[data-testid="upload-area"]').should('have.class', 'has-file');
+
+    // Click Process.
+    cy.get('[data-testid="btn-process"]').click();
+
+    // Verify spinner is visible.
+    cy.get('[data-testid="processing-spinner"]').should('be.visible');
+    cy.get('[data-testid="processing-text"]').should('have.text', 'Extracting text via OCR...');
+
+    // Verify status changed to Processing.
+    cy.get('[data-testid="current-status"]').should('have.text', 'Processing');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Wait for OCR Results
+  // --------------------------------------------------------------------------
+  it('exercise 2: wait for OCR results', () => {
+    uploadFile();
+    cy.get('[data-testid="btn-process"]').click();
+
+    // Verify spinner is visible during processing.
+    cy.get('[data-testid="processing-spinner"]').should('be.visible');
+
+    // Wait for extracted fields (processing takes 2s).
+    // { timeout: 5000 } gives Cypress enough time to retry.
+    cy.get('[data-testid="extracted-fields"]', { timeout: 5000 }).should('be.visible');
+
+    // Verify spinner is now hidden.
+    cy.get('[data-testid="processing-spinner"]').should('not.be.visible');
+
+    // Verify status is "Review".
+    cy.get('[data-testid="current-status"]').should('have.text', 'Review');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Verify Extracted Fields
+  // --------------------------------------------------------------------------
+  it('exercise 3: verify extracted fields', () => {
+    uploadAndProcess('passport');
+
+    // Verify each field value.
+    // .should('have.value', text) checks an input element's value attribute.
+    cy.get('[data-testid="extracted-name"]').should('have.value', 'Jane Alice Doe');
+    cy.get('[data-testid="extracted-dob"]').should('have.value', '15-Mar-1990');
+    cy.get('[data-testid="extracted-id-number"]').should('have.value', 'P12345678');
+    cy.get('[data-testid="extracted-address"]').should('have.value', '123 Main St, New York, NY 10001');
+    cy.get('[data-testid="extracted-expiry"]').should('have.value', '15-Mar-2030');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Edit Extracted Field
+  // --------------------------------------------------------------------------
+  it('exercise 4: edit extracted field', () => {
+    uploadAndProcess('passport');
+
+    // Verify original name.
+    cy.get('[data-testid="extracted-name"]').should('have.value', 'Jane Alice Doe');
+
+    // Clear and type a new name.
+    // .clear() removes existing text, .type() enters new text.
+    cy.get('[data-testid="extracted-name"]').clear().type('Jane A. Doe-Smith');
+    cy.get('[data-testid="extracted-name"]').should('have.value', 'Jane A. Doe-Smith');
+
+    // Confirm — should succeed with edited field.
+    cy.get('[data-testid="btn-confirm"]').click();
+    cy.get('[data-testid="confirmed-section"]').should('be.visible');
+    cy.get('[data-testid="current-status"]').should('have.text', 'Confirmed');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Confirm Verification
+  // --------------------------------------------------------------------------
+  it('exercise 5: confirm verification', () => {
+    uploadAndProcess('drivers-license', 'license.jpg');
+
+    // Click Confirm.
+    cy.get('[data-testid="btn-confirm"]').click();
+
+    // Verify confirmation page.
+    cy.get('[data-testid="confirmed-section"]').should('be.visible');
+    cy.get('[data-testid="confirmed-title"]').should('have.text', 'Document Verified');
+    cy.get('[data-testid="confirmed-message"]').should('contain.text', 'Verification complete');
+    cy.get('[data-testid="current-status"]').should('have.text', 'Confirmed');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Verify Status Transitions
+  // --------------------------------------------------------------------------
+  it('exercise 6: verify status transitions', () => {
+    // Phase 1: Upload.
+    cy.get('[data-testid="current-status"]').should('have.text', 'Upload');
+    cy.get('[data-testid="step-upload-pill"]').should('have.class', 'active');
+
+    // Upload and process.
+    uploadFile();
+    cy.get('[data-testid="btn-process"]').click();
+
+    // Phase 2: Processing.
+    cy.get('[data-testid="current-status"]').should('have.text', 'Processing');
+    cy.get('[data-testid="step-processing-pill"]').should('have.class', 'active');
+    cy.get('[data-testid="step-upload-pill"]').should('have.class', 'completed');
+
+    // Phase 3: Review.
+    cy.get('[data-testid="extracted-fields"]', { timeout: 5000 }).should('be.visible');
+    cy.get('[data-testid="current-status"]').should('have.text', 'Review');
+    cy.get('[data-testid="step-review-pill"]').should('have.class', 'active');
+    cy.get('[data-testid="step-processing-pill"]').should('have.class', 'completed');
+
+    // Phase 4: Confirmed.
+    cy.get('[data-testid="btn-confirm"]').click();
+    cy.get('[data-testid="current-status"]').should('have.text', 'Confirmed');
+    cy.get('[data-testid="step-confirmed-pill"]').should('have.class', 'active');
+    cy.get('[data-testid="step-review-pill"]').should('have.class', 'completed');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Test With Invalid Document
+  // --------------------------------------------------------------------------
+  it('exercise 7: test with invalid document', () => {
+    // Upload a file with "invalid" in the name to trigger failure.
+    uploadFile('passport', 'invalid-blurry-doc.pdf');
+    cy.get('[data-testid="btn-process"]').click();
+
+    // Wait for error banner (after 2s processing).
+    cy.get('[data-testid="error-banner"]', { timeout: 5000 }).should('be.visible');
+    cy.get('[data-testid="error-message"]').should('contain.text', 'could not be processed');
+    cy.get('[data-testid="current-status"]').should('have.text', 'Failed');
+    cy.get('[data-testid="btn-retry"]').should('be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Retry After Failure
+  // --------------------------------------------------------------------------
+  it('exercise 8: retry after failure', () => {
+    // First attempt: invalid.
+    uploadFile('passport', 'invalid-doc.pdf');
+    cy.get('[data-testid="btn-process"]').click();
+    cy.get('[data-testid="error-banner"]', { timeout: 5000 }).should('be.visible');
+    cy.get('[data-testid="current-status"]').should('have.text', 'Failed');
+
+    // Click "Try Again".
+    cy.get('[data-testid="btn-retry"]').click();
+
+    // Verify reset to upload state.
+    cy.get('[data-testid="current-status"]').should('have.text', 'Upload');
+    cy.get('[data-testid="upload-section"]').should('be.visible');
+    cy.get('[data-testid="error-banner"]').should('not.be.visible');
+
+    // Second attempt: valid document.
+    uploadAndProcess('national-id', 'valid-id-card.pdf');
+
+    // Verify OCR results.
+    cy.get('[data-testid="extracted-name"]').should('have.value', 'Maria Garcia Lopez');
+    cy.get('[data-testid="current-status"]').should('have.text', 'Review');
+
+    // Confirm.
+    cy.get('[data-testid="btn-confirm"]').click();
+    cy.get('[data-testid="current-status"]').should('have.text', 'Confirmed');
+  });
+});
+6:T1d5c,# Kata 27: Video Onboarding
+
+## What You Will Learn
+
+- How to test canvas-based UI elements (simulated video feed)
+- How to verify timer-based state changes (countdown, call duration)
+- How to test OTP (one-time password) input flows
+- How to verify connection state transitions (idle, connecting, connected, disconnected)
+- How to test screenshot capture from a canvas element
+- How to use `page.evaluate()` to inspect canvas state
+- How to coordinate multiple async events (timer + animation + user input)
+
+## Prerequisites
+
+- Completed Katas 1-26
+- Understanding of `requestAnimationFrame` and `setInterval` concepts
+- Familiarity with canvas basics (no deep knowledge needed)
+
+## Concepts Explained
+
+### Testing Canvas Elements
+
+```
+Canvas elements (<canvas>) render pixels, not DOM elements.
+You can't query individual shapes drawn on a canvas the way
+you query DOM elements. Instead, you test canvas UIs by:
+
+1. CHECKING SURROUNDING STATE
+   Verify counters, status text, and buttons that change when
+   the canvas is active. For example, a frame counter that
+   increments proves the canvas is being updated.
+
+2. USING toDataURL()
+   canvas.toDataURL() converts the canvas content to a base64
+   image string. You can verify it's not empty, or compare it
+   to a known value (snapshot testing).
+
+3. CHECKING DIMENSIONS
+   Verify the canvas has the expected width and height attributes.
+```
+
+### Testing Timers and Countdowns
+
+```
+Timer-based UIs use setInterval or setTimeout to update values
+over time. Testing strategies:
+
+1. WAIT FOR SPECIFIC VALUES
+   Instead of sleeping for exact durations, wait for the DOM text
+   to contain the expected value. Both Playwright and Cypress
+   retry assertions automatically.
+
+2. USE GENEROUS TIMEOUTS
+   Timers can be slightly off due to browser scheduling. Use
+   timeouts larger than the expected wait time.
+
+3. VERIFY DIRECTION
+   For countdowns, verify the value decreases. For duration
+   timers, verify the value increases.
+```
+
+### Testing OTP Input
+
+```
+OTP inputs are typically 6 separate single-character fields.
+Testing requires:
+
+1. TYPING INTO EACH FIELD INDIVIDUALLY
+   Each field accepts one character and auto-focuses the next.
+
+2. VERIFYING THE OTP CODE
+   The playground displays the OTP code, so tests can read it
+   and enter it into the inputs.
+
+Playwright:
+  const otp = await page.getByTestId('otp-display').textContent();
+  for (let i = 0; i < 6; i++) {
+    await page.getByTestId(`otp-${i + 1}`).fill(otp[i]);
+  }
+
+Cypress:
+  cy.get('[data-testid="otp-display"]').invoke('text').then((otp) => {
+    for (let i = 0; i < 6; i++) {
+      cy.get(`[data-testid="otp-${i + 1}"]`).type(otp[i]);
+    }
+  });
+```
+
+## Playground
+
+The playground is a video call simulation page with:
+
+1. **Canvas Video Feed** — a `<canvas>` element that draws animated colored rectangles using `requestAnimationFrame`. Shows the OTP code and call duration overlaid on the feed.
+
+2. **Call Controls** — "Start Call" and "End Call" buttons. Start Call transitions through Connecting (500ms delay) to Connected.
+
+3. **Connection Status** — badge showing Idle, Connecting..., Connected, or Disconnected.
+
+4. **Call Duration** — increments every second while the call is active (MM:SS format).
+
+5. **Countdown Timer** — counts down from 60 seconds. Auto-ends the call when it reaches zero.
+
+6. **Frame Count** — shows how many animation frames have been drawn.
+
+7. **OTP Verification** — the 6-digit OTP code is shown in the video feed and displayed above the input. Enter the code in 6 individual input fields and click Verify.
+
+8. **Screenshot Capture** — captures the current canvas frame as a PNG image and displays a preview.
+
+9. **Onboarding Status** — tracks whether the video call, OTP verification, and screenshot have been completed. Overall status becomes "Complete" when all three are done.
+
+## Exercises
+
+### Exercise 1: Start Call and Verify Canvas Updates
+Start the call and verify the frame count increases above 0, proving the canvas is being animated.
+
+### Exercise 2: Verify Timer Counts
+Start the call and wait for the call duration to show at least "00:02". Verify the countdown timer shows a value less than "01:00".
+
+### Exercise 3: End Call and Verify Status
+Start the call, then end it. Verify the connection status changes to "Disconnected" and the video call status shows "Completed".
+
+### Exercise 4: Enter OTP and Verify
+Start the call, read the displayed OTP code, enter it into the 6 input fields, click Verify, and confirm the success message appears.
+
+### Exercise 5: Verify Call Duration
+Start the call, wait 3 seconds, then verify the call duration shows at least "00:03".
+
+### Exercise 6: Screenshot Capture Changes State
+Start the call, click the screenshot button, and verify the screenshot preview image appears and the status updates.
+
+### Exercise 7: Verify Connection States
+Verify the initial state is "Idle". Start the call and verify it transitions through "Connecting..." to "Connected". End the call and verify "Disconnected".
+
+### Exercise 8: Complete Full Video Onboarding Flow
+Start the call, verify OTP, capture a screenshot, end the call, and verify the overall status is "Complete".
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/video-onboarding.spec.ts`
+
+### Cypress Solution
+
+See `cypress/video-onboarding.cy.ts`
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Asserting canvas pixel content directly | Canvas pixels are hard to assert deterministically in tests | Assert on surrounding state (frame count, status text) instead |
+| Not waiting for the "Connected" state | The call has a 500ms connecting delay | Wait for connection-status to show "Connected" before interacting |
+| Checking call duration too precisely | Timer ticks may not be perfectly aligned | Use `toContainText` or verify the value is at least the expected amount |
+| Entering OTP before call starts | The OTP code is generated only when the call starts | Start the call first, then read and enter the OTP |
+| Forgetting to end the call for "Complete" status | Overall status requires video call to be "Completed" | End the call after OTP and screenshot to reach "Complete" |
+
+## Quick Reference
+
+### Playwright Canvas and Timer Testing
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Check frame count | `toHaveText()` with regex | `await expect(el).not.toHaveText('0')` |
+| Wait for timer value | `toHaveText()` with timeout | `await expect(el).toHaveText('00:02', { timeout: 5000 })` |
+| Read OTP from page | `textContent()` | `const otp = await el.textContent()` |
+| Fill OTP digit | `locator.fill()` | `await page.getByTestId('otp-1').fill('3')` |
+| Check image visible | `toBeVisible()` | `await expect(img).toBeVisible()` |
+| Check canvas dataURL | `page.evaluate()` | `await page.evaluate(() => canvas.toDataURL())` |
+
+### Cypress Canvas and Timer Testing
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Check frame count | `.should('not.have.text')` | `cy.get(el).should('not.have.text', '0')` |
+| Wait for timer value | `.should('have.text')` | `cy.get(el).should('have.text', '00:02')` |
+| Read OTP from page | `.invoke('text')` | `cy.get(el).invoke('text').then(...)` |
+| Type OTP digit | `cy.get().type()` | `cy.get('[data-testid="otp-1"]').type('3')` |
+| Check image visible | `.should('be.visible')` | `cy.get('img').should('be.visible')` |
+| Check attribute | `.should('have.attr')` | `cy.get('img').should('have.attr', 'src')` |
+7:T27ae,import { test, expect } from '@playwright/test';
+
+// The base URL for our playground page.
+const PLAYGROUND = '/phase-05-fintech-domain/27-video-onboarding/playground/';
+
+// ─── Helper: startAndWaitForCall ──────────────────────────────────────
+// Clicks Start Call and waits for the connection status to show "Connected".
+// The call has a 500ms connecting delay, so we wait for the text to change.
+async function startAndWaitForCall(page: any) {
+  await page.getByTestId('btn-start-call').click();
+  await expect(page.getByTestId('connection-status')).toHaveText('Connected', { timeout: 3000 });
+}
+
+// ─── Helper: enterOtp ────────────────────────────────────────────────
+// Reads the displayed OTP code, then fills each digit into the OTP inputs.
+// locator.textContent() returns the element's text as a string.
+// locator.fill(value) clears the input and sets the new value.
+async function enterOtp(page: any) {
+  const otp = await page.getByTestId('otp-display').textContent();
+  for (let i = 0; i < 6; i++) {
+    await page.getByTestId(`otp-${i + 1}`).fill(otp![i]);
+  }
+}
+
+// --------------------------------------------------------------------------
+// Exercise 1: Start Call and Verify Canvas Updates
+// --------------------------------------------------------------------------
+// Start the call and verify the frame count increases, proving animation runs.
+test('exercise 1: start call and verify canvas updates', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify initial frame count is 0.
+  await expect(page.getByTestId('frame-count')).toHaveText('0');
+
+  // Start the call and wait for connection.
+  await startAndWaitForCall(page);
+
+  // Wait for the frame count to increase above 0.
+  // We use a regex that matches any non-zero number.
+  // not.toHaveText('0') retries until the text is no longer "0".
+  await expect(page.getByTestId('frame-count')).not.toHaveText('0', { timeout: 3000 });
+
+  // Verify the canvas element exists and has expected dimensions.
+  const canvas = page.getByTestId('video-canvas');
+  await expect(canvas).toBeVisible();
+  await expect(canvas).toHaveAttribute('width', '400');
+  await expect(canvas).toHaveAttribute('height', '300');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Verify Timer Counts
+// --------------------------------------------------------------------------
+// Start the call and verify the duration timer increases and countdown decreases.
+test('exercise 2: verify timer counts', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+  await startAndWaitForCall(page);
+
+  // Wait for the call duration to reach at least "00:02".
+  // toHaveText() retries until the text matches. We give 5 seconds.
+  await expect(page.getByTestId('call-duration')).toHaveText('00:02', { timeout: 5000 });
+
+  // Verify the countdown timer is less than 01:00.
+  // We read the text content and parse it.
+  const countdownText = await page.getByTestId('countdown-timer').textContent();
+  // Parse "MM:SS" format: extract seconds value.
+  const parts = countdownText!.split(':');
+  const totalSeconds = parseInt(parts[0]) * 60 + parseInt(parts[1]);
+  // The countdown started at 60 and has been running, so it should be less.
+  expect(totalSeconds).toBeLessThan(60);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: End Call and Verify Status
+// --------------------------------------------------------------------------
+// Start the call, then end it. Verify status transitions.
+test('exercise 3: end call and verify status', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+  await startAndWaitForCall(page);
+
+  // Click "End Call".
+  await page.getByTestId('btn-end-call').click();
+
+  // Verify connection status is "Disconnected".
+  await expect(page.getByTestId('connection-status')).toHaveText('Disconnected');
+
+  // Verify the connection status badge has the disconnected CSS class.
+  await expect(page.getByTestId('connection-status')).toHaveClass(/status-disconnected/);
+
+  // Verify the video call status shows "Completed".
+  await expect(page.getByTestId('status-video-call')).toHaveText('Completed');
+
+  // Verify "Start Call" is re-enabled and "End Call" is disabled.
+  await expect(page.getByTestId('btn-start-call')).toBeEnabled();
+  await expect(page.getByTestId('btn-end-call')).toBeDisabled();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Enter OTP and Verify
+// --------------------------------------------------------------------------
+// Read the OTP, enter it, click Verify, and confirm success.
+test('exercise 4: enter OTP and verify', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+  await startAndWaitForCall(page);
+
+  // Read the OTP code displayed on the page.
+  const otp = await page.getByTestId('otp-display').textContent();
+  // The OTP should be 6 digits.
+  expect(otp).toMatch(/^\d{6}$/);
+
+  // Enter each digit into the individual OTP input fields.
+  await enterOtp(page);
+
+  // Click the Verify button.
+  await page.getByTestId('btn-verify-otp').click();
+
+  // Verify success message appears.
+  await expect(page.getByTestId('otp-success')).toBeVisible();
+  await expect(page.getByTestId('otp-success')).toHaveText('OTP verified successfully!');
+
+  // Verify the OTP verified status updates.
+  await expect(page.getByTestId('status-otp-verified')).toHaveText('Yes');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Verify Call Duration
+// --------------------------------------------------------------------------
+// Start the call, wait 3 seconds, then verify duration.
+test('exercise 5: verify call duration', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+  await startAndWaitForCall(page);
+
+  // Wait for the call duration to reach at least "00:03".
+  // toHaveText() retries until the text matches the expected value.
+  await expect(page.getByTestId('call-duration')).toHaveText('00:03', { timeout: 6000 });
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Screenshot Capture Changes State
+// --------------------------------------------------------------------------
+// Start the call, capture a screenshot, verify preview and status.
+test('exercise 6: screenshot capture changes state', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+  await startAndWaitForCall(page);
+
+  // Verify initial screenshot status.
+  await expect(page.getByTestId('screenshot-status')).toHaveText('No screenshot taken');
+  await expect(page.getByTestId('status-screenshot')).toHaveText('No');
+
+  // Click the screenshot button.
+  await page.getByTestId('btn-screenshot').click();
+
+  // Verify the screenshot preview image appears.
+  // toBeVisible() retries until the element is visible in the DOM.
+  await expect(page.getByTestId('screenshot-preview')).toBeVisible();
+
+  // Verify the preview image has a data URL src (base64 PNG).
+  // toHaveAttribute(name, value) checks the element's attribute matches.
+  await expect(page.getByTestId('screenshot-preview')).toHaveAttribute('src', /^data:image\/png/);
+
+  // Verify status text updates.
+  await expect(page.getByTestId('screenshot-status')).toHaveText('Screenshot captured');
+  await expect(page.getByTestId('status-screenshot')).toHaveText('Yes');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Verify Connection States
+// --------------------------------------------------------------------------
+// Walk through all connection states: Idle -> Connecting -> Connected -> Disconnected.
+test('exercise 7: verify connection states', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Initial state: Idle.
+  await expect(page.getByTestId('connection-status')).toHaveText('Idle');
+  await expect(page.getByTestId('connection-status')).toHaveClass(/status-idle/);
+
+  // Click Start Call — should transition to "Connecting...".
+  await page.getByTestId('btn-start-call').click();
+  await expect(page.getByTestId('connection-status')).toHaveText('Connecting...');
+  await expect(page.getByTestId('connection-status')).toHaveClass(/status-connecting/);
+
+  // Wait for "Connected".
+  await expect(page.getByTestId('connection-status')).toHaveText('Connected', { timeout: 3000 });
+  await expect(page.getByTestId('connection-status')).toHaveClass(/status-connected/);
+
+  // End the call — should show "Disconnected".
+  await page.getByTestId('btn-end-call').click();
+  await expect(page.getByTestId('connection-status')).toHaveText('Disconnected');
+  await expect(page.getByTestId('connection-status')).toHaveClass(/status-disconnected/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Complete Full Video Onboarding Flow
+// --------------------------------------------------------------------------
+// Start call, verify OTP, capture screenshot, end call, verify "Complete".
+test('exercise 8: complete full video onboarding flow', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+  await startAndWaitForCall(page);
+
+  // Verify OTP.
+  await enterOtp(page);
+  await page.getByTestId('btn-verify-otp').click();
+  await expect(page.getByTestId('otp-success')).toBeVisible();
+
+  // Capture screenshot.
+  await page.getByTestId('btn-screenshot').click();
+  await expect(page.getByTestId('screenshot-preview')).toBeVisible();
+
+  // End the call.
+  await page.getByTestId('btn-end-call').click();
+  await expect(page.getByTestId('connection-status')).toHaveText('Disconnected');
+
+  // Verify all individual statuses.
+  await expect(page.getByTestId('status-video-call')).toHaveText('Completed');
+  await expect(page.getByTestId('status-otp-verified')).toHaveText('Yes');
+  await expect(page.getByTestId('status-screenshot')).toHaveText('Yes');
+
+  // Verify overall status is "Complete".
+  await expect(page.getByTestId('overall-status')).toHaveText('Complete');
+});
+8:T22de,const PLAYGROUND = '/phase-05-fintech-domain/27-video-onboarding/playground/';
+
+// ─── Helper: startAndWaitForCall ──────────────────────────────────────
+// Clicks Start Call and waits for the connection status to show "Connected".
+// The call has a 500ms connecting delay before it transitions.
+function startAndWaitForCall() {
+  cy.get('[data-testid="btn-start-call"]').click();
+  cy.get('[data-testid="connection-status"]', { timeout: 3000 })
+    .should('have.text', 'Connected');
+}
+
+// ─── Helper: enterOtp ────────────────────────────────────────────────
+// Reads the displayed OTP code, then types each digit into the OTP inputs.
+// cy.get().invoke('text') yields the element's text content.
+// .then(callback) runs after the text is retrieved.
+function enterOtp() {
+  cy.get('[data-testid="otp-display"]').invoke('text').then((otp) => {
+    for (let i = 0; i < 6; i++) {
+      cy.get(`[data-testid="otp-${i + 1}"]`).type(otp[i]);
+    }
+  });
+}
+
+describe('Kata 27: Video Onboarding', () => {
+
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Start Call and Verify Canvas Updates
+  // --------------------------------------------------------------------------
+  // Start the call and verify the frame count increases above 0.
+  it('exercise 1: start call and verify canvas updates', () => {
+    // Verify initial frame count is 0.
+    cy.get('[data-testid="frame-count"]').should('have.text', '0');
+
+    // Start the call.
+    startAndWaitForCall();
+
+    // Wait for frame count to be non-zero.
+    // .should('not.have.text', '0') retries until the text changes.
+    cy.get('[data-testid="frame-count"]', { timeout: 3000 })
+      .should('not.have.text', '0');
+
+    // Verify the canvas element is visible and has expected dimensions.
+    cy.get('[data-testid="video-canvas"]')
+      .should('be.visible')
+      .and('have.attr', 'width', '400')
+      .and('have.attr', 'height', '300');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Verify Timer Counts
+  // --------------------------------------------------------------------------
+  // Start the call and verify duration increases and countdown decreases.
+  it('exercise 2: verify timer counts', () => {
+    startAndWaitForCall();
+
+    // Wait for call duration to reach "00:02".
+    // .should('have.text', '00:02') retries until the text matches.
+    cy.get('[data-testid="call-duration"]', { timeout: 5000 })
+      .should('have.text', '00:02');
+
+    // Verify the countdown timer has decreased from 01:00.
+    cy.get('[data-testid="countdown-timer"]').invoke('text').then((text) => {
+      const parts = text.split(':');
+      const totalSeconds = parseInt(parts[0]) * 60 + parseInt(parts[1]);
+      expect(totalSeconds).to.be.lessThan(60);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: End Call and Verify Status
+  // --------------------------------------------------------------------------
+  // Start the call, then end it. Verify status changes.
+  it('exercise 3: end call and verify status', () => {
+    startAndWaitForCall();
+
+    // End the call.
+    cy.get('[data-testid="btn-end-call"]').click();
+
+    // Verify connection status.
+    cy.get('[data-testid="connection-status"]')
+      .should('have.text', 'Disconnected')
+      .and('have.class', 'status-disconnected');
+
+    // Verify video call status.
+    cy.get('[data-testid="status-video-call"]').should('have.text', 'Completed');
+
+    // Verify button states.
+    cy.get('[data-testid="btn-start-call"]').should('not.be.disabled');
+    cy.get('[data-testid="btn-end-call"]').should('be.disabled');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Enter OTP and Verify
+  // --------------------------------------------------------------------------
+  // Read the OTP, enter it, click Verify, confirm success.
+  it('exercise 4: enter OTP and verify', () => {
+    startAndWaitForCall();
+
+    // Verify the OTP code is 6 digits.
+    cy.get('[data-testid="otp-display"]').invoke('text')
+      .should('match', /^\d{6}$/);
+
+    // Enter the OTP digits.
+    enterOtp();
+
+    // Click Verify.
+    cy.get('[data-testid="btn-verify-otp"]').click();
+
+    // Verify success message appears.
+    // .should('be.visible') checks the element is displayed.
+    cy.get('[data-testid="otp-success"]')
+      .should('be.visible')
+      .and('have.text', 'OTP verified successfully!');
+
+    // Verify status updates.
+    cy.get('[data-testid="status-otp-verified"]').should('have.text', 'Yes');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Verify Call Duration
+  // --------------------------------------------------------------------------
+  // Wait 3 seconds and verify the duration shows at least "00:03".
+  it('exercise 5: verify call duration', () => {
+    startAndWaitForCall();
+
+    // Wait for duration to reach "00:03".
+    cy.get('[data-testid="call-duration"]', { timeout: 6000 })
+      .should('have.text', '00:03');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Screenshot Capture Changes State
+  // --------------------------------------------------------------------------
+  // Capture a screenshot and verify preview and status update.
+  it('exercise 6: screenshot capture changes state', () => {
+    startAndWaitForCall();
+
+    // Verify initial state.
+    cy.get('[data-testid="screenshot-status"]').should('have.text', 'No screenshot taken');
+    cy.get('[data-testid="status-screenshot"]').should('have.text', 'No');
+
+    // Capture screenshot.
+    cy.get('[data-testid="btn-screenshot"]').click();
+
+    // Verify preview image is visible with a data URL src.
+    // .should('have.attr', 'src') checks the element has the attribute.
+    // .and('match', regex) further validates the attribute value.
+    cy.get('[data-testid="screenshot-preview"]')
+      .should('be.visible')
+      .and('have.attr', 'src')
+      .and('match', /^data:image\/png/);
+
+    // Verify status updates.
+    cy.get('[data-testid="screenshot-status"]').should('have.text', 'Screenshot captured');
+    cy.get('[data-testid="status-screenshot"]').should('have.text', 'Yes');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Verify Connection States
+  // --------------------------------------------------------------------------
+  // Walk through: Idle -> Connecting -> Connected -> Disconnected.
+  it('exercise 7: verify connection states', () => {
+    // Initial: Idle.
+    cy.get('[data-testid="connection-status"]')
+      .should('have.text', 'Idle')
+      .and('have.class', 'status-idle');
+
+    // Start Call: should show Connecting first.
+    cy.get('[data-testid="btn-start-call"]').click();
+    cy.get('[data-testid="connection-status"]')
+      .should('have.text', 'Connecting...')
+      .and('have.class', 'status-connecting');
+
+    // Then Connected.
+    cy.get('[data-testid="connection-status"]', { timeout: 3000 })
+      .should('have.text', 'Connected')
+      .and('have.class', 'status-connected');
+
+    // End Call: Disconnected.
+    cy.get('[data-testid="btn-end-call"]').click();
+    cy.get('[data-testid="connection-status"]')
+      .should('have.text', 'Disconnected')
+      .and('have.class', 'status-disconnected');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Complete Full Video Onboarding Flow
+  // --------------------------------------------------------------------------
+  // Start call, verify OTP, screenshot, end call, verify "Complete".
+  it('exercise 8: complete full video onboarding flow', () => {
+    startAndWaitForCall();
+
+    // Verify OTP.
+    enterOtp();
+    cy.get('[data-testid="btn-verify-otp"]').click();
+    cy.get('[data-testid="otp-success"]').should('be.visible');
+
+    // Capture screenshot.
+    cy.get('[data-testid="btn-screenshot"]').click();
+    cy.get('[data-testid="screenshot-preview"]').should('be.visible');
+
+    // End the call.
+    cy.get('[data-testid="btn-end-call"]').click();
+    cy.get('[data-testid="connection-status"]').should('have.text', 'Disconnected');
+
+    // Verify all statuses.
+    cy.get('[data-testid="status-video-call"]').should('have.text', 'Completed');
+    cy.get('[data-testid="status-otp-verified"]').should('have.text', 'Yes');
+    cy.get('[data-testid="status-screenshot"]').should('have.text', 'Yes');
+
+    // Verify overall status is "Complete".
+    cy.get('[data-testid="overall-status"]').should('have.text', 'Complete');
+  });
+});
+9:T1ab5,# Kata 29: Background Verification
+
+## What You Will Learn
+
+- How to test auto-updating status dashboards (simulating real-time updates)
+- How to wait for specific state changes in a multi-item list
+- How to verify progress bars update correctly as tasks complete
+- How to handle mixed outcomes (some checks pass, some fail)
+- How to verify estimated time countdowns
+- How to test the overall status derivation from individual check results
+- How to use generous timeouts for tests that depend on timed events
+
+## Prerequisites
+
+- Completed Katas 1-28
+- Understanding of `setInterval` and `setTimeout` patterns
+- Familiarity with auto-retry assertions in Playwright and Cypress
+
+## Concepts Explained
+
+### Auto-Updating Dashboards
+
+```
+Background verification dashboards update automatically as each
+check completes. In production, this uses WebSockets or polling.
+Our playground simulates this with setInterval/setTimeout.
+
+The key testing challenge: items update at unpredictable times.
+You must use auto-retrying assertions with generous timeouts
+rather than fixed waits.
+
+Pattern:
+  1. Start the checks
+  2. Wait for specific check statuses to change
+  3. Verify the overall progress and status
+
+Since checks run sequentially with cumulative delays:
+  Criminal:   ~2s
+  Credit:     ~5s (2s + 3s)
+  Employment: ~7s (2s + 3s + 2s)
+  Education:  ~9.5s (+ 2.5s)
+  Reference:  ~11.5s (+ 2s)
+
+Tests should use timeouts of 15-20 seconds for "all complete" assertions.
+```
+
+### Testing Progress Bars
+
+```
+Progress bars show a visual percentage. Test by:
+
+1. CHECKING THE TEXT PERCENTAGE
+   The percentage text (e.g., "60%") is easier to assert than CSS width.
+
+2. CHECKING THE WIDTH STYLE
+   The fill element's style.width property reflects the visual progress.
+   Use toHaveCSS() (Playwright) or .should('have.css') (Cypress).
+
+3. CHECKING AT MILESTONES
+   Verify progress at 0%, after first check (~20%), and at 100%.
+```
+
+### Testing Mixed Outcomes
+
+```
+The education check is configured to "fail" in the simulation.
+This means:
+  - Its status badge shows "Failed" with a red background
+  - The overall status shows "Completed with Issues" instead of
+    "All Checks Passed"
+  - 4 of 5 checks pass, 1 fails
+
+Tests should verify both the individual failure and its effect
+on the overall status.
+```
+
+## Playground
+
+The playground is a background check status tracker with:
+
+1. **Start Button** — triggers all five background checks to run sequentially
+2. **Progress Bar** — fills from 0% to 100% as checks complete, with percentage text
+3. **Estimated Time** — counts down from the total estimated time
+4. **Checks Completed** — shows "X / 5" completed count
+5. **Check List** — five individual checks, each with:
+   - Name (Criminal Record, Credit Score, Employment, Education, Reference)
+   - Detail text (updates with result info when done)
+   - Status badge (Pending -> In Progress -> Complete/Failed)
+6. **Overall Status** — "Not Started", "In Progress", "All Checks Passed", or "Completed with Issues"
+
+Check timing (cumulative delays):
+- Criminal Record: completes at ~2s
+- Credit Score: completes at ~5s
+- Employment: completes at ~7s
+- Education: completes at ~9.5s (FAILS)
+- Reference: completes at ~11.5s
+
+## Exercises
+
+### Exercise 1: Verify Initial Pending States
+Before starting checks, verify all five checks show "Pending" status and the progress is at 0%.
+
+### Exercise 2: Wait for First Check to Complete
+Start the checks and wait for the Criminal Record check to show "Complete". Verify its detail text updates.
+
+### Exercise 3: Verify Progress Bar Updates
+Start the checks. After the first check completes, verify the progress shows "20%". Wait for more checks and verify progress increases.
+
+### Exercise 4: Verify All Checks Complete
+Start the checks and wait for all five checks to finish. Verify the progress shows "100%" and the completed count shows "5 / 5".
+
+### Exercise 5: Handle Failed Check
+Wait for the Education check to complete. Verify its status shows "Failed" and the check item has the failed styling.
+
+### Exercise 6: Verify Estimated Time Updates
+Start the checks and verify the estimated time decreases over time. After all checks complete, verify it shows "0s".
+
+### Exercise 7: Verify Overall Status Changes
+Verify the overall status transitions from "Not Started" to "In Progress" to "Completed with Issues" (because Education fails).
+
+### Exercise 8: Complete Full Background Check Flow
+Start checks, wait for all to complete, verify each individual status, verify the progress bar is at 100%, and verify the overall outcome.
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/background-verification.spec.ts`
+
+### Cypress Solution
+
+See `cypress/background-verification.cy.ts`
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Using short timeouts | Checks take up to ~12s total to complete; default 5s timeout will fail | Use `{ timeout: 15000 }` or higher for "all complete" assertions |
+| Checking intermediate progress at exact moments | Progress updates are asynchronous; timing is approximate | Wait for the text to match rather than checking at a specific moment |
+| Expecting "All Checks Passed" | The education check is designed to fail | Expect "Completed with Issues" as the overall status |
+| Not waiting for "In Progress" state | The brief "In Progress" state may be missed if checked too late | Assert "In Progress" immediately after starting, before any check completes |
+| Testing checks in parallel order | Checks run sequentially with cumulative delays | Wait for each check in order: criminal, credit, employment, education, reference |
+
+## Quick Reference
+
+### Playwright Background Check Testing
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Wait for status | `toHaveText()` | `await expect(el).toHaveText('Complete', { timeout: 5000 })` |
+| Check progress % | `toHaveText()` | `await expect(el).toHaveText('100%', { timeout: 15000 })` |
+| Check CSS class | `toHaveClass()` | `await expect(item).toHaveClass(/completed/)` |
+| Check CSS style | `toHaveCSS()` | `await expect(fill).toHaveCSS('width', ...)` |
+| Long timeout | `{ timeout: N }` | `await expect(el).toHaveText('5 / 5', { timeout: 15000 })` |
+
+### Cypress Background Check Testing
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Wait for status | `.should('have.text')` | `cy.get(el, { timeout: 5000 }).should('have.text', 'Complete')` |
+| Check progress % | `.should('have.text')` | `cy.get(el, { timeout: 15000 }).should('have.text', '100%')` |
+| Check CSS class | `.should('have.class')` | `cy.get(item).should('have.class', 'completed')` |
+| Check CSS style | `.should('have.css')` | `cy.get(fill).should('have.css', 'width', ...)` |
+| Long timeout | `{ timeout: N }` | `cy.get(el, { timeout: 15000 }).should(...)` |
+a:T25ae,import { test, expect } from '@playwright/test';
+
+// The base URL for our playground page.
+const PLAYGROUND = '/phase-05-fintech-domain/29-background-verification/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Verify Initial Pending States
+// --------------------------------------------------------------------------
+// Before starting checks, verify all five checks show "Pending".
+test('exercise 1: verify initial pending states', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify all five check status badges show "Pending".
+  // toHaveText(text) checks the element's textContent matches exactly.
+  const checkIds = ['criminal', 'credit', 'employment', 'education', 'reference'];
+  for (const id of checkIds) {
+    await expect(page.getByTestId(`check-${id}-status`)).toHaveText('Pending');
+  }
+
+  // Verify progress is at 0%.
+  await expect(page.getByTestId('progress-percentage')).toHaveText('0%');
+  await expect(page.getByTestId('checks-completed')).toHaveText('0 / 5');
+
+  // Verify overall status is "Not Started".
+  await expect(page.getByTestId('overall-status')).toHaveText('Not Started');
+
+  // Verify the start button is enabled.
+  await expect(page.getByTestId('btn-start-checks')).toBeEnabled();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Wait for First Check to Complete
+// --------------------------------------------------------------------------
+// Start checks and wait for Criminal Record to show "Complete".
+test('exercise 2: wait for first check to complete', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Start the background checks.
+  await page.getByTestId('btn-start-checks').click();
+
+  // The criminal check should first transition to "In Progress".
+  // toHaveText() retries automatically until the text matches.
+  await expect(page.getByTestId('check-criminal-status')).toHaveText('In Progress', { timeout: 3000 });
+
+  // Then it should complete after ~2 seconds.
+  await expect(page.getByTestId('check-criminal-status')).toHaveText('Complete', { timeout: 5000 });
+
+  // Verify the detail text updated to show the result.
+  await expect(page.getByTestId('check-criminal-detail')).toHaveText('No records found');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Verify Progress Bar Updates
+// --------------------------------------------------------------------------
+// Start checks and verify progress increases as checks complete.
+test('exercise 3: verify progress bar updates', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+  await page.getByTestId('btn-start-checks').click();
+
+  // After the first check (criminal), progress should be 20%.
+  // toHaveText('20%') retries until the text matches.
+  await expect(page.getByTestId('progress-percentage')).toHaveText('20%', { timeout: 5000 });
+
+  // After two checks (criminal + credit), progress should be 40%.
+  await expect(page.getByTestId('progress-percentage')).toHaveText('40%', { timeout: 8000 });
+
+  // Verify the progress bar fill element has a non-zero width.
+  // We don't check the exact CSS value since it may be layout-dependent.
+  // Instead we verify the inline style contains the expected percentage.
+  const fill = page.getByTestId('progress-bar-fill');
+  // getAttribute('style') returns the element's inline style string.
+  const style = await fill.getAttribute('style');
+  expect(style).toContain('40%');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Verify All Checks Complete
+// --------------------------------------------------------------------------
+// Wait for all five checks to finish. Verify 100% and "5 / 5".
+test('exercise 4: verify all checks complete', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+  await page.getByTestId('btn-start-checks').click();
+
+  // Wait for all checks to complete. Total time ~11.5s, so use 15s timeout.
+  // toHaveText('100%') retries until progress reaches 100%.
+  await expect(page.getByTestId('progress-percentage')).toHaveText('100%', { timeout: 15000 });
+
+  // Verify the completed count shows all 5.
+  await expect(page.getByTestId('checks-completed')).toHaveText('5 / 5');
+
+  // Verify each check has a final status (Complete or Failed).
+  await expect(page.getByTestId('check-criminal-status')).toHaveText('Complete');
+  await expect(page.getByTestId('check-credit-status')).toHaveText('Complete');
+  await expect(page.getByTestId('check-employment-status')).toHaveText('Complete');
+  await expect(page.getByTestId('check-education-status')).toHaveText('Failed');
+  await expect(page.getByTestId('check-reference-status')).toHaveText('Complete');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Handle Failed Check
+// --------------------------------------------------------------------------
+// Wait for the Education check to complete and verify it shows "Failed".
+test('exercise 5: handle failed check', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+  await page.getByTestId('btn-start-checks').click();
+
+  // Wait for the education check to show "Failed".
+  // The education check completes at ~9.5s cumulative delay.
+  await expect(page.getByTestId('check-education-status')).toHaveText('Failed', { timeout: 12000 });
+
+  // Verify the check item has the "failed" CSS class.
+  // toHaveClass(/regex/) checks that the element's class matches the pattern.
+  await expect(page.getByTestId('check-education')).toHaveClass(/failed/);
+
+  // Verify the detail text shows the failure reason.
+  await expect(page.getByTestId('check-education-detail')).toHaveText('Could not verify degree');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Verify Estimated Time Updates
+// --------------------------------------------------------------------------
+// Verify the estimated time decreases and reaches "0s" when done.
+test('exercise 6: verify estimated time updates', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Before starting, estimated time should be "--".
+  await expect(page.getByTestId('estimated-time')).toHaveText('--');
+
+  // Start checks.
+  await page.getByTestId('btn-start-checks').click();
+
+  // The estimated time should start at a value > 0.
+  // We verify it's no longer "--".
+  await expect(page.getByTestId('estimated-time')).not.toHaveText('--', { timeout: 2000 });
+
+  // Read the initial estimated time.
+  const initialText = await page.getByTestId('estimated-time').textContent();
+  const initialSeconds = parseInt(initialText!);
+  expect(initialSeconds).toBeGreaterThan(0);
+
+  // Wait for all checks to complete, then verify time is "0s".
+  await expect(page.getByTestId('estimated-time')).toHaveText('0s', { timeout: 15000 });
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Verify Overall Status Changes
+// --------------------------------------------------------------------------
+// Verify the overall status transitions correctly through all phases.
+test('exercise 7: verify overall status changes', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Initial: "Not Started".
+  await expect(page.getByTestId('overall-status')).toHaveText('Not Started');
+  await expect(page.getByTestId('overall-status')).toHaveClass(/overall-pending/);
+
+  // Start checks.
+  await page.getByTestId('btn-start-checks').click();
+
+  // Should transition to "In Progress".
+  await expect(page.getByTestId('overall-status')).toHaveText('In Progress');
+  await expect(page.getByTestId('overall-status')).toHaveClass(/overall-in-progress/);
+
+  // Wait for all checks to complete.
+  // Because education fails, the final status should be "Completed with Issues".
+  await expect(page.getByTestId('overall-status')).toHaveText('Completed with Issues', { timeout: 15000 });
+  await expect(page.getByTestId('overall-status')).toHaveClass(/overall-failed/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Complete Full Background Check Flow
+// --------------------------------------------------------------------------
+// Start checks, wait for all to complete, verify everything.
+test('exercise 8: complete full background check flow', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+  await page.getByTestId('btn-start-checks').click();
+
+  // Wait for all checks to complete.
+  await expect(page.getByTestId('progress-percentage')).toHaveText('100%', { timeout: 15000 });
+
+  // Verify individual check results.
+  const expectedResults = [
+    { id: 'criminal', status: 'Complete', detail: 'No records found' },
+    { id: 'credit', status: 'Complete', detail: 'Score: 750 (Good)' },
+    { id: 'employment', status: 'Complete', detail: 'Verified: 3 employers' },
+    { id: 'education', status: 'Failed', detail: 'Could not verify degree' },
+    { id: 'reference', status: 'Complete', detail: '2 of 2 references confirmed' }
+  ];
+
+  for (const check of expectedResults) {
+    await expect(page.getByTestId(`check-${check.id}-status`)).toHaveText(check.status);
+    await expect(page.getByTestId(`check-${check.id}-detail`)).toHaveText(check.detail);
+  }
+
+  // Verify progress bar is full.
+  await expect(page.getByTestId('checks-completed')).toHaveText('5 / 5');
+
+  // Verify estimated time is 0.
+  await expect(page.getByTestId('estimated-time')).toHaveText('0s');
+
+  // Verify overall status reflects the failure.
+  await expect(page.getByTestId('overall-status')).toHaveText('Completed with Issues');
+});
+b:T21a6,const PLAYGROUND = '/phase-05-fintech-domain/29-background-verification/playground/';
+
+describe('Kata 29: Background Verification', () => {
+
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Verify Initial Pending States
+  // --------------------------------------------------------------------------
+  // Before starting checks, verify all five checks show "Pending".
+  it('exercise 1: verify initial pending states', () => {
+    // Verify all five checks show "Pending".
+    // .should('have.text', text) checks the element's text content.
+    const checkIds = ['criminal', 'credit', 'employment', 'education', 'reference'];
+    checkIds.forEach(id => {
+      cy.get(`[data-testid="check-${id}-status"]`).should('have.text', 'Pending');
+    });
+
+    // Verify progress is at 0%.
+    cy.get('[data-testid="progress-percentage"]').should('have.text', '0%');
+    cy.get('[data-testid="checks-completed"]').should('have.text', '0 / 5');
+
+    // Verify overall status.
+    cy.get('[data-testid="overall-status"]').should('have.text', 'Not Started');
+
+    // Verify start button is enabled.
+    cy.get('[data-testid="btn-start-checks"]').should('not.be.disabled');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Wait for First Check to Complete
+  // --------------------------------------------------------------------------
+  // Start checks and wait for Criminal Record to complete.
+  it('exercise 2: wait for first check to complete', () => {
+    cy.get('[data-testid="btn-start-checks"]').click();
+
+    // Should first transition to "In Progress".
+    // .should() retries automatically until the assertion passes.
+    cy.get('[data-testid="check-criminal-status"]', { timeout: 3000 })
+      .should('have.text', 'In Progress');
+
+    // Then complete after ~2 seconds.
+    cy.get('[data-testid="check-criminal-status"]', { timeout: 5000 })
+      .should('have.text', 'Complete');
+
+    // Verify detail text updated.
+    cy.get('[data-testid="check-criminal-detail"]')
+      .should('have.text', 'No records found');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Verify Progress Bar Updates
+  // --------------------------------------------------------------------------
+  // Verify progress increases as checks complete.
+  it('exercise 3: verify progress bar updates', () => {
+    cy.get('[data-testid="btn-start-checks"]').click();
+
+    // After first check: 20%.
+    cy.get('[data-testid="progress-percentage"]', { timeout: 5000 })
+      .should('have.text', '20%');
+
+    // After two checks: 40%.
+    cy.get('[data-testid="progress-percentage"]', { timeout: 8000 })
+      .should('have.text', '40%');
+
+    // Verify progress bar fill has non-zero width via inline style.
+    // .should('have.attr', 'style') checks the element's style attribute.
+    cy.get('[data-testid="progress-bar-fill"]')
+      .should('have.attr', 'style')
+      .and('contain', '40%');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Verify All Checks Complete
+  // --------------------------------------------------------------------------
+  // Wait for all five checks to finish.
+  it('exercise 4: verify all checks complete', () => {
+    cy.get('[data-testid="btn-start-checks"]').click();
+
+    // Wait for 100% progress. Total ~11.5s, so use 15s timeout.
+    // { timeout: 15000 } gives Cypress up to 15 seconds to retry.
+    cy.get('[data-testid="progress-percentage"]', { timeout: 15000 })
+      .should('have.text', '100%');
+
+    // Verify completed count.
+    cy.get('[data-testid="checks-completed"]').should('have.text', '5 / 5');
+
+    // Verify each check's final status.
+    cy.get('[data-testid="check-criminal-status"]').should('have.text', 'Complete');
+    cy.get('[data-testid="check-credit-status"]').should('have.text', 'Complete');
+    cy.get('[data-testid="check-employment-status"]').should('have.text', 'Complete');
+    cy.get('[data-testid="check-education-status"]').should('have.text', 'Failed');
+    cy.get('[data-testid="check-reference-status"]').should('have.text', 'Complete');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Handle Failed Check
+  // --------------------------------------------------------------------------
+  // Verify the Education check fails with the correct status and styling.
+  it('exercise 5: handle failed check', () => {
+    cy.get('[data-testid="btn-start-checks"]').click();
+
+    // Wait for education to fail (~9.5s cumulative).
+    cy.get('[data-testid="check-education-status"]', { timeout: 12000 })
+      .should('have.text', 'Failed');
+
+    // Verify the check item has the "failed" CSS class.
+    // .should('have.class', name) checks for a specific CSS class.
+    cy.get('[data-testid="check-education"]').should('have.class', 'failed');
+
+    // Verify failure detail text.
+    cy.get('[data-testid="check-education-detail"]')
+      .should('have.text', 'Could not verify degree');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Verify Estimated Time Updates
+  // --------------------------------------------------------------------------
+  // Verify the estimated time decreases and reaches "0s".
+  it('exercise 6: verify estimated time updates', () => {
+    // Before starting: "--".
+    cy.get('[data-testid="estimated-time"]').should('have.text', '--');
+
+    // Start checks.
+    cy.get('[data-testid="btn-start-checks"]').click();
+
+    // Should no longer be "--".
+    cy.get('[data-testid="estimated-time"]', { timeout: 2000 })
+      .should('not.have.text', '--');
+
+    // Read initial value and verify it's > 0.
+    cy.get('[data-testid="estimated-time"]').invoke('text').then((text) => {
+      const seconds = parseInt(text);
+      expect(seconds).to.be.greaterThan(0);
+    });
+
+    // Wait for all checks, then verify "0s".
+    cy.get('[data-testid="estimated-time"]', { timeout: 15000 })
+      .should('have.text', '0s');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Verify Overall Status Changes
+  // --------------------------------------------------------------------------
+  // Verify status transitions through all phases.
+  it('exercise 7: verify overall status changes', () => {
+    // Initial: "Not Started".
+    cy.get('[data-testid="overall-status"]')
+      .should('have.text', 'Not Started')
+      .and('have.class', 'overall-pending');
+
+    // Start checks.
+    cy.get('[data-testid="btn-start-checks"]').click();
+
+    // "In Progress".
+    cy.get('[data-testid="overall-status"]')
+      .should('have.text', 'In Progress')
+      .and('have.class', 'overall-in-progress');
+
+    // Final: "Completed with Issues" (because education fails).
+    cy.get('[data-testid="overall-status"]', { timeout: 15000 })
+      .should('have.text', 'Completed with Issues')
+      .and('have.class', 'overall-failed');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Complete Full Background Check Flow
+  // --------------------------------------------------------------------------
+  // Start, wait for all, verify everything.
+  it('exercise 8: complete full background check flow', () => {
+    cy.get('[data-testid="btn-start-checks"]').click();
+
+    // Wait for 100%.
+    cy.get('[data-testid="progress-percentage"]', { timeout: 15000 })
+      .should('have.text', '100%');
+
+    // Verify each check result.
+    const expected = [
+      { id: 'criminal', status: 'Complete', detail: 'No records found' },
+      { id: 'credit', status: 'Complete', detail: 'Score: 750 (Good)' },
+      { id: 'employment', status: 'Complete', detail: 'Verified: 3 employers' },
+      { id: 'education', status: 'Failed', detail: 'Could not verify degree' },
+      { id: 'reference', status: 'Complete', detail: '2 of 2 references confirmed' }
+    ];
+
+    expected.forEach(check => {
+      cy.get(`[data-testid="check-${check.id}-status"]`).should('have.text', check.status);
+      cy.get(`[data-testid="check-${check.id}-detail"]`).should('have.text', check.detail);
+    });
+
+    // Verify progress.
+    cy.get('[data-testid="checks-completed"]').should('have.text', '5 / 5');
+    cy.get('[data-testid="estimated-time"]').should('have.text', '0s');
+
+    // Verify overall status.
+    cy.get('[data-testid="overall-status"]').should('have.text', 'Completed with Issues');
+  });
+});
+c:Tc9aa,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { test, expect } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> '@playwright/test'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// The base URL for our playground page.</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-05-fintech-domain/28-document-verification/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// ─── Helper: uploadFile ──────────────────────────────────────────────</span></span>
+<span class="line"><span style="color:#6A737D">// Selects a document type and uploads a simulated file.</span></span>
+<span class="line"><span style="color:#6A737D">// setInputFiles() creates a synthetic file without needing a real file on disk.</span></span>
+<span class="line"><span style="color:#6A737D">// The buffer parameter provides fake content for the file.</span></span>
+<span class="line"><span style="color:#F97583">async</span><span style="color:#F97583"> function</span><span style="color:#B392F0"> uploadFile</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">page</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> any</span><span style="color:#E1E4E8">, </span><span style="color:#FFAB70">docType</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> string</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> 'passport'</span><span style="color:#E1E4E8">, </span><span style="color:#FFAB70">fileName</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> string</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> 'passport.pdf'</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'select-doc-type'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">selectOption</span><span style="color:#E1E4E8">(docType);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'file-input'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">setInputFiles</span><span style="color:#E1E4E8">({</span></span>
+<span class="line"><span style="color:#E1E4E8">    name: fileName,</span></span>
+<span class="line"><span style="color:#E1E4E8">    mimeType: </span><span style="color:#9ECBFF">'application/pdf'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">    buffer: Buffer.</span><span style="color:#B392F0">from</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'fake-content'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// ─── Helper: uploadAndProcess ────────────────────────────────────────</span></span>
+<span class="line"><span style="color:#6A737D">// Uploads a file and clicks the Process button. Optionally waits for</span></span>
+<span class="line"><span style="color:#6A737D">// the extracted fields to appear (indicating processing is complete).</span></span>
+<span class="line"><span style="color:#F97583">async</span><span style="color:#F97583"> function</span><span style="color:#B392F0"> uploadAndProcess</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">page</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> any</span><span style="color:#E1E4E8">, </span><span style="color:#FFAB70">docType</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> string</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> 'passport'</span><span style="color:#E1E4E8">, </span><span style="color:#FFAB70">fileName</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> string</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> 'passport.pdf'</span><span style="color:#E1E4E8">, </span><span style="color:#FFAB70">waitForResults</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> boolean</span><span style="color:#F97583"> =</span><span style="color:#79B8FF"> true</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> uploadFile</span><span style="color:#E1E4E8">(page, docType, fileName);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-process'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  if</span><span style="color:#E1E4E8"> (waitForResults) {</span></span>
+<span class="line"><span style="color:#6A737D">    // Wait for the extracted fields section to become visible.</span></span>
+<span class="line"><span style="color:#6A737D">    // The processing takes 2 seconds, so we allow up to 5 seconds.</span></span>
+<span class="line"><span style="color:#F97583">    await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'extracted-fields'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">({ timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"><span style="color:#E1E4E8">  }</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 1: Upload and Verify Processing Starts</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Upload a file, click Process, verify the spinner and status change.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: upload and verify processing starts'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify initial status is "Upload".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'current-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Upload'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Upload a file.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> uploadFile</span><span style="color:#E1E4E8">(page);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the upload area shows the file is selected.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'upload-filename'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'passport.pdf'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'upload-area'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">has-file</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click "Process Document".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-process'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the spinner is visible.</span></span>
+<span class="line"><span style="color:#6A737D">  // toBeVisible() checks the element is displayed in the viewport.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'processing-spinner'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'processing-text'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Extracting text via OCR...'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify status changed to "Processing".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'current-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Processing'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 2: Wait for OCR Results</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Upload, process, wait for the spinner to disappear and results to appear.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: wait for OCR results'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Upload and start processing.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> uploadFile</span><span style="color:#E1E4E8">(page);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-process'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify spinner is visible during processing.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'processing-spinner'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Wait for the extracted fields to appear (processing complete).</span></span>
+<span class="line"><span style="color:#6A737D">  // toBeVisible() with timeout will retry until the element appears.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'extracted-fields'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">({ timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the spinner is now hidden.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'processing-spinner'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeHidden</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify status is now "Review".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'current-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Review'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 3: Verify Extracted Fields</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Process a passport and verify all OCR-extracted field values.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: verify extracted fields'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> uploadAndProcess</span><span style="color:#E1E4E8">(page, </span><span style="color:#9ECBFF">'passport'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify each extracted field contains the expected OCR value.</span></span>
+<span class="line"><span style="color:#6A737D">  // toHaveValue(value) checks the input element's current value.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'extracted-name'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveValue</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Jane Alice Doe'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'extracted-dob'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveValue</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'15-Mar-1990'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'extracted-id-number'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveValue</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'P12345678'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'extracted-address'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveValue</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'123 Main St, New York, NY 10001'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'extracted-expiry'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveValue</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'15-Mar-2030'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 4: Edit Extracted Field</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// After OCR, edit the name field, then confirm successfully.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: edit extracted field'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> uploadAndProcess</span><span style="color:#E1E4E8">(page, </span><span style="color:#9ECBFF">'passport'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the original OCR name.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'extracted-name'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveValue</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Jane Alice Doe'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Clear the name field and type a corrected name.</span></span>
+<span class="line"><span style="color:#6A737D">  // fill() clears the input first, then types the new value.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'extracted-name'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Jane A. Doe-Smith'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the field now has the new value.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'extracted-name'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveValue</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Jane A. Doe-Smith'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Confirm verification — should succeed even with edited fields.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-confirm'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'confirmed-section'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'current-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Confirmed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 5: Confirm Verification</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Complete the full flow and verify the confirmation page.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: confirm verification'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> uploadAndProcess</span><span style="color:#E1E4E8">(page, </span><span style="color:#9ECBFF">'drivers-license'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'license.jpg'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click "Confirm Verification".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-confirm'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the confirmed section is visible with the success message.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'confirmed-section'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'confirmed-title'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Document Verified'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'confirmed-message'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Verification complete'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the status badge shows "Confirmed".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'current-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Confirmed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 6: Verify Status Transitions</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Walk through the entire flow and verify status at each phase.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: verify status transitions'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Phase 1: Upload — initial state.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'current-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Upload'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'step-upload-pill'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">active</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Upload a file and start processing.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> uploadFile</span><span style="color:#E1E4E8">(page);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-process'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Phase 2: Processing.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'current-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Processing'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'step-processing-pill'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">active</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'step-upload-pill'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">completed</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Phase 3: Review — wait for processing to complete.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'extracted-fields'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">({ timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'current-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Review'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'step-review-pill'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">active</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'step-processing-pill'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">completed</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Phase 4: Confirmed.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-confirm'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'current-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Confirmed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'step-confirmed-pill'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">active</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'step-review-pill'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">completed</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 7: Test With Invalid Document</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Upload an "invalid" document and verify the error state.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 7: test with invalid document'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Upload a file with "invalid" in the name — this triggers the failure path.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> uploadFile</span><span style="color:#E1E4E8">(page, </span><span style="color:#9ECBFF">'passport'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'invalid-blurry-doc.pdf'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-process'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Wait for the error banner to appear (after 2s processing delay).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'error-banner'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">({ timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the error message text.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'error-message'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'could not be processed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the status shows "Failed".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'current-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Failed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the "Try Again" button is visible.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-retry'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 8: Retry After Failure</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Upload invalid doc, fail, retry, then succeed with a valid document.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 8: retry after failure'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // First attempt: invalid document.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> uploadFile</span><span style="color:#E1E4E8">(page, </span><span style="color:#9ECBFF">'passport'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'invalid-doc.pdf'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-process'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'error-banner'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">({ timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'current-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Failed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click "Try Again" to reset to upload state.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-retry'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify we're back to the upload state.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'current-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Upload'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'upload-section'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'error-banner'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeHidden</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Second attempt: valid document.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> uploadAndProcess</span><span style="color:#E1E4E8">(page, </span><span style="color:#9ECBFF">'national-id'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'valid-id-card.pdf'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify OCR results appear.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'extracted-name'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveValue</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Maria Garcia Lopez'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'current-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Review'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Confirm verification.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-confirm'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'current-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Confirmed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>d:Tae65,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-05-fintech-domain/28-document-verification/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// ─── Helper: uploadFile ──────────────────────────────────────────────</span></span>
+<span class="line"><span style="color:#6A737D">// Selects a document type and simulates a file upload.</span></span>
+<span class="line"><span style="color:#6A737D">// cy.get().selectFile() creates a synthetic file and triggers the change event.</span></span>
+<span class="line"><span style="color:#6A737D">// { force: true } is needed because the file input is hidden (display:none).</span></span>
+<span class="line"><span style="color:#F97583">function</span><span style="color:#B392F0"> uploadFile</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">docType</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> string</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> 'passport'</span><span style="color:#E1E4E8">, </span><span style="color:#FFAB70">fileName</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> string</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> 'passport.pdf'</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#E1E4E8">  cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="select-doc-type"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">select</span><span style="color:#E1E4E8">(docType);</span></span>
+<span class="line"><span style="color:#E1E4E8">  cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="file-input"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">selectFile</span><span style="color:#E1E4E8">({</span></span>
+<span class="line"><span style="color:#E1E4E8">    contents: Cypress.Buffer.</span><span style="color:#B392F0">from</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'fake-content'</span><span style="color:#E1E4E8">),</span></span>
+<span class="line"><span style="color:#E1E4E8">    fileName: fileName,</span></span>
+<span class="line"><span style="color:#E1E4E8">    mimeType: </span><span style="color:#9ECBFF">'application/pdf'</span></span>
+<span class="line"><span style="color:#E1E4E8">  }, { force: </span><span style="color:#79B8FF">true</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// ─── Helper: uploadAndProcess ────────────────────────────────────────</span></span>
+<span class="line"><span style="color:#6A737D">// Uploads a file, clicks Process, and optionally waits for OCR results.</span></span>
+<span class="line"><span style="color:#F97583">function</span><span style="color:#B392F0"> uploadAndProcess</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">docType</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> string</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> 'passport'</span><span style="color:#E1E4E8">, </span><span style="color:#FFAB70">fileName</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> string</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> 'passport.pdf'</span><span style="color:#E1E4E8">, </span><span style="color:#FFAB70">waitForResults</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> boolean</span><span style="color:#F97583"> =</span><span style="color:#79B8FF"> true</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#B392F0">  uploadFile</span><span style="color:#E1E4E8">(docType, fileName);</span></span>
+<span class="line"><span style="color:#E1E4E8">  cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-process"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  if</span><span style="color:#E1E4E8"> (waitForResults) {</span></span>
+<span class="line"><span style="color:#6A737D">    // Wait for extracted fields to appear (2s processing delay).</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="extracted-fields"]'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8"> }).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  }</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">describe</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Kata 28: Document Verification'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">  beforeEach</span><span style="color:#E1E4E8">(() </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 1: Upload and Verify Processing Starts</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: upload and verify processing starts'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Verify initial status.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="current-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Upload'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Upload a file.</span></span>
+<span class="line"><span style="color:#B392F0">    uploadFile</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify file is shown.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="upload-filename"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'passport.pdf'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="upload-area"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'has-file'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Click Process.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-process"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify spinner is visible.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="processing-spinner"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="processing-text"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Extracting text via OCR...'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify status changed to Processing.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="current-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Processing'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 2: Wait for OCR Results</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: wait for OCR results'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#B392F0">    uploadFile</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-process"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify spinner is visible during processing.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="processing-spinner"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Wait for extracted fields (processing takes 2s).</span></span>
+<span class="line"><span style="color:#6A737D">    // { timeout: 5000 } gives Cypress enough time to retry.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="extracted-fields"]'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8"> }).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify spinner is now hidden.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="processing-spinner"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify status is "Review".</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="current-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Review'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 3: Verify Extracted Fields</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: verify extracted fields'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#B392F0">    uploadAndProcess</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'passport'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify each field value.</span></span>
+<span class="line"><span style="color:#6A737D">    // .should('have.value', text) checks an input element's value attribute.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="extracted-name"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.value'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Jane Alice Doe'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="extracted-dob"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.value'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'15-Mar-1990'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="extracted-id-number"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.value'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'P12345678'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="extracted-address"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.value'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'123 Main St, New York, NY 10001'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="extracted-expiry"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.value'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'15-Mar-2030'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 4: Edit Extracted Field</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: edit extracted field'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#B392F0">    uploadAndProcess</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'passport'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify original name.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="extracted-name"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.value'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Jane Alice Doe'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Clear and type a new name.</span></span>
+<span class="line"><span style="color:#6A737D">    // .clear() removes existing text, .type() enters new text.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="extracted-name"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">clear</span><span style="color:#E1E4E8">().</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Jane A. Doe-Smith'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="extracted-name"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.value'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Jane A. Doe-Smith'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Confirm — should succeed with edited field.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-confirm"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="confirmed-section"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="current-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Confirmed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 5: Confirm Verification</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: confirm verification'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#B392F0">    uploadAndProcess</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'drivers-license'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'license.jpg'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Click Confirm.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-confirm"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify confirmation page.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="confirmed-section"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="confirmed-title"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Document Verified'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="confirmed-message"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Verification complete'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="current-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Confirmed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 6: Verify Status Transitions</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: verify status transitions'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Phase 1: Upload.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="current-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Upload'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="step-upload-pill"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'active'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Upload and process.</span></span>
+<span class="line"><span style="color:#B392F0">    uploadFile</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-process"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Phase 2: Processing.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="current-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Processing'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="step-processing-pill"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'active'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="step-upload-pill"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'completed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Phase 3: Review.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="extracted-fields"]'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8"> }).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="current-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Review'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="step-review-pill"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'active'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="step-processing-pill"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'completed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Phase 4: Confirmed.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-confirm"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="current-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Confirmed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="step-confirmed-pill"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'active'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="step-review-pill"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'completed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 7: Test With Invalid Document</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 7: test with invalid document'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Upload a file with "invalid" in the name to trigger failure.</span></span>
+<span class="line"><span style="color:#B392F0">    uploadFile</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'passport'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'invalid-blurry-doc.pdf'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-process"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Wait for error banner (after 2s processing).</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="error-banner"]'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8"> }).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="error-message"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'could not be processed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="current-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Failed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-retry"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 8: Retry After Failure</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 8: retry after failure'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // First attempt: invalid.</span></span>
+<span class="line"><span style="color:#B392F0">    uploadFile</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'passport'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'invalid-doc.pdf'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-process"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="error-banner"]'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8"> }).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="current-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Failed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Click "Try Again".</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-retry"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify reset to upload state.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="current-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Upload'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="upload-section"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="error-banner"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Second attempt: valid document.</span></span>
+<span class="line"><span style="color:#B392F0">    uploadAndProcess</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'national-id'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'valid-id-card.pdf'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify OCR results.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="extracted-name"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.value'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Maria Garcia Lopez'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="current-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Review'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Confirm.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-confirm"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="current-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Confirmed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"kata":{"slug":"28-document-verification","number":28,"title":"Document Verification","phaseSlug":"phase-05-fintech-domain","phaseNumber":5,"phaseName":"Fintech Domain","readmeRaw":"$3","hasPlayground":true,"playwrightFiles":[{"filename":"document-verification.spec.ts","content":"$4"}],"cypressFiles":[{"filename":"document-verification.cy.ts","content":"$5"}]},"prev":{"slug":"27-video-onboarding","number":27,"title":"Video Onboarding","phaseSlug":"phase-05-fintech-domain","phaseNumber":5,"phaseName":"Fintech Domain","readmeRaw":"$6","hasPlayground":true,"playwrightFiles":[{"filename":"video-onboarding.spec.ts","content":"$7"}],"cypressFiles":[{"filename":"video-onboarding.cy.ts","content":"$8"}]},"next":{"slug":"29-background-verification","number":29,"title":"Background Verification","phaseSlug":"phase-05-fintech-domain","phaseNumber":5,"phaseName":"Fintech Domain","readmeRaw":"$9","hasPlayground":true,"playwrightFiles":[{"filename":"background-verification.spec.ts","content":"$a"}],"cypressFiles":[{"filename":"background-verification.cy.ts","content":"$b"}]},"playwrightHtml":[{"filename":"document-verification.spec.ts","html":"$c"}],"cypressHtml":[{"filename":"document-verification.cy.ts","html":"$d"}]}],["$Le"],"$Lf"]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"iDtrTKWIN4zzRgDRiiDd2"}
+e:["$","script","script-0",{"src":"/qa-labs/_next/static/chunks/03nvm.8~ftt80.js","async":true}]
+f:["$","$L10",null,{"children":["$","$11",null,{"name":"Next.MetadataOutlet","children":"$@12"}]}]
+12:null

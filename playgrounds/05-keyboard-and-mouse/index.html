@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kata 05: Keyboard and Mouse | QA Labs</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #1e293b; padding: 2rem; }
+    .header { background: #0f172a; color: white; padding: 1rem 2rem; margin: -2rem -2rem 2rem; }
+    .header h1 { font-size: 1.25rem; }
+    .kata-badge { display: inline-block; background: #38bdf8; color: #0f172a; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 4px; margin-right: 0.5rem; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+    .section { margin-bottom: 2rem; padding: 1.5rem; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .section h2 { font-size: 1rem; color: #475569; margin-bottom: 1rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.5rem; }
+    button { padding: 0.5rem 1rem; border: none; border-radius: 6px; font-size: 0.875rem; cursor: pointer; margin-right: 0.5rem; margin-bottom: 0.5rem; }
+    .btn-primary { background: #3b82f6; color: white; }
+    .btn-success { background: #22c55e; color: white; }
+    .btn-danger { background: #ef4444; color: white; }
+    .btn-warning { background: #f59e0b; color: white; }
+    input, textarea { padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.875rem; margin-bottom: 0.75rem; }
+    input[type="text"], input[type="email"], textarea { width: 100%; }
+    label { display: block; margin-bottom: 0.25rem; font-size: 0.875rem; color: #475569; }
+
+    /* Sortable list */
+    .sortable-list { list-style: none; padding: 0; }
+    .sortable-item {
+      padding: 0.75rem 1rem; margin-bottom: 0.5rem; background: #f1f5f9;
+      border: 2px solid #e2e8f0; border-radius: 6px; cursor: pointer;
+      display: flex; justify-content: space-between; align-items: center;
+      transition: background 0.15s, border-color 0.15s;
+      position: relative;
+    }
+    .sortable-item:focus { outline: none; border-color: #38bdf8; background: #e0f2fe; }
+    .sortable-item.selected { border-color: #3b82f6; background: #dbeafe; }
+    .sortable-item .tier-label { font-weight: 600; }
+    .sortable-item .tier-score { color: #64748b; font-size: 0.8rem; }
+
+    /* Tooltip card */
+    .tooltip-card {
+      padding: 1rem; background: white; border: 1px solid #e2e8f0;
+      border-radius: 8px; margin-bottom: 0.75rem; position: relative;
+      cursor: default; transition: box-shadow 0.15s;
+    }
+    .tooltip-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+    .tooltip-text {
+      display: none; position: absolute; bottom: calc(100% + 8px); left: 50%;
+      transform: translateX(-50%); background: #0f172a; color: white;
+      padding: 0.5rem 0.75rem; border-radius: 6px; font-size: 0.75rem;
+      white-space: nowrap; z-index: 10; pointer-events: none;
+    }
+    .tooltip-card:hover .tooltip-text { display: block; }
+
+    /* Keyboard shortcut panel */
+    .shortcut-key {
+      display: inline-block; background: #f1f5f9; border: 1px solid #cbd5e1;
+      border-radius: 4px; padding: 0.15rem 0.5rem; font-family: monospace;
+      font-size: 0.85rem; margin-right: 0.25rem;
+    }
+    .shortcut-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; font-size: 0.875rem; }
+
+    /* Status display */
+    .status-badge {
+      display: inline-block; padding: 0.35rem 0.75rem; border-radius: 20px;
+      font-size: 0.875rem; font-weight: 600; margin-top: 0.75rem;
+    }
+    .status-pending { background: #fef3c7; color: #92400e; }
+    .status-approved { background: #dcfce7; color: #166534; }
+    .status-rejected { background: #fee2e2; color: #991b1b; }
+    .status-escalated { background: #dbeafe; color: #1e40af; }
+
+    /* Drag area */
+    .drag-area {
+      width: 100%; height: 180px; background: #f8fafc; border: 2px dashed #cbd5e1;
+      border-radius: 8px; position: relative; overflow: hidden; cursor: crosshair;
+    }
+    .drag-box {
+      width: 60px; height: 60px; background: #3b82f6; border-radius: 8px;
+      position: absolute; top: 60px; left: 20px; cursor: grab;
+      display: flex; align-items: center; justify-content: center;
+      color: white; font-size: 0.7rem; font-weight: 600; user-select: none;
+    }
+    .drag-box.dragging { cursor: grabbing; opacity: 0.8; }
+
+    /* Text formatting area */
+    .format-toolbar { display: flex; gap: 0.5rem; margin-bottom: 0.5rem; }
+    .format-toolbar button { padding: 0.35rem 0.6rem; font-size: 0.8rem; }
+    .format-area {
+      width: 100%; min-height: 80px; padding: 0.75rem; border: 1px solid #cbd5e1;
+      border-radius: 6px; font-size: 0.875rem; outline: none; resize: vertical;
+    }
+    .format-area:focus { border-color: #38bdf8; box-shadow: 0 0 0 2px rgba(56,189,248,0.2); }
+
+    /* Focus indicator */
+    .focus-indicator { font-size: 0.8rem; color: #64748b; margin-top: 0.5rem; }
+
+    /* Tab form */
+    .tab-form input:focus, .tab-form textarea:focus {
+      border-color: #38bdf8; box-shadow: 0 0 0 2px rgba(56,189,248,0.2); outline: none;
+    }
+  </style>
+</head>
+<body>
+
+  <header class="header" data-testid="page-header">
+    <span class="kata-badge">KATA 05</span>
+    <h1>Risk Tier Sorter - Keyboard and Mouse Practice</h1>
+  </header>
+
+  <div class="grid">
+    <!-- LEFT COLUMN -->
+    <div>
+
+      <!-- 1: Sortable Risk Tiers -->
+      <div class="section" data-testid="sortable-section">
+        <h2>Risk Tier Order (Arrow Keys + Enter)</h2>
+        <p style="font-size: 0.8rem; color: #64748b; margin-bottom: 0.75rem;">
+          Click an item to select it. Press <span class="shortcut-key">&uarr;</span> <span class="shortcut-key">&darr;</span> to move. Press <span class="shortcut-key">Enter</span> to confirm.
+        </p>
+        <ul class="sortable-list" data-testid="sortable-list" id="sortable-list">
+          <li class="sortable-item" tabindex="0" data-testid="tier-critical" data-tier="critical">
+            <span class="tier-label">Critical</span><span class="tier-score">Score: 90+</span>
+          </li>
+          <li class="sortable-item" tabindex="0" data-testid="tier-high" data-tier="high">
+            <span class="tier-label">High</span><span class="tier-score">Score: 70-89</span>
+          </li>
+          <li class="sortable-item" tabindex="0" data-testid="tier-medium" data-tier="medium">
+            <span class="tier-label">Medium</span><span class="tier-score">Score: 40-69</span>
+          </li>
+          <li class="sortable-item" tabindex="0" data-testid="tier-low" data-tier="low">
+            <span class="tier-label">Low</span><span class="tier-score">Score: 0-39</span>
+          </li>
+        </ul>
+        <p style="font-size: 0.8rem; margin-top: 0.5rem;">
+          Order: <strong data-testid="tier-order" id="tier-order">critical, high, medium, low</strong>
+        </p>
+      </div>
+
+      <!-- 2: Text Formatting with Keyboard Shortcuts -->
+      <div class="section" data-testid="formatting-section">
+        <h2>Notes Editor (Keyboard Shortcuts)</h2>
+        <p style="font-size: 0.8rem; color: #64748b; margin-bottom: 0.75rem;">
+          <span class="shortcut-key">Ctrl+B</span> Bold &nbsp;
+          <span class="shortcut-key">Ctrl+I</span> Italic
+        </p>
+        <div class="format-toolbar">
+          <button class="btn-primary" data-testid="btn-bold" id="btn-bold"><b>B</b></button>
+          <button class="btn-primary" data-testid="btn-italic" id="btn-italic"><i>I</i></button>
+        </div>
+        <textarea class="format-area" data-testid="format-area" id="format-area"
+          placeholder="Type your compliance notes here..."></textarea>
+        <p style="font-size: 0.8rem; margin-top: 0.5rem;">
+          Format applied: <strong data-testid="format-status" id="format-status">None</strong>
+        </p>
+      </div>
+
+      <!-- 3: Hover Tooltip Cards -->
+      <div class="section" data-testid="tooltip-section">
+        <h2>Risk Assessment Cards (Hover for Details)</h2>
+        <div class="tooltip-card" data-testid="card-aml">
+          <strong>AML Check</strong>
+          <p style="font-size: 0.8rem; color: #64748b;">Anti-Money Laundering verification</p>
+          <span class="tooltip-text" data-testid="tooltip-aml">Screens against OFAC, EU, and UN sanctions lists</span>
+        </div>
+        <div class="tooltip-card" data-testid="card-kyc">
+          <strong>KYC Review</strong>
+          <p style="font-size: 0.8rem; color: #64748b;">Know Your Customer documentation</p>
+          <span class="tooltip-text" data-testid="tooltip-kyc">Verifies identity documents, proof of address, and source of funds</span>
+        </div>
+        <div class="tooltip-card" data-testid="card-pep">
+          <strong>PEP Screening</strong>
+          <p style="font-size: 0.8rem; color: #64748b;">Politically Exposed Person check</p>
+          <span class="tooltip-text" data-testid="tooltip-pep">Cross-references global PEP databases for matches</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div>
+
+      <!-- 4: Tab Navigation Form -->
+      <div class="section tab-form" data-testid="tab-form-section">
+        <h2>Client Onboarding (Tab Navigation)</h2>
+        <label for="field-first-name">First Name</label>
+        <input type="text" id="field-first-name" data-testid="field-first-name" placeholder="First name" tabindex="1" />
+
+        <label for="field-last-name">Last Name</label>
+        <input type="text" id="field-last-name" data-testid="field-last-name" placeholder="Last name" tabindex="2" />
+
+        <label for="field-email">Email</label>
+        <input type="email" id="field-email" data-testid="field-email" placeholder="you@example.com" tabindex="3" />
+
+        <label for="field-notes">Notes</label>
+        <textarea id="field-notes" data-testid="field-notes" rows="2" placeholder="Additional notes..." tabindex="4"></textarea>
+
+        <button class="btn-success" data-testid="btn-submit" id="btn-submit" tabindex="5">Submit</button>
+
+        <div class="focus-indicator">
+          Currently focused: <strong data-testid="focused-field" id="focused-field">None</strong>
+        </div>
+      </div>
+
+      <!-- 5: Keyboard Shortcut Actions -->
+      <div class="section" data-testid="shortcut-section">
+        <h2>Quick Actions (Keyboard Shortcuts)</h2>
+        <p style="font-size: 0.8rem; color: #64748b; margin-bottom: 0.75rem;">
+          Focus this panel and press a key to take action:
+        </p>
+        <div class="shortcut-row"><span class="shortcut-key">A</span> Approve application</div>
+        <div class="shortcut-row"><span class="shortcut-key">R</span> Reject application</div>
+        <div class="shortcut-row"><span class="shortcut-key">E</span> Escalate for review</div>
+
+        <div data-testid="shortcut-panel" id="shortcut-panel" tabindex="0"
+          style="padding: 1rem; border: 2px solid #e2e8f0; border-radius: 8px; margin-top: 0.75rem; text-align: center; cursor: pointer; outline: none;"
+        >
+          <p style="font-size: 0.8rem; color: #94a3b8;">Click here to focus, then press A, R, or E</p>
+          <div data-testid="shortcut-status" id="shortcut-status" class="status-badge status-pending">
+            Pending
+          </div>
+        </div>
+      </div>
+
+      <!-- 6: Drag Simulation Area -->
+      <div class="section" data-testid="drag-section">
+        <h2>Risk Zone Mapper (Mouse Events)</h2>
+        <p style="font-size: 0.8rem; color: #64748b; margin-bottom: 0.75rem;">
+          Drag the blue box to reposition it. Mouse coordinates are tracked.
+        </p>
+        <div class="drag-area" data-testid="drag-area" id="drag-area">
+          <div class="drag-box" data-testid="drag-box" id="drag-box">DRAG</div>
+        </div>
+        <p style="font-size: 0.8rem; margin-top: 0.5rem;">
+          Mouse: <strong data-testid="mouse-coords" id="mouse-coords">x: 0, y: 0</strong>
+        </p>
+        <p style="font-size: 0.8rem;">
+          Drag status: <strong data-testid="drag-status" id="drag-status">Idle</strong>
+        </p>
+      </div>
+
+      <!-- 7: Escape to Close Modal -->
+      <div class="section" data-testid="modal-section">
+        <h2>Alert Dialog (Escape to Close)</h2>
+        <button class="btn-warning" data-testid="btn-open-modal" id="btn-open-modal">Open Alert</button>
+        <div id="modal-overlay" data-testid="modal-overlay" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 200; display: none; align-items: center; justify-content: center;">
+          <div data-testid="modal-dialog" style="background: white; padding: 2rem; border-radius: 12px; max-width: 400px; text-align: center; box-shadow: 0 8px 32px rgba(0,0,0,0.2);">
+            <h3 style="margin-bottom: 0.5rem;">High Risk Alert</h3>
+            <p style="font-size: 0.875rem; color: #64748b; margin-bottom: 1rem;">This application has been flagged for manual review. Press <span class="shortcut-key">Esc</span> to dismiss.</p>
+            <button class="btn-danger" data-testid="btn-close-modal" id="btn-close-modal">Close</button>
+          </div>
+        </div>
+        <p style="font-size: 0.8rem; margin-top: 0.5rem;">
+          Modal state: <strong data-testid="modal-state" id="modal-state">Closed</strong>
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // -----------------------------------------------------------------------
+    // 1. Sortable Risk Tiers — Arrow key reordering
+    // -----------------------------------------------------------------------
+    const sortableList = document.getElementById('sortable-list');
+    let selectedItem = null;
+
+    function updateTierOrder() {
+      const items = sortableList.querySelectorAll('.sortable-item');
+      const order = Array.from(items).map(i => i.getAttribute('data-tier')).join(', ');
+      document.getElementById('tier-order').textContent = order;
+    }
+
+    sortableList.addEventListener('click', (e) => {
+      const item = e.target.closest('.sortable-item');
+      if (!item) return;
+      // Deselect previous
+      if (selectedItem) selectedItem.classList.remove('selected');
+      selectedItem = item;
+      selectedItem.classList.add('selected');
+      selectedItem.focus();
+    });
+
+    sortableList.addEventListener('keydown', (e) => {
+      if (!selectedItem) return;
+
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        const prev = selectedItem.previousElementSibling;
+        if (prev) {
+          sortableList.insertBefore(selectedItem, prev);
+          updateTierOrder();
+          selectedItem.focus();
+        }
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        const next = selectedItem.nextElementSibling;
+        if (next) {
+          sortableList.insertBefore(next, selectedItem);
+          updateTierOrder();
+          selectedItem.focus();
+        }
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        selectedItem.classList.remove('selected');
+        selectedItem = null;
+      }
+    });
+
+    // -----------------------------------------------------------------------
+    // 2. Text Formatting — Ctrl+B / Ctrl+I keyboard shortcuts
+    // -----------------------------------------------------------------------
+    const formatArea = document.getElementById('format-area');
+    const formatStatus = document.getElementById('format-status');
+
+    function applyFormat(format) {
+      formatStatus.textContent = format;
+      formatStatus.setAttribute('data-format', format.toLowerCase());
+    }
+
+    formatArea.addEventListener('keydown', (e) => {
+      if (e.ctrlKey && e.key === 'b') {
+        e.preventDefault();
+        applyFormat('Bold');
+      } else if (e.ctrlKey && e.key === 'i') {
+        e.preventDefault();
+        applyFormat('Italic');
+      }
+    });
+
+    document.getElementById('btn-bold').addEventListener('click', () => applyFormat('Bold'));
+    document.getElementById('btn-italic').addEventListener('click', () => applyFormat('Italic'));
+
+    // -----------------------------------------------------------------------
+    // 3. Hover tooltips — handled purely in CSS (:hover .tooltip-text)
+    // -----------------------------------------------------------------------
+
+    // -----------------------------------------------------------------------
+    // 4. Tab Navigation — Focus tracking
+    // -----------------------------------------------------------------------
+    const focusedField = document.getElementById('focused-field');
+    const tabFields = ['field-first-name', 'field-last-name', 'field-email', 'field-notes', 'btn-submit'];
+
+    tabFields.forEach(id => {
+      const el = document.getElementById(id);
+      el.addEventListener('focus', () => {
+        focusedField.textContent = id;
+      });
+      el.addEventListener('blur', () => {
+        // Only reset if nothing else in our form is focused
+        setTimeout(() => {
+          if (!tabFields.includes(document.activeElement?.id)) {
+            focusedField.textContent = 'None';
+          }
+        }, 10);
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // 5. Keyboard Shortcut Actions — A / R / E
+    // -----------------------------------------------------------------------
+    const shortcutPanel = document.getElementById('shortcut-panel');
+    const shortcutStatus = document.getElementById('shortcut-status');
+
+    shortcutPanel.addEventListener('keydown', (e) => {
+      const key = e.key.toLowerCase();
+      if (key === 'a') {
+        shortcutStatus.textContent = 'Approved';
+        shortcutStatus.className = 'status-badge status-approved';
+      } else if (key === 'r') {
+        shortcutStatus.textContent = 'Rejected';
+        shortcutStatus.className = 'status-badge status-rejected';
+      } else if (key === 'e') {
+        shortcutStatus.textContent = 'Escalated';
+        shortcutStatus.className = 'status-badge status-escalated';
+      }
+    });
+
+    // -----------------------------------------------------------------------
+    // 6. Drag Simulation — mousedown, mousemove, mouseup
+    // -----------------------------------------------------------------------
+    const dragArea = document.getElementById('drag-area');
+    const dragBox = document.getElementById('drag-box');
+    const mouseCoords = document.getElementById('mouse-coords');
+    const dragStatusEl = document.getElementById('drag-status');
+    let isDragging = false;
+    let dragOffsetX = 0;
+    let dragOffsetY = 0;
+
+    dragBox.addEventListener('mousedown', (e) => {
+      isDragging = true;
+      dragBox.classList.add('dragging');
+      const rect = dragBox.getBoundingClientRect();
+      dragOffsetX = e.clientX - rect.left;
+      dragOffsetY = e.clientY - rect.top;
+      dragStatusEl.textContent = 'Dragging';
+      e.preventDefault();
+    });
+
+    dragArea.addEventListener('mousemove', (e) => {
+      const areaRect = dragArea.getBoundingClientRect();
+      const relX = Math.round(e.clientX - areaRect.left);
+      const relY = Math.round(e.clientY - areaRect.top);
+      mouseCoords.textContent = `x: ${relX}, y: ${relY}`;
+
+      if (isDragging) {
+        let newLeft = e.clientX - areaRect.left - dragOffsetX;
+        let newTop = e.clientY - areaRect.top - dragOffsetY;
+        // Clamp to area bounds
+        newLeft = Math.max(0, Math.min(newLeft, areaRect.width - 60));
+        newTop = Math.max(0, Math.min(newTop, areaRect.height - 60));
+        dragBox.style.left = newLeft + 'px';
+        dragBox.style.top = newTop + 'px';
+      }
+    });
+
+    document.addEventListener('mouseup', () => {
+      if (isDragging) {
+        isDragging = false;
+        dragBox.classList.remove('dragging');
+        dragStatusEl.textContent = 'Dropped';
+      }
+    });
+
+    // -----------------------------------------------------------------------
+    // 7. Modal — Open with button, close with Escape or button
+    // -----------------------------------------------------------------------
+    const modalOverlay = document.getElementById('modal-overlay');
+    const modalState = document.getElementById('modal-state');
+
+    function openModal() {
+      modalOverlay.style.display = 'flex';
+      modalState.textContent = 'Open';
+    }
+
+    function closeModal() {
+      modalOverlay.style.display = 'none';
+      modalState.textContent = 'Closed';
+    }
+
+    document.getElementById('btn-open-modal').addEventListener('click', openModal);
+    document.getElementById('btn-close-modal').addEventListener('click', closeModal);
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && modalOverlay.style.display === 'flex') {
+        closeModal();
+      }
+    });
+  </script>
+
+</body>
+</html>

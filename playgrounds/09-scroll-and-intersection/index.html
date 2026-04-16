@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kata 09: Scroll and Intersection | QA Labs</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f8fafc;
+      color: #1e293b;
+    }
+
+    /* ── Fixed header ──────────────────────────────────────────────────── */
+    .header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      background: #0f172a;
+      color: white;
+      padding: 1.25rem 2rem;
+      transition: padding 0.3s, font-size 0.3s;
+    }
+    .header h1 { font-size: 1.25rem; transition: font-size 0.3s; }
+    .header .kata-badge {
+      display: inline-block;
+      background: #38bdf8;
+      color: #0f172a;
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      margin-right: 0.5rem;
+    }
+    /* Compact mode applied via JS when user scrolls past threshold */
+    .header.compact {
+      padding: 0.5rem 2rem;
+    }
+    .header.compact h1 { font-size: 1rem; }
+
+    /* ── Scroll-spy navigation ─────────────────────────────────────── */
+    .scroll-nav {
+      position: fixed;
+      top: 80px;
+      right: 1rem;
+      z-index: 90;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 1px 6px rgba(0,0,0,0.12);
+      padding: 0.75rem;
+      list-style: none;
+      transition: top 0.3s;
+    }
+    .header.compact ~ .scroll-nav,
+    .compact-active .scroll-nav { top: 50px; }
+    .scroll-nav li { margin-bottom: 0.5rem; }
+    .scroll-nav a {
+      text-decoration: none;
+      font-size: 0.8rem;
+      color: #64748b;
+      padding: 0.25rem 0.5rem;
+      border-radius: 4px;
+      display: block;
+    }
+    .scroll-nav a.active {
+      background: #3b82f6;
+      color: white;
+      font-weight: 600;
+    }
+
+    /* ── Main content area ──────────────────────────────────────────── */
+    .content {
+      padding: 6rem 2rem 2rem;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    .section {
+      margin-bottom: 2rem;
+      padding: 1.5rem;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      min-height: 700px;
+    }
+    .section h2 {
+      font-size: 1rem;
+      color: #475569;
+      margin-bottom: 1rem;
+      border-bottom: 1px solid #e2e8f0;
+      padding-bottom: 0.5rem;
+    }
+
+    /* ── Transaction list ───────────────────────────────────────────── */
+    .tx-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid #f1f5f9;
+      font-size: 0.875rem;
+    }
+    .tx-item:last-child { border-bottom: none; }
+    .tx-amount { font-weight: 600; }
+    .tx-amount.credit { color: #16a34a; }
+    .tx-amount.debit { color: #dc2626; }
+    .tx-date { color: #64748b; font-size: 0.75rem; }
+
+    /* ── Lazy image cards ───────────────────────────────────────────── */
+    .image-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+    }
+    .image-card {
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    .image-card img {
+      width: 100%;
+      height: 120px;
+      object-fit: cover;
+      display: block;
+      background: #e2e8f0;
+    }
+    .image-card .caption {
+      padding: 0.5rem;
+      font-size: 0.8rem;
+      color: #475569;
+    }
+
+    /* ── Sentinel (infinite scroll trigger) ─────────────────────────── */
+    .sentinel {
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #94a3b8;
+      font-size: 0.8rem;
+    }
+
+    /* ── Back to top button ─────────────────────────────────────────── */
+    .back-to-top {
+      position: fixed;
+      bottom: 2rem;
+      right: 2rem;
+      background: #3b82f6;
+      color: white;
+      border: none;
+      border-radius: 50%;
+      width: 48px;
+      height: 48px;
+      font-size: 1.25rem;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+      display: none;            /* hidden by default */
+      align-items: center;
+      justify-content: center;
+      z-index: 80;
+    }
+    .back-to-top.visible {
+      display: flex;
+    }
+
+    /* ── Item count badge ──────────────────────────────────────────── */
+    .item-count {
+      text-align: center;
+      font-size: 0.8rem;
+      color: #475569;
+      margin-top: 0.5rem;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ================================================================== -->
+  <!-- Fixed Header                                                       -->
+  <!-- data-testid="header" gets class "compact" when scrolled > 100px    -->
+  <!-- ================================================================== -->
+  <header class="header" data-testid="header">
+    <span class="kata-badge">KATA 09</span>
+    <h1>Transaction Feed - Scroll &amp; Intersection</h1>
+  </header>
+
+  <!-- ================================================================== -->
+  <!-- Scroll-spy navigation                                              -->
+  <!-- Each link highlights when its target section is in the viewport    -->
+  <!-- ================================================================== -->
+  <ul class="scroll-nav" data-testid="scroll-nav">
+    <li><a href="#section-overview"  data-testid="nav-overview"  class="active">Overview</a></li>
+    <li><a href="#section-images"    data-testid="nav-images">Images</a></li>
+    <li><a href="#section-feed"      data-testid="nav-feed">Feed</a></li>
+  </ul>
+
+  <div class="content">
+
+    <!-- ================================================================ -->
+    <!-- Section 1: Overview                                              -->
+    <!-- ================================================================ -->
+    <div id="section-overview" class="section" data-testid="section-overview">
+      <h2>Account Overview</h2>
+      <p>Welcome to your FinFlow transaction feed. Scroll down to explore
+         lazy-loaded images and infinite-scroll transactions.</p>
+      <br>
+      <p><strong>Account:</strong> Savings ***4829</p>
+      <p><strong>Balance:</strong> $12,340.56</p>
+    </div>
+
+    <!-- ================================================================ -->
+    <!-- Section 2: Lazy-loaded images                                    -->
+    <!-- ================================================================ -->
+    <div id="section-images" class="section" data-testid="section-images">
+      <h2>Recent Cheques (Lazy Images)</h2>
+      <div class="image-grid">
+        <!-- Each image starts with a placeholder data-src and a grey 1x1 src.
+             IntersectionObserver swaps src when the image enters the viewport. -->
+        <div class="image-card" data-testid="image-card-1">
+          <img
+            data-testid="lazy-img-1"
+            src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='120'%3E%3Crect fill='%23cbd5e1' width='400' height='120'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%2364748b' font-size='14'%3ELoading...%3C/text%3E%3C/svg%3E"
+            data-src="https://picsum.photos/seed/cheque1/400/120"
+            alt="Cheque image 1"
+          >
+          <div class="caption">Cheque #10234</div>
+        </div>
+        <div class="image-card" data-testid="image-card-2">
+          <img
+            data-testid="lazy-img-2"
+            src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='120'%3E%3Crect fill='%23cbd5e1' width='400' height='120'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%2364748b' font-size='14'%3ELoading...%3C/text%3E%3C/svg%3E"
+            data-src="https://picsum.photos/seed/cheque2/400/120"
+            alt="Cheque image 2"
+          >
+          <div class="caption">Cheque #10235</div>
+        </div>
+        <div class="image-card" data-testid="image-card-3">
+          <img
+            data-testid="lazy-img-3"
+            src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='120'%3E%3Crect fill='%23cbd5e1' width='400' height='120'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%2364748b' font-size='14'%3ELoading...%3C/text%3E%3C/svg%3E"
+            data-src="https://picsum.photos/seed/cheque3/400/120"
+            alt="Cheque image 3"
+          >
+          <div class="caption">Cheque #10236</div>
+        </div>
+        <div class="image-card" data-testid="image-card-4">
+          <img
+            data-testid="lazy-img-4"
+            src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='120'%3E%3Crect fill='%23cbd5e1' width='400' height='120'/%3E%3Ctext x='50%25' y='50%25' dominant-baseline='middle' text-anchor='middle' fill='%2364748b' font-size='14'%3ELoading...%3C/text%3E%3C/svg%3E"
+            data-src="https://picsum.photos/seed/cheque4/400/120"
+            alt="Cheque image 4"
+          >
+          <div class="caption">Cheque #10237</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================================================================ -->
+    <!-- Section 3: Infinite-scroll transaction feed                      -->
+    <!-- ================================================================ -->
+    <div id="section-feed" class="section" data-testid="section-feed">
+      <h2>Transaction History</h2>
+
+      <!-- Container where transaction items are appended -->
+      <div data-testid="tx-list" id="tx-list"></div>
+
+      <!-- Shows current loaded count -->
+      <div class="item-count" data-testid="item-count">Loaded: <span id="loaded-count">0</span> items</div>
+
+      <!-- Sentinel element observed by IntersectionObserver to trigger loads -->
+      <div class="sentinel" data-testid="load-more-sentinel" id="sentinel">
+        Loading more transactions...
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================== -->
+  <!-- Back-to-top button                                                 -->
+  <!-- ================================================================== -->
+  <button class="back-to-top" data-testid="back-to-top" id="back-to-top" aria-label="Back to top">
+    &#8593;
+  </button>
+
+  <script>
+    // ────────────────────────────────────────────────────────────────────
+    // Transaction data generator
+    // ────────────────────────────────────────────────────────────────────
+    const merchants = [
+      'Amazon', 'Starbucks', 'Shell Gas', 'Netflix', 'Uber',
+      'Walmart', 'Target', 'Apple', 'Google Cloud', 'Spotify',
+      'Whole Foods', 'Costco', 'Home Depot', 'PayPal', 'Venmo'
+    ];
+
+    // Keeps track of how many transactions have been loaded so far
+    let txIndex = 0;
+
+    /**
+     * Creates a batch of transaction items and appends them to the list.
+     * Each item has a unique data-testid like "tx-item-0", "tx-item-1", etc.
+     * @param {number} count - number of items to add
+     */
+    function loadTransactions(count) {
+      const list = document.getElementById('tx-list');
+      for (let i = 0; i < count; i++) {
+        const idx = txIndex++;
+        const isCredit = Math.random() > 0.5;
+        const amount = (Math.random() * 500 + 5).toFixed(2);
+        const merchant = merchants[idx % merchants.length];
+        const daysAgo = Math.floor(idx / 2);
+        const date = new Date();
+        date.setDate(date.getDate() - daysAgo);
+
+        const item = document.createElement('div');
+        item.className = 'tx-item';
+        item.setAttribute('data-testid', `tx-item-${idx}`);
+        item.innerHTML = `
+          <div>
+            <strong>${merchant}</strong>
+            <div class="tx-date">${date.toLocaleDateString()}</div>
+          </div>
+          <div class="tx-amount ${isCredit ? 'credit' : 'debit'}">
+            ${isCredit ? '+' : '-'}$${amount}
+          </div>
+        `;
+        list.appendChild(item);
+      }
+      // Update the loaded count display
+      document.getElementById('loaded-count').textContent = txIndex;
+    }
+
+    // Load the first 10 items immediately
+    loadTransactions(10);
+
+    // ────────────────────────────────────────────────────────────────────
+    // Infinite scroll via IntersectionObserver on the sentinel element
+    // When the sentinel enters the viewport, load 10 more transactions.
+    // ────────────────────────────────────────────────────────────────────
+    const sentinel = document.getElementById('sentinel');
+
+    const feedObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          // Small delay to simulate a network fetch
+          setTimeout(() => loadTransactions(10), 200);
+        }
+      });
+    }, { threshold: 0.1 });
+
+    feedObserver.observe(sentinel);
+
+    // ────────────────────────────────────────────────────────────────────
+    // Lazy-load images via IntersectionObserver
+    // Swap the placeholder src with the real data-src when visible.
+    // ────────────────────────────────────────────────────────────────────
+    const lazyImages = document.querySelectorAll('img[data-src]');
+
+    const imageObserver = new IntersectionObserver((entries, observer) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          const img = entry.target;
+          // Replace the placeholder with the real image source
+          img.src = img.getAttribute('data-src');
+          // Mark as loaded so tests can check
+          img.setAttribute('data-loaded', 'true');
+          // Stop watching this image
+          observer.unobserve(img);
+        }
+      });
+    }, { threshold: 0.1 });
+
+    lazyImages.forEach((img) => imageObserver.observe(img));
+
+    // ────────────────────────────────────────────────────────────────────
+    // Fixed header compact mode + back-to-top visibility on scroll
+    // ────────────────────────────────────────────────────────────────────
+    const header = document.querySelector('.header');
+    const backToTopBtn = document.getElementById('back-to-top');
+    const SCROLL_THRESHOLD = 100;
+
+    window.addEventListener('scroll', () => {
+      const scrollY = window.scrollY || window.pageYOffset;
+
+      // Toggle compact class on the header
+      if (scrollY > SCROLL_THRESHOLD) {
+        header.classList.add('compact');
+      } else {
+        header.classList.remove('compact');
+      }
+
+      // Show/hide back-to-top button
+      if (scrollY > 300) {
+        backToTopBtn.classList.add('visible');
+      } else {
+        backToTopBtn.classList.remove('visible');
+      }
+    });
+
+    // Smooth-scroll back to top when clicked
+    backToTopBtn.addEventListener('click', () => {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+
+    // ────────────────────────────────────────────────────────────────────
+    // Scroll-spy: highlight the nav link whose section is in view
+    // ────────────────────────────────────────────────────────────────────
+    const sections = document.querySelectorAll('.section');
+    const navLinks = document.querySelectorAll('.scroll-nav a');
+
+    const spyObserver = new IntersectionObserver((entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          const id = entry.target.id;
+          navLinks.forEach((link) => {
+            // Match the nav link whose href ends with the section id
+            if (link.getAttribute('href') === `#${id}`) {
+              link.classList.add('active');
+            } else {
+              link.classList.remove('active');
+            }
+          });
+        }
+      });
+    }, { threshold: 0.3 });
+
+    sections.forEach((s) => spyObserver.observe(s));
+  </script>
+</body>
+</html>

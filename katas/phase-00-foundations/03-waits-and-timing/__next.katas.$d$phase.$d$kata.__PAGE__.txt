@@ -1,0 +1,2144 @@
+1:"$Sreact.fragment"
+2:I[31749,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js","/qa-labs/_next/static/chunks/03nvm.8~ftt80.js"],"KataPageClient"]
+10:I[49583,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js"],"OutletBoundary"]
+11:"$Sreact.suspense"
+3:T2322,# Kata 03: Waits and Timing
+
+## What You Will Learn
+
+- Why timing issues cause flaky tests (the #1 problem in test automation)
+- How Playwright's auto-wait mechanism works
+- How Cypress's retry-ability works
+- When you need explicit waits vs when auto-wait handles it
+- How to handle: delayed elements, loading states, polling, debounce, progress bars, toasts
+- Why `sleep()` / `cy.wait(ms)` is almost always wrong
+- Configuring timeouts for slow operations
+
+## Prerequisites
+
+- Completed Kata 01 (Selectors) and Kata 02 (Assertions)
+
+## Concepts Explained
+
+### The Timing Problem
+
+Web pages are dynamic. Elements appear, disappear, load, animate, and change state. Your test runs faster than the browser renders. If you try to click a button that hasn't appeared yet, your test fails — not because the app is broken, but because the test was too fast.
+
+### The Wrong Solution: sleep()
+
+```typescript
+// BAD - never do this
+await page.waitForTimeout(3000); // Playwright
+cy.wait(3000);                   // Cypress
+
+// Why it's bad:
+// 1. If the element appears in 100ms, you waste 2.9 seconds
+// 2. If the element takes 3.5 seconds, your test still fails
+// 3. On slow CI servers, timings are unpredictable
+// 4. It makes your test suite painfully slow
+```
+
+### The Right Solution: Auto-Wait
+
+Both Playwright and Cypress **automatically wait** for elements. Here's how:
+
+### Playwright Auto-Wait
+
+```typescript
+// Playwright auto-waits in two places:
+
+// 1. ACTIONS auto-wait for the element to be:
+//    - Attached to DOM
+//    - Visible
+//    - Stable (not animating)
+//    - Enabled (not disabled)
+//    - Receives events (not blocked by another element)
+await page.getByTestId('btn-submit').click();
+// ^ Playwright waits up to 30s (default) for the button to be clickable
+
+// 2. ASSERTIONS auto-retry until they pass:
+await expect(page.getByTestId('result')).toHaveText('Success');
+// ^ Playwright re-checks every 100ms for up to 5s (default)
+
+// You can customize timeouts per-assertion:
+await expect(page.getByTestId('result')).toHaveText('Success', { timeout: 10000 });
+// ^ Wait up to 10 seconds
+
+// Or per-action:
+await page.getByTestId('btn').click({ timeout: 15000 });
+```
+
+### Cypress Retry-ability
+
+```typescript
+// Cypress automatically retries .should() assertions:
+cy.get('[data-testid="result"]').should('have.text', 'Success');
+// ^ Cypress retries the entire chain every few ms for up to 4s (default)
+
+// Customize timeout per-command:
+cy.get('[data-testid="result"]', { timeout: 10000 })
+  .should('have.text', 'Success');
+
+// IMPORTANT: Only the LAST command in a chain retries.
+// cy.get retries finding the element.
+// .should retries the assertion.
+// But .click() does NOT retry — it runs once.
+```
+
+### When You DO Need Explicit Waits
+
+Sometimes auto-wait isn't enough. Here are legitimate cases:
+
+```typescript
+// PLAYWRIGHT - waiting for a specific condition:
+
+// waitForSelector — wait for an element to appear or disappear
+await page.waitForSelector('[data-testid="loading"]', { state: 'hidden' });
+// ^ Waits for the loading spinner to disappear
+
+// waitForResponse — wait for a network response
+const response = await page.waitForResponse('**/api/verify');
+// ^ Waits for a specific API call to complete
+
+// waitForFunction — wait for arbitrary JavaScript condition
+await page.waitForFunction(() => {
+  return document.querySelector('[data-testid="progress"]')?.textContent === '100%';
+});
+
+// CYPRESS - explicit waits:
+
+// cy.intercept + cy.wait — wait for a network request
+cy.intercept('POST', '/api/verify').as('verify');
+cy.get('[data-testid="btn-submit"]').click();
+cy.wait('@verify'); // waits for the intercepted request to complete
+
+// Retry with should — Cypress retries the chain
+cy.get('[data-testid="loading"]').should('not.exist');
+```
+
+### Timeout Configuration
+
+```typescript
+// PLAYWRIGHT - playwright.config.ts
+export default defineConfig({
+  use: {
+    actionTimeout: 30000,   // timeout for actions (click, fill, etc.)
+  },
+  expect: {
+    timeout: 5000,          // timeout for assertions
+  },
+});
+
+// CYPRESS - cypress.config.ts
+export default defineConfig({
+  e2e: {
+    defaultCommandTimeout: 4000,  // timeout for cy.get, .should, etc.
+    pageLoadTimeout: 60000,       // timeout for cy.visit
+    requestTimeout: 5000,         // timeout for cy.request
+    responseTimeout: 30000,       // timeout for cy.wait (network)
+  },
+});
+```
+
+### Anti-Patterns
+
+```typescript
+// BAD: Fixed sleep
+await page.waitForTimeout(5000);
+
+// BAD: Polling in a loop
+while (!(await element.isVisible())) { await page.waitForTimeout(100); }
+
+// BAD: Arbitrary timeout without reason
+cy.wait(2000);
+cy.get('[data-testid="result"]').should('exist');
+
+// GOOD: Let auto-wait handle it
+await expect(page.getByTestId('result')).toBeVisible();
+
+// GOOD: Wait for specific condition
+await expect(page.getByTestId('status')).toHaveText('Complete');
+
+// GOOD: Wait for network
+cy.intercept('POST', '/api').as('req');
+cy.wait('@req');
+```
+
+## Playground
+
+The playground simulates common timing scenarios:
+
+1. **Delayed Elements** — buttons that show content after 1s, 3s, and 7s delays
+2. **Loading State** — fetch button that shows spinner then data after 2s
+3. **Auto-Refreshing Status** — polling that updates every 2s through 5 steps
+4. **Debounced Search** — search input with 300ms debounce delay
+5. **Document Processing** — progress bar that fills incrementally
+6. **Toast Notifications** — appear and auto-dismiss after 3s
+7. **Conditional Rendering** — success/error responses after 1.5s delay
+8. **Skeleton Loading** — skeleton placeholder then real data after 2.5s
+
+## Exercises
+
+### Exercise 1: Wait for Delayed Element
+Click "Show after 1s" and verify the delayed message appears.
+
+### Exercise 2: Wait for Slow Element
+Click "Show after 3s" and verify it appears. You may need to increase the assertion timeout.
+
+### Exercise 2b: Wait for Very Slow Element (Custom Timeout)
+Click "Show after 7s". This exceeds the default timeout — you must pass a custom `{ timeout: 10000 }` option to make the assertion wait long enough.
+
+### Exercise 3: Loading State Transition
+Click "Fetch Applicant Data", verify the loading spinner appears, then verify it's replaced by the applicant data.
+
+### Exercise 4: Polling / Auto-Refresh
+Click "Start Verification" and wait for the status to reach "Complete" (step 5/5). This takes ~10 seconds.
+
+### Exercise 5: Debounced Search
+Type "Priya" in the search box. Verify the searching indicator appears briefly, then the results show.
+
+### Exercise 6: Progress Bar
+Click "Upload & Process Document" and wait for the progress to reach 100%.
+
+### Exercise 7: Toast Notification Lifecycle
+Click "Success Toast", verify it appears, then verify it auto-dismisses after 3 seconds.
+
+### Exercise 8: Skeleton to Content
+Click "Load Profile", verify the skeleton loader appears, then verify the real profile data replaces it.
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/waits.spec.ts`
+
+### Cypress Solution
+
+See `cypress/waits.cy.ts`
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Using `page.waitForTimeout(5000)` | Wastes time or isn't enough | Use `expect().toBeVisible()` with auto-wait |
+| Not increasing timeout for slow ops | Default 5s may not be enough for 7s delay | Pass `{ timeout: 10000 }` to the assertion |
+| Checking for spinner then immediately checking for data | Spinner might disappear between checks | Wait for the final state (data loaded), not intermediate |
+| Using `cy.wait(ms)` instead of `cy.wait('@alias')` | Time-based waits are flaky | Intercept the request and wait for it |
+| Asserting toast text after it auto-dismisses | Toast may be gone by the time assertion runs | Assert immediately after triggering the toast |
+
+## Quick Reference
+
+### Playwright Wait Methods
+
+| Method | Use case | Example |
+|--------|----------|---------|
+| Auto-wait (default) | Element actions | `await btn.click()` — waits for clickable |
+| `expect().toBeVisible()` | Wait for element to appear | Auto-retries for 5s |
+| `expect().toBeHidden()` | Wait for element to disappear | Auto-retries for 5s |
+| `{ timeout: N }` | Override assertion timeout | `toHaveText('x', { timeout: 10000 })` |
+| `waitForSelector(sel, { state })` | Wait for DOM state | `state: 'hidden'` or `'attached'` |
+| `waitForResponse(url)` | Wait for network response | `await page.waitForResponse('**/api')` |
+| `waitForFunction(fn)` | Wait for JS condition | `() => document.title === 'Done'` |
+
+### Cypress Wait Methods
+
+| Method | Use case | Example |
+|--------|----------|---------|
+| Auto-retry (default) | `.should()` chains | Retries for 4s |
+| `{ timeout: N }` | Override command timeout | `cy.get(sel, { timeout: 10000 })` |
+| `cy.intercept + cy.wait` | Wait for network | `cy.wait('@alias')` |
+| `.should('not.exist')` | Wait for removal | Retries until element is gone |
+| `.should('be.visible')` | Wait for appearance | Retries until visible |
+4:T1b4b,import { test, expect } from '@playwright/test';
+
+const PLAYGROUND = '/phase-00-foundations/03-waits-and-timing/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Wait for Delayed Element (1s)
+// --------------------------------------------------------------------------
+test('exercise 1: wait for 1-second delayed element', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Click the button that triggers a 1-second delay.
+  await page.getByTestId('btn-delay-1s').click();
+
+  // Playwright's expect auto-retries for up to 5 seconds (default).
+  // Since the element appears after 1s, this passes within the default timeout.
+  // No sleep() or waitForTimeout needed!
+  await expect(page.getByTestId('delayed-1s')).toBeVisible();
+  await expect(page.getByTestId('delayed-1s')).toHaveText('Appeared after 1 second!');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Wait for Slow Element (3s)
+// --------------------------------------------------------------------------
+test('exercise 2: wait for 3-second delayed element', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  await page.getByTestId('btn-delay-3s').click();
+
+  // 3 seconds is within the default 5s timeout, so this works too.
+  await expect(page.getByTestId('delayed-3s')).toBeVisible();
+  await expect(page.getByTestId('delayed-3s')).toHaveText('Appeared after 3 seconds!');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2b: Wait for Very Slow Element (7s) - Custom Timeout
+// --------------------------------------------------------------------------
+test('exercise 2b: wait for 7-second delayed element with custom timeout', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  await page.getByTestId('btn-delay-7s').click();
+
+  // 7 seconds exceeds the default 5s timeout. We must increase it.
+  // The { timeout } option tells Playwright how long to retry.
+  await expect(page.getByTestId('delayed-7s')).toBeVisible({ timeout: 10000 });
+  await expect(page.getByTestId('delayed-7s')).toHaveText('Appeared after 7 seconds!');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Loading State Transition
+// --------------------------------------------------------------------------
+test('exercise 3: loading spinner then data', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify initial state.
+  await expect(page.getByTestId('initial-message')).toBeVisible();
+
+  // Click the fetch button.
+  await page.getByTestId('btn-fetch-data').click();
+
+  // Verify the loading spinner appears.
+  // The spinner shows immediately after clicking.
+  await expect(page.getByTestId('loading-spinner')).toBeVisible();
+
+  // Now wait for the data to load (replaces the spinner after 2s).
+  // We don't need to wait for the spinner to disappear first —
+  // just assert the final state and Playwright handles the timing.
+  await expect(page.getByTestId('applicant-data')).toBeVisible();
+  await expect(page.getByTestId('loaded-name')).toHaveText('Priya Sharma');
+  await expect(page.getByTestId('loaded-email')).toHaveText('priya@example.com');
+  await expect(page.getByTestId('loaded-status')).toHaveText('Verified');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Polling / Auto-Refresh
+// --------------------------------------------------------------------------
+test('exercise 4: wait for polling to complete', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Click to start the verification polling process.
+  await page.getByTestId('btn-start-polling').click();
+
+  // The status updates every 2 seconds through 5 steps.
+  // Total time: ~10 seconds. We need a longer timeout.
+  await expect(page.getByTestId('polling-step')).toHaveText('5', { timeout: 15000 });
+  await expect(page.getByTestId('polling-status')).toHaveText('Complete');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Debounced Search
+// --------------------------------------------------------------------------
+test('exercise 5: debounced search with 300ms delay', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Type into the debounced search box.
+  await page.getByTestId('input-debounce-search').fill('Priya');
+
+  // After typing, a "Searching..." indicator shows for 300ms.
+  // Then the actual results appear.
+  // We just wait for the final state — the search results.
+  await expect(page.getByTestId('search-result').first()).toBeVisible();
+  await expect(page.getByTestId('search-result').first()).toContainText('Priya Sharma');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Progress Bar
+// --------------------------------------------------------------------------
+test('exercise 6: wait for progress bar to complete', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  await page.getByTestId('btn-start-upload').click();
+
+  // The progress bar fills incrementally. We wait for the status text
+  // to indicate completion rather than checking the exact percentage.
+  await expect(page.getByTestId('upload-status')).toHaveText('Processing complete!', { timeout: 10000 });
+  await expect(page.getByTestId('upload-percent')).toHaveText('100%');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Toast Notification Lifecycle
+// --------------------------------------------------------------------------
+test('exercise 7: toast appears and auto-dismisses', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Click to show a success toast.
+  await page.getByTestId('btn-toast-success').click();
+
+  // Verify the toast appears immediately.
+  const toast = page.getByTestId('toast-1');
+  await expect(toast).toBeVisible();
+  await expect(toast).toContainText('Application approved successfully!');
+
+  // The toast auto-dismisses after 3 seconds + 0.5s fade animation.
+  // We wait for it to be removed from the DOM.
+  // toBeHidden waits for the element to become hidden or detached.
+  await expect(toast).toBeHidden({ timeout: 5000 });
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Skeleton to Content
+// --------------------------------------------------------------------------
+test('exercise 8: skeleton loading then real content', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  await page.getByTestId('btn-load-profile').click();
+
+  // Verify skeleton appears.
+  await expect(page.getByTestId('skeleton-loader')).toBeVisible();
+
+  // Wait for real profile data (replaces skeleton after 2.5s).
+  await expect(page.getByTestId('profile-data')).toBeVisible();
+  await expect(page.getByTestId('profile-name')).toHaveText('Amit Patel');
+  await expect(page.getByTestId('profile-level')).toHaveText('Level 3 - Enhanced');
+});
+5:T18ce,const PLAYGROUND = '/phase-00-foundations/03-waits-and-timing/playground/';
+
+describe('Kata 03: Waits and Timing', () => {
+
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Wait for Delayed Element (1s)
+  // --------------------------------------------------------------------------
+  it('exercise 1: wait for 1-second delayed element', () => {
+    cy.get('[data-testid="btn-delay-1s"]').click();
+
+    // Cypress automatically retries .should() assertions for up to 4s (default).
+    // Since the element appears after 1s, this works within the default timeout.
+    // No cy.wait(1000) needed!
+    cy.get('[data-testid="delayed-1s"]')
+      .should('be.visible')
+      .and('have.text', 'Appeared after 1 second!');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Wait for Slow Element (3s)
+  // --------------------------------------------------------------------------
+  it('exercise 2: wait for 3-second delayed element', () => {
+    cy.get('[data-testid="btn-delay-3s"]').click();
+
+    // 3s is within the default 4s timeout, so this works.
+    cy.get('[data-testid="delayed-3s"]')
+      .should('be.visible')
+      .and('have.text', 'Appeared after 3 seconds!');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2b: Wait for Very Slow Element (7s) - Custom Timeout
+  // --------------------------------------------------------------------------
+  it('exercise 2b: wait for 7-second delayed element with custom timeout', () => {
+    cy.get('[data-testid="btn-delay-7s"]').click();
+
+    // 7s exceeds the default 4s timeout. Pass { timeout } to cy.get
+    // to increase the retry window for this specific command.
+    cy.get('[data-testid="delayed-7s"]', { timeout: 10000 })
+      .should('be.visible')
+      .and('have.text', 'Appeared after 7 seconds!');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Loading State Transition
+  // --------------------------------------------------------------------------
+  it('exercise 3: loading spinner then data', () => {
+    // Verify initial state.
+    cy.get('[data-testid="initial-message"]').should('be.visible');
+
+    // Click the fetch button.
+    cy.get('[data-testid="btn-fetch-data"]').click();
+
+    // Verify the loading spinner appears.
+    cy.get('[data-testid="loading-spinner"]').should('be.visible');
+
+    // Wait for the data to load (replaces spinner after 2s).
+    // Cypress retries .should until the element appears.
+    cy.get('[data-testid="applicant-data"]', { timeout: 5000 })
+      .should('be.visible');
+
+    cy.get('[data-testid="loaded-name"]').should('have.text', 'Priya Sharma');
+    cy.get('[data-testid="loaded-email"]').should('have.text', 'priya@example.com');
+    cy.get('[data-testid="loaded-status"]').should('have.text', 'Verified');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Polling / Auto-Refresh
+  // --------------------------------------------------------------------------
+  it('exercise 4: wait for polling to complete', () => {
+    cy.get('[data-testid="btn-start-polling"]').click();
+
+    // The polling takes ~10 seconds (5 steps x 2s each).
+    // We need a longer timeout to wait for the final state.
+    cy.get('[data-testid="polling-step"]', { timeout: 15000 })
+      .should('have.text', '5');
+
+    cy.get('[data-testid="polling-status"]')
+      .should('have.text', 'Complete');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Debounced Search
+  // --------------------------------------------------------------------------
+  it('exercise 5: debounced search with 300ms delay', () => {
+    // Type into the debounced search box.
+    cy.get('[data-testid="input-debounce-search"]').type('Priya');
+
+    // After typing, a "Searching..." indicator shows for 300ms,
+    // then the actual results appear.
+    // We just assert the final state — Cypress retries until results show.
+    cy.get('[data-testid="search-result"]')
+      .should('have.length.gte', 1)
+      .first()
+      .should('contain.text', 'Priya Sharma');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Progress Bar
+  // --------------------------------------------------------------------------
+  it('exercise 6: wait for progress bar to complete', () => {
+    cy.get('[data-testid="btn-start-upload"]').click();
+
+    // Wait for the status text to indicate completion.
+    cy.get('[data-testid="upload-status"]', { timeout: 10000 })
+      .should('have.text', 'Processing complete!');
+
+    cy.get('[data-testid="upload-percent"]')
+      .should('have.text', '100%');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Toast Notification Lifecycle
+  // --------------------------------------------------------------------------
+  it('exercise 7: toast appears and auto-dismisses', () => {
+    cy.get('[data-testid="btn-toast-success"]').click();
+
+    // Verify the toast appears.
+    cy.get('[data-testid="toast-1"]')
+      .should('be.visible')
+      .and('contain.text', 'Application approved successfully!');
+
+    // The toast auto-dismisses after 3s + 0.5s fade.
+    // 'not.exist' waits for the element to be removed from the DOM entirely.
+    cy.get('[data-testid="toast-1"]', { timeout: 5000 })
+      .should('not.exist');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Skeleton to Content
+  // --------------------------------------------------------------------------
+  it('exercise 8: skeleton loading then real content', () => {
+    cy.get('[data-testid="btn-load-profile"]').click();
+
+    // Verify skeleton appears.
+    cy.get('[data-testid="skeleton-loader"]').should('be.visible');
+
+    // Wait for real profile data (replaces skeleton after 2.5s).
+    cy.get('[data-testid="profile-data"]', { timeout: 5000 })
+      .should('be.visible');
+
+    cy.get('[data-testid="profile-name"]').should('have.text', 'Amit Patel');
+    cy.get('[data-testid="profile-level"]').should('have.text', 'Level 3 - Enhanced');
+  });
+
+});
+6:T2cc1,# Kata 02: Assertions
+
+## What You Will Learn
+
+- What assertions are and why they matter in testing
+- Playwright assertions: `expect` with `toBe`, `toHaveText`, `toContainText`, `toBeVisible`, `toBeHidden`, `toHaveAttribute`, `toHaveCSS`, `toHaveCount`, `toHaveValue`
+- Cypress assertions: `should` with `have.text`, `contain.text`, `be.visible`, `have.attr`, `have.css`, `have.length`, `have.value`
+- Soft assertions (Playwright) vs hard assertions
+- Negative assertions: asserting something is NOT true
+- Auto-retry behavior: how both frameworks handle timing
+
+## Prerequisites
+
+- Completed Kata 01 (Selectors and Locators)
+- Understanding of how to find elements on a page
+
+## Concepts Explained
+
+### What is an assertion?
+
+An **assertion** is a statement that checks whether something on the page matches your expectation. If the check fails, the test fails. Assertions are the "verify" part of any test — without them, you're just clicking around without proving anything works.
+
+```
+Find element → Do something → ASSERT the result
+```
+
+### How Auto-Retry Works
+
+Both Playwright and Cypress **automatically retry** assertions for a configurable timeout (default 5s in Playwright, 4s in Cypress). This means:
+
+- You type `await expect(element).toHaveText('Hello')` in Playwright
+- If the text isn't "Hello" yet (maybe it's loading), Playwright keeps checking
+- If it becomes "Hello" within 5 seconds, the test passes
+- If 5 seconds pass and it's still not "Hello", the test fails
+
+This is why you almost never need `sleep()` or `wait()` in modern test frameworks.
+
+### Playwright Assertions
+
+```typescript
+import { test, expect } from '@playwright/test';
+
+// --- TEXT ASSERTIONS ---
+
+// toHaveText — checks exact text content (trims whitespace)
+// Signature: expect(locator).toHaveText(expected: string | RegExp | string[])
+await expect(element).toHaveText('Submit Application');
+await expect(element).toHaveText(/submit/i);  // regex, case-insensitive
+
+// toContainText — checks that text CONTAINS the expected string
+// Use when you don't need an exact match
+await expect(element).toContainText('Submit');
+
+// --- VISIBILITY ASSERTIONS ---
+
+// toBeVisible — element is rendered and not hidden
+await expect(element).toBeVisible();
+
+// toBeHidden — element is not visible (display:none, hidden attr, etc.)
+await expect(element).toBeHidden();
+
+// --- VALUE ASSERTIONS ---
+
+// toHaveValue — checks the value of an input, select, or textarea
+await expect(input).toHaveValue('john@example.com');
+
+// --- COUNT ASSERTIONS ---
+
+// toHaveCount — checks the number of matching elements
+await expect(page.locator('.card')).toHaveCount(3);
+
+// --- ATTRIBUTE ASSERTIONS ---
+
+// toHaveAttribute — checks an HTML attribute's value
+await expect(element).toHaveAttribute('data-status', 'active');
+await expect(element).toHaveAttribute('href', /terms/);
+
+// --- CSS ASSERTIONS ---
+
+// toHaveCSS — checks a computed CSS property
+await expect(element).toHaveCSS('background-color', 'rgb(59, 130, 246)');
+await expect(element).toHaveCSS('font-weight', '700');
+
+// --- STATE ASSERTIONS ---
+
+// toBeEnabled / toBeDisabled — checks disabled attribute
+await expect(button).toBeEnabled();
+await expect(button).toBeDisabled();
+
+// toBeChecked — checks if checkbox/radio is checked
+await expect(checkbox).toBeChecked();
+await expect(checkbox).not.toBeChecked();
+
+// --- NEGATIVE ASSERTIONS ---
+
+// .not inverts any assertion
+await expect(element).not.toBeVisible();
+await expect(element).not.toHaveText('Error');
+
+// --- SOFT ASSERTIONS ---
+// Soft assertions don't stop the test on failure — they collect all failures
+// and report them at the end. Useful when checking multiple things at once.
+await expect.soft(element1).toHaveText('A');
+await expect.soft(element2).toHaveText('B');
+await expect.soft(element3).toHaveText('C');
+// If element2 fails, the test continues and checks element3 too
+```
+
+### Cypress Assertions
+
+```typescript
+// Cypress uses .should() which auto-retries until the assertion passes
+// or the timeout expires. You can chain multiple assertions with .and().
+
+// --- TEXT ASSERTIONS ---
+
+// 'have.text' — exact text content match
+cy.get('[data-testid="title"]').should('have.text', 'Dashboard');
+
+// 'contain.text' — partial text match (like toContainText)
+cy.get('[data-testid="title"]').should('contain.text', 'Dash');
+
+// 'include.text' — alias for contain.text
+cy.get('[data-testid="title"]').should('include.text', 'Dash');
+
+// 'match' — regex match on text
+cy.get('[data-testid="title"]').invoke('text').should('match', /dashboard/i);
+
+// --- VISIBILITY ASSERTIONS ---
+
+// 'be.visible' — element is visible on screen
+cy.get('[data-testid="panel"]').should('be.visible');
+
+// 'not.be.visible' — element exists in DOM but is hidden
+cy.get('[data-testid="panel"]').should('not.be.visible');
+
+// 'exist' / 'not.exist' — element is/isn't in the DOM at all
+cy.get('[data-testid="panel"]').should('exist');
+cy.get('[data-testid="deleted"]').should('not.exist');
+
+// --- VALUE ASSERTIONS ---
+
+// 'have.value' — checks input value
+cy.get('input').should('have.value', 'john@example.com');
+
+// --- COUNT ASSERTIONS ---
+
+// 'have.length' — checks number of matched elements
+cy.get('.card').should('have.length', 3);
+
+// --- ATTRIBUTE ASSERTIONS ---
+
+// 'have.attr' — checks an HTML attribute
+cy.get('a').should('have.attr', 'href', 'https://example.com');
+cy.get('input').should('have.attr', 'readonly');
+
+// --- CSS ASSERTIONS ---
+
+// 'have.css' — checks computed CSS property
+cy.get('[data-testid="box"]').should('have.css', 'background-color', 'rgb(59, 130, 246)');
+
+// --- STATE ASSERTIONS ---
+
+// 'be.disabled' / 'be.enabled'
+cy.get('button').should('be.disabled');
+cy.get('button').should('not.be.disabled');
+
+// 'be.checked'
+cy.get('input[type="checkbox"]').should('be.checked');
+
+// --- CHAINING ASSERTIONS ---
+// .and() chains multiple assertions on the same element
+cy.get('[data-testid="btn"]')
+  .should('be.visible')
+  .and('be.enabled')
+  .and('have.text', 'Submit');
+
+// --- CLASS ASSERTIONS ---
+
+// 'have.class' — checks if element has a CSS class
+cy.get('[data-testid="badge"]').should('have.class', 'status-active');
+```
+
+### Key Differences Between Playwright and Cypress
+
+| Feature | Playwright | Cypress |
+|---------|-----------|---------|
+| Syntax | `await expect(locator).toHaveText()` | `cy.get().should('have.text')` |
+| Retry | Auto-retries all `expect` assertions | Auto-retries all `.should()` chains |
+| Soft assertions | Yes (`expect.soft`) | No built-in equivalent |
+| Negation | `.not.toBeVisible()` | `.should('not.be.visible')` |
+| Async | Always `await` | No `await` needed (auto-queued) |
+
+## Playground
+
+The playground shows a **KYC Dashboard** with:
+
+1. **Stats cards** — numbers for total, approved, rejected, pending applications
+2. **Progress bars** — verification progress with percentages and colors
+3. **System alerts** — success, warning, error messages
+4. **Dynamic content** — counter with +1/-1/reset, dynamic alert creation
+5. **Application table** — rows with names, risk levels, statuses, tags
+6. **Element attributes** — inputs with readonly, disabled, required attributes
+7. **CSS & styles** — colored box, text styles (uppercase, bold, italic, strikethrough)
+8. **Empty/loading states** — empty list message, items with statuses
+
+## Exercises
+
+### Exercise 1: Text Assertions
+Verify that the "Total Applications" stat card shows "1,247" and the label says "Total Applications".
+
+### Exercise 2: Visibility
+Verify all three system alerts (success, warning, error) are visible.
+
+### Exercise 3: Count
+Verify the application table has exactly 3 data rows.
+
+### Exercise 4: Attribute Assertions
+Verify the readonly input has the `readonly` attribute and contains "KYC-2024-0001". Verify the disabled input has the `disabled` attribute.
+
+### Exercise 5: CSS Assertions
+Verify the colored box has `background-color: rgb(59, 130, 246)`. Click the "Change Color" button and verify it changes to `rgb(239, 68, 68)`.
+
+### Exercise 6: Counter Interactions
+Click +1 three times, verify counter shows 3. Click -1 once, verify it shows 2. Click Reset, verify it shows 0.
+
+### Exercise 7: Dynamic Content
+Click "Add Alert" twice, verify 2 dynamic alerts appear. Click "Clear Alerts", verify they are removed.
+
+### Exercise 8: Negative Assertions
+Verify the empty-list section does NOT contain any item cards. Verify the items list is NOT empty.
+
+### Exercise 9: Data Attributes
+Verify the data-attributes element has `data-status="active"`, `data-priority="high"`, and `data-count="42"`.
+
+### Exercise 10: Multiple Assertions on One Element
+Verify the link has `href` containing "terms", has `target="_blank"`, and is visible.
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/assertions.spec.ts`
+
+### Cypress Solution
+
+See `cypress/assertions.cy.ts`
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Using `toBe` instead of `toHaveText` | `toBe` compares primitive values, not element text | Use `toHaveText` for element text content |
+| Forgetting `await` on Playwright assertions | The assertion runs but errors are uncaught | Always `await expect(...)` |
+| Checking exact CSS color with hex | Browsers compute colors to `rgb()` | Use `rgb(r, g, b)` format |
+| Asserting `.should('have.text', 'foo')` when text has whitespace | `have.text` does exact match including whitespace | Use `contain.text` or trim the text |
+| Using `not.exist` when you mean `not.be.visible` | `not.exist` means NOT in the DOM at all | `not.be.visible` means in DOM but hidden |
+
+## Quick Reference
+
+### Playwright expect Methods
+
+| Assertion | Checks | Example |
+|-----------|--------|---------|
+| `toHaveText(text)` | Exact text (trimmed) | `toHaveText('Hello')` |
+| `toContainText(text)` | Text contains substring | `toContainText('Hell')` |
+| `toBeVisible()` | Element is visible | |
+| `toBeHidden()` | Element is hidden | |
+| `toHaveValue(val)` | Input/select value | `toHaveValue('42')` |
+| `toHaveCount(n)` | Number of elements | `toHaveCount(3)` |
+| `toHaveAttribute(name, val?)` | HTML attribute | `toHaveAttribute('disabled')` |
+| `toHaveCSS(prop, val)` | Computed CSS | `toHaveCSS('color', 'rgb(0,0,0)')` |
+| `toBeEnabled()` | Not disabled | |
+| `toBeDisabled()` | Has disabled attribute | |
+| `toBeChecked()` | Checkbox/radio checked | |
+| `.not.` | Negates any assertion | `not.toBeVisible()` |
+| `expect.soft()` | Non-blocking assertion | Continues on failure |
+
+### Cypress should Assertions
+
+| Assertion | Checks | Example |
+|-----------|--------|---------|
+| `'have.text'` | Exact text | `.should('have.text', 'x')` |
+| `'contain.text'` | Text contains | `.should('contain.text', 'x')` |
+| `'be.visible'` | Visible | `.should('be.visible')` |
+| `'not.be.visible'` | Hidden | `.should('not.be.visible')` |
+| `'exist'` | In DOM | `.should('exist')` |
+| `'not.exist'` | Not in DOM | `.should('not.exist')` |
+| `'have.value'` | Input value | `.should('have.value', 'x')` |
+| `'have.length'` | Element count | `.should('have.length', 3)` |
+| `'have.attr'` | HTML attribute | `.should('have.attr', 'href')` |
+| `'have.css'` | Computed CSS | `.should('have.css', 'color')` |
+| `'be.disabled'` | Disabled | `.should('be.disabled')` |
+| `'be.checked'` | Checked | `.should('be.checked')` |
+| `'have.class'` | CSS class | `.should('have.class', 'active')` |
+| `.and()` | Chain assertions | `.should('x').and('y')` |
+7:T239e,import { test, expect } from '@playwright/test';
+
+const PLAYGROUND = '/phase-00-foundations/02-assertions/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Text Assertions
+// --------------------------------------------------------------------------
+test('exercise 1: verify stat card text content', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // toHaveText checks the exact text content of an element.
+  // The element's text is trimmed (leading/trailing whitespace removed).
+  await expect(page.getByTestId('stat-total-value')).toHaveText('1,247');
+
+  // toContainText checks that the text INCLUDES the expected substring.
+  // Useful when you don't want to match the full text.
+  await expect(page.getByTestId('stat-total')).toContainText('Total Applications');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Visibility Assertions
+// --------------------------------------------------------------------------
+test('exercise 2: verify alerts are visible', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // toBeVisible asserts that the element is rendered and not hidden.
+  // An element is "visible" when it has non-zero dimensions and is not
+  // hidden by CSS (display:none, visibility:hidden, opacity:0).
+  await expect(page.getByTestId('alert-success')).toBeVisible();
+  await expect(page.getByTestId('alert-warning')).toBeVisible();
+  await expect(page.getByTestId('alert-error')).toBeVisible();
+
+  // Verify the content of each alert using toContainText.
+  await expect(page.getByTestId('alert-success')).toContainText('12 applications processed');
+  await expect(page.getByTestId('alert-warning')).toContainText('manual review');
+  await expect(page.getByTestId('alert-error')).toContainText('experiencing delays');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Count Assertions
+// --------------------------------------------------------------------------
+test('exercise 3: verify table row count', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // toHaveCount checks the number of elements matching the locator.
+  // We select all <tr> elements inside the table body.
+  const rows = page.getByTestId('app-table').locator('tbody tr');
+  await expect(rows).toHaveCount(3);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Attribute Assertions
+// --------------------------------------------------------------------------
+test('exercise 4: verify input attributes', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // toHaveAttribute(name, value?) checks an HTML attribute.
+  // With just the name, it checks the attribute exists (regardless of value).
+  const readonlyInput = page.getByTestId('input-readonly');
+  await expect(readonlyInput).toHaveAttribute('readonly', '');
+  await expect(readonlyInput).toHaveValue('KYC-2024-0001');
+
+  // toBeDisabled is a shorthand for checking the disabled attribute.
+  const disabledInput = page.getByTestId('input-disabled');
+  await expect(disabledInput).toBeDisabled();
+  await expect(disabledInput).toHaveValue('Cannot edit');
+
+  // Check the required attribute exists.
+  const requiredInput = page.getByTestId('input-required');
+  await expect(requiredInput).toHaveAttribute('required', '');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: CSS Assertions
+// --------------------------------------------------------------------------
+test('exercise 5: verify and change CSS styles', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  const box = page.getByTestId('colored-box');
+
+  // toHaveCSS checks a computed CSS property value.
+  // IMPORTANT: browsers compute colors as rgb(), not hex.
+  // So even if the CSS says "#3b82f6", the computed value is "rgb(59, 130, 246)".
+  await expect(box).toHaveCSS('background-color', 'rgb(59, 130, 246)');
+  await expect(box).toHaveCSS('border-radius', '8px');
+
+  // Click the button to change the color.
+  await page.getByTestId('btn-change-color').click();
+
+  // Now verify the new color.
+  await expect(box).toHaveCSS('background-color', 'rgb(239, 68, 68)');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Counter Interactions
+// --------------------------------------------------------------------------
+test('exercise 6: counter increment, decrement, and reset', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  const counter = page.getByTestId('counter-value');
+
+  // Initial state should be 0.
+  await expect(counter).toHaveText('0');
+
+  // Click +1 three times.
+  await page.getByTestId('btn-increment').click();
+  await page.getByTestId('btn-increment').click();
+  await page.getByTestId('btn-increment').click();
+  await expect(counter).toHaveText('3');
+
+  // Click -1 once.
+  await page.getByTestId('btn-decrement').click();
+  await expect(counter).toHaveText('2');
+
+  // Reset.
+  await page.getByTestId('btn-reset-counter').click();
+  await expect(counter).toHaveText('0');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Dynamic Content
+// --------------------------------------------------------------------------
+test('exercise 7: add and clear dynamic alerts', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  const alertsContainer = page.getByTestId('dynamic-alerts');
+
+  // Initially no dynamic alerts.
+  await expect(alertsContainer.locator('.alert')).toHaveCount(0);
+
+  // Click "Add Alert" twice.
+  await page.getByTestId('btn-add-alert').click();
+  await page.getByTestId('btn-add-alert').click();
+
+  // Verify 2 alerts appear.
+  await expect(alertsContainer.locator('.alert')).toHaveCount(2);
+
+  // Verify the first dynamic alert has the expected text.
+  await expect(page.getByTestId('dynamic-alert-1')).toContainText('Alert #1');
+
+  // Clear all alerts.
+  await page.getByTestId('btn-clear-alerts').click();
+  await expect(alertsContainer.locator('.alert')).toHaveCount(0);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Negative Assertions
+// --------------------------------------------------------------------------
+test('exercise 8: negative assertions', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // .not inverts any assertion.
+  // The empty list should NOT contain any list items.
+  const emptyList = page.getByTestId('empty-list');
+  await expect(emptyList.locator('.list-item')).toHaveCount(0);
+  await expect(page.getByTestId('empty-message')).toHaveText('No pending verifications.');
+
+  // The items list should NOT be empty — it has 3 items.
+  const itemsList = page.getByTestId('items-list');
+  await expect(itemsList.locator('.list-item')).not.toHaveCount(0);
+  await expect(itemsList.locator('.list-item')).toHaveCount(3);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 9: Data Attributes
+// --------------------------------------------------------------------------
+test('exercise 9: verify custom data attributes', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  const el = page.getByTestId('data-attributes');
+
+  // toHaveAttribute checks any HTML attribute, including custom data-* attrs.
+  await expect(el).toHaveAttribute('data-status', 'active');
+  await expect(el).toHaveAttribute('data-priority', 'high');
+  await expect(el).toHaveAttribute('data-count', '42');
+  await expect(el).toHaveAttribute('data-user-role', 'admin');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 10: Multiple Assertions on One Element
+// --------------------------------------------------------------------------
+test('exercise 10: multiple assertions on a link', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  const link = page.getByTestId('link-terms');
+
+  // You can chain multiple await expect() calls on the same locator.
+  // Each assertion auto-waits independently.
+  await expect(link).toBeVisible();
+  await expect(link).toHaveAttribute('href', 'https://example.com/terms');
+  await expect(link).toHaveAttribute('target', '_blank');
+  await expect(link).toHaveText('Terms of Service');
+});
+
+// --------------------------------------------------------------------------
+// Bonus: Soft Assertions
+// --------------------------------------------------------------------------
+test('bonus: soft assertions collect all failures', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // expect.soft() does NOT stop the test on failure.
+  // All soft assertion failures are collected and reported at the end.
+  // This is useful when you want to check many things in one test.
+  await expect.soft(page.getByTestId('stat-total-value')).toHaveText('1,247');
+  await expect.soft(page.getByTestId('stat-approved-value')).toHaveText('892');
+  await expect.soft(page.getByTestId('stat-rejected-value')).toHaveText('156');
+  await expect.soft(page.getByTestId('stat-pending-value')).toHaveText('199');
+});
+8:T1f4c,const PLAYGROUND = '/phase-00-foundations/02-assertions/playground/';
+
+describe('Kata 02: Assertions', () => {
+
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Text Assertions
+  // --------------------------------------------------------------------------
+  it('exercise 1: verify stat card text content', () => {
+    // 'have.text' checks the exact text content of the element.
+    // Whitespace is preserved, so make sure it matches exactly.
+    cy.get('[data-testid="stat-total-value"]')
+      .should('have.text', '1,247');
+
+    // 'contain.text' checks that the text INCLUDES the expected substring.
+    // More forgiving than 'have.text'.
+    cy.get('[data-testid="stat-total"]')
+      .should('contain.text', 'Total Applications');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Visibility Assertions
+  // --------------------------------------------------------------------------
+  it('exercise 2: verify alerts are visible', () => {
+    // 'be.visible' checks the element is rendered and visible on screen.
+    cy.get('[data-testid="alert-success"]').should('be.visible');
+    cy.get('[data-testid="alert-warning"]').should('be.visible');
+    cy.get('[data-testid="alert-error"]').should('be.visible');
+
+    // .and() chains multiple assertions on the same subject.
+    // The subject (the element) is passed through the chain.
+    cy.get('[data-testid="alert-success"]')
+      .should('be.visible')
+      .and('contain.text', '12 applications processed');
+
+    cy.get('[data-testid="alert-warning"]')
+      .should('contain.text', 'manual review');
+
+    cy.get('[data-testid="alert-error"]')
+      .should('contain.text', 'experiencing delays');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Count Assertions
+  // --------------------------------------------------------------------------
+  it('exercise 3: verify table row count', () => {
+    // 'have.length' checks the number of matched elements.
+    // This is Cypress's equivalent of Playwright's toHaveCount.
+    cy.get('[data-testid="app-table"] tbody tr')
+      .should('have.length', 3);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Attribute Assertions
+  // --------------------------------------------------------------------------
+  it('exercise 4: verify input attributes', () => {
+    // 'have.attr' checks an HTML attribute. With two arguments,
+    // it checks the attribute exists AND has the specified value.
+    // With one argument, it just checks the attribute exists.
+    cy.get('[data-testid="input-readonly"]')
+      .should('have.attr', 'readonly')
+      .and('have.value', 'KYC-2024-0001');
+
+    // 'be.disabled' is a shorthand for checking the disabled attribute.
+    cy.get('[data-testid="input-disabled"]')
+      .should('be.disabled')
+      .and('have.value', 'Cannot edit');
+
+    // Check the required attribute.
+    cy.get('[data-testid="input-required"]')
+      .should('have.attr', 'required');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: CSS Assertions
+  // --------------------------------------------------------------------------
+  it('exercise 5: verify and change CSS styles', () => {
+    // 'have.css' checks a computed CSS property.
+    // IMPORTANT: browsers compute colors as rgb(), not hex.
+    cy.get('[data-testid="colored-box"]')
+      .should('have.css', 'background-color', 'rgb(59, 130, 246)')
+      .and('have.css', 'border-radius', '8px');
+
+    // Click the button to change the color.
+    cy.get('[data-testid="btn-change-color"]').click();
+
+    // Verify the new color. Cypress auto-retries .should() assertions,
+    // so it will wait for the color to change before passing.
+    cy.get('[data-testid="colored-box"]')
+      .should('have.css', 'background-color', 'rgb(239, 68, 68)');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Counter Interactions
+  // --------------------------------------------------------------------------
+  it('exercise 6: counter increment, decrement, and reset', () => {
+    // Verify initial state.
+    cy.get('[data-testid="counter-value"]').should('have.text', '0');
+
+    // Click +1 three times.
+    cy.get('[data-testid="btn-increment"]').click();
+    cy.get('[data-testid="btn-increment"]').click();
+    cy.get('[data-testid="btn-increment"]').click();
+    cy.get('[data-testid="counter-value"]').should('have.text', '3');
+
+    // Click -1 once.
+    cy.get('[data-testid="btn-decrement"]').click();
+    cy.get('[data-testid="counter-value"]').should('have.text', '2');
+
+    // Reset.
+    cy.get('[data-testid="btn-reset-counter"]').click();
+    cy.get('[data-testid="counter-value"]').should('have.text', '0');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Dynamic Content
+  // --------------------------------------------------------------------------
+  it('exercise 7: add and clear dynamic alerts', () => {
+    // Initially no dynamic alerts.
+    cy.get('[data-testid="dynamic-alerts"] .alert')
+      .should('have.length', 0);
+
+    // Click "Add Alert" twice.
+    cy.get('[data-testid="btn-add-alert"]').click();
+    cy.get('[data-testid="btn-add-alert"]').click();
+
+    // Verify 2 alerts appear.
+    cy.get('[data-testid="dynamic-alerts"] .alert')
+      .should('have.length', 2);
+
+    // Verify the first alert text.
+    cy.get('[data-testid="dynamic-alert-1"]')
+      .should('contain.text', 'Alert #1');
+
+    // Clear all alerts.
+    cy.get('[data-testid="btn-clear-alerts"]').click();
+    cy.get('[data-testid="dynamic-alerts"] .alert')
+      .should('have.length', 0);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Negative Assertions
+  // --------------------------------------------------------------------------
+  it('exercise 8: negative assertions', () => {
+    // 'not.exist' means the element is NOT in the DOM.
+    // 'not.be.visible' means the element IS in the DOM but hidden.
+    // Here the empty list has no .list-item children at all.
+    cy.get('[data-testid="empty-list"] .list-item')
+      .should('not.exist');
+
+    cy.get('[data-testid="empty-message"]')
+      .should('have.text', 'No pending verifications.');
+
+    // The items list should have items (NOT be empty).
+    cy.get('[data-testid="items-list"] .list-item')
+      .should('have.length.greaterThan', 0);
+
+    cy.get('[data-testid="items-list"] .list-item')
+      .should('have.length', 3);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 9: Data Attributes
+  // --------------------------------------------------------------------------
+  it('exercise 9: verify custom data attributes', () => {
+    // 'have.attr' can check any HTML attribute including data-* attributes.
+    // Pass the attribute name and expected value as two arguments.
+    cy.get('[data-testid="data-attributes"]')
+      .should('have.attr', 'data-status', 'active')
+      .and('have.attr', 'data-priority', 'high')
+      .and('have.attr', 'data-count', '42')
+      .and('have.attr', 'data-user-role', 'admin');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 10: Multiple Assertions on One Element
+  // --------------------------------------------------------------------------
+  it('exercise 10: multiple assertions on a link', () => {
+    // Chain multiple assertions with .should() and .and().
+    // Each .and() receives the same subject element.
+    cy.get('[data-testid="link-terms"]')
+      .should('be.visible')
+      .and('have.attr', 'href', 'https://example.com/terms')
+      .and('have.attr', 'target', '_blank')
+      .and('have.text', 'Terms of Service');
+  });
+
+});
+9:T1f9b,# Kata 04: Clicks and Inputs
+
+## What You Will Learn
+
+- How to interact with all common form controls
+- `click()`, `dblclick()`, right-click (context menu)
+- `fill()` vs `type()` — what each does and when to use which
+- `clear()` — emptying input fields
+- `check()` / `uncheck()` — checkboxes
+- `selectOption()` — dropdown selects (single and multiple)
+- Range sliders, color pickers, content-editable divs
+- How input events flow: input → change → blur
+
+## Prerequisites
+
+- Completed Kata 01-03
+
+## Concepts Explained
+
+### fill() vs type() — The Critical Difference
+
+```typescript
+// PLAYWRIGHT
+// fill() — clears the field first, then sets the value instantly
+// Use: when you want to replace whatever is in the field
+await page.getByTestId('input-name').fill('John Doe');
+
+// type() — DOES NOT exist as a standalone method in latest Playwright
+// Use page.keyboard.type() for character-by-character typing
+// This fires individual keydown/keypress/keyup events per character
+await page.getByTestId('input-name').pressSequentially('John Doe');
+// pressSequentially is the modern replacement for the old type() method
+
+// CYPRESS
+// type() — appends characters one at a time (does NOT clear first!)
+cy.get('[data-testid="input-name"]').type('John Doe');
+
+// To replace existing text, clear first:
+cy.get('[data-testid="input-name"]').clear().type('John Doe');
+```
+
+### Click Variants
+
+```typescript
+// PLAYWRIGHT
+await element.click();                    // single left click
+await element.dblclick();                 // double click
+await element.click({ button: 'right' }); // right click (context menu)
+await element.click({ force: true });     // click even if covered by another element
+await element.click({ position: { x: 10, y: 20 } }); // click at specific position
+
+// CYPRESS
+cy.get(sel).click();                      // single left click
+cy.get(sel).dblclick();                   // double click
+cy.get(sel).rightclick();                 // right click
+cy.get(sel).click({ force: true });       // force click
+cy.get(sel).click(10, 20);               // click at position
+```
+
+### Checkboxes and Radio Buttons
+
+```typescript
+// PLAYWRIGHT
+// check() — checks if unchecked, no-op if already checked
+await page.getByTestId('check-identity').check();
+// uncheck() — unchecks if checked
+await page.getByTestId('check-identity').uncheck();
+// Verify state
+await expect(page.getByTestId('check-identity')).toBeChecked();
+await expect(page.getByTestId('check-identity')).not.toBeChecked();
+
+// CYPRESS
+cy.get('[data-testid="check-identity"]').check();    // check
+cy.get('[data-testid="check-identity"]').uncheck();  // uncheck
+cy.get('[data-testid="check-identity"]').should('be.checked');
+cy.get('[data-testid="check-identity"]').should('not.be.checked');
+```
+
+### Select / Dropdown
+
+```typescript
+// PLAYWRIGHT
+// selectOption — select by value, label, or index
+await page.getByTestId('select-risk').selectOption('high');           // by value
+await page.getByTestId('select-risk').selectOption({ label: 'High Risk' }); // by visible text
+await page.getByTestId('select-risk').selectOption({ index: 2 });    // by index (0-based)
+
+// Multiple select
+await page.getByTestId('select-country').selectOption(['us', 'uk']); // select multiple
+
+// CYPRESS
+cy.get('[data-testid="select-risk"]').select('high');           // by value
+cy.get('[data-testid="select-risk"]').select('High Risk');      // by visible text
+cy.get('[data-testid="select-risk"]').select(2);                // by index
+
+// Multiple
+cy.get('[data-testid="select-country"]').select(['us', 'uk']);
+```
+
+### Special Inputs
+
+```typescript
+// Range slider — PLAYWRIGHT
+await page.getByTestId('risk-slider').fill('75');  // fill works for range inputs
+
+// Range slider — CYPRESS
+cy.get('[data-testid="risk-slider"]').invoke('val', 75).trigger('input');
+
+// Color picker — PLAYWRIGHT
+await page.getByTestId('color-picker').fill('#ff0000');
+
+// Color picker — CYPRESS
+cy.get('[data-testid="color-picker"]').invoke('val', '#ff0000').trigger('input');
+
+// Content-editable div — PLAYWRIGHT
+await page.getByTestId('editable-div').fill('New content');
+
+// Content-editable div — CYPRESS
+cy.get('[data-testid="editable-div"]').clear().type('New content');
+```
+
+## Playground
+
+The playground contains:
+
+1. **Risk Score Calculator** — number pad with operators, display, clear button
+2. **Text Inputs** — name, email, password, amount, textarea with live summary
+3. **Select Dropdowns** — single select (risk level), multi-select (countries)
+4. **Checkboxes & Radio Buttons** — verification steps + approval decision
+5. **Range Slider & Color Picker** — interactive controls with live preview
+6. **Click Variants** — single click, double click, right click with context menu
+7. **Content Editable** — div with contenteditable attribute
+
+## Exercises
+
+### Exercise 1: Calculator
+Use the calculator to compute 42 + 18. Verify the display shows 60.
+
+### Exercise 2: Fill Text Inputs
+Fill in name, email, and amount fields. Verify the live summary updates.
+
+### Exercise 3: Clear and Retype
+Fill a field with "wrong value", clear it, then fill with "correct value". Verify.
+
+### Exercise 4: Select Dropdown
+Select "High Risk" from the risk dropdown. Verify the selected risk text updates.
+
+### Exercise 5: Multi-Select
+Select "United States" and "India" from the country multi-select.
+
+### Exercise 6: Checkboxes
+Check "Identity Verified" and "Sanctions Cleared". Verify checked count shows 2. Uncheck one, verify count shows 1.
+
+### Exercise 7: Radio Buttons
+Select "Approve", verify decision shows "Approve". Then select "Reject", verify it changes.
+
+### Exercise 8: Double Click
+Double-click the "Double Click" button and verify the result text.
+
+### Exercise 9: Right Click (Context Menu)
+Right-click the "Right Click" button, verify the context menu appears, click "Approve" in it.
+
+### Exercise 10: Range Slider
+Set the risk slider to 75 and verify the displayed value.
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/clicks-and-inputs.spec.ts`
+
+### Cypress Solution
+
+See `cypress/clicks-and-inputs.cy.ts`
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Using Cypress `type()` without `clear()` | `type()` appends, doesn't replace | Always `clear().type()` to replace |
+| Using `fill()` when you need keyboard events | `fill()` sets value directly, skips keydown/keyup | Use `pressSequentially()` (Playwright) for char-by-char |
+| Selecting by index when order might change | Index breaks if options are reordered | Select by value or label text |
+| Forgetting to trigger `input` event on range slider (Cypress) | `invoke('val')` doesn't fire events | Chain `.trigger('input')` after |
+| Not handling the context menu after right-click | The menu stays open and blocks other clicks | Click a menu item or click elsewhere to dismiss |
+
+## Quick Reference
+
+### Playwright Actions
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Click | `click()` | `await el.click()` |
+| Double click | `dblclick()` | `await el.dblclick()` |
+| Right click | `click({ button: 'right' })` | `await el.click({ button: 'right' })` |
+| Fill input | `fill(value)` | `await input.fill('text')` |
+| Type chars | `pressSequentially(text)` | `await input.pressSequentially('text')` |
+| Clear | `clear()` | `await input.clear()` |
+| Check | `check()` | `await checkbox.check()` |
+| Uncheck | `uncheck()` | `await checkbox.uncheck()` |
+| Select option | `selectOption(value)` | `await select.selectOption('high')` |
+
+### Cypress Actions
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Click | `.click()` | `cy.get(sel).click()` |
+| Double click | `.dblclick()` | `cy.get(sel).dblclick()` |
+| Right click | `.rightclick()` | `cy.get(sel).rightclick()` |
+| Type text | `.type(text)` | `cy.get(sel).type('text')` |
+| Clear | `.clear()` | `cy.get(sel).clear()` |
+| Check | `.check()` | `cy.get(sel).check()` |
+| Uncheck | `.uncheck()` | `cy.get(sel).uncheck()` |
+| Select option | `.select(value)` | `cy.get(sel).select('high')` |
+a:T2043,import { test, expect } from '@playwright/test';
+
+const PLAYGROUND = '/phase-00-foundations/04-clicks-and-inputs/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Calculator
+// --------------------------------------------------------------------------
+test('exercise 1: calculate 42 + 18 = 60', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Click digits 4, 2 to enter "42".
+  await page.getByTestId('calc-4').click();
+  await page.getByTestId('calc-2').click();
+  await expect(page.getByTestId('calc-display')).toHaveText('42');
+
+  // Click the + operator.
+  await page.getByTestId('calc-add').click();
+
+  // Click digits 1, 8 to enter "18".
+  await page.getByTestId('calc-1').click();
+  await page.getByTestId('calc-8').click();
+
+  // Click = to compute the result.
+  await page.getByTestId('calc-equals').click();
+
+  // Verify the display shows "60".
+  await expect(page.getByTestId('calc-display')).toHaveText('60');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Fill Text Inputs
+// --------------------------------------------------------------------------
+test('exercise 2: fill inputs and verify live summary', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // fill() clears the field first, then sets the value.
+  // It also triggers 'input' and 'change' events so the live summary updates.
+  await page.getByTestId('input-name').fill('Alice Johnson');
+  await page.getByTestId('input-email').fill('alice@fintech.com');
+  await page.getByTestId('input-amount').fill('2500.50');
+
+  // Verify the live summary reflects the input values.
+  await expect(page.getByTestId('summary-name')).toHaveText('Alice Johnson');
+  await expect(page.getByTestId('summary-email')).toHaveText('alice@fintech.com');
+  await expect(page.getByTestId('summary-amount')).toHaveText('2500.50');
+
+  // Verify the password field can be filled (value is masked but stored).
+  await page.getByTestId('input-password').fill('Str0ngP@ss!');
+  await expect(page.getByTestId('input-password')).toHaveValue('Str0ngP@ss!');
+
+  // Fill the textarea.
+  await page.getByTestId('textarea-reason').fill('Insufficient documentation provided.');
+  await expect(page.getByTestId('textarea-reason')).toHaveValue('Insufficient documentation provided.');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Clear and Retype
+// --------------------------------------------------------------------------
+test('exercise 3: clear a field and fill with new value', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  const nameInput = page.getByTestId('input-name');
+
+  // Fill with wrong value.
+  await nameInput.fill('Wrong Name');
+  await expect(nameInput).toHaveValue('Wrong Name');
+
+  // clear() empties the field. Same as fill('').
+  await nameInput.clear();
+  await expect(nameInput).toHaveValue('');
+
+  // Fill with correct value.
+  await nameInput.fill('Correct Name');
+  await expect(nameInput).toHaveValue('Correct Name');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Select Dropdown
+// --------------------------------------------------------------------------
+test('exercise 4: select option from dropdown', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // selectOption selects by value attribute.
+  // The <option value="high">High Risk</option> will be selected.
+  await page.getByTestId('select-risk').selectOption('high');
+
+  // Verify the input value changed.
+  await expect(page.getByTestId('select-risk')).toHaveValue('high');
+
+  // Verify the UI text updated.
+  await expect(page.getByTestId('selected-risk')).toHaveText('High Risk');
+
+  // You can also select by label (visible text).
+  await page.getByTestId('select-risk').selectOption({ label: 'Critical Risk' });
+  await expect(page.getByTestId('select-risk')).toHaveValue('critical');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Multi-Select
+// --------------------------------------------------------------------------
+test('exercise 5: select multiple options', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Pass an array of values to select multiple options at once.
+  // Only works on <select multiple> elements.
+  await page.getByTestId('select-country').selectOption(['us', 'in']);
+
+  // Verify both options are selected.
+  // toHaveValues checks all selected values in a multi-select.
+  await expect(page.getByTestId('select-country')).toHaveValues(['us', 'in']);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Checkboxes
+// --------------------------------------------------------------------------
+test('exercise 6: check and uncheck checkboxes', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // check() checks the checkbox. If already checked, it's a no-op.
+  await page.getByTestId('check-identity').check();
+  await page.getByTestId('check-sanctions').check();
+
+  // Verify both are checked.
+  await expect(page.getByTestId('check-identity')).toBeChecked();
+  await expect(page.getByTestId('check-sanctions')).toBeChecked();
+
+  // Verify the checked count updates.
+  await expect(page.getByTestId('checked-count')).toHaveText('2');
+
+  // uncheck() unchecks a checkbox.
+  await page.getByTestId('check-identity').uncheck();
+  await expect(page.getByTestId('check-identity')).not.toBeChecked();
+  await expect(page.getByTestId('checked-count')).toHaveText('1');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Radio Buttons
+// --------------------------------------------------------------------------
+test('exercise 7: select radio buttons', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // check() works for radio buttons too.
+  await page.getByTestId('radio-approve').check();
+  await expect(page.getByTestId('radio-approve')).toBeChecked();
+  await expect(page.getByTestId('decision-value')).toHaveText('Approve');
+
+  // Selecting a different radio unchecks the previous one.
+  await page.getByTestId('radio-reject').check();
+  await expect(page.getByTestId('radio-reject')).toBeChecked();
+  await expect(page.getByTestId('radio-approve')).not.toBeChecked();
+  await expect(page.getByTestId('decision-value')).toHaveText('Reject');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Double Click
+// --------------------------------------------------------------------------
+test('exercise 8: double click', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // dblclick() performs a double-click on the element.
+  await page.getByTestId('btn-double-click').dblclick();
+
+  await expect(page.getByTestId('click-result')).toHaveText('Double click detected!');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 9: Right Click (Context Menu)
+// --------------------------------------------------------------------------
+test('exercise 9: right click and context menu', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // click({ button: 'right' }) performs a right-click.
+  await page.getByTestId('btn-right-click').click({ button: 'right' });
+
+  // Verify the custom context menu appears.
+  await expect(page.getByTestId('context-menu')).toBeVisible();
+
+  // Click "Approve" in the context menu.
+  await page.getByTestId('ctx-approve').click();
+
+  // Verify the result.
+  await expect(page.getByTestId('click-result')).toHaveText('Context action: Approve');
+  await expect(page.getByTestId('context-menu')).toBeHidden();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 10: Range Slider
+// --------------------------------------------------------------------------
+test('exercise 10: set range slider value', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // fill() works for range inputs in Playwright.
+  // It sets the value and triggers the 'input' event.
+  await page.getByTestId('risk-slider').fill('75');
+
+  // Verify the displayed value updated.
+  await expect(page.getByTestId('slider-value')).toHaveText('75');
+});
+b:T1dcc,const PLAYGROUND = '/phase-00-foundations/04-clicks-and-inputs/playground/';
+
+describe('Kata 04: Clicks and Inputs', () => {
+
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Calculator
+  // --------------------------------------------------------------------------
+  it('exercise 1: calculate 42 + 18 = 60', () => {
+    // Click digits to enter "42".
+    cy.get('[data-testid="calc-4"]').click();
+    cy.get('[data-testid="calc-2"]').click();
+    cy.get('[data-testid="calc-display"]').should('have.text', '42');
+
+    // Click the + operator.
+    cy.get('[data-testid="calc-add"]').click();
+
+    // Enter "18".
+    cy.get('[data-testid="calc-1"]').click();
+    cy.get('[data-testid="calc-8"]').click();
+
+    // Click = to compute.
+    cy.get('[data-testid="calc-equals"]').click();
+
+    // Verify result.
+    cy.get('[data-testid="calc-display"]').should('have.text', '60');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Fill Text Inputs
+  // --------------------------------------------------------------------------
+  it('exercise 2: fill inputs and verify live summary', () => {
+    // In Cypress, type() appends text character by character.
+    // Since the fields start empty, we don't need clear() first.
+    cy.get('[data-testid="input-name"]').type('Alice Johnson');
+    cy.get('[data-testid="input-email"]').type('alice@fintech.com');
+    cy.get('[data-testid="input-amount"]').type('2500.50');
+
+    // Verify the live summary.
+    cy.get('[data-testid="summary-name"]').should('have.text', 'Alice Johnson');
+    cy.get('[data-testid="summary-email"]').should('have.text', 'alice@fintech.com');
+    cy.get('[data-testid="summary-amount"]').should('have.text', '2500.50');
+
+    // Password field.
+    cy.get('[data-testid="input-password"]').type('Str0ngP@ss!');
+    cy.get('[data-testid="input-password"]').should('have.value', 'Str0ngP@ss!');
+
+    // Textarea.
+    cy.get('[data-testid="textarea-reason"]').type('Insufficient documentation provided.');
+    cy.get('[data-testid="textarea-reason"]')
+      .should('have.value', 'Insufficient documentation provided.');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Clear and Retype
+  // --------------------------------------------------------------------------
+  it('exercise 3: clear a field and type new value', () => {
+    cy.get('[data-testid="input-name"]').type('Wrong Name');
+    cy.get('[data-testid="input-name"]').should('have.value', 'Wrong Name');
+
+    // clear() removes all text from the input.
+    cy.get('[data-testid="input-name"]').clear();
+    cy.get('[data-testid="input-name"]').should('have.value', '');
+
+    // Type the correct value.
+    cy.get('[data-testid="input-name"]').type('Correct Name');
+    cy.get('[data-testid="input-name"]').should('have.value', 'Correct Name');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Select Dropdown
+  // --------------------------------------------------------------------------
+  it('exercise 4: select option from dropdown', () => {
+    // select() can take a value or visible text.
+    cy.get('[data-testid="select-risk"]').select('high');
+    cy.get('[data-testid="select-risk"]').should('have.value', 'high');
+    cy.get('[data-testid="selected-risk"]').should('have.text', 'High Risk');
+
+    // Select by visible text.
+    cy.get('[data-testid="select-risk"]').select('Critical Risk');
+    cy.get('[data-testid="select-risk"]').should('have.value', 'critical');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Multi-Select
+  // --------------------------------------------------------------------------
+  it('exercise 5: select multiple options', () => {
+    // Pass an array to select multiple values.
+    // Only works on <select multiple> elements.
+    cy.get('[data-testid="select-country"]').select(['us', 'in']);
+
+    // Verify selected values using invoke to get the array of selected options.
+    cy.get('[data-testid="select-country"]')
+      .invoke('val')
+      .should('deep.equal', ['us', 'in']);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Checkboxes
+  // --------------------------------------------------------------------------
+  it('exercise 6: check and uncheck checkboxes', () => {
+    // check() checks the checkbox.
+    cy.get('[data-testid="check-identity"]').check();
+    cy.get('[data-testid="check-sanctions"]').check();
+
+    cy.get('[data-testid="check-identity"]').should('be.checked');
+    cy.get('[data-testid="check-sanctions"]').should('be.checked');
+    cy.get('[data-testid="checked-count"]').should('have.text', '2');
+
+    // uncheck() unchecks.
+    cy.get('[data-testid="check-identity"]').uncheck();
+    cy.get('[data-testid="check-identity"]').should('not.be.checked');
+    cy.get('[data-testid="checked-count"]').should('have.text', '1');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Radio Buttons
+  // --------------------------------------------------------------------------
+  it('exercise 7: select radio buttons', () => {
+    // check() works for radio buttons.
+    cy.get('[data-testid="radio-approve"]').check();
+    cy.get('[data-testid="radio-approve"]').should('be.checked');
+    cy.get('[data-testid="decision-value"]').should('have.text', 'Approve');
+
+    // Selecting a different radio unchecks the previous.
+    cy.get('[data-testid="radio-reject"]').check();
+    cy.get('[data-testid="radio-reject"]').should('be.checked');
+    cy.get('[data-testid="radio-approve"]').should('not.be.checked');
+    cy.get('[data-testid="decision-value"]').should('have.text', 'Reject');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Double Click
+  // --------------------------------------------------------------------------
+  it('exercise 8: double click', () => {
+    // dblclick() performs a double-click.
+    cy.get('[data-testid="btn-double-click"]').dblclick();
+
+    cy.get('[data-testid="click-result"]')
+      .should('have.text', 'Double click detected!');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 9: Right Click (Context Menu)
+  // --------------------------------------------------------------------------
+  it('exercise 9: right click and context menu', () => {
+    // rightclick() triggers the contextmenu event.
+    cy.get('[data-testid="btn-right-click"]').rightclick();
+
+    // Verify context menu appears.
+    cy.get('[data-testid="context-menu"]').should('be.visible');
+
+    // Click an option in the context menu.
+    cy.get('[data-testid="ctx-approve"]').click();
+
+    cy.get('[data-testid="click-result"]')
+      .should('have.text', 'Context action: Approve');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 10: Range Slider
+  // --------------------------------------------------------------------------
+  it('exercise 10: set range slider value', () => {
+    // Cypress doesn't have a native method for range inputs.
+    // Use invoke('val', value) to set the value, then trigger('input')
+    // to fire the input event so the UI updates.
+    cy.get('[data-testid="risk-slider"]')
+      .invoke('val', 75)
+      .trigger('input');
+
+    cy.get('[data-testid="slider-value"]').should('have.text', '75');
+  });
+
+});
+c:T773e,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { test, expect } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> '@playwright/test'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-00-foundations/03-waits-and-timing/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 1: Wait for Delayed Element (1s)</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: wait for 1-second delayed element'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click the button that triggers a 1-second delay.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-delay-1s'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Playwright's expect auto-retries for up to 5 seconds (default).</span></span>
+<span class="line"><span style="color:#6A737D">  // Since the element appears after 1s, this passes within the default timeout.</span></span>
+<span class="line"><span style="color:#6A737D">  // No sleep() or waitForTimeout needed!</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'delayed-1s'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'delayed-1s'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Appeared after 1 second!'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 2: Wait for Slow Element (3s)</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: wait for 3-second delayed element'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-delay-3s'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // 3 seconds is within the default 5s timeout, so this works too.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'delayed-3s'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'delayed-3s'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Appeared after 3 seconds!'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 2b: Wait for Very Slow Element (7s) - Custom Timeout</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2b: wait for 7-second delayed element with custom timeout'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-delay-7s'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // 7 seconds exceeds the default 5s timeout. We must increase it.</span></span>
+<span class="line"><span style="color:#6A737D">  // The { timeout } option tells Playwright how long to retry.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'delayed-7s'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">({ timeout: </span><span style="color:#79B8FF">10000</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'delayed-7s'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Appeared after 7 seconds!'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 3: Loading State Transition</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: loading spinner then data'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify initial state.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'initial-message'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click the fetch button.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-fetch-data'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the loading spinner appears.</span></span>
+<span class="line"><span style="color:#6A737D">  // The spinner shows immediately after clicking.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'loading-spinner'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Now wait for the data to load (replaces the spinner after 2s).</span></span>
+<span class="line"><span style="color:#6A737D">  // We don't need to wait for the spinner to disappear first —</span></span>
+<span class="line"><span style="color:#6A737D">  // just assert the final state and Playwright handles the timing.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'applicant-data'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'loaded-name'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Priya Sharma'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'loaded-email'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'priya@example.com'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'loaded-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Verified'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 4: Polling / Auto-Refresh</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: wait for polling to complete'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click to start the verification polling process.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-start-polling'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // The status updates every 2 seconds through 5 steps.</span></span>
+<span class="line"><span style="color:#6A737D">  // Total time: ~10 seconds. We need a longer timeout.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'polling-step'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'5'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">15000</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'polling-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Complete'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 5: Debounced Search</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: debounced search with 300ms delay'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Type into the debounced search box.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'input-debounce-search'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Priya'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // After typing, a "Searching..." indicator shows for 300ms.</span></span>
+<span class="line"><span style="color:#6A737D">  // Then the actual results appear.</span></span>
+<span class="line"><span style="color:#6A737D">  // We just wait for the final state — the search results.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'search-result'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">first</span><span style="color:#E1E4E8">()).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'search-result'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">first</span><span style="color:#E1E4E8">()).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Priya Sharma'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 6: Progress Bar</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: wait for progress bar to complete'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-start-upload'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // The progress bar fills incrementally. We wait for the status text</span></span>
+<span class="line"><span style="color:#6A737D">  // to indicate completion rather than checking the exact percentage.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'upload-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Processing complete!'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">10000</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'upload-percent'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'100%'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 7: Toast Notification Lifecycle</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 7: toast appears and auto-dismisses'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click to show a success toast.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-toast-success'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the toast appears immediately.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> toast</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'toast-1'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(toast).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(toast).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Application approved successfully!'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // The toast auto-dismisses after 3 seconds + 0.5s fade animation.</span></span>
+<span class="line"><span style="color:#6A737D">  // We wait for it to be removed from the DOM.</span></span>
+<span class="line"><span style="color:#6A737D">  // toBeHidden waits for the element to become hidden or detached.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(toast).</span><span style="color:#B392F0">toBeHidden</span><span style="color:#E1E4E8">({ timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 8: Skeleton to Content</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 8: skeleton loading then real content'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-load-profile'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify skeleton appears.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'skeleton-loader'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Wait for real profile data (replaces skeleton after 2.5s).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'profile-data'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'profile-name'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Amit Patel'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'profile-level'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Level 3 - Enhanced'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>d:T67bc,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-00-foundations/03-waits-and-timing/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">describe</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Kata 03: Waits and Timing'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">  beforeEach</span><span style="color:#E1E4E8">(() </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 1: Wait for Delayed Element (1s)</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: wait for 1-second delayed element'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-delay-1s"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Cypress automatically retries .should() assertions for up to 4s (default).</span></span>
+<span class="line"><span style="color:#6A737D">    // Since the element appears after 1s, this works within the default timeout.</span></span>
+<span class="line"><span style="color:#6A737D">    // No cy.wait(1000) needed!</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="delayed-1s"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Appeared after 1 second!'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 2: Wait for Slow Element (3s)</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: wait for 3-second delayed element'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-delay-3s"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // 3s is within the default 4s timeout, so this works.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="delayed-3s"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Appeared after 3 seconds!'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 2b: Wait for Very Slow Element (7s) - Custom Timeout</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2b: wait for 7-second delayed element with custom timeout'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-delay-7s"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // 7s exceeds the default 4s timeout. Pass { timeout } to cy.get</span></span>
+<span class="line"><span style="color:#6A737D">    // to increase the retry window for this specific command.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="delayed-7s"]'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">10000</span><span style="color:#E1E4E8"> })</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Appeared after 7 seconds!'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 3: Loading State Transition</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: loading spinner then data'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Verify initial state.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="initial-message"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Click the fetch button.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-fetch-data"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the loading spinner appears.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="loading-spinner"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Wait for the data to load (replaces spinner after 2s).</span></span>
+<span class="line"><span style="color:#6A737D">    // Cypress retries .should until the element appears.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="applicant-data"]'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8"> })</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="loaded-name"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Priya Sharma'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="loaded-email"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'priya@example.com'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="loaded-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Verified'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 4: Polling / Auto-Refresh</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: wait for polling to complete'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-start-polling"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // The polling takes ~10 seconds (5 steps x 2s each).</span></span>
+<span class="line"><span style="color:#6A737D">    // We need a longer timeout to wait for the final state.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="polling-step"]'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">15000</span><span style="color:#E1E4E8"> })</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'5'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="polling-status"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Complete'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 5: Debounced Search</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: debounced search with 300ms delay'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Type into the debounced search box.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-debounce-search"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Priya'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // After typing, a "Searching..." indicator shows for 300ms,</span></span>
+<span class="line"><span style="color:#6A737D">    // then the actual results appear.</span></span>
+<span class="line"><span style="color:#6A737D">    // We just assert the final state — Cypress retries until results show.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="search-result"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.length.gte'</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">1</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">first</span><span style="color:#E1E4E8">()</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Priya Sharma'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 6: Progress Bar</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: wait for progress bar to complete'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-start-upload"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Wait for the status text to indicate completion.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="upload-status"]'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">10000</span><span style="color:#E1E4E8"> })</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Processing complete!'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="upload-percent"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'100%'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 7: Toast Notification Lifecycle</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 7: toast appears and auto-dismisses'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-toast-success"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the toast appears.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="toast-1"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Application approved successfully!'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // The toast auto-dismisses after 3s + 0.5s fade.</span></span>
+<span class="line"><span style="color:#6A737D">    // 'not.exist' waits for the element to be removed from the DOM entirely.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="toast-1"]'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8"> })</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.exist'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 8: Skeleton to Content</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 8: skeleton loading then real content'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-load-profile"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify skeleton appears.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="skeleton-loader"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Wait for real profile data (replaces skeleton after 2.5s).</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="profile-data"]'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8"> })</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="profile-name"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Amit Patel'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="profile-level"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Level 3 - Enhanced'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"kata":{"slug":"03-waits-and-timing","number":3,"title":"Waits and Timing","phaseSlug":"phase-00-foundations","phaseNumber":0,"phaseName":"Foundations","readmeRaw":"$3","hasPlayground":true,"playwrightFiles":[{"filename":"waits.spec.ts","content":"$4"}],"cypressFiles":[{"filename":"waits.cy.ts","content":"$5"}]},"prev":{"slug":"02-assertions","number":2,"title":"Assertions","phaseSlug":"phase-00-foundations","phaseNumber":0,"phaseName":"Foundations","readmeRaw":"$6","hasPlayground":true,"playwrightFiles":[{"filename":"assertions.spec.ts","content":"$7"}],"cypressFiles":[{"filename":"assertions.cy.ts","content":"$8"}]},"next":{"slug":"04-clicks-and-inputs","number":4,"title":"Clicks and Inputs","phaseSlug":"phase-00-foundations","phaseNumber":0,"phaseName":"Foundations","readmeRaw":"$9","hasPlayground":true,"playwrightFiles":[{"filename":"clicks-and-inputs.spec.ts","content":"$a"}],"cypressFiles":[{"filename":"clicks-and-inputs.cy.ts","content":"$b"}]},"playwrightHtml":[{"filename":"waits.spec.ts","html":"$c"}],"cypressHtml":[{"filename":"waits.cy.ts","html":"$d"}]}],["$Le"],"$Lf"]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"iDtrTKWIN4zzRgDRiiDd2"}
+e:["$","script","script-0",{"src":"/qa-labs/_next/static/chunks/03nvm.8~ftt80.js","async":true}]
+f:["$","$L10",null,{"children":["$","$11",null,{"name":"Next.MetadataOutlet","children":"$@12"}]}]
+12:null

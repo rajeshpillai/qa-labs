@@ -1,0 +1,2229 @@
+1:"$Sreact.fragment"
+2:I[31749,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js","/qa-labs/_next/static/chunks/03nvm.8~ftt80.js"],"KataPageClient"]
+10:I[49583,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js"],"OutletBoundary"]
+11:"$Sreact.suspense"
+3:T1f83,# Kata 31: Approval & Rejection Flows
+
+## What You Will Learn
+
+- How to test admin review panels with approve/reject/escalate workflows
+- How to interact with confirmation dialogs (modal overlays)
+- How to verify required fields in rejection forms
+- How to test status changes after admin actions
+- How to verify action history logs
+- How to test bulk selection and bulk actions
+- How to test list filtering by status
+- How to verify UI state after multiple sequential actions
+
+## Prerequisites
+
+- Completed Katas 1-30
+- Understanding of dialog/modal interaction testing
+- Familiarity with checkbox-based selection patterns
+
+## Concepts Explained
+
+### Admin Review Panel Pattern
+
+```
+In fintech, admin review panels allow compliance officers or analysts
+to review, approve, reject, or escalate pending applications.
+
+Common features:
+  - List of applications with status badges
+  - Action buttons per application (Approve, Reject, Escalate)
+  - Confirmation dialogs before actions take effect
+  - Rejection requires a reason (mandatory field)
+  - Action history/audit log
+  - Bulk actions (select multiple, approve all)
+  - Filter by status
+
+Testing must verify:
+  - Status changes correctly after each action
+  - Confirmation dialogs appear and work correctly
+  - Rejection is blocked without a reason
+  - History log records every action
+  - Bulk actions affect all selected items
+  - Filters show the correct subset
+```
+
+### Testing Modal Dialogs
+
+```
+Modal dialogs overlay the page and require user interaction before
+returning to the main content.
+
+Playwright:
+  // Click Approve to open the dialog.
+  await page.getByTestId('btn-approve-APP-001').click();
+  // Verify the dialog is visible.
+  await expect(page.getByTestId('approve-dialog')).toBeVisible();
+  // Click the confirm button inside the dialog.
+  await page.getByTestId('approve-dialog-confirm').click();
+  // Verify the dialog closes.
+  await expect(page.getByTestId('approve-dialog')).toBeHidden();
+
+Cypress:
+  cy.get('[data-testid="btn-approve-APP-001"]').click();
+  cy.get('[data-testid="approve-dialog"]').should('be.visible');
+  cy.get('[data-testid="approve-dialog-confirm"]').click();
+  cy.get('[data-testid="approve-dialog"]').should('not.be.visible');
+```
+
+### Testing Bulk Actions
+
+```
+Bulk actions require:
+  1. Select individual checkboxes (or "Select All")
+  2. Verify the selected count updates
+  3. Click the bulk action button
+  4. Verify all selected items changed status
+
+Playwright:
+  await page.getByTestId('select-all').check();
+  await expect(page.getByTestId('selected-count')).toContainText('5 selected');
+  await page.getByTestId('btn-bulk-approve').click();
+
+Cypress:
+  cy.get('[data-testid="select-all"]').check();
+  cy.get('[data-testid="selected-count"]').should('contain.text', '5 selected');
+  cy.get('[data-testid="btn-bulk-approve"]').click();
+```
+
+## Playground
+
+The playground is an admin review panel with:
+
+1. **Filter Bar** — dropdown to filter applications by status (All, Pending, Approved, Rejected, Escalated) with a count of visible/total applications
+2. **Bulk Actions Bar** — "Select All" checkbox, selected count, and "Approve Selected" button (disabled until at least one is selected)
+3. **Application List** — five applications (APP-001 through APP-005) each with:
+   - Checkbox for bulk selection (disabled for non-pending apps)
+   - Name, ID, email, risk score
+   - Status badge (Pending, Approved, Rejected, Escalated)
+   - Action buttons (Approve, Reject, Escalate) — only shown for pending apps
+4. **Approval Dialog** — confirmation dialog with Cancel/Approve buttons
+5. **Rejection Dialog** — dialog with required reason textarea, validation error, Cancel/Reject buttons
+6. **Escalation Dialog** — dialog with optional notes textarea, Cancel/Escalate buttons
+7. **Action History** — chronological log of all actions taken, showing action type, applicant name/ID, and reason if applicable
+
+## Exercises
+
+### Exercise 1: Approve Application and Verify Status Change
+Click "Approve" on APP-001. Verify the confirmation dialog appears. Click "Approve" in the dialog. Verify the status badge changes to "Approved" and the action buttons disappear.
+
+### Exercise 2: Reject With Reason
+Click "Reject" on APP-002. Verify the rejection dialog appears. Type a reason and click "Reject". Verify the status changes to "Rejected".
+
+### Exercise 3: Escalate Application
+Click "Escalate" on APP-003. Add notes in the escalation dialog and confirm. Verify the status changes to "Escalated".
+
+### Exercise 4: Verify Action History
+Approve one application and reject another. Verify the action history shows both entries with the correct details.
+
+### Exercise 5: Bulk Select and Approve
+Select all pending applications using the "Select All" checkbox. Click "Approve Selected". Verify all selected applications change to "Approved".
+
+### Exercise 6: Verify Confirmation Dialog
+Click "Approve" on APP-001. Verify the dialog text mentions the applicant name. Click "Cancel". Verify the dialog closes and the status is still "Pending".
+
+### Exercise 7: Verify Rejection Requires Reason
+Click "Reject" on APP-002. Click "Reject" without entering a reason. Verify the error message appears. Then enter a reason and verify it succeeds.
+
+### Exercise 8: Filter by Status
+Approve one application, reject another. Filter by "Pending" and verify only pending apps show. Filter by "Approved" and verify only approved apps show. Filter by "All" and verify all apps show.
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/approval-rejection-flows.spec.ts`
+
+### Cypress Solution
+
+See `cypress/approval-rejection-flows.cy.ts`
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Clicking action buttons on non-pending apps | Action buttons are only rendered for pending applications | Verify the app is pending before trying to click Approve/Reject |
+| Forgetting to confirm in the dialog | Clicking "Approve" opens a dialog; the actual approval happens on confirm | Click the dialog's confirm button after opening the dialog |
+| Not clearing the reject reason from a previous test | The textarea may retain values from a prior dialog opening | Each `openRejectDialog()` call resets the textarea, but tests should navigate fresh |
+| Asserting on checkboxes after status change | Approved/rejected apps have disabled checkboxes | After changing status, the checkbox for that app is disabled |
+| Not waiting for re-render after bulk approve | `bulkApprove()` triggers `renderApplications()` which rebuilds the DOM | Wait for the status badges to update before asserting |
+
+## Quick Reference
+
+### Playwright Dialog Testing
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Open dialog | `locator.click()` | `await page.getByTestId('btn-approve-APP-001').click()` |
+| Verify dialog visible | `toBeVisible()` | `await expect(dialog).toBeVisible()` |
+| Type in textarea | `locator.fill()` | `await textarea.fill('Reason text')` |
+| Confirm action | `locator.click()` | `await page.getByTestId('approve-dialog-confirm').click()` |
+| Cancel action | `locator.click()` | `await page.getByTestId('approve-dialog-cancel').click()` |
+| Check dialog hidden | `toBeHidden()` | `await expect(dialog).toBeHidden()` |
+| Check checkbox | `locator.check()` | `await page.getByTestId('select-all').check()` |
+
+### Cypress Dialog Testing
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Open dialog | `cy.get().click()` | `cy.get('[data-testid="btn-approve-APP-001"]').click()` |
+| Verify dialog visible | `.should('be.visible')` | `cy.get(dialog).should('be.visible')` |
+| Type in textarea | `.type()` | `cy.get(textarea).type('Reason text')` |
+| Confirm action | `.click()` | `cy.get('[data-testid="approve-dialog-confirm"]').click()` |
+| Cancel action | `.click()` | `cy.get('[data-testid="approve-dialog-cancel"]').click()` |
+| Check dialog hidden | `.should('not.be.visible')` | `cy.get(dialog).should('not.be.visible')` |
+| Check checkbox | `.check()` | `cy.get('[data-testid="select-all"]').check()` |
+4:T2b23,import { test, expect } from '@playwright/test';
+
+// The base URL for our playground page.
+const PLAYGROUND = '/phase-05-fintech-domain/31-approval-rejection-flows/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Approve Application and Verify Status Change
+// --------------------------------------------------------------------------
+// Click Approve on APP-001, confirm in dialog, verify status changes.
+test('exercise 1: approve application and verify status change', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify APP-001 is initially pending.
+  await expect(page.getByTestId('status-APP-001')).toHaveText('Pending');
+
+  // Click the Approve button for APP-001.
+  await page.getByTestId('btn-approve-APP-001').click();
+
+  // Verify the approval confirmation dialog appears.
+  // toBeVisible() checks the dialog overlay is displayed.
+  await expect(page.getByTestId('approve-dialog')).toBeVisible();
+
+  // Verify the dialog mentions the applicant name.
+  await expect(page.getByTestId('approve-dialog-text')).toContainText('Alice Johnson');
+
+  // Click the "Approve" button in the dialog to confirm.
+  await page.getByTestId('approve-dialog-confirm').click();
+
+  // Verify the dialog closes.
+  await expect(page.getByTestId('approve-dialog')).toBeHidden();
+
+  // Verify the status badge changed to "Approved".
+  await expect(page.getByTestId('status-APP-001')).toHaveText('Approved');
+
+  // Verify the app card has the approved border styling.
+  await expect(page.getByTestId('app-card-APP-001')).toHaveClass(/status-approved/);
+
+  // Verify the action buttons are gone (only shown for pending apps).
+  await expect(page.getByTestId('btn-approve-APP-001')).toHaveCount(0);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Reject With Reason
+// --------------------------------------------------------------------------
+// Reject APP-002 with a reason, verify status changes.
+test('exercise 2: reject with reason', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Click Reject for APP-002.
+  await page.getByTestId('btn-reject-APP-002').click();
+
+  // Verify the rejection dialog appears.
+  await expect(page.getByTestId('reject-dialog')).toBeVisible();
+
+  // Type a rejection reason.
+  // locator.fill(value) clears the textarea and types the new value.
+  await page.getByTestId('reject-reason').fill('Insufficient documentation provided');
+
+  // Click Reject in the dialog.
+  await page.getByTestId('reject-dialog-confirm').click();
+
+  // Verify the dialog closes.
+  await expect(page.getByTestId('reject-dialog')).toBeHidden();
+
+  // Verify the status changed to "Rejected".
+  await expect(page.getByTestId('status-APP-002')).toHaveText('Rejected');
+  await expect(page.getByTestId('app-card-APP-002')).toHaveClass(/status-rejected/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Escalate Application
+// --------------------------------------------------------------------------
+// Escalate APP-003 with notes, verify status changes.
+test('exercise 3: escalate application', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Click Escalate for APP-003.
+  await page.getByTestId('btn-escalate-APP-003').click();
+
+  // Verify the escalation dialog appears.
+  await expect(page.getByTestId('escalate-dialog')).toBeVisible();
+
+  // Add escalation notes.
+  await page.getByTestId('escalate-notes').fill('High risk score requires senior review');
+
+  // Confirm escalation.
+  await page.getByTestId('escalate-dialog-confirm').click();
+
+  // Verify the dialog closes and status changed.
+  await expect(page.getByTestId('escalate-dialog')).toBeHidden();
+  await expect(page.getByTestId('status-APP-003')).toHaveText('Escalated');
+  await expect(page.getByTestId('app-card-APP-003')).toHaveClass(/status-escalated/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Verify Action History
+// --------------------------------------------------------------------------
+// Approve one app, reject another, then verify the history log.
+test('exercise 4: verify action history', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Approve APP-001.
+  await page.getByTestId('btn-approve-APP-001').click();
+  await page.getByTestId('approve-dialog-confirm').click();
+
+  // Reject APP-002.
+  await page.getByTestId('btn-reject-APP-002').click();
+  await page.getByTestId('reject-reason').fill('Failed identity check');
+  await page.getByTestId('reject-dialog-confirm').click();
+
+  // Verify the history list has 2 entries.
+  // locator.count() returns the number of matching elements.
+  const historyItems = page.locator('[data-testid^="history-item-"]');
+  await expect(historyItems).toHaveCount(2);
+
+  // Verify the history contains the approval (newest first).
+  // The second entry (index 1) is the first action (approval).
+  const historyList = page.getByTestId('history-list');
+  await expect(historyList).toContainText('Approved');
+  await expect(historyList).toContainText('Alice Johnson');
+  await expect(historyList).toContainText('Rejected');
+  await expect(historyList).toContainText('Bob Williams');
+  await expect(historyList).toContainText('Failed identity check');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Bulk Select and Approve
+// --------------------------------------------------------------------------
+// Select all pending apps, bulk approve, verify all change status.
+test('exercise 5: bulk select and approve', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Click "Select All" checkbox.
+  // locator.check() checks a checkbox element.
+  await page.getByTestId('select-all').check();
+
+  // Verify the selected count shows all 5 (all are pending initially).
+  await expect(page.getByTestId('selected-count')).toHaveText('5 selected');
+
+  // Verify the bulk approve button is enabled.
+  await expect(page.getByTestId('btn-bulk-approve')).toBeEnabled();
+
+  // Click "Approve Selected".
+  await page.getByTestId('btn-bulk-approve').click();
+
+  // Verify all applications changed to "Approved".
+  for (const id of ['APP-001', 'APP-002', 'APP-003', 'APP-004', 'APP-005']) {
+    await expect(page.getByTestId(`status-${id}`)).toHaveText('Approved');
+  }
+
+  // Verify the history has 5 bulk approval entries.
+  const historyList = page.getByTestId('history-list');
+  await expect(historyList).toContainText('Approved (Bulk)');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Verify Confirmation Dialog
+// --------------------------------------------------------------------------
+// Open the approve dialog, verify content, then cancel and verify no change.
+test('exercise 6: verify confirmation dialog', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Click Approve for APP-001.
+  await page.getByTestId('btn-approve-APP-001').click();
+
+  // Verify dialog is visible and mentions the applicant.
+  await expect(page.getByTestId('approve-dialog')).toBeVisible();
+  await expect(page.getByTestId('approve-dialog-text')).toContainText('Alice Johnson');
+  await expect(page.getByTestId('approve-dialog-text')).toContainText('APP-001');
+
+  // Click Cancel.
+  await page.getByTestId('approve-dialog-cancel').click();
+
+  // Verify dialog closes.
+  await expect(page.getByTestId('approve-dialog')).toBeHidden();
+
+  // Verify the status is still "Pending" (action was canceled).
+  await expect(page.getByTestId('status-APP-001')).toHaveText('Pending');
+
+  // Verify the approve button is still available.
+  await expect(page.getByTestId('btn-approve-APP-001')).toBeVisible();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Verify Rejection Requires Reason
+// --------------------------------------------------------------------------
+// Try to reject without a reason, verify error, then add reason and succeed.
+test('exercise 7: verify rejection requires reason', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Open the rejection dialog for APP-002.
+  await page.getByTestId('btn-reject-APP-002').click();
+  await expect(page.getByTestId('reject-dialog')).toBeVisible();
+
+  // Click Reject without entering a reason.
+  await page.getByTestId('reject-dialog-confirm').click();
+
+  // Verify the error message appears.
+  await expect(page.getByTestId('reject-error')).toBeVisible();
+  await expect(page.getByTestId('reject-error')).toHaveText('Rejection reason is required');
+
+  // Verify the dialog is still open (rejection was blocked).
+  await expect(page.getByTestId('reject-dialog')).toBeVisible();
+
+  // Now enter a reason and try again.
+  await page.getByTestId('reject-reason').fill('Documents are forged');
+  await page.getByTestId('reject-dialog-confirm').click();
+
+  // Verify the dialog closes and status changed.
+  await expect(page.getByTestId('reject-dialog')).toBeHidden();
+  await expect(page.getByTestId('status-APP-002')).toHaveText('Rejected');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Filter by Status
+// --------------------------------------------------------------------------
+// Approve and reject apps, then filter and verify the correct subset shows.
+test('exercise 8: filter by status', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Approve APP-001.
+  await page.getByTestId('btn-approve-APP-001').click();
+  await page.getByTestId('approve-dialog-confirm').click();
+
+  // Reject APP-002.
+  await page.getByTestId('btn-reject-APP-002').click();
+  await page.getByTestId('reject-reason').fill('Duplicate application');
+  await page.getByTestId('reject-dialog-confirm').click();
+
+  // Filter by "Pending" — should show 3 apps.
+  // locator.selectOption(value) selects the option with the matching value.
+  await page.getByTestId('filter-status').selectOption('pending');
+  await expect(page.getByTestId('filter-count')).toHaveText('Showing 3 of 5');
+  // Verify APP-001 (approved) is not in the list.
+  await expect(page.getByTestId('app-card-APP-001')).toHaveCount(0);
+  // Verify APP-003 (pending) is in the list.
+  await expect(page.getByTestId('app-card-APP-003')).toBeVisible();
+
+  // Filter by "Approved" — should show 1 app.
+  await page.getByTestId('filter-status').selectOption('approved');
+  await expect(page.getByTestId('filter-count')).toHaveText('Showing 1 of 5');
+  await expect(page.getByTestId('app-card-APP-001')).toBeVisible();
+
+  // Filter by "Rejected" — should show 1 app.
+  await page.getByTestId('filter-status').selectOption('rejected');
+  await expect(page.getByTestId('filter-count')).toHaveText('Showing 1 of 5');
+  await expect(page.getByTestId('app-card-APP-002')).toBeVisible();
+
+  // Filter by "All" — should show all 5.
+  await page.getByTestId('filter-status').selectOption('all');
+  await expect(page.getByTestId('filter-count')).toHaveText('Showing 5 of 5');
+});
+5:T253d,const PLAYGROUND = '/phase-05-fintech-domain/31-approval-rejection-flows/playground/';
+
+describe('Kata 31: Approval & Rejection Flows', () => {
+
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Approve Application and Verify Status Change
+  // --------------------------------------------------------------------------
+  it('exercise 1: approve application and verify status change', () => {
+    // Verify initial pending status.
+    cy.get('[data-testid="status-APP-001"]').should('have.text', 'Pending');
+
+    // Click Approve for APP-001.
+    cy.get('[data-testid="btn-approve-APP-001"]').click();
+
+    // Verify the approval dialog is visible.
+    // .should('be.visible') checks the element is displayed.
+    cy.get('[data-testid="approve-dialog"]').should('be.visible');
+
+    // Verify dialog text mentions the applicant.
+    cy.get('[data-testid="approve-dialog-text"]').should('contain.text', 'Alice Johnson');
+
+    // Confirm approval.
+    cy.get('[data-testid="approve-dialog-confirm"]').click();
+
+    // Verify dialog closes.
+    cy.get('[data-testid="approve-dialog"]').should('not.be.visible');
+
+    // Verify status changed to "Approved".
+    cy.get('[data-testid="status-APP-001"]').should('have.text', 'Approved');
+    cy.get('[data-testid="app-card-APP-001"]').should('have.class', 'status-approved');
+
+    // Verify action buttons are gone.
+    cy.get('[data-testid="btn-approve-APP-001"]').should('not.exist');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Reject With Reason
+  // --------------------------------------------------------------------------
+  it('exercise 2: reject with reason', () => {
+    // Click Reject for APP-002.
+    cy.get('[data-testid="btn-reject-APP-002"]').click();
+
+    // Verify the dialog appears.
+    cy.get('[data-testid="reject-dialog"]').should('be.visible');
+
+    // Type a rejection reason.
+    // cy.get().type() types text into the textarea.
+    cy.get('[data-testid="reject-reason"]').type('Insufficient documentation provided');
+
+    // Confirm rejection.
+    cy.get('[data-testid="reject-dialog-confirm"]').click();
+
+    // Verify dialog closes and status changed.
+    cy.get('[data-testid="reject-dialog"]').should('not.be.visible');
+    cy.get('[data-testid="status-APP-002"]').should('have.text', 'Rejected');
+    cy.get('[data-testid="app-card-APP-002"]').should('have.class', 'status-rejected');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Escalate Application
+  // --------------------------------------------------------------------------
+  it('exercise 3: escalate application', () => {
+    // Click Escalate for APP-003.
+    cy.get('[data-testid="btn-escalate-APP-003"]').click();
+
+    // Verify dialog appears.
+    cy.get('[data-testid="escalate-dialog"]').should('be.visible');
+
+    // Add notes.
+    cy.get('[data-testid="escalate-notes"]').type('High risk score requires senior review');
+
+    // Confirm.
+    cy.get('[data-testid="escalate-dialog-confirm"]').click();
+
+    // Verify dialog closes and status changed.
+    cy.get('[data-testid="escalate-dialog"]').should('not.be.visible');
+    cy.get('[data-testid="status-APP-003"]').should('have.text', 'Escalated');
+    cy.get('[data-testid="app-card-APP-003"]').should('have.class', 'status-escalated');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Verify Action History
+  // --------------------------------------------------------------------------
+  it('exercise 4: verify action history', () => {
+    // Approve APP-001.
+    cy.get('[data-testid="btn-approve-APP-001"]').click();
+    cy.get('[data-testid="approve-dialog-confirm"]').click();
+
+    // Reject APP-002.
+    cy.get('[data-testid="btn-reject-APP-002"]').click();
+    cy.get('[data-testid="reject-reason"]').type('Failed identity check');
+    cy.get('[data-testid="reject-dialog-confirm"]').click();
+
+    // Verify the history list has 2 entries.
+    // .should('have.length', n) checks the number of matched elements.
+    cy.get('[data-testid^="history-item-"]').should('have.length', 2);
+
+    // Verify history content.
+    cy.get('[data-testid="history-list"]').should('contain.text', 'Approved');
+    cy.get('[data-testid="history-list"]').should('contain.text', 'Alice Johnson');
+    cy.get('[data-testid="history-list"]').should('contain.text', 'Rejected');
+    cy.get('[data-testid="history-list"]').should('contain.text', 'Bob Williams');
+    cy.get('[data-testid="history-list"]').should('contain.text', 'Failed identity check');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Bulk Select and Approve
+  // --------------------------------------------------------------------------
+  it('exercise 5: bulk select and approve', () => {
+    // Click "Select All".
+    // .check() checks a checkbox element.
+    cy.get('[data-testid="select-all"]').check();
+
+    // Verify selected count.
+    cy.get('[data-testid="selected-count"]').should('have.text', '5 selected');
+
+    // Verify bulk approve is enabled.
+    cy.get('[data-testid="btn-bulk-approve"]').should('not.be.disabled');
+
+    // Bulk approve.
+    cy.get('[data-testid="btn-bulk-approve"]').click();
+
+    // Verify all apps are approved.
+    ['APP-001', 'APP-002', 'APP-003', 'APP-004', 'APP-005'].forEach(id => {
+      cy.get(`[data-testid="status-${id}"]`).should('have.text', 'Approved');
+    });
+
+    // Verify history has bulk entries.
+    cy.get('[data-testid="history-list"]').should('contain.text', 'Approved (Bulk)');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Verify Confirmation Dialog
+  // --------------------------------------------------------------------------
+  it('exercise 6: verify confirmation dialog', () => {
+    // Open dialog.
+    cy.get('[data-testid="btn-approve-APP-001"]').click();
+
+    // Verify dialog content.
+    cy.get('[data-testid="approve-dialog"]').should('be.visible');
+    cy.get('[data-testid="approve-dialog-text"]')
+      .should('contain.text', 'Alice Johnson')
+      .and('contain.text', 'APP-001');
+
+    // Cancel.
+    cy.get('[data-testid="approve-dialog-cancel"]').click();
+
+    // Verify dialog closes and status unchanged.
+    cy.get('[data-testid="approve-dialog"]').should('not.be.visible');
+    cy.get('[data-testid="status-APP-001"]').should('have.text', 'Pending');
+    cy.get('[data-testid="btn-approve-APP-001"]').should('be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Verify Rejection Requires Reason
+  // --------------------------------------------------------------------------
+  it('exercise 7: verify rejection requires reason', () => {
+    // Open rejection dialog.
+    cy.get('[data-testid="btn-reject-APP-002"]').click();
+    cy.get('[data-testid="reject-dialog"]').should('be.visible');
+
+    // Try to reject without a reason.
+    cy.get('[data-testid="reject-dialog-confirm"]').click();
+
+    // Verify error message appears.
+    cy.get('[data-testid="reject-error"]')
+      .should('be.visible')
+      .and('have.text', 'Rejection reason is required');
+
+    // Verify dialog is still open.
+    cy.get('[data-testid="reject-dialog"]').should('be.visible');
+
+    // Now enter a reason and submit.
+    cy.get('[data-testid="reject-reason"]').type('Documents are forged');
+    cy.get('[data-testid="reject-dialog-confirm"]').click();
+
+    // Verify success.
+    cy.get('[data-testid="reject-dialog"]').should('not.be.visible');
+    cy.get('[data-testid="status-APP-002"]').should('have.text', 'Rejected');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Filter by Status
+  // --------------------------------------------------------------------------
+  it('exercise 8: filter by status', () => {
+    // Approve APP-001.
+    cy.get('[data-testid="btn-approve-APP-001"]').click();
+    cy.get('[data-testid="approve-dialog-confirm"]').click();
+
+    // Reject APP-002.
+    cy.get('[data-testid="btn-reject-APP-002"]').click();
+    cy.get('[data-testid="reject-reason"]').type('Duplicate application');
+    cy.get('[data-testid="reject-dialog-confirm"]').click();
+
+    // Filter by "Pending" — should show 3 apps.
+    // .select(value) selects the option with the matching value attribute.
+    cy.get('[data-testid="filter-status"]').select('pending');
+    cy.get('[data-testid="filter-count"]').should('have.text', 'Showing 3 of 5');
+    cy.get('[data-testid="app-card-APP-001"]').should('not.exist');
+    cy.get('[data-testid="app-card-APP-003"]').should('be.visible');
+
+    // Filter by "Approved" — should show 1.
+    cy.get('[data-testid="filter-status"]').select('approved');
+    cy.get('[data-testid="filter-count"]').should('have.text', 'Showing 1 of 5');
+    cy.get('[data-testid="app-card-APP-001"]').should('be.visible');
+
+    // Filter by "Rejected" — should show 1.
+    cy.get('[data-testid="filter-status"]').select('rejected');
+    cy.get('[data-testid="filter-count"]').should('have.text', 'Showing 1 of 5');
+    cy.get('[data-testid="app-card-APP-002"]').should('be.visible');
+
+    // Filter by "All" — should show 5.
+    cy.get('[data-testid="filter-status"]').select('all');
+    cy.get('[data-testid="filter-count"]').should('have.text', 'Showing 5 of 5');
+  });
+});
+6:T1a16,# Kata 30: Risk Assessment
+
+## What You Will Learn
+
+- How to test data tables with computed values
+- How to verify recalculation when input values change
+- How to test threshold-based conditional logic (auto-approve, manual review, auto-reject)
+- How to verify color-coded risk indicators match their values
+- How to test override/edit workflows on computed data
+- How to verify export functionality
+- How to assert on precise numeric computations (weighted scores)
+
+## Prerequisites
+
+- Completed Katas 1-29
+- Understanding of form inputs and value assertions
+- Familiarity with table element testing
+
+## Concepts Explained
+
+### Risk Scorecard Pattern
+
+```
+A risk scorecard assigns scores to multiple risk factors, each with
+a weight. The total risk score determines the recommended action:
+
+  Factor           Score (0-100)   Weight   Weighted
+  Identity             15          0.25      3.75
+  Credit               20          0.20      4.00
+  Employment           10          0.20      2.00
+  Address               5          0.15      0.75
+  Sanctions             0          0.20      0.00
+                                   ----     -----
+  Total                            1.00     10.50
+
+Thresholds:
+  < 30  => Auto-Approve (low risk)
+  30-70 => Manual Review (medium risk)
+  > 70  => Auto-Reject (high risk)
+
+Testing must verify:
+  - Weighted scores are calculated correctly
+  - Total is the sum of all weighted scores
+  - Action changes when the total crosses a threshold
+  - Color coding matches the risk level
+```
+
+### Testing Computed Values
+
+```
+When a user changes a score input, the weighted score, total, risk
+level, and action all recalculate. Tests should:
+
+1. Read the initial computed values and verify them
+2. Change an input value
+3. Verify the weighted score recalculates
+4. Verify the total recalculates
+5. If the total crossed a threshold, verify the action changed
+
+Playwright:
+  await page.getByTestId('score-identity').fill('80');
+  // Trigger recalculation (the 'change' event fires on fill).
+  await expect(page.getByTestId('weighted-identity')).toHaveText('20.00');
+
+Cypress:
+  cy.get('[data-testid="score-identity"]').clear().type('80');
+  // Trigger change event to recalculate.
+  cy.get('[data-testid="score-identity"]').blur();
+  cy.get('[data-testid="weighted-identity"]').should('have.text', '20.00');
+```
+
+## Playground
+
+The playground is a risk scorecard dashboard with:
+
+1. **Risk Table** — five risk factors (Identity, Credit, Employment, Address, Sanctions) each with an editable score (0-100), weight, computed weighted score, and color-coded risk level
+2. **Total Row** — sum of all weighted scores with overall risk level
+3. **Risk Thresholds** — reference section showing the three threshold ranges
+4. **Action Card** — shows the recommended action (Auto-Approve, Manual Review, Auto-Reject) based on the total score, with color-coded background
+5. **Reset Button** — resets all scores to their default values
+6. **Export Button** — generates a JSON report of the current assessment
+
+Default scores: Identity=15, Credit=20, Employment=10, Address=5, Sanctions=0 (total=10.50, Auto-Approve).
+
+## Exercises
+
+### Exercise 1: Verify Risk Table Data
+Verify all five risk factors are displayed with correct default scores, weights, and weighted scores.
+
+### Exercise 2: Verify Computed Total
+Verify the total weighted score matches the sum of individual weighted scores. Verify the total risk level is "Low".
+
+### Exercise 3: Change a Score and Verify Recalculation
+Change the Identity score from 15 to 80. Verify the weighted score updates to 20.00 and the total recalculates.
+
+### Exercise 4: Verify Auto-Approve Threshold
+With default scores (total < 30), verify the action card shows "Auto-Approve" with the green styling.
+
+### Exercise 5: Verify Manual Review Threshold
+Set scores so the total falls between 30 and 70. Verify the action card changes to "Manual Review" with amber styling.
+
+### Exercise 6: Verify Auto-Reject Threshold
+Set scores so the total exceeds 70. Verify the action card changes to "Auto-Reject" with red styling.
+
+### Exercise 7: Override Score and Verify Action Changes
+Start with auto-approve, change scores to trigger manual review, then change again to trigger auto-reject. Verify the action updates each time.
+
+### Exercise 8: Verify Color Coding Matches Risk Level
+Set different scores for each factor and verify the risk level text ("Low", "Medium", "High") and CSS class match the score value.
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/risk-assessment.spec.ts`
+
+### Cypress Solution
+
+See `cypress/risk-assessment.cy.ts`
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Not triggering recalculation after changing a score | The `onchange` event fires when the input loses focus or on Playwright's `fill()` | Use `fill()` (Playwright) or `clear().type().blur()` (Cypress) |
+| Checking floating point values with exact equality | Floating point arithmetic can produce tiny rounding differences | Use `toFixed(2)` in assertions or check the displayed text |
+| Forgetting the threshold boundaries | 30 is manual review (not auto-approve), 70 is manual review (not auto-reject) | Thresholds: < 30 approve, 30-70 review, > 70 reject |
+| Not resetting between tests | Score changes from one test persist if not navigating fresh | Use `page.goto()` or `cy.visit()` in each test |
+
+## Quick Reference
+
+### Playwright Risk Table Testing
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Change score | `fill()` | `await page.getByTestId('score-identity').fill('50')` |
+| Verify weighted | `toHaveText()` | `await expect(el).toHaveText('12.50')` |
+| Verify total | `toHaveText()` | `await expect(total).toHaveText('35.00')` |
+| Verify CSS class | `toHaveClass()` | `await expect(el).toHaveClass(/risk-medium/)` |
+| Verify action | `toHaveText()` | `await expect(title).toHaveText('Manual Review')` |
+| Check input value | `toHaveValue()` | `await expect(input).toHaveValue('50')` |
+
+### Cypress Risk Table Testing
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Change score | `.clear().type().blur()` | `cy.get(input).clear().type('50').blur()` |
+| Verify weighted | `.should('have.text')` | `cy.get(el).should('have.text', '12.50')` |
+| Verify total | `.should('have.text')` | `cy.get(total).should('have.text', '35.00')` |
+| Verify CSS class | `.should('have.class')` | `cy.get(el).should('have.class', 'risk-medium')` |
+| Verify action | `.should('have.text')` | `cy.get(title).should('have.text', 'Manual Review')` |
+| Check input value | `.should('have.value')` | `cy.get(input).should('have.value', '50')` |
+7:T263f,import { test, expect } from '@playwright/test';
+
+// The base URL for our playground page.
+const PLAYGROUND = '/phase-05-fintech-domain/30-risk-assessment/playground/';
+
+// ─── Helper: setScore ────────────────────────────────────────────────
+// Changes a risk factor's score input and triggers recalculation.
+// locator.fill(value) clears the input, types the new value, and
+// dispatches a 'change' event which triggers recalculate().
+async function setScore(page: any, factorId: string, score: string) {
+  const input = page.getByTestId(`score-${factorId}`);
+  await input.fill(score);
+  // Dispatch a change event explicitly to ensure recalculation triggers.
+  // dispatchEvent(new Event('change')) fires the onchange handler.
+  await input.dispatchEvent('change');
+}
+
+// --------------------------------------------------------------------------
+// Exercise 1: Verify Risk Table Data
+// --------------------------------------------------------------------------
+// Verify all five risk factors with default scores, weights, and weighted scores.
+test('exercise 1: verify risk table data', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify the table is visible.
+  await expect(page.getByTestId('risk-table')).toBeVisible();
+
+  // Verify default score values.
+  // toHaveValue(value) checks the input element's current value.
+  await expect(page.getByTestId('score-identity')).toHaveValue('15');
+  await expect(page.getByTestId('score-credit')).toHaveValue('20');
+  await expect(page.getByTestId('score-employment')).toHaveValue('10');
+  await expect(page.getByTestId('score-address')).toHaveValue('5');
+  await expect(page.getByTestId('score-sanctions')).toHaveValue('0');
+
+  // Verify weights.
+  await expect(page.getByTestId('weight-identity')).toHaveText('0.25');
+  await expect(page.getByTestId('weight-credit')).toHaveText('0.20');
+  await expect(page.getByTestId('weight-employment')).toHaveText('0.20');
+  await expect(page.getByTestId('weight-address')).toHaveText('0.15');
+  await expect(page.getByTestId('weight-sanctions')).toHaveText('0.20');
+
+  // Verify weighted scores (score * weight).
+  await expect(page.getByTestId('weighted-identity')).toHaveText('3.75');
+  await expect(page.getByTestId('weighted-credit')).toHaveText('4.00');
+  await expect(page.getByTestId('weighted-employment')).toHaveText('2.00');
+  await expect(page.getByTestId('weighted-address')).toHaveText('0.75');
+  await expect(page.getByTestId('weighted-sanctions')).toHaveText('0.00');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Verify Computed Total
+// --------------------------------------------------------------------------
+// Verify the total weighted score and overall risk level.
+test('exercise 2: verify computed total', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Total = 3.75 + 4.00 + 2.00 + 0.75 + 0.00 = 10.50.
+  await expect(page.getByTestId('total-score')).toHaveText('10.50');
+
+  // Total 10.50 is below 30, so risk level is "Low".
+  await expect(page.getByTestId('total-level')).toHaveText('Low');
+
+  // Verify the total level has the low-risk CSS class.
+  await expect(page.getByTestId('total-level')).toHaveClass(/risk-low/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Change a Score and Verify Recalculation
+// --------------------------------------------------------------------------
+// Change Identity from 15 to 80, verify weighted and total update.
+test('exercise 3: change a score and verify recalculation', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Change Identity score to 80.
+  await setScore(page, 'identity', '80');
+
+  // Weighted should be 80 * 0.25 = 20.00.
+  await expect(page.getByTestId('weighted-identity')).toHaveText('20.00');
+
+  // New total = 20.00 + 4.00 + 2.00 + 0.75 + 0.00 = 26.75.
+  await expect(page.getByTestId('total-score')).toHaveText('26.75');
+
+  // Identity score 80 is "High" risk.
+  await expect(page.getByTestId('level-identity')).toHaveText('High');
+  await expect(page.getByTestId('level-identity')).toHaveClass(/risk-high/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Verify Auto-Approve Threshold
+// --------------------------------------------------------------------------
+// Default scores give total < 30, so action should be "Auto-Approve".
+test('exercise 4: verify auto-approve threshold', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Default total is 10.50 (< 30), so action is Auto-Approve.
+  await expect(page.getByTestId('action-title')).toHaveText('Auto-Approve');
+  await expect(page.getByTestId('action-description')).toContainText('automatically approved');
+
+  // Verify the action card has the green styling.
+  await expect(page.getByTestId('action-card')).toHaveClass(/result-auto-approve/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Verify Manual Review Threshold
+// --------------------------------------------------------------------------
+// Set scores to push total between 30 and 70.
+test('exercise 5: verify manual review threshold', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Set Identity to 80 and Credit to 80.
+  // Total = (80*0.25) + (80*0.20) + (10*0.20) + (5*0.15) + (0*0.20)
+  //       = 20 + 16 + 2 + 0.75 + 0 = 38.75 (between 30 and 70).
+  await setScore(page, 'identity', '80');
+  await setScore(page, 'credit', '80');
+
+  await expect(page.getByTestId('total-score')).toHaveText('38.75');
+
+  // Action should be "Manual Review".
+  await expect(page.getByTestId('action-title')).toHaveText('Manual Review');
+  await expect(page.getByTestId('action-description')).toContainText('manual review');
+
+  // Verify amber styling.
+  await expect(page.getByTestId('action-card')).toHaveClass(/result-manual-review/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Verify Auto-Reject Threshold
+// --------------------------------------------------------------------------
+// Set scores to push total above 70.
+test('exercise 6: verify auto-reject threshold', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Set all scores to 90.
+  // Total = (90*0.25) + (90*0.20) + (90*0.20) + (90*0.15) + (90*0.20)
+  //       = 22.5 + 18 + 18 + 13.5 + 18 = 90.00 (> 70).
+  for (const id of ['identity', 'credit', 'employment', 'address', 'sanctions']) {
+    await setScore(page, id, '90');
+  }
+
+  await expect(page.getByTestId('total-score')).toHaveText('90.00');
+
+  // Action should be "Auto-Reject".
+  await expect(page.getByTestId('action-title')).toHaveText('Auto-Reject');
+  await expect(page.getByTestId('action-description')).toContainText('automatically rejected');
+
+  // Verify red styling.
+  await expect(page.getByTestId('action-card')).toHaveClass(/result-auto-reject/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Override Score and Verify Action Changes
+// --------------------------------------------------------------------------
+// Transition through all three thresholds by changing scores.
+test('exercise 7: override score and verify action changes', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Start: Auto-Approve (default total 10.50).
+  await expect(page.getByTestId('action-title')).toHaveText('Auto-Approve');
+
+  // Move to Manual Review range.
+  await setScore(page, 'identity', '80');
+  await setScore(page, 'credit', '80');
+  // Total = 20 + 16 + 2 + 0.75 + 0 = 38.75.
+  await expect(page.getByTestId('action-title')).toHaveText('Manual Review');
+
+  // Move to Auto-Reject range.
+  await setScore(page, 'employment', '100');
+  await setScore(page, 'address', '100');
+  await setScore(page, 'sanctions', '100');
+  // Total = 20 + 16 + 20 + 15 + 20 = 91.
+  await expect(page.getByTestId('action-title')).toHaveText('Auto-Reject');
+
+  // Move back to Auto-Approve by resetting.
+  await page.getByTestId('btn-reset').click();
+  await expect(page.getByTestId('action-title')).toHaveText('Auto-Approve');
+  await expect(page.getByTestId('total-score')).toHaveText('10.50');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Verify Color Coding Matches Risk Level
+// --------------------------------------------------------------------------
+// Set different scores and verify the color classes match the risk levels.
+test('exercise 8: verify color coding matches risk level', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Set Identity to 10 (Low), Credit to 50 (Medium), Sanctions to 80 (High).
+  await setScore(page, 'identity', '10');
+  await setScore(page, 'credit', '50');
+  await setScore(page, 'sanctions', '80');
+
+  // Identity: 10 => Low, should have risk-low class.
+  await expect(page.getByTestId('level-identity')).toHaveText('Low');
+  await expect(page.getByTestId('level-identity')).toHaveClass(/risk-low/);
+
+  // Credit: 50 => Medium, should have risk-medium class.
+  await expect(page.getByTestId('level-credit')).toHaveText('Medium');
+  await expect(page.getByTestId('level-credit')).toHaveClass(/risk-medium/);
+
+  // Sanctions: 80 => High, should have risk-high class.
+  await expect(page.getByTestId('level-sanctions')).toHaveText('High');
+  await expect(page.getByTestId('level-sanctions')).toHaveClass(/risk-high/);
+
+  // Verify the export button works.
+  await page.getByTestId('btn-export').click();
+  await expect(page.getByTestId('export-section')).toBeVisible();
+  // The exported JSON should contain the action.
+  await expect(page.getByTestId('export-content')).toContainText('"action"');
+});
+8:T1eb9,const PLAYGROUND = '/phase-05-fintech-domain/30-risk-assessment/playground/';
+
+// ─── Helper: setScore ────────────────────────────────────────────────
+// Changes a risk factor's score and triggers recalculation.
+// .clear() removes existing text, .type() enters the new value.
+// .trigger('change') fires the onchange handler to recalculate.
+function setScore(factorId: string, score: string) {
+  cy.get(`[data-testid="score-${factorId}"]`).clear().type(score).trigger('change');
+}
+
+describe('Kata 30: Risk Assessment', () => {
+
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Verify Risk Table Data
+  // --------------------------------------------------------------------------
+  it('exercise 1: verify risk table data', () => {
+    // Verify the table is visible.
+    cy.get('[data-testid="risk-table"]').should('be.visible');
+
+    // Verify default score values.
+    // .should('have.value', val) checks an input's value.
+    cy.get('[data-testid="score-identity"]').should('have.value', '15');
+    cy.get('[data-testid="score-credit"]').should('have.value', '20');
+    cy.get('[data-testid="score-employment"]').should('have.value', '10');
+    cy.get('[data-testid="score-address"]').should('have.value', '5');
+    cy.get('[data-testid="score-sanctions"]').should('have.value', '0');
+
+    // Verify weights.
+    cy.get('[data-testid="weight-identity"]').should('have.text', '0.25');
+    cy.get('[data-testid="weight-credit"]').should('have.text', '0.20');
+    cy.get('[data-testid="weight-employment"]').should('have.text', '0.20');
+    cy.get('[data-testid="weight-address"]').should('have.text', '0.15');
+    cy.get('[data-testid="weight-sanctions"]').should('have.text', '0.20');
+
+    // Verify weighted scores.
+    cy.get('[data-testid="weighted-identity"]').should('have.text', '3.75');
+    cy.get('[data-testid="weighted-credit"]').should('have.text', '4.00');
+    cy.get('[data-testid="weighted-employment"]').should('have.text', '2.00');
+    cy.get('[data-testid="weighted-address"]').should('have.text', '0.75');
+    cy.get('[data-testid="weighted-sanctions"]').should('have.text', '0.00');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Verify Computed Total
+  // --------------------------------------------------------------------------
+  it('exercise 2: verify computed total', () => {
+    // Total = 3.75 + 4.00 + 2.00 + 0.75 + 0.00 = 10.50.
+    cy.get('[data-testid="total-score"]').should('have.text', '10.50');
+
+    // Risk level should be "Low" (< 30).
+    cy.get('[data-testid="total-level"]')
+      .should('have.text', 'Low')
+      .and('have.class', 'risk-low');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Change a Score and Verify Recalculation
+  // --------------------------------------------------------------------------
+  it('exercise 3: change a score and verify recalculation', () => {
+    // Change Identity to 80.
+    setScore('identity', '80');
+
+    // Weighted = 80 * 0.25 = 20.00.
+    cy.get('[data-testid="weighted-identity"]').should('have.text', '20.00');
+
+    // New total = 20.00 + 4.00 + 2.00 + 0.75 + 0.00 = 26.75.
+    cy.get('[data-testid="total-score"]').should('have.text', '26.75');
+
+    // Identity level is "High" (80 > 70).
+    cy.get('[data-testid="level-identity"]')
+      .should('have.text', 'High')
+      .and('have.class', 'risk-high');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Verify Auto-Approve Threshold
+  // --------------------------------------------------------------------------
+  it('exercise 4: verify auto-approve threshold', () => {
+    // Default total 10.50 < 30 => Auto-Approve.
+    cy.get('[data-testid="action-title"]').should('have.text', 'Auto-Approve');
+    cy.get('[data-testid="action-description"]')
+      .should('contain.text', 'automatically approved');
+    cy.get('[data-testid="action-card"]').should('have.class', 'result-auto-approve');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Verify Manual Review Threshold
+  // --------------------------------------------------------------------------
+  it('exercise 5: verify manual review threshold', () => {
+    // Set Identity=80, Credit=80 => total=38.75 (30-70 range).
+    setScore('identity', '80');
+    setScore('credit', '80');
+
+    cy.get('[data-testid="total-score"]').should('have.text', '38.75');
+    cy.get('[data-testid="action-title"]').should('have.text', 'Manual Review');
+    cy.get('[data-testid="action-description"]').should('contain.text', 'manual review');
+    cy.get('[data-testid="action-card"]').should('have.class', 'result-manual-review');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Verify Auto-Reject Threshold
+  // --------------------------------------------------------------------------
+  it('exercise 6: verify auto-reject threshold', () => {
+    // Set all scores to 90 => total=90.00 (> 70).
+    ['identity', 'credit', 'employment', 'address', 'sanctions'].forEach(id => {
+      setScore(id, '90');
+    });
+
+    cy.get('[data-testid="total-score"]').should('have.text', '90.00');
+    cy.get('[data-testid="action-title"]').should('have.text', 'Auto-Reject');
+    cy.get('[data-testid="action-description"]').should('contain.text', 'automatically rejected');
+    cy.get('[data-testid="action-card"]').should('have.class', 'result-auto-reject');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Override Score and Verify Action Changes
+  // --------------------------------------------------------------------------
+  it('exercise 7: override score and verify action changes', () => {
+    // Start: Auto-Approve.
+    cy.get('[data-testid="action-title"]').should('have.text', 'Auto-Approve');
+
+    // Move to Manual Review.
+    setScore('identity', '80');
+    setScore('credit', '80');
+    cy.get('[data-testid="action-title"]').should('have.text', 'Manual Review');
+
+    // Move to Auto-Reject.
+    setScore('employment', '100');
+    setScore('address', '100');
+    setScore('sanctions', '100');
+    cy.get('[data-testid="action-title"]').should('have.text', 'Auto-Reject');
+
+    // Reset back to Auto-Approve.
+    cy.get('[data-testid="btn-reset"]').click();
+    cy.get('[data-testid="action-title"]').should('have.text', 'Auto-Approve');
+    cy.get('[data-testid="total-score"]').should('have.text', '10.50');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Verify Color Coding Matches Risk Level
+  // --------------------------------------------------------------------------
+  it('exercise 8: verify color coding matches risk level', () => {
+    // Set Identity=10 (Low), Credit=50 (Medium), Sanctions=80 (High).
+    setScore('identity', '10');
+    setScore('credit', '50');
+    setScore('sanctions', '80');
+
+    // Identity: Low.
+    cy.get('[data-testid="level-identity"]')
+      .should('have.text', 'Low')
+      .and('have.class', 'risk-low');
+
+    // Credit: Medium.
+    cy.get('[data-testid="level-credit"]')
+      .should('have.text', 'Medium')
+      .and('have.class', 'risk-medium');
+
+    // Sanctions: High.
+    cy.get('[data-testid="level-sanctions"]')
+      .should('have.text', 'High')
+      .and('have.class', 'risk-high');
+
+    // Verify export works.
+    cy.get('[data-testid="btn-export"]').click();
+    cy.get('[data-testid="export-section"]').should('be.visible');
+    cy.get('[data-testid="export-content"]').should('contain.text', '"action"');
+  });
+});
+9:T10c3,# Kata 32: Multi-Window Workflows
+
+## What You Will Learn
+
+- How to open and interact with popup windows spawned by window.open()
+- How to switch between multiple browser windows/tabs in your tests
+- How to verify content inside a popup window
+- How to test cross-window communication via postMessage
+- How to handle popup lifecycle (open, interact, close) in both Playwright and Cypress
+- Differences between Playwright's multi-page context model and Cypress's single-tab limitation
+
+## Prerequisites
+
+- Completed Katas 01-31
+- Understanding of browser window.open() and postMessage APIs
+
+## Concepts Explained
+
+### window.open() and Popups
+
+```
+window.open(url, target, features) opens a new browser window or tab.
+
+  url      — the URL to load in the new window
+  target   — a name for the window (reuses if a window with that name exists)
+  features — a comma-separated string like "width=500,height=400"
+
+The returned value is a Window object (or null if blocked).
+The popup can communicate with its opener via:
+  - window.opener   — reference to the window that opened the popup
+  - postMessage()   — safe cross-origin messaging between windows
+```
+
+### postMessage for Cross-Window Communication
+
+```
+window.postMessage(data, targetOrigin) sends a message to another window.
+
+The receiving window listens with:
+  window.addEventListener('message', (event) => {
+    event.data         — the data sent
+    event.origin       — the origin of the sender
+    event.source       — reference to the sending Window
+  });
+
+In our playground:
+  1. Main page opens a popup with applicant details as URL params
+  2. Admin acts (approve/reject) in the popup
+  3. Popup sends postMessage to window.opener
+  4. Main page receives the message and updates the applicant status
+```
+
+### Playwright: Handling Multiple Pages
+
+```typescript
+// PLAYWRIGHT
+// Playwright represents each browser tab/window as a separate Page object.
+// When window.open() is called, Playwright fires a 'popup' event on the
+// page that triggered it. You can wait for this event:
+
+const [popup] = await Promise.all([
+  page.waitForEvent('popup'),           // wait for the popup event
+  page.getByTestId('review-1').click(), // click triggers window.open()
+]);
+
+// Now 'popup' is a full Page object — you can interact with it just
+// like the main page:
+await popup.waitForLoadState();
+await popup.getByTestId('approve-btn').click();
+```
+
+### Cypress: Popup Limitations and Workarounds
+
+```typescript
+// CYPRESS
+// Cypress runs inside a single browser tab and cannot natively switch
+// to popup windows. The recommended approach is to:
+//
+//   1. Stub window.open() to prevent the popup from actually opening
+//   2. Instead, visit the popup URL directly in the same Cypress tab
+//   3. Or use cy.origin() for cross-origin scenarios (Cypress 12+)
+//
+// Approach: Stub window.open and capture the URL
+
+cy.window().then(win => {
+  cy.stub(win, 'open').as('windowOpen');
+});
+cy.get('[data-testid="review-1"]').click();
+cy.get('@windowOpen').should('have.been.called');
+
+// To test the popup content, visit the captured URL:
+cy.get('@windowOpen').then(stub => {
+  const url = stub.getCall(0).args[0];
+  cy.visit(url);
+});
+```
+
+## Playground Overview
+
+The playground has two pages:
+
+**index.html** — Main page with an applicant list table. Each row has a "Review" button that opens a popup window.
+
+**admin-panel.html** — Popup page showing applicant details with Approve/Reject buttons. When the admin acts, the popup sends a postMessage back to the main page.
+
+## Exercises
+
+1. **Open review window** — Click the Review button and verify a popup opens
+2. **Interact with popup** — Click a button inside the popup window
+3. **Verify popup content** — Check that the popup displays the correct applicant details
+4. **Approve in popup, verify main page** — Approve an applicant and verify the main page status updates
+5. **Reject in popup** — Reject an applicant and verify the main page shows "rejected"
+6. **Close popup, verify main state** — Close the popup and verify the main page state is preserved
+7. **Handle multiple popups** — Open review windows for two different applicants
+8. **Synchronize state between windows** — Act in one popup and verify another popup still works correctly
+a:T288a,import { test, expect } from '@playwright/test';
+
+// Base URL for the main playground page.
+const PLAYGROUND = '/phase-06-complex-scenarios/32-multi-window-workflows/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Open Review Window
+// --------------------------------------------------------------------------
+// Demonstrates how to wait for a popup event when window.open() is called.
+// Playwright fires a 'popup' event on the page that triggered the open.
+test('exercise 1: open review window', async ({ page }) => {
+  // Navigate to the main applicant list page.
+  await page.goto(PLAYGROUND);
+
+  // Verify the status bar shows no action taken yet.
+  await expect(page.getByTestId('last-action')).toHaveText('None');
+
+  // Promise.all ensures we start waiting for the popup BEFORE the click
+  // triggers window.open(). If we clicked first, the popup event might
+  // fire before we start listening, causing a timeout.
+  const [popup] = await Promise.all([
+    // waitForEvent('popup') resolves with the new Page object when
+    // a new window/tab is opened by this page.
+    page.waitForEvent('popup'),
+    // Click the Review button for applicant 1 (Alice Johnson).
+    page.getByTestId('review-1').click(),
+  ]);
+
+  // Wait for the popup to finish loading its HTML and scripts.
+  // waitForLoadState() defaults to 'load', meaning the page's load event.
+  await popup.waitForLoadState();
+
+  // Verify the popup opened by checking its title.
+  await expect(popup).toHaveTitle(/Admin Review Panel/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Interact with Popup
+// --------------------------------------------------------------------------
+// Shows how to click buttons inside a popup window. The popup is a full
+// Page object, so all Playwright locator methods work on it.
+test('exercise 2: interact with popup window', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  const [popup] = await Promise.all([
+    page.waitForEvent('popup'),
+    page.getByTestId('review-1').click(),
+  ]);
+  await popup.waitForLoadState();
+
+  // Verify the Approve button is visible and enabled in the popup.
+  await expect(popup.getByTestId('approve-btn')).toBeVisible();
+  await expect(popup.getByTestId('approve-btn')).toBeEnabled();
+
+  // Click the Approve button inside the popup.
+  await popup.getByTestId('approve-btn').click();
+
+  // Verify the decision banner appears in the popup after clicking.
+  // The popup shows a success/error banner confirming the action.
+  await expect(popup.getByTestId('decision-banner')).toBeVisible();
+  await expect(popup.getByTestId('decision-banner')).toContainText('approved');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Verify Popup Content
+// --------------------------------------------------------------------------
+// Checks that the popup displays the correct applicant details by reading
+// the data-testid elements in the popup page.
+test('exercise 3: verify popup shows correct applicant details', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Open the review popup for applicant 1 (Alice Johnson).
+  const [popup] = await Promise.all([
+    page.waitForEvent('popup'),
+    page.getByTestId('review-1').click(),
+  ]);
+  await popup.waitForLoadState();
+
+  // Verify each field in the popup matches the data from the main page.
+  // The popup reads applicant data from URL search parameters.
+  await expect(popup.getByTestId('applicant-name')).toHaveText('Alice Johnson');
+  await expect(popup.getByTestId('applicant-email')).toHaveText('alice@example.com');
+  await expect(popup.getByTestId('applicant-position')).toHaveText('Engineer');
+  await expect(popup.getByTestId('applicant-risk')).toHaveText('low');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Approve in Popup, Verify Main Page Updates
+// --------------------------------------------------------------------------
+// The core cross-window test: act in the popup, verify the main page
+// received the postMessage and updated the applicant status.
+test('exercise 4: approve in popup and verify main page updates', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify Alice starts with "pending" status on the main page.
+  await expect(page.getByTestId('status-1')).toHaveText('pending');
+
+  // Open the review popup for Alice.
+  const [popup] = await Promise.all([
+    page.waitForEvent('popup'),
+    page.getByTestId('review-1').click(),
+  ]);
+  await popup.waitForLoadState();
+
+  // Click Approve in the popup. This calls postMessage on window.opener.
+  await popup.getByTestId('approve-btn').click();
+
+  // Switch focus back to the main page and verify the status updated.
+  // Playwright does not require an explicit "switch" — we simply use the
+  // main page's locators. The postMessage handler on the main page updates
+  // the DOM asynchronously, so we rely on Playwright's auto-waiting.
+  await expect(page.getByTestId('status-1')).toHaveText('approved');
+
+  // Verify the status bar also updated.
+  await expect(page.getByTestId('last-action')).toContainText('Alice Johnson');
+  await expect(page.getByTestId('last-action')).toContainText('approved');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Reject in Popup
+// --------------------------------------------------------------------------
+// Same cross-window flow as exercise 4, but with the Reject action.
+test('exercise 5: reject in popup and verify main page updates', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Open the review popup for applicant 2 (Bob Smith).
+  const [popup] = await Promise.all([
+    page.waitForEvent('popup'),
+    page.getByTestId('review-2').click(),
+  ]);
+  await popup.waitForLoadState();
+
+  // Click Reject in the popup.
+  await popup.getByTestId('reject-btn').click();
+
+  // Verify the popup shows the rejection banner.
+  await expect(popup.getByTestId('decision-banner')).toContainText('rejected');
+
+  // Verify the main page updated Bob's status to "rejected".
+  await expect(page.getByTestId('status-2')).toHaveText('rejected');
+
+  // Verify the Review button for Bob is now disabled on the main page
+  // (you cannot review an already-decided applicant).
+  await expect(page.getByTestId('review-2')).toBeDisabled();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Close Popup, Verify Main State
+// --------------------------------------------------------------------------
+// Tests that closing a popup without taking action preserves the main
+// page state (applicant stays pending).
+test('exercise 6: close popup without action preserves main state', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Open a review popup for applicant 3 (Clara Nguyen).
+  const [popup] = await Promise.all([
+    page.waitForEvent('popup'),
+    page.getByTestId('review-3').click(),
+  ]);
+  await popup.waitForLoadState();
+
+  // Close the popup without approving or rejecting.
+  // popup.close() closes the browser tab/window.
+  await popup.close();
+
+  // Verify Clara's status is still "pending" on the main page.
+  await expect(page.getByTestId('status-3')).toHaveText('pending');
+
+  // Verify the last action is still "None" (no decision was made).
+  await expect(page.getByTestId('last-action')).toHaveText('None');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Handle Multiple Popups
+// --------------------------------------------------------------------------
+// Opens two review popups simultaneously and interacts with both.
+test('exercise 7: handle multiple popups', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Open popup for applicant 1 (Alice).
+  const [popup1] = await Promise.all([
+    page.waitForEvent('popup'),
+    page.getByTestId('review-1').click(),
+  ]);
+  await popup1.waitForLoadState();
+
+  // Open popup for applicant 2 (Bob).
+  const [popup2] = await Promise.all([
+    page.waitForEvent('popup'),
+    page.getByTestId('review-2').click(),
+  ]);
+  await popup2.waitForLoadState();
+
+  // Verify both popups show the correct applicant names.
+  await expect(popup1.getByTestId('applicant-name')).toHaveText('Alice Johnson');
+  await expect(popup2.getByTestId('applicant-name')).toHaveText('Bob Smith');
+
+  // Approve Alice in popup1.
+  await popup1.getByTestId('approve-btn').click();
+  await expect(page.getByTestId('status-1')).toHaveText('approved');
+
+  // Reject Bob in popup2.
+  await popup2.getByTestId('reject-btn').click();
+  await expect(page.getByTestId('status-2')).toHaveText('rejected');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Synchronize State Between Windows
+// --------------------------------------------------------------------------
+// Approves one applicant, then opens another popup and verifies the
+// first applicant's decision is reflected on the main page throughout.
+test('exercise 8: synchronize state between windows', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Approve applicant 4 (David Park) via popup.
+  const [popup4] = await Promise.all([
+    page.waitForEvent('popup'),
+    page.getByTestId('review-4').click(),
+  ]);
+  await popup4.waitForLoadState();
+  await popup4.getByTestId('approve-btn').click();
+
+  // Wait for the main page to update.
+  await expect(page.getByTestId('status-4')).toHaveText('approved');
+
+  // Close the first popup.
+  await popup4.close();
+
+  // Now open a popup for applicant 5 (Eva Martinez).
+  const [popup5] = await Promise.all([
+    page.waitForEvent('popup'),
+    page.getByTestId('review-5').click(),
+  ]);
+  await popup5.waitForLoadState();
+
+  // Verify David's status is still "approved" on the main page
+  // (state was not lost when we opened a new popup).
+  await expect(page.getByTestId('status-4')).toHaveText('approved');
+
+  // Reject Eva in her popup.
+  await popup5.getByTestId('reject-btn').click();
+  await expect(page.getByTestId('status-5')).toHaveText('rejected');
+
+  // Verify both decisions are reflected on the main page.
+  await expect(page.getByTestId('status-4')).toHaveText('approved');
+  await expect(page.getByTestId('status-5')).toHaveText('rejected');
+});
+b:T2551,const PLAYGROUND = '/phase-06-complex-scenarios/32-multi-window-workflows/playground/';
+
+describe('Kata 32: Multi-Window Workflows', () => {
+
+  // -----------------------------------------------------------------------
+  // IMPORTANT: Cypress runs inside a single browser tab and cannot natively
+  // interact with popup windows opened by window.open(). The standard
+  // workaround is to stub window.open() and then visit the popup URL
+  // directly in the Cypress-controlled tab. This lets us test the popup
+  // content and simulate postMessage communication back to the main page.
+  // -----------------------------------------------------------------------
+
+  // Helper: Stub window.open and return the URL it would have opened.
+  // This prevents a real popup from opening (which Cypress can't control)
+  // and captures the URL so we can visit it later.
+  function stubWindowOpen() {
+    cy.window().then(win => {
+      // cy.stub(object, method) replaces the method with a spy/stub.
+      // .callsFake(fn) provides a custom implementation that records
+      // the URL and returns a fake window object.
+      cy.stub(win, 'open').callsFake((url: string) => {
+        // Store the URL on the window so tests can retrieve it.
+        (win as any).__lastPopupUrl = url;
+        // Return a minimal fake Window object to avoid errors in the
+        // main page's code that checks if the popup opened.
+        return { closed: false } as Window;
+      }).as('windowOpen');
+    });
+  }
+
+  // Helper: Simulate a postMessage from the popup back to the main page.
+  // Since we can't actually have two windows, we send the message directly.
+  function simulatePopupDecision(id: string, decision: string) {
+    cy.window().then(win => {
+      // Dispatch a 'message' event on the main page's window, mimicking
+      // what the popup's postMessage would do.
+      win.postMessage(
+        { type: 'applicant-decision', id, decision },
+        '*'
+      );
+    });
+  }
+
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Open Review Window
+  // --------------------------------------------------------------------------
+  // Verifies that clicking Review calls window.open() with the correct URL.
+  it('exercise 1: open review window', () => {
+    // Stub window.open before clicking the button.
+    stubWindowOpen();
+
+    // Click the Review button for applicant 1 (Alice).
+    cy.get('[data-testid="review-1"]').click();
+
+    // Verify window.open was called.
+    // .should('have.been.calledOnce') uses Sinon assertion syntax since
+    // cy.stub creates a Sinon stub under the hood.
+    cy.get('@windowOpen').should('have.been.calledOnce');
+
+    // Verify the URL contains the admin-panel.html path and Alice's data.
+    cy.get('@windowOpen').then((stub: any) => {
+      const url: string = stub.getCall(0).args[0];
+      expect(url).to.include('admin-panel.html');
+      expect(url).to.include('name=Alice');
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Interact with Popup (Visit Popup URL)
+  // --------------------------------------------------------------------------
+  // Since Cypress can't switch to a popup, we visit the popup URL directly
+  // and interact with the admin panel page.
+  it('exercise 2: interact with popup page', () => {
+    // Visit the admin panel directly with query params for applicant 1.
+    cy.visit(
+      PLAYGROUND + 'admin-panel.html?id=1&name=Alice+Johnson&email=alice%40example.com&position=Engineer&risk=low&date=2025-01-15'
+    );
+
+    // Verify the Approve button is visible and click it.
+    cy.get('[data-testid="approve-btn"]').should('be.visible').click();
+
+    // Verify the decision banner appears.
+    cy.get('[data-testid="decision-banner"]')
+      .should('be.visible')
+      .and('contain.text', 'approved');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Verify Popup Content
+  // --------------------------------------------------------------------------
+  // Visits the popup URL and verifies all applicant fields are displayed.
+  it('exercise 3: verify popup shows correct applicant details', () => {
+    // Visit the admin panel with Bob's data.
+    cy.visit(
+      PLAYGROUND + 'admin-panel.html?id=2&name=Bob+Smith&email=bob%40example.com&position=Manager&risk=medium&date=2025-02-01'
+    );
+
+    // Verify each detail field matches the URL parameters.
+    cy.get('[data-testid="applicant-name"]').should('have.text', 'Bob Smith');
+    cy.get('[data-testid="applicant-email"]').should('have.text', 'bob@example.com');
+    cy.get('[data-testid="applicant-position"]').should('have.text', 'Manager');
+    cy.get('[data-testid="applicant-risk"]').should('have.text', 'medium');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Approve in Popup, Verify Main Page Updates
+  // --------------------------------------------------------------------------
+  // Simulates the approve flow using postMessage to update the main page.
+  it('exercise 4: approve and verify main page updates via postMessage', () => {
+    // Verify Alice starts as "pending".
+    cy.get('[data-testid="status-1"]').should('have.text', 'pending');
+
+    // Simulate the popup sending an "approved" postMessage for applicant 1.
+    // In a real scenario, the popup's Approve button triggers this message.
+    simulatePopupDecision('1', 'approved');
+
+    // Verify the main page updated Alice's status to "approved".
+    cy.get('[data-testid="status-1"]').should('have.text', 'approved');
+
+    // Verify the status bar shows the last action.
+    cy.get('[data-testid="last-action"]').should('contain.text', 'Alice Johnson');
+    cy.get('[data-testid="last-action"]').should('contain.text', 'approved');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Reject in Popup
+  // --------------------------------------------------------------------------
+  // Similar to exercise 4 but with the reject decision.
+  it('exercise 5: reject and verify main page updates', () => {
+    // Verify Bob starts as "pending".
+    cy.get('[data-testid="status-2"]').should('have.text', 'pending');
+
+    // Simulate the popup sending a "rejected" postMessage for applicant 2.
+    simulatePopupDecision('2', 'rejected');
+
+    // Verify the main page updated Bob's status to "rejected".
+    cy.get('[data-testid="status-2"]').should('have.text', 'rejected');
+
+    // Verify the Review button for Bob is now disabled.
+    cy.get('[data-testid="review-2"]').should('be.disabled');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Close Popup, Verify Main State
+  // --------------------------------------------------------------------------
+  // Tests that if no postMessage is sent (popup closed without action),
+  // the main page state remains unchanged.
+  it('exercise 6: no action preserves main page state', () => {
+    // Stub window.open so the "popup" opens.
+    stubWindowOpen();
+
+    // Click Review — this opens the popup (stubbed).
+    cy.get('[data-testid="review-3"]').click();
+
+    // No postMessage is sent (admin closed popup without acting).
+
+    // Verify Clara's status is still "pending".
+    cy.get('[data-testid="status-3"]').should('have.text', 'pending');
+
+    // Verify last action is still "None".
+    cy.get('[data-testid="last-action"]').should('have.text', 'None');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Handle Multiple Popups
+  // --------------------------------------------------------------------------
+  // Opens two review popups (stubbed) and sends decisions for both.
+  it('exercise 7: handle multiple popup decisions', () => {
+    // Simulate approving Alice and rejecting Bob via postMessage.
+    simulatePopupDecision('1', 'approved');
+    cy.get('[data-testid="status-1"]').should('have.text', 'approved');
+
+    simulatePopupDecision('2', 'rejected');
+    cy.get('[data-testid="status-2"]').should('have.text', 'rejected');
+
+    // Verify both statuses are correct simultaneously.
+    cy.get('[data-testid="status-1"]').should('have.text', 'approved');
+    cy.get('[data-testid="status-2"]').should('have.text', 'rejected');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Synchronize State Between Windows
+  // --------------------------------------------------------------------------
+  // Approves one applicant, then processes another, verifying the first
+  // decision is preserved throughout.
+  it('exercise 8: state persists across multiple decisions', () => {
+    // Approve David (applicant 4).
+    simulatePopupDecision('4', 'approved');
+    cy.get('[data-testid="status-4"]').should('have.text', 'approved');
+
+    // Reject Eva (applicant 5).
+    simulatePopupDecision('5', 'rejected');
+    cy.get('[data-testid="status-5"]').should('have.text', 'rejected');
+
+    // Verify David's approval was not overwritten when Eva was rejected.
+    cy.get('[data-testid="status-4"]').should('have.text', 'approved');
+
+    // Verify all other applicants are still pending.
+    cy.get('[data-testid="status-1"]').should('have.text', 'pending');
+    cy.get('[data-testid="status-2"]').should('have.text', 'pending');
+    cy.get('[data-testid="status-3"]').should('have.text', 'pending');
+  });
+});
+c:Tca90,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { test, expect } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> '@playwright/test'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// The base URL for our playground page.</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-05-fintech-domain/31-approval-rejection-flows/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 1: Approve Application and Verify Status Change</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Click Approve on APP-001, confirm in dialog, verify status changes.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: approve application and verify status change'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify APP-001 is initially pending.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'status-APP-001'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Pending'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click the Approve button for APP-001.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-approve-APP-001'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the approval confirmation dialog appears.</span></span>
+<span class="line"><span style="color:#6A737D">  // toBeVisible() checks the dialog overlay is displayed.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'approve-dialog'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the dialog mentions the applicant name.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'approve-dialog-text'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Alice Johnson'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click the "Approve" button in the dialog to confirm.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'approve-dialog-confirm'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the dialog closes.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'approve-dialog'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeHidden</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the status badge changed to "Approved".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'status-APP-001'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Approved'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the app card has the approved border styling.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'app-card-APP-001'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">status-approved</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the action buttons are gone (only shown for pending apps).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-approve-APP-001'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveCount</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 2: Reject With Reason</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Reject APP-002 with a reason, verify status changes.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: reject with reason'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click Reject for APP-002.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-reject-APP-002'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the rejection dialog appears.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'reject-dialog'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Type a rejection reason.</span></span>
+<span class="line"><span style="color:#6A737D">  // locator.fill(value) clears the textarea and types the new value.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'reject-reason'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Insufficient documentation provided'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click Reject in the dialog.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'reject-dialog-confirm'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the dialog closes.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'reject-dialog'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeHidden</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the status changed to "Rejected".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'status-APP-002'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Rejected'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'app-card-APP-002'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">status-rejected</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 3: Escalate Application</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Escalate APP-003 with notes, verify status changes.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: escalate application'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click Escalate for APP-003.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-escalate-APP-003'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the escalation dialog appears.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'escalate-dialog'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Add escalation notes.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'escalate-notes'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'High risk score requires senior review'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Confirm escalation.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'escalate-dialog-confirm'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the dialog closes and status changed.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'escalate-dialog'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeHidden</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'status-APP-003'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Escalated'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'app-card-APP-003'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">status-escalated</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 4: Verify Action History</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Approve one app, reject another, then verify the history log.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: verify action history'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Approve APP-001.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-approve-APP-001'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'approve-dialog-confirm'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Reject APP-002.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-reject-APP-002'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'reject-reason'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Failed identity check'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'reject-dialog-confirm'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the history list has 2 entries.</span></span>
+<span class="line"><span style="color:#6A737D">  // locator.count() returns the number of matching elements.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> historyItems</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">locator</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid^="history-item-"]'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(historyItems).</span><span style="color:#B392F0">toHaveCount</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">2</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the history contains the approval (newest first).</span></span>
+<span class="line"><span style="color:#6A737D">  // The second entry (index 1) is the first action (approval).</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> historyList</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'history-list'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(historyList).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Approved'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(historyList).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Alice Johnson'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(historyList).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Rejected'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(historyList).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Bob Williams'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(historyList).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Failed identity check'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 5: Bulk Select and Approve</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Select all pending apps, bulk approve, verify all change status.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: bulk select and approve'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click "Select All" checkbox.</span></span>
+<span class="line"><span style="color:#6A737D">  // locator.check() checks a checkbox element.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'select-all'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">check</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the selected count shows all 5 (all are pending initially).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'selected-count'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'5 selected'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the bulk approve button is enabled.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-bulk-approve'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeEnabled</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click "Approve Selected".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-bulk-approve'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify all applications changed to "Approved".</span></span>
+<span class="line"><span style="color:#F97583">  for</span><span style="color:#E1E4E8"> (</span><span style="color:#F97583">const</span><span style="color:#79B8FF"> id</span><span style="color:#F97583"> of</span><span style="color:#E1E4E8"> [</span><span style="color:#9ECBFF">'APP-001'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'APP-002'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'APP-003'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'APP-004'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'APP-005'</span><span style="color:#E1E4E8">]) {</span></span>
+<span class="line"><span style="color:#F97583">    await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`status-${</span><span style="color:#E1E4E8">id</span><span style="color:#9ECBFF">}`</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Approved'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the history has 5 bulk approval entries.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> historyList</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'history-list'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(historyList).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Approved (Bulk)'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 6: Verify Confirmation Dialog</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Open the approve dialog, verify content, then cancel and verify no change.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: verify confirmation dialog'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click Approve for APP-001.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-approve-APP-001'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify dialog is visible and mentions the applicant.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'approve-dialog'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'approve-dialog-text'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Alice Johnson'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'approve-dialog-text'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'APP-001'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click Cancel.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'approve-dialog-cancel'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify dialog closes.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'approve-dialog'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeHidden</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the status is still "Pending" (action was canceled).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'status-APP-001'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Pending'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the approve button is still available.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-approve-APP-001'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 7: Verify Rejection Requires Reason</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Try to reject without a reason, verify error, then add reason and succeed.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 7: verify rejection requires reason'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Open the rejection dialog for APP-002.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-reject-APP-002'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'reject-dialog'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click Reject without entering a reason.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'reject-dialog-confirm'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the error message appears.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'reject-error'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'reject-error'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Rejection reason is required'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the dialog is still open (rejection was blocked).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'reject-dialog'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Now enter a reason and try again.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'reject-reason'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Documents are forged'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'reject-dialog-confirm'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the dialog closes and status changed.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'reject-dialog'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeHidden</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'status-APP-002'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Rejected'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 8: Filter by Status</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Approve and reject apps, then filter and verify the correct subset shows.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 8: filter by status'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Approve APP-001.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-approve-APP-001'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'approve-dialog-confirm'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Reject APP-002.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-reject-APP-002'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'reject-reason'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Duplicate application'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'reject-dialog-confirm'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Filter by "Pending" — should show 3 apps.</span></span>
+<span class="line"><span style="color:#6A737D">  // locator.selectOption(value) selects the option with the matching value.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'filter-status'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">selectOption</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'pending'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'filter-count'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Showing 3 of 5'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#6A737D">  // Verify APP-001 (approved) is not in the list.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'app-card-APP-001'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveCount</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#6A737D">  // Verify APP-003 (pending) is in the list.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'app-card-APP-003'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Filter by "Approved" — should show 1 app.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'filter-status'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">selectOption</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'approved'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'filter-count'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Showing 1 of 5'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'app-card-APP-001'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Filter by "Rejected" — should show 1 app.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'filter-status'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">selectOption</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'rejected'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'filter-count'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Showing 1 of 5'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'app-card-APP-002'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Filter by "All" — should show all 5.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'filter-status'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">selectOption</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'all'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'filter-count'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Showing 5 of 5'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>d:Tb035,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-05-fintech-domain/31-approval-rejection-flows/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">describe</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Kata 31: Approval &#x26; Rejection Flows'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">  beforeEach</span><span style="color:#E1E4E8">(() </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 1: Approve Application and Verify Status Change</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: approve application and verify status change'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Verify initial pending status.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="status-APP-001"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Pending'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Click Approve for APP-001.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-approve-APP-001"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the approval dialog is visible.</span></span>
+<span class="line"><span style="color:#6A737D">    // .should('be.visible') checks the element is displayed.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="approve-dialog"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify dialog text mentions the applicant.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="approve-dialog-text"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Alice Johnson'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Confirm approval.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="approve-dialog-confirm"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify dialog closes.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="approve-dialog"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify status changed to "Approved".</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="status-APP-001"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Approved'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="app-card-APP-001"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'status-approved'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify action buttons are gone.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-approve-APP-001"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.exist'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 2: Reject With Reason</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: reject with reason'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Click Reject for APP-002.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-reject-APP-002"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the dialog appears.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="reject-dialog"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Type a rejection reason.</span></span>
+<span class="line"><span style="color:#6A737D">    // cy.get().type() types text into the textarea.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="reject-reason"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Insufficient documentation provided'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Confirm rejection.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="reject-dialog-confirm"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify dialog closes and status changed.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="reject-dialog"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="status-APP-002"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Rejected'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="app-card-APP-002"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'status-rejected'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 3: Escalate Application</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: escalate application'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Click Escalate for APP-003.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-escalate-APP-003"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify dialog appears.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="escalate-dialog"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Add notes.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="escalate-notes"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'High risk score requires senior review'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Confirm.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="escalate-dialog-confirm"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify dialog closes and status changed.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="escalate-dialog"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="status-APP-003"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Escalated'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="app-card-APP-003"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'status-escalated'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 4: Verify Action History</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: verify action history'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Approve APP-001.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-approve-APP-001"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="approve-dialog-confirm"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Reject APP-002.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-reject-APP-002"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="reject-reason"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Failed identity check'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="reject-dialog-confirm"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the history list has 2 entries.</span></span>
+<span class="line"><span style="color:#6A737D">    // .should('have.length', n) checks the number of matched elements.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid^="history-item-"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.length'</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">2</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify history content.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="history-list"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Approved'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="history-list"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Alice Johnson'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="history-list"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Rejected'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="history-list"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Bob Williams'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="history-list"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Failed identity check'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 5: Bulk Select and Approve</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: bulk select and approve'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Click "Select All".</span></span>
+<span class="line"><span style="color:#6A737D">    // .check() checks a checkbox element.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="select-all"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">check</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify selected count.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="selected-count"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'5 selected'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify bulk approve is enabled.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-bulk-approve"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.be.disabled'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Bulk approve.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-bulk-approve"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify all apps are approved.</span></span>
+<span class="line"><span style="color:#E1E4E8">    [</span><span style="color:#9ECBFF">'APP-001'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'APP-002'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'APP-003'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'APP-004'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'APP-005'</span><span style="color:#E1E4E8">].</span><span style="color:#B392F0">forEach</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">id</span><span style="color:#F97583"> =></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`[data-testid="status-${</span><span style="color:#E1E4E8">id</span><span style="color:#9ECBFF">}"]`</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Approved'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify history has bulk entries.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="history-list"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Approved (Bulk)'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 6: Verify Confirmation Dialog</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: verify confirmation dialog'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Open dialog.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-approve-APP-001"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify dialog content.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="approve-dialog"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="approve-dialog-text"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Alice Johnson'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'APP-001'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Cancel.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="approve-dialog-cancel"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify dialog closes and status unchanged.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="approve-dialog"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="status-APP-001"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Pending'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-approve-APP-001"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 7: Verify Rejection Requires Reason</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 7: verify rejection requires reason'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Open rejection dialog.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-reject-APP-002"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="reject-dialog"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Try to reject without a reason.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="reject-dialog-confirm"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify error message appears.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="reject-error"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Rejection reason is required'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify dialog is still open.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="reject-dialog"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Now enter a reason and submit.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="reject-reason"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Documents are forged'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="reject-dialog-confirm"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify success.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="reject-dialog"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="status-APP-002"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Rejected'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 8: Filter by Status</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 8: filter by status'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Approve APP-001.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-approve-APP-001"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="approve-dialog-confirm"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Reject APP-002.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-reject-APP-002"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="reject-reason"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Duplicate application'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="reject-dialog-confirm"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Filter by "Pending" — should show 3 apps.</span></span>
+<span class="line"><span style="color:#6A737D">    // .select(value) selects the option with the matching value attribute.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="filter-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">select</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'pending'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="filter-count"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Showing 3 of 5'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="app-card-APP-001"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.exist'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="app-card-APP-003"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Filter by "Approved" — should show 1.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="filter-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">select</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'approved'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="filter-count"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Showing 1 of 5'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="app-card-APP-001"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Filter by "Rejected" — should show 1.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="filter-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">select</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'rejected'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="filter-count"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Showing 1 of 5'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="app-card-APP-002"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Filter by "All" — should show 5.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="filter-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">select</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'all'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="filter-count"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Showing 5 of 5'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"kata":{"slug":"31-approval-rejection-flows","number":31,"title":"Approval & Rejection Flows","phaseSlug":"phase-05-fintech-domain","phaseNumber":5,"phaseName":"Fintech Domain","readmeRaw":"$3","hasPlayground":true,"playwrightFiles":[{"filename":"approval-rejection-flows.spec.ts","content":"$4"}],"cypressFiles":[{"filename":"approval-rejection-flows.cy.ts","content":"$5"}]},"prev":{"slug":"30-risk-assessment","number":30,"title":"Risk Assessment","phaseSlug":"phase-05-fintech-domain","phaseNumber":5,"phaseName":"Fintech Domain","readmeRaw":"$6","hasPlayground":true,"playwrightFiles":[{"filename":"risk-assessment.spec.ts","content":"$7"}],"cypressFiles":[{"filename":"risk-assessment.cy.ts","content":"$8"}]},"next":{"slug":"32-multi-window-workflows","number":32,"title":"Multi-Window Workflows","phaseSlug":"phase-06-complex-scenarios","phaseNumber":6,"phaseName":"Complex Scenarios","readmeRaw":"$9","hasPlayground":true,"playwrightFiles":[{"filename":"multi-window-workflows.spec.ts","content":"$a"}],"cypressFiles":[{"filename":"multi-window-workflows.cy.ts","content":"$b"}]},"playwrightHtml":[{"filename":"approval-rejection-flows.spec.ts","html":"$c"}],"cypressHtml":[{"filename":"approval-rejection-flows.cy.ts","html":"$d"}]}],["$Le"],"$Lf"]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"iDtrTKWIN4zzRgDRiiDd2"}
+e:["$","script","script-0",{"src":"/qa-labs/_next/static/chunks/03nvm.8~ftt80.js","async":true}]
+f:["$","$L10",null,{"children":["$","$11",null,{"name":"Next.MetadataOutlet","children":"$@12"}]}]
+12:null

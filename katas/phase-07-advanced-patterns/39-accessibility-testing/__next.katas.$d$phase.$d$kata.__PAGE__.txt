@@ -1,0 +1,2296 @@
+1:"$Sreact.fragment"
+2:I[31749,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js","/qa-labs/_next/static/chunks/03nvm.8~ftt80.js"],"KataPageClient"]
+10:I[49583,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js"],"OutletBoundary"]
+11:"$Sreact.suspense"
+3:T2048,# Kata 39: Accessibility Testing (a11y)
+
+## What You Will Learn
+
+- What accessibility (a11y) testing is and why it matters
+- How to use @axe-core/playwright to scan for a11y violations in Playwright
+- How to use cypress-axe to scan for a11y violations in Cypress
+- How to identify common a11y issues: missing labels, poor contrast, missing ARIA
+- How to fix a11y violations and verify the fixes in tests
+- How to target specific WCAG rules and elements
+
+## Prerequisites
+
+- Completed Katas 01-38
+- Basic understanding of HTML forms and semantic elements
+- No prior accessibility knowledge needed — this kata teaches from scratch
+
+## Plugin Setup
+
+### Playwright
+
+```bash
+# Install the axe-core integration for Playwright
+npm install --save-dev @axe-core/playwright
+```
+
+### Cypress
+
+```bash
+# Install cypress-axe and axe-core
+npm install --save-dev cypress-axe axe-core
+
+# In cypress/support/e2e.ts, add:
+# import 'cypress-axe';
+
+# In your test, inject axe first:
+# cy.injectAxe();   ← loads axe-core into the page
+# cy.checkA11y();   ← scans and fails if violations exist
+```
+
+## Concepts Explained
+
+### What Is Accessibility (a11y)?
+
+```
+Accessibility means designing websites so that EVERYONE can use them,
+including people who:
+  - Are blind or low-vision (use screen readers like NVDA, JAWS, VoiceOver)
+  - Have motor disabilities (navigate with keyboard only, no mouse)
+  - Are deaf or hard of hearing (need captions for audio)
+  - Have cognitive disabilities (need clear, simple language)
+
+"a11y" is shorthand for "accessibility" — 'a', 11 letters, 'y'.
+
+WCAG (Web Content Accessibility Guidelines) defines the rules.
+There are three levels:
+  - Level A   — minimum (all sites should meet this)
+  - Level AA  — standard (most regulations require this)
+  - Level AAA — ideal (aspirational, not required)
+```
+
+### Common a11y Issues (All Present in the Playground)
+
+```
+The playground in this kata has INTENTIONAL accessibility issues.
+Here is what is wrong and why it matters:
+
+1. MISSING FORM LABELS
+   <input> elements without <label> elements.
+   Screen readers cannot tell the user what the field is for.
+   Fix: add <label for="field-id">Label Text</label>
+
+2. MISSING ALT TEXT ON IMAGES
+   <img> without alt="description".
+   Screen readers say "image" but cannot describe what it shows.
+   Fix: add alt="Description of the image"
+
+3. POOR COLOR CONTRAST
+   Light gray text on white background — hard to read.
+   WCAG requires a contrast ratio of at least 4.5:1 for normal text.
+   Fix: use darker text colors
+
+4. MISSING ARIA ATTRIBUTES
+   Interactive elements without role, aria-label, or aria-describedby.
+   Screen readers cannot convey the element's purpose.
+   Fix: add appropriate ARIA attributes
+
+5. NO FOCUS INDICATORS
+   Removing outline:none on interactive elements.
+   Keyboard users cannot see which element is focused.
+   Fix: keep default focus styles or add custom ones
+
+6. MISSING PAGE LANDMARKS
+   No <main>, <nav>, <header> landmarks.
+   Screen readers cannot help users jump to page sections.
+   Fix: use semantic HTML elements
+```
+
+### axe-core Rules
+
+```
+axe-core is the industry-standard accessibility scanning engine.
+It checks for 90+ rules based on WCAG 2.0/2.1 A and AA.
+
+Each violation has:
+  - id        — rule identifier (e.g., 'label', 'color-contrast')
+  - impact    — severity: 'minor', 'moderate', 'serious', 'critical'
+  - help      — human-readable description of the issue
+  - helpUrl   — link to detailed documentation
+  - nodes     — array of DOM elements that violate the rule
+```
+
+## Playground
+
+The playground (`playground/index.html`) is a KYC form with **intentional
+accessibility issues**. Your exercises will:
+1. Scan the page and discover violations
+2. Understand what each violation means
+3. Fix the violations in the HTML
+4. Re-scan to verify the fixes
+
+## Exercises
+
+### Exercise 1: Run a Full a11y Scan
+Scan the entire page and see how many violations axe-core finds.
+
+### Exercise 2: Check Specific Rules
+Run axe with specific rules enabled (e.g., only 'label' or 'color-contrast').
+
+### Exercise 3: Scan a Specific Element
+Scan just the form section instead of the full page.
+
+### Exercise 4: Verify Missing Labels
+Check that form inputs have associated labels.
+
+### Exercise 5: Check Color Contrast
+Scan for color contrast violations and understand the contrast ratio.
+
+### Exercise 6: Fix and Re-Verify
+Fix a11y issues by injecting corrected HTML and re-scan to verify.
+
+## Key Takeaways
+
+```
+- Accessibility testing is automated checks for WCAG compliance
+- axe-core is the most widely used a11y engine (used by both Playwright and Cypress)
+- @axe-core/playwright provides AxeBuilder for Playwright tests
+- cypress-axe provides cy.injectAxe() and cy.checkA11y() for Cypress
+- Automated scans catch ~30-40% of a11y issues — manual testing still needed
+- Fix the easy ones first: labels, alt text, contrast, focus indicators
+- Every fix makes the web usable for more people
+```
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Forgetting to call `cy.injectAxe()` before `cy.checkA11y()` in Cypress | `checkA11y()` requires axe-core to be loaded in the page first; without injection it throws an error | Always call `cy.injectAxe()` after `cy.visit()` and before any `cy.checkA11y()` calls |
+| Running a11y scans before the page is fully rendered | Axe scans the current DOM; if elements have not loaded yet, violations will be missed | Wait for key elements to be visible before running the scan |
+| Assuming axe catches all accessibility issues | Automated tools detect only 30-40% of a11y problems; keyboard navigation, screen reader flow, and cognitive issues require manual testing | Use axe for automated checks but supplement with manual testing |
+| Ignoring violations with "moderate" or "minor" impact | Lower-impact violations still affect real users and can compound into serious barriers | Fix all violations; prioritize "critical" and "serious" first, but address all levels |
+| Not scoping scans to specific elements when debugging | Scanning the full page returns many violations at once, making it hard to isolate issues | Use `include`/`exclude` options to scan specific sections (e.g., just the form) |
+
+## Quick Reference
+
+### Playwright a11y Testing (@axe-core/playwright)
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Import AxeBuilder | `import` | `import AxeBuilder from '@axe-core/playwright'` |
+| Full page scan | `new AxeBuilder({ page }).analyze()` | `const results = await new AxeBuilder({ page }).analyze()` |
+| Check no violations | `expect().toEqual([])` | `expect(results.violations).toEqual([])` |
+| Scan specific element | `.include()` | `await new AxeBuilder({ page }).include('#form').analyze()` |
+| Exclude element | `.exclude()` | `await new AxeBuilder({ page }).exclude('#third-party').analyze()` |
+| Check specific rules | `.withRules()` | `await new AxeBuilder({ page }).withRules(['label', 'color-contrast']).analyze()` |
+| Filter by impact | `.options()` | `await new AxeBuilder({ page }).options({ resultTypes: ['violations'] }).analyze()` |
+
+### Cypress a11y Testing (cypress-axe)
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Inject axe-core | `cy.injectAxe()` | `cy.injectAxe()` |
+| Full page scan | `cy.checkA11y()` | `cy.checkA11y()` |
+| Scan specific element | `cy.checkA11y(selector)` | `cy.checkA11y('#form')` |
+| Exclude element | `cy.checkA11y(null, { exclude })` | `cy.checkA11y(null, { exclude: [['#third-party']] })` |
+| Check specific rules | `cy.checkA11y(null, { runOnly })` | `cy.checkA11y(null, { runOnly: ['label', 'color-contrast'] })` |
+| Custom violation handler | `cy.checkA11y(null, null, callback)` | `cy.checkA11y(null, null, (violations) => { cy.log(violations) })` |
+
+### Common WCAG Rules Checked by axe-core
+
+| Rule ID | What it checks | WCAG Level |
+|---------|---------------|------------|
+| `label` | Form inputs have associated labels | A |
+| `color-contrast` | Text has sufficient contrast ratio (4.5:1) | AA |
+| `image-alt` | Images have alt text | A |
+| `button-name` | Buttons have accessible names | A |
+| `link-name` | Links have discernible text | A |
+| `landmark-one-main` | Page has one main landmark | A |
+4:T2549,import { test, expect } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
+
+// =============================================================================
+// Kata 39: Accessibility Testing — Playwright Tests
+// =============================================================================
+// These tests use @axe-core/playwright to scan for accessibility violations.
+//
+// SETUP: npm install --save-dev @axe-core/playwright
+//
+// AxeBuilder is a class that configures and runs axe-core scans.
+// It returns a results object with violations, passes, and incomplete checks.
+// =============================================================================
+
+const PLAYGROUND = '/phase-07-advanced-patterns/39-accessibility-testing/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Full Page a11y Scan
+// --------------------------------------------------------------------------
+// Run axe-core on the entire page and examine the violations.
+test('exercise 1: scan entire page for a11y violations', async ({ page }) => {
+  // Navigate to the playground with intentional a11y issues.
+  await page.goto(PLAYGROUND);
+
+  // AxeBuilder(page) creates a new scanner attached to the current page.
+  // .analyze() runs the scan and returns a results object.
+  //
+  // Results object shape:
+  //   results.violations — array of rules that FAILED (issues found)
+  //   results.passes     — array of rules that PASSED
+  //   results.incomplete — array of rules that need manual review
+  //   results.inapplicable — array of rules that don't apply to this page
+  const results = await new AxeBuilder({ page }).analyze();
+
+  // Log violations for learning purposes.
+  // Each violation has: id, impact, description, help, helpUrl, nodes[].
+  // eslint-disable-next-line no-console
+  console.log('Violations found:', results.violations.length);
+  for (const violation of results.violations) {
+    // eslint-disable-next-line no-console
+    console.log(`  [${violation.impact}] ${violation.id}: ${violation.help}`);
+  }
+
+  // We EXPECT violations because the playground has intentional issues.
+  // In a real test, you would assert: expect(results.violations).toHaveLength(0);
+  // Here we assert that violations were found (proving the scan works).
+  expect(results.violations.length).toBeGreaterThan(0);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Check Specific Rules Only
+// --------------------------------------------------------------------------
+// You can run axe with only specific rules enabled.
+// This is useful when fixing issues one at a time.
+test('exercise 2: scan for label violations only', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // .withRules(['rule-id']) runs ONLY the specified rules.
+  // 'label' checks that every form input has an associated <label>.
+  const results = await new AxeBuilder({ page })
+    .withRules(['label'])  // only check the 'label' rule
+    .analyze();
+
+  // eslint-disable-next-line no-console
+  console.log('Label violations:', results.violations.length);
+
+  // The playground has multiple inputs without labels.
+  // Each violation.nodes[] array contains the specific DOM elements.
+  for (const violation of results.violations) {
+    // eslint-disable-next-line no-console
+    console.log(`  Found ${violation.nodes.length} elements without labels`);
+  }
+
+  // We expect the 'label' rule to have violations.
+  const labelViolation = results.violations.find(v => v.id === 'label');
+  expect(labelViolation).toBeDefined();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Scan a Specific Section
+// --------------------------------------------------------------------------
+// Instead of scanning the whole page, scan just one section.
+test('exercise 3: scan only the form section', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // .include(selector) limits the scan to elements matching the CSS selector.
+  // This is useful when you want to focus on one component at a time.
+  const results = await new AxeBuilder({ page })
+    .include('[data-testid="kyc-form-section"]')  // scan only the form
+    .analyze();
+
+  // eslint-disable-next-line no-console
+  console.log('Form section violations:', results.violations.length);
+  for (const violation of results.violations) {
+    // eslint-disable-next-line no-console
+    console.log(`  [${violation.impact}] ${violation.id}: ${violation.help}`);
+  }
+
+  // The form section should have violations (missing labels, contrast).
+  expect(results.violations.length).toBeGreaterThan(0);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Check for Missing Image Alt Text
+// --------------------------------------------------------------------------
+// The 'image-alt' rule checks that all <img> elements have alt attributes.
+test('exercise 4: check image alt text', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  const results = await new AxeBuilder({ page })
+    .withRules(['image-alt'])  // only check image alt text
+    .analyze();
+
+  // eslint-disable-next-line no-console
+  console.log('Image alt violations:', results.violations.length);
+
+  // The playground has an <img> without alt — this should be a violation.
+  const imageAltViolation = results.violations.find(v => v.id === 'image-alt');
+  expect(imageAltViolation).toBeDefined();
+
+  // Log which elements are missing alt text.
+  if (imageAltViolation) {
+    for (const node of imageAltViolation.nodes) {
+      // node.html contains the HTML of the violating element.
+      // eslint-disable-next-line no-console
+      console.log('  Missing alt on:', node.html.substring(0, 80) + '...');
+    }
+  }
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Check Color Contrast
+// --------------------------------------------------------------------------
+// The 'color-contrast' rule checks that text meets WCAG contrast ratios.
+test('exercise 5: check color contrast', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  const results = await new AxeBuilder({ page })
+    .withRules(['color-contrast'])
+    .analyze();
+
+  // eslint-disable-next-line no-console
+  console.log('Contrast violations:', results.violations.length);
+
+  // The .low-contrast text in the playground has insufficient contrast.
+  const contrastViolation = results.violations.find(v => v.id === 'color-contrast');
+
+  if (contrastViolation) {
+    for (const node of contrastViolation.nodes) {
+      // node.any[0].message contains the contrast ratio details.
+      // eslint-disable-next-line no-console
+      console.log('  Contrast issue:', node.any?.[0]?.message || 'see details');
+    }
+  }
+
+  // We expect a contrast violation from the .low-contrast text.
+  expect(contrastViolation).toBeDefined();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Fix Violations and Re-Scan
+// --------------------------------------------------------------------------
+// Inject fixes into the DOM and verify axe-core passes.
+// This simulates the fix-verify cycle developers go through.
+test('exercise 6: fix label violations and re-scan', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // STEP 1: Verify violations exist BEFORE the fix.
+  const beforeResults = await new AxeBuilder({ page })
+    .withRules(['label'])
+    .include('[data-testid="kyc-form-section"]')
+    .analyze();
+
+  expect(beforeResults.violations.length).toBeGreaterThan(0);
+  // eslint-disable-next-line no-console
+  console.log('Before fix — label violations:', beforeResults.violations.length);
+
+  // STEP 2: Fix the violations by adding labels.
+  // page.evaluate() runs JavaScript in the browser context.
+  // We add <label> elements before each input that is missing one.
+  await page.evaluate(() => {
+    // Define the fixes: each entry maps an input ID to its label text.
+    const fixes: Array<{ inputId: string; labelText: string }> = [
+      { inputId: 'full-name', labelText: 'Full Name' },
+      { inputId: 'email', labelText: 'Email Address' },
+      { inputId: 'phone', labelText: 'Phone Number' },
+      { inputId: 'country', labelText: 'Country' },
+      { inputId: 'notes', labelText: 'Additional Notes' }
+    ];
+
+    for (const fix of fixes) {
+      const input = document.getElementById(fix.inputId);
+      if (input && !document.querySelector(`label[for="${fix.inputId}"]`)) {
+        // Create a <label> element.
+        const label = document.createElement('label');
+        // 'for' connects the label to the input by ID.
+        label.setAttribute('for', fix.inputId);
+        label.textContent = fix.labelText;
+        label.style.display = 'block';
+        label.style.fontSize = '0.85rem';
+        label.style.fontWeight = '600';
+        label.style.color = '#475569';
+        label.style.marginBottom = '0.25rem';
+        // Insert the label before the input.
+        input.parentNode?.insertBefore(label, input);
+      }
+    }
+  });
+
+  // STEP 3: Re-scan to verify the fixes worked.
+  const afterResults = await new AxeBuilder({ page })
+    .withRules(['label'])
+    .include('[data-testid="kyc-form-section"]')
+    .analyze();
+
+  // eslint-disable-next-line no-console
+  console.log('After fix — label violations:', afterResults.violations.length);
+
+  // After adding labels, the 'label' rule should pass.
+  expect(afterResults.violations).toHaveLength(0);
+});
+5:T21bc,// =============================================================================
+// Kata 39: Accessibility Testing — Cypress Tests
+// =============================================================================
+//
+// These tests use cypress-axe to scan for accessibility violations.
+//
+// SETUP:
+//   1. npm install --save-dev cypress-axe axe-core
+//   2. In cypress/support/e2e.ts, add:
+//      import 'cypress-axe';
+//   3. In cypress/support/index.d.ts (or tsconfig), declare the types:
+//      /// <reference types="cypress-axe" />
+//
+// USAGE PATTERN:
+//   cy.injectAxe()  — loads axe-core into the page (call AFTER cy.visit)
+//   cy.checkA11y()  — runs the scan and fails if violations exist
+//   cy.checkA11y(selector, options) — scan specific element with options
+// =============================================================================
+
+const PLAYGROUND = '/phase-07-advanced-patterns/39-accessibility-testing/playground/';
+
+describe('Kata 39: Accessibility Testing', () => {
+
+  beforeEach(() => {
+    // Visit the playground before each test.
+    cy.visit(PLAYGROUND);
+
+    // cy.injectAxe() loads the axe-core library into the page.
+    // This MUST be called after cy.visit() and before cy.checkA11y().
+    // It injects a <script> tag with the axe-core code.
+    cy.injectAxe();
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Full Page a11y Scan (Expect Failures)
+  // --------------------------------------------------------------------------
+  // cy.checkA11y() scans the entire page and fails if violations are found.
+  // Since our playground has intentional issues, we configure it to LOG
+  // violations instead of failing the test.
+  it('exercise 1: scan entire page and log violations', () => {
+    // cy.checkA11y() with a callback lets us handle violations manually.
+    //
+    // Signature:
+    //   cy.checkA11y(
+    //     context?,    — CSS selector or element to scan (null = whole page)
+    //     options?,    — axe-core configuration options
+    //     callback?,   — function called with violations array
+    //     skipFailures? — if true, don't fail the test on violations
+    //   )
+    //
+    // We use skipFailures: true because the playground has intentional issues.
+    // In a real test, you would NOT set skipFailures — you want it to fail.
+    cy.checkA11y(
+      null,   // null = scan the entire page
+      {},     // no special options
+      (violations) => {
+        // This callback receives the violations array.
+        // Each violation has: id, impact, description, help, nodes[].
+        cy.log(`Found ${violations.length} a11y violations`);
+
+        // Log each violation for learning purposes.
+        violations.forEach((violation) => {
+          cy.log(
+            `[${violation.impact}] ${violation.id}: ${violation.help} (${violation.nodes.length} elements)`
+          );
+        });
+
+        // We EXPECT violations because the playground has issues.
+        expect(violations.length).to.be.greaterThan(0);
+      },
+      true  // skipFailures: true — don't fail the test on violations
+    );
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Check Specific Rules Only
+  // --------------------------------------------------------------------------
+  // Narrow the scan to a single rule to focus on one issue at a time.
+  it('exercise 2: check label rules only', () => {
+    // The second parameter is an axe-core options object.
+    // runOnly.values specifies which rules to check.
+    cy.checkA11y(
+      null,   // scan the whole page
+      {
+        runOnly: {
+          type: 'rule',
+          values: ['label']  // only check the 'label' rule
+        }
+      },
+      (violations) => {
+        cy.log(`Label violations: ${violations.length}`);
+
+        // The playground has inputs without labels.
+        const labelViolation = violations.find((v) => v.id === 'label');
+        if (labelViolation) {
+          cy.log(`${labelViolation.nodes.length} inputs missing labels`);
+        }
+        expect(labelViolation).to.not.be.undefined;
+      },
+      true  // don't fail the test
+    );
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Scan a Specific Section
+  // --------------------------------------------------------------------------
+  // Pass a CSS selector as the first argument to scan just that element.
+  it('exercise 3: scan only the form section', () => {
+    // The first parameter is a CSS selector string.
+    // Only elements within this selector are scanned.
+    cy.checkA11y(
+      '[data-testid="kyc-form-section"]',  // scan only the form
+      {},
+      (violations) => {
+        cy.log(`Form section violations: ${violations.length}`);
+        violations.forEach((v) => {
+          cy.log(`  [${v.impact}] ${v.id}: ${v.help}`);
+        });
+        expect(violations.length).to.be.greaterThan(0);
+      },
+      true
+    );
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Check for Missing Image Alt Text
+  // --------------------------------------------------------------------------
+  it('exercise 4: check image alt text', () => {
+    cy.checkA11y(
+      '[data-testid="profile-section"]',  // scan the profile section
+      {
+        runOnly: {
+          type: 'rule',
+          values: ['image-alt']  // only check image alt text
+        }
+      },
+      (violations) => {
+        cy.log(`Image alt violations: ${violations.length}`);
+        const imageViolation = violations.find((v) => v.id === 'image-alt');
+        expect(imageViolation).to.not.be.undefined;
+      },
+      true
+    );
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Check Color Contrast
+  // --------------------------------------------------------------------------
+  it('exercise 5: check color contrast', () => {
+    cy.checkA11y(
+      null,
+      {
+        runOnly: {
+          type: 'rule',
+          values: ['color-contrast']
+        }
+      },
+      (violations) => {
+        cy.log(`Contrast violations: ${violations.length}`);
+        const contrastViolation = violations.find((v) => v.id === 'color-contrast');
+        if (contrastViolation) {
+          cy.log(`${contrastViolation.nodes.length} elements with poor contrast`);
+        }
+        // The .low-contrast text should trigger a violation.
+        expect(contrastViolation).to.not.be.undefined;
+      },
+      true
+    );
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Fix Violations and Re-Scan
+  // --------------------------------------------------------------------------
+  // Inject fixes into the DOM and verify the violations are resolved.
+  it('exercise 6: fix label violations and verify', () => {
+    // STEP 1: Confirm violations exist.
+    cy.checkA11y(
+      '[data-testid="kyc-form-section"]',
+      { runOnly: { type: 'rule', values: ['label'] } },
+      (violations) => {
+        expect(violations.length).to.be.greaterThan(0);
+        cy.log(`Before fix: ${violations.length} label violations`);
+      },
+      true
+    );
+
+    // STEP 2: Fix by adding labels.
+    // cy.window().then(win => { ... }) gives access to the browser's window.
+    // We use standard DOM APIs to create and insert <label> elements.
+    cy.window().then((win) => {
+      const doc = win.document;
+      const fixes = [
+        { inputId: 'full-name', labelText: 'Full Name' },
+        { inputId: 'email', labelText: 'Email Address' },
+        { inputId: 'phone', labelText: 'Phone Number' },
+        { inputId: 'country', labelText: 'Country' },
+        { inputId: 'notes', labelText: 'Additional Notes' }
+      ];
+
+      fixes.forEach((fix) => {
+        const input = doc.getElementById(fix.inputId);
+        if (input && !doc.querySelector(`label[for="${fix.inputId}"]`)) {
+          const label = doc.createElement('label');
+          label.setAttribute('for', fix.inputId);
+          label.textContent = fix.labelText;
+          input.parentNode?.insertBefore(label, input);
+        }
+      });
+    });
+
+    // STEP 3: Re-inject axe (needed after DOM changes in some cases).
+    cy.injectAxe();
+
+    // STEP 4: Re-scan and verify labels pass.
+    cy.checkA11y(
+      '[data-testid="kyc-form-section"]',
+      { runOnly: { type: 'rule', values: ['label'] } },
+      (violations) => {
+        cy.log(`After fix: ${violations.length} label violations`);
+        expect(violations.length).to.equal(0);
+      },
+      true
+    );
+  });
+});
+6:T1669,# Kata 38: Visual Regression Testing
+
+## What You Will Learn
+
+- What visual regression testing is and when to use it
+- How to capture baseline screenshots and compare against future runs
+- How to use Playwright's built-in `toHaveScreenshot()` matcher
+- How to use Cypress's `cy.screenshot()` and image-snapshot plugins
+- How to tune comparison thresholds to avoid false positives
+- How to handle dynamic content (timestamps, animations) in screenshots
+
+## Prerequisites
+
+- Completed Katas 01-37
+- Understanding of assertions and test structure
+- A visual sense of what "looks right" (the test does the pixel comparison)
+
+## Concepts Explained
+
+### What Is Visual Regression Testing?
+
+```
+Visual regression testing catches UNINTENDED visual changes in your UI.
+
+Functional tests verify behavior — "does clicking Submit show a success message?"
+Visual tests verify appearance — "does the page LOOK the same as last time?"
+
+The workflow:
+  1. Run tests the first time → screenshots are saved as BASELINES
+  2. Run tests again → new screenshots are compared pixel-by-pixel
+  3. If pixels differ beyond a threshold → the test FAILS
+  4. You review the diff and either:
+     a. Accept the change (update the baseline)
+     b. Fix the regression (a CSS bug, layout shift, etc.)
+```
+
+### When to Use Visual Regression Testing
+
+```
+GOOD use cases:
+  - Component libraries (buttons, cards, modals look consistent)
+  - Dashboard layouts (tables, charts maintain structure)
+  - Brand-critical pages (landing pages, login screens)
+  - Cross-browser consistency (same page in Chrome vs Firefox)
+
+POOR use cases:
+  - Pages with lots of dynamic data (timestamps, live feeds)
+  - Content that changes frequently (news feeds, user-generated)
+  - Animations that are hard to freeze
+
+Rule of thumb: if the page has a stable, predictable layout, visual
+regression testing adds value. If the page changes every second, skip it.
+```
+
+### Playwright: toHaveScreenshot()
+
+```typescript
+// PLAYWRIGHT — built-in visual comparison, no plugins needed.
+//
+// toHaveScreenshot(name?, options?) captures a screenshot and compares it
+// to a stored baseline image.
+//
+// First run:  saves the screenshot as the baseline in a __snapshots__ folder
+// Next runs:  compares the new screenshot against the baseline
+//
+// Key options:
+//   maxDiffPixels      — max number of pixels allowed to differ (default: 0)
+//   maxDiffPixelRatio  — max ratio of different pixels (0.0 to 1.0)
+//   threshold          — per-pixel color difference threshold (0.0 to 1.0)
+//   mask               — array of locators to mask (hide dynamic content)
+//   fullPage           — capture the full scrollable page (default: false)
+//   animations         — 'disabled' freezes CSS animations (recommended)
+
+await expect(page).toHaveScreenshot('dashboard.png', {
+  maxDiffPixelRatio: 0.01,   // allow 1% pixel difference
+  animations: 'disabled',    // freeze animations before capture
+});
+```
+
+### Cypress: cy.screenshot() + Plugins
+
+```typescript
+// CYPRESS — cy.screenshot() captures images but does NOT compare them.
+// For comparison, you need a plugin:
+//
+// Option 1: cypress-image-snapshot (open source)
+//   npm install --save-dev @simonsmith/cypress-image-snapshot
+//   Adds cy.matchImageSnapshot() command
+//
+// Option 2: Percy (cloud service by BrowserStack)
+//   npm install --save-dev @percy/cypress
+//   Adds cy.percySnapshot() command — uploads to Percy for comparison
+//
+// Option 3: Manual comparison
+//   cy.screenshot('name') saves to cypress/screenshots/
+//   You compare manually or with a CI script
+
+// Basic screenshot capture:
+cy.screenshot('dashboard-baseline');
+
+// With cypress-image-snapshot:
+cy.matchImageSnapshot('dashboard', {
+  failureThreshold: 0.01,       // 1% threshold
+  failureThresholdType: 'percent'
+});
+```
+
+### Handling Dynamic Content
+
+```
+Dynamic content (dates, random IDs, live data) causes false failures.
+Strategies to handle it:
+
+1. MASK ELEMENTS — hide them with a colored box before capture
+   Playwright: mask: [page.locator('.timestamp')]
+   Cypress: hide the element with cy.get('.timestamp').invoke('css', 'visibility', 'hidden')
+
+2. FREEZE TIME — set a fixed date/time in the test
+   Playwright: page.clock.install({ time: new Date('2025-01-01') })
+   Cypress: cy.clock(new Date('2025-01-01').getTime())
+
+3. REPLACE CONTENT — replace dynamic text with static text before capture
+   await page.locator('.timestamp').evaluate(el => el.textContent = '2025-01-01');
+
+4. INCREASE THRESHOLD — allow more pixel difference (last resort)
+   maxDiffPixelRatio: 0.05  // allow 5% difference
+```
+
+## Exercises
+
+### Exercise 1: Full-Page Screenshot Baseline
+Capture a full-page screenshot of the KYC dashboard and establish a baseline.
+
+### Exercise 2: Element-Level Screenshot
+Capture a screenshot of a single component (a card or table) and compare it.
+
+### Exercise 3: Mask Dynamic Content
+Mask a timestamp element before capturing, so the test is stable.
+
+### Exercise 4: Threshold Tuning
+Experiment with different threshold values and see what passes/fails.
+
+### Exercise 5: Cross-Browser Visual Test
+Capture the same page in different viewport sizes and compare.
+
+### Exercise 6: Cypress Screenshot Capture
+Use cy.screenshot() to capture and organize screenshots for manual review.
+
+## Key Takeaways
+
+```
+- Visual regression catches CSS/layout bugs that functional tests miss
+- Playwright has built-in toHaveScreenshot() — no plugins needed
+- Cypress needs a plugin (cypress-image-snapshot) for automated comparison
+- Always mask or freeze dynamic content to avoid flaky tests
+- Set reasonable thresholds — 0% difference is too strict for most UIs
+- Update baselines intentionally when the design changes
+```
+7:T1f7e,import { test, expect } from '@playwright/test';
+
+// =============================================================================
+// Kata 38: Visual Regression Testing — Playwright Tests
+// =============================================================================
+// These tests demonstrate Playwright's built-in visual comparison features.
+//
+// FIRST RUN: Tests will FAIL and create baseline screenshots in:
+//   playwright/visual-regression.spec.ts-snapshots/
+//
+// SECOND RUN: Tests compare new screenshots against the baselines.
+// If the UI hasn't changed, tests pass. If pixels differ, tests fail.
+//
+// To UPDATE baselines after an intentional change:
+//   npx playwright test --update-snapshots
+// =============================================================================
+
+const PLAYGROUND = '/phase-07-advanced-patterns/38-visual-regression/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Full-Page Screenshot Baseline
+// --------------------------------------------------------------------------
+// toHaveScreenshot() captures the visible viewport and compares it to a
+// stored baseline image. On first run, it saves the baseline.
+test('exercise 1: full page screenshot baseline', async ({ page }) => {
+  // Navigate to the dashboard playground.
+  await page.goto(PLAYGROUND);
+
+  // toHaveScreenshot(name) captures a screenshot and compares to baseline.
+  //
+  // Parameters:
+  //   name (string) — the filename for the baseline image (e.g., 'dashboard.png')
+  //
+  // Options used here:
+  //   fullPage: true — captures the entire scrollable page, not just the viewport
+  //   animations: 'disabled' — freezes all CSS animations before capture
+  //     This prevents flaky tests from spinner animations or transitions.
+  //
+  // On FIRST run: saves the screenshot as the baseline and the test passes.
+  // On SUBSEQUENT runs: compares the new screenshot to the baseline.
+  await expect(page).toHaveScreenshot('dashboard-full.png', {
+    fullPage: true,
+    animations: 'disabled'
+  });
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Element-Level Screenshot
+// --------------------------------------------------------------------------
+// Instead of the full page, capture just ONE element.
+// This is useful for testing specific components (cards, tables, modals).
+test('exercise 2: screenshot a single component', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Locate a specific element — the dashboard cards container.
+  // getByTestId('dashboard-cards') finds the element with data-testid="dashboard-cards".
+  const dashboardCards = page.getByTestId('dashboard-cards');
+
+  // toHaveScreenshot() also works on locators (not just pages).
+  // This captures ONLY the element, not the full page.
+  await expect(dashboardCards).toHaveScreenshot('dashboard-cards.png', {
+    animations: 'disabled'
+  });
+
+  // Capture just the table section as well.
+  const tableSection = page.getByTestId('applicant-table-section');
+
+  await expect(tableSection).toHaveScreenshot('applicant-table.png', {
+    animations: 'disabled'
+  });
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Mask Dynamic Content
+// --------------------------------------------------------------------------
+// The timestamp at the bottom changes every second. Without masking,
+// the test would fail every time because the pixels are different.
+test('exercise 3: mask dynamic elements before capture', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // The `mask` option takes an array of locators.
+  // Each matched element is replaced with a solid-color box (default: magenta)
+  // in the screenshot. This prevents dynamic text from causing false failures.
+  await expect(page).toHaveScreenshot('dashboard-masked.png', {
+    fullPage: true,
+    animations: 'disabled',
+    // mask — an array of Locator objects to hide in the screenshot.
+    // The element is replaced with a colored box so it doesn't affect comparison.
+    mask: [
+      page.getByTestId('timestamp')  // mask the dynamic timestamp
+    ],
+    // maskColor — the color of the mask box (default: '#FF00FF' magenta).
+    // Using a neutral color makes the screenshot look cleaner.
+    maskColor: '#94a3b8'
+  });
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Threshold Tuning
+// --------------------------------------------------------------------------
+// Sometimes tiny rendering differences (anti-aliasing, sub-pixel rendering)
+// cause false failures. Thresholds let you allow small differences.
+test('exercise 4: tune comparison thresholds', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Option A: maxDiffPixelRatio — allow a percentage of pixels to differ.
+  // 0.01 = 1% of pixels can be different and the test still passes.
+  // This is the most common threshold setting.
+  await expect(page).toHaveScreenshot('dashboard-threshold-ratio.png', {
+    fullPage: true,
+    animations: 'disabled',
+    mask: [page.getByTestId('timestamp')],
+    maxDiffPixelRatio: 0.01  // allow 1% pixel difference
+  });
+
+  // Option B: maxDiffPixels — allow a fixed number of pixels to differ.
+  // Useful when you know the image size and want absolute control.
+  await expect(page).toHaveScreenshot('dashboard-threshold-pixels.png', {
+    fullPage: true,
+    animations: 'disabled',
+    mask: [page.getByTestId('timestamp')],
+    maxDiffPixels: 100  // allow up to 100 pixels to differ
+  });
+
+  // Option C: threshold — per-pixel color sensitivity (0.0 to 1.0).
+  // 0.2 means each pixel's color can differ by up to 20% and still match.
+  // Higher values = more tolerant. Default is 0.2.
+  await expect(page).toHaveScreenshot('dashboard-threshold-color.png', {
+    fullPage: true,
+    animations: 'disabled',
+    mask: [page.getByTestId('timestamp')],
+    threshold: 0.3  // allow 30% color difference per pixel
+  });
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Different Viewport Sizes
+// --------------------------------------------------------------------------
+// Test the same page at different viewport sizes to catch responsive layout
+// regressions. Each viewport gets its own baseline screenshot.
+test('exercise 5: visual test at mobile viewport', async ({ page }) => {
+  // setViewportSize(width, height) changes the browser window dimensions.
+  // This simulates viewing the page on a mobile device.
+  await page.setViewportSize({ width: 375, height: 812 });
+
+  await page.goto(PLAYGROUND);
+
+  await expect(page).toHaveScreenshot('dashboard-mobile.png', {
+    fullPage: true,
+    animations: 'disabled',
+    mask: [page.getByTestId('timestamp')]
+  });
+});
+
+test('exercise 5b: visual test at tablet viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 768, height: 1024 });
+
+  await page.goto(PLAYGROUND);
+
+  await expect(page).toHaveScreenshot('dashboard-tablet.png', {
+    fullPage: true,
+    animations: 'disabled',
+    mask: [page.getByTestId('timestamp')]
+  });
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Screenshot After Interaction
+// --------------------------------------------------------------------------
+// Capture the visual state AFTER a user interaction (hover, click, etc.).
+// This tests that hover states, focus rings, and click effects look correct.
+test('exercise 6: screenshot after hover interaction', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // hover() moves the mouse over the element, triggering :hover CSS styles.
+  // We capture the screenshot while the hover state is active.
+  await page.getByTestId('btn-export').hover();
+
+  // Capture just the action buttons area while the hover effect is visible.
+  const actionButtons = page.getByTestId('action-buttons');
+
+  await expect(actionButtons).toHaveScreenshot('buttons-hover-state.png', {
+    animations: 'disabled'
+  });
+});
+8:T1eda,// =============================================================================
+// Kata 38: Visual Regression Testing — Cypress Tests
+// =============================================================================
+//
+// Cypress does NOT have built-in visual comparison like Playwright.
+// cy.screenshot() captures images, but does NOT compare them automatically.
+//
+// For automated visual comparison in Cypress, you need a plugin:
+//   - cypress-image-snapshot (open source, local comparison)
+//   - @percy/cypress (Percy cloud service by BrowserStack)
+//
+// These exercises use cy.screenshot() for capturing images and demonstrate
+// the patterns you would use with a comparison plugin.
+//
+// PLUGIN SETUP (cypress-image-snapshot):
+//   1. npm install --save-dev @simonsmith/cypress-image-snapshot
+//   2. In cypress/support/commands.ts:
+//      import { addMatchImageSnapshotCommand } from '@simonsmith/cypress-image-snapshot/command';
+//      addMatchImageSnapshotCommand();
+//   3. In cypress.config.ts:
+//      import { addMatchImageSnapshotPlugin } from '@simonsmith/cypress-image-snapshot/plugin';
+//      setupNodeEvents(on, config) { addMatchImageSnapshotPlugin(on); }
+// =============================================================================
+
+const PLAYGROUND = '/phase-07-advanced-patterns/38-visual-regression/playground/';
+
+describe('Kata 38: Visual Regression Testing', () => {
+
+  beforeEach(() => {
+    // cy.visit() navigates to the playground before each test.
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Full-Page Screenshot Capture
+  // --------------------------------------------------------------------------
+  // cy.screenshot() captures the visible viewport and saves it to
+  // cypress/screenshots/ with the name you provide.
+  it('exercise 1: capture full page screenshot', () => {
+    // cy.screenshot(name, options?) captures the current viewport.
+    //
+    // Parameters:
+    //   name (string) — the filename for the screenshot (without extension)
+    //
+    // Options:
+    //   capture: 'fullPage' — captures the entire scrollable page
+    //   capture: 'viewport' — captures only the visible viewport (default)
+    //   capture: 'runner'   — captures the entire Cypress test runner
+    //   overwrite: true     — overwrite existing screenshot with same name
+    //
+    // Screenshots are saved to: cypress/screenshots/<spec-name>/<name>.png
+    cy.screenshot('dashboard-full', {
+      capture: 'fullPage',   // capture the entire scrollable page
+      overwrite: true        // overwrite if a previous screenshot exists
+    });
+
+    // With cypress-image-snapshot plugin, you would use:
+    // cy.matchImageSnapshot('dashboard-full', {
+    //   failureThreshold: 0.01,
+    //   failureThresholdType: 'percent'
+    // });
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Element-Level Screenshot
+  // --------------------------------------------------------------------------
+  // You can capture a screenshot of a SPECIFIC element, not the full page.
+  it('exercise 2: capture a single component screenshot', () => {
+    // cy.get(selector).screenshot(name) captures just the matched element.
+    // The screenshot is cropped to the element's bounding box.
+    cy.get('[data-testid="dashboard-cards"]').screenshot('dashboard-cards', {
+      overwrite: true
+    });
+
+    // Capture just the table.
+    cy.get('[data-testid="applicant-table-section"]').screenshot('applicant-table', {
+      overwrite: true
+    });
+
+    // With cypress-image-snapshot:
+    // cy.get('[data-testid="dashboard-cards"]').matchImageSnapshot('dashboard-cards');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Hide Dynamic Content Before Capture
+  // --------------------------------------------------------------------------
+  // The timestamp changes every second. We hide it to get stable screenshots.
+  it('exercise 3: hide dynamic content before screenshot', () => {
+    // cy.get(selector).invoke(method, ...args) calls a jQuery method.
+    // .invoke('css', 'visibility', 'hidden') sets CSS visibility to hidden.
+    // This hides the element while preserving its space in the layout
+    // (unlike display:none which collapses the space).
+    cy.get('[data-testid="timestamp"]')
+      .invoke('css', 'visibility', 'hidden');
+
+    // Now capture — the timestamp area is blank but the layout is unchanged.
+    cy.screenshot('dashboard-masked', {
+      capture: 'fullPage',
+      overwrite: true
+    });
+
+    // Alternative: replace the text with a static value.
+    // cy.get('[data-testid="timestamp-value"]')
+    //   .invoke('text', 'Jan 1, 2025, 12:00 PM');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Freeze Time for Consistent Screenshots
+  // --------------------------------------------------------------------------
+  // cy.clock() freezes JavaScript's Date object to a fixed point in time.
+  it('exercise 4: freeze time for stable timestamps', () => {
+    // cy.clock(timestamp) replaces the browser's Date, setTimeout, etc.
+    // with a controllable clock. The timestamp is milliseconds since epoch.
+    //
+    // new Date('2025-01-15T10:00:00').getTime() converts to milliseconds.
+    // After cy.clock(), any `new Date()` in the page returns this fixed time.
+    cy.clock(new Date('2025-01-15T10:00:00').getTime());
+
+    // Re-visit so the page script runs with the frozen clock.
+    cy.visit(PLAYGROUND);
+
+    // The timestamp now shows "Jan 15, 2025, 10:00 AM" every time.
+    cy.get('[data-testid="timestamp-value"]')
+      .should('contain.text', '2025');
+
+    cy.screenshot('dashboard-frozen-time', {
+      capture: 'fullPage',
+      overwrite: true
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Responsive Viewport Screenshot
+  // --------------------------------------------------------------------------
+  // Test the same page at different viewport sizes.
+  it('exercise 5: capture at mobile viewport size', () => {
+    // cy.viewport(width, height) sets the browser viewport dimensions.
+    // This simulates a mobile device screen size.
+    cy.viewport(375, 812);
+
+    // Re-visit to trigger responsive layout recalculation.
+    cy.visit(PLAYGROUND);
+
+    // Hide the timestamp for consistency.
+    cy.get('[data-testid="timestamp"]')
+      .invoke('css', 'visibility', 'hidden');
+
+    cy.screenshot('dashboard-mobile', {
+      capture: 'fullPage',
+      overwrite: true
+    });
+  });
+
+  it('exercise 5b: capture at tablet viewport size', () => {
+    cy.viewport(768, 1024);
+    cy.visit(PLAYGROUND);
+
+    cy.get('[data-testid="timestamp"]')
+      .invoke('css', 'visibility', 'hidden');
+
+    cy.screenshot('dashboard-tablet', {
+      capture: 'fullPage',
+      overwrite: true
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Screenshot After Interaction
+  // --------------------------------------------------------------------------
+  // Capture the UI state after a user interaction (hover, click, focus).
+  it('exercise 6: capture screenshot after button click', () => {
+    // cy.get(selector).trigger('mouseover') simulates a mouse hover.
+    // This triggers any :hover CSS styles on the element.
+    cy.get('[data-testid="btn-export"]').trigger('mouseover');
+
+    // Capture just the action buttons area.
+    cy.get('[data-testid="action-buttons"]').screenshot('buttons-hover-state', {
+      overwrite: true
+    });
+
+    // Capture after clicking the filter button.
+    cy.get('[data-testid="btn-filter"]').click();
+
+    cy.get('[data-testid="action-buttons"]').screenshot('buttons-after-click', {
+      overwrite: true
+    });
+  });
+});
+9:T13a5,# Kata 40: Test Data and Fixtures
+
+## What You Will Learn
+
+- How to manage test data using JSON fixture files
+- How to use Playwright's `test.each` for parameterized/data-driven tests
+- How to use Cypress's `cy.fixture()` to load test data
+- How to generate dynamic test data for edge cases
+- How to organize fixtures for large test suites
+- The difference between static fixtures and dynamic data factories
+
+## Prerequisites
+
+- Completed Katas 01-39
+- Understanding of JSON format
+- Familiarity with the KYC form from Kata 26
+
+## Concepts Explained
+
+### Why Manage Test Data Separately?
+
+```
+Hard-coded test data in tests is a common anti-pattern:
+
+  // BAD — data is scattered across tests
+  await page.fill('#name', 'Aisha Patel');
+  await page.fill('#email', 'aisha@example.com');
+
+Problems:
+  1. Same data repeated in multiple tests
+  2. Hard to test with many different data sets
+  3. No single source of truth for test data
+  4. Difficult to add new test cases
+
+Better approach: store data in FIXTURE FILES and load them in tests.
+
+  // GOOD — data comes from a fixture file
+  const applicants = require('./fixtures/applicants.json');
+  for (const applicant of applicants) {
+    test(`submit ${applicant.name}`, async ({ page }) => {
+      await page.fill('#name', applicant.name);
+    });
+  }
+```
+
+### Fixture Files
+
+```
+A fixture is a JSON file containing test data. It lives in a fixtures/
+directory alongside your test files.
+
+Example: fixtures/applicants.json
+[
+  {
+    "name": "Aisha Patel",
+    "email": "aisha@example.com",
+    "country": "IN",
+    "docType": "passport",
+    "expectedRisk": "High"
+  },
+  {
+    "name": "Carlos Rivera",
+    "email": "carlos@example.com",
+    "country": "US",
+    "docType": "drivers-license",
+    "expectedRisk": "Low"
+  }
+]
+
+Tests load this file and iterate over the array. Adding a new test case
+means adding a new object to the JSON — no code changes needed.
+```
+
+### Playwright: Parameterized Tests
+
+```typescript
+// PLAYWRIGHT — use a for...of loop or test array to generate tests.
+//
+// Playwright does NOT have test.each like Jest. Instead, you use
+// a standard JavaScript loop to generate test cases dynamically.
+
+import applicants from './fixtures/applicants.json';
+
+// Generate one test per applicant.
+for (const applicant of applicants) {
+  test(`submit KYC for ${applicant.name}`, async ({ page }) => {
+    // Each iteration creates a separate test with its own data.
+    await page.fill('#name', applicant.name);
+  });
+}
+```
+
+### Cypress: cy.fixture()
+
+```typescript
+// CYPRESS — cy.fixture(filePath) loads a JSON file from cypress/fixtures/.
+//
+// Signature:
+//   cy.fixture(filePath: string, encoding?: string): Chainable<any>
+//
+// The file path is relative to the cypress/fixtures/ directory.
+// cy.fixture() is asynchronous — use .then() to access the data.
+
+cy.fixture('applicants.json').then((applicants) => {
+  // applicants is the parsed JSON array.
+  cy.get('#name').type(applicants[0].name);
+});
+
+// You can also use fixtures in beforeEach with an alias:
+beforeEach(() => {
+  cy.fixture('applicants.json').as('applicants');
+});
+
+it('test with fixture', function() {
+  // Access via this.applicants (note: arrow functions don't work with `this`)
+  cy.get('#name').type(this.applicants[0].name);
+});
+```
+
+### Dynamic Data Factories
+
+```
+Sometimes you need data that is unique per test run (e.g., unique emails).
+A data factory generates fresh data:
+
+function createApplicant(overrides = {}) {
+  return {
+    name: `Test User ${Date.now()}`,
+    email: `test-${Date.now()}@example.com`,
+    country: 'US',
+    docType: 'passport',
+    ...overrides   // merge any custom fields
+  };
+}
+
+// Usage:
+const applicant = createApplicant({ name: 'Custom Name' });
+```
+
+## Playground
+
+This kata references the KYC form from Kata 26 at:
+`/phase-05-fintech-domain/26-kyc-onboarding-flow/playground/`
+
+## Exercises
+
+### Exercise 1: Load and Use a Fixture File
+Load applicants.json and use the first applicant's data in a test.
+
+### Exercise 2: Parameterized Tests (Loop Over Data)
+Generate one test per applicant from the fixture file.
+
+### Exercise 3: Cypress cy.fixture() with Aliases
+Use cy.fixture().as() to share data across tests in a describe block.
+
+### Exercise 4: Dynamic Data Factory
+Create a factory function that generates unique test data per run.
+
+### Exercise 5: Fixture Organization
+Use multiple fixture files for different scenarios (valid, invalid, edge cases).
+
+### Exercise 6: Data-Driven Assertions
+Use fixture data to drive not just form input but also expected outcomes.
+
+## Key Takeaways
+
+```
+- Store test data in JSON fixture files, not hard-coded in tests
+- Playwright: import JSON directly or use fs.readFileSync
+- Cypress: use cy.fixture() to load from cypress/fixtures/
+- Use loops to generate one test per data set (parameterized tests)
+- Data factories generate unique data for tests that need it
+- Organize fixtures by scenario: valid, invalid, edge-cases
+- Adding a test case = adding a JSON object, not writing new code
+```
+a:T2993,import { test, expect } from '@playwright/test';
+import applicants from './fixtures/applicants.json';
+
+// =============================================================================
+// Kata 40: Test Data and Fixtures — Playwright Tests
+// =============================================================================
+// These tests demonstrate how to use JSON fixture files for data-driven testing.
+//
+// The applicants.json file contains an array of applicant objects.
+// Each object has: name, email, country, docType, expectedRef, scenario.
+//
+// By loading data from a file, you can add new test cases by editing JSON
+// instead of writing new test code.
+// =============================================================================
+
+// Kata 40 ships its own flat KYC form playground, purpose-built for
+// data-driven / fixture-driven testing. The form posts to /api/kyc/submit
+// which every test intercepts with page.route().
+const PLAYGROUND = '/phase-07-advanced-patterns/40-test-data-and-fixtures/playground/';
+
+// Define the TypeScript type for an applicant object.
+// This gives us autocomplete and type checking when using the fixture data.
+interface Applicant {
+  name: string;
+  email: string;
+  country: string;
+  docType: string;
+  expectedRef: string;
+  scenario: string;
+}
+
+// Cast the imported JSON to our typed array.
+const typedApplicants: Applicant[] = applicants;
+
+// --------------------------------------------------------------------------
+// Exercise 1: Load and Use a Single Fixture Record
+// --------------------------------------------------------------------------
+// Load the first applicant from the fixture and use it in a test.
+test('exercise 1: use fixture data for a single applicant', async ({ page }) => {
+  // Access the first applicant from the fixture array.
+  // applicants[0] is the first object in the JSON array.
+  const applicant = typedApplicants[0];
+
+  // Intercept the POST request and return a mock response.
+  // We use the fixture's expectedRef field to make the mock dynamic.
+  await page.route('/api/kyc/submit', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ referenceId: applicant.expectedRef })
+    });
+  });
+
+  await page.goto(PLAYGROUND);
+
+  // Fill the form using data from the fixture.
+  // The data is NOT hard-coded — it comes from applicants.json.
+  await page.getByTestId('full-name-input').fill(applicant.name);
+  await page.getByTestId('email-input').fill(applicant.email);
+  await page.getByTestId('country-select').selectOption(applicant.country);
+  await page.getByTestId('doc-type-select').selectOption(applicant.docType);
+
+  await page.getByTestId('submit-btn').click();
+
+  // Assert using the expected reference from the fixture.
+  await expect(page.getByTestId('submit-status')).toContainText(applicant.expectedRef);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Parameterized Tests — Loop Over All Applicants
+// --------------------------------------------------------------------------
+// Generate one test per applicant by looping over the fixture array.
+// Each applicant gets its own independent test.
+//
+// Playwright does not have test.each like Jest. Instead, use a for...of loop
+// at the module level. Playwright discovers these tests at parse time.
+for (const applicant of typedApplicants) {
+  test(`exercise 2: submit KYC for ${applicant.name} (${applicant.scenario})`, async ({ page }) => {
+    // Each iteration creates a SEPARATE test with its own browser context.
+    // If one fails, the others still run.
+    await page.route('/api/kyc/submit', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ referenceId: applicant.expectedRef })
+      });
+    });
+
+    await page.goto(PLAYGROUND);
+
+    await page.getByTestId('full-name-input').fill(applicant.name);
+    await page.getByTestId('email-input').fill(applicant.email);
+    await page.getByTestId('country-select').selectOption(applicant.country);
+    await page.getByTestId('doc-type-select').selectOption(applicant.docType);
+
+    await page.getByTestId('submit-btn').click();
+
+    await expect(page.getByTestId('submit-status')).toContainText(applicant.expectedRef);
+    await expect(page.getByTestId('submit-status')).toHaveClass(/status-success/);
+  });
+}
+
+// --------------------------------------------------------------------------
+// Exercise 3: Dynamic Data Factory
+// --------------------------------------------------------------------------
+// Sometimes you need UNIQUE data per test run — e.g., unique emails
+// to avoid conflicts. A factory function generates fresh data.
+
+/**
+ * createApplicant — a factory function that generates test data.
+ *
+ * @param overrides — fields to customize (merged with defaults)
+ * @returns a complete applicant object with unique email
+ *
+ * The spread operator (...overrides) merges custom fields with defaults.
+ * If overrides.name is provided, it replaces the default name.
+ */
+function createApplicant(overrides: Partial<Applicant> = {}): Applicant {
+  // Date.now() returns milliseconds since epoch — unique per call.
+  const timestamp = Date.now();
+  return {
+    name: `Test User ${timestamp}`,
+    email: `test-${timestamp}@example.com`,
+    country: 'US',
+    docType: 'passport',
+    expectedRef: `KYC-DYN-${timestamp}`,
+    scenario: 'dynamic',
+    ...overrides   // any provided fields override the defaults
+  };
+}
+
+test('exercise 3: use dynamic data factory', async ({ page }) => {
+  // Create a unique applicant for this test run.
+  const applicant = createApplicant({ name: 'Dynamic Test User', country: 'IN' });
+
+  await page.route('/api/kyc/submit', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ referenceId: applicant.expectedRef })
+    });
+  });
+
+  await page.goto(PLAYGROUND);
+
+  await page.getByTestId('full-name-input').fill(applicant.name);
+  await page.getByTestId('email-input').fill(applicant.email);
+  await page.getByTestId('country-select').selectOption(applicant.country);
+  await page.getByTestId('doc-type-select').selectOption(applicant.docType);
+
+  await page.getByTestId('submit-btn').click();
+
+  await expect(page.getByTestId('submit-status')).toContainText(applicant.expectedRef);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Fixture-Driven Assertions
+// --------------------------------------------------------------------------
+// The fixture file can include EXPECTED OUTCOMES, not just inputs.
+// This makes the test fully data-driven — both input AND expected output
+// come from the fixture.
+test('exercise 4: data-driven assertions from fixture', async ({ page }) => {
+  // Use the third applicant from the fixture.
+  const applicant = typedApplicants[2];
+
+  await page.route('/api/kyc/submit', async (route) => {
+    // The mock response uses the fixture's expectedRef field.
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ referenceId: applicant.expectedRef })
+    });
+  });
+
+  await page.goto(PLAYGROUND);
+
+  await page.getByTestId('full-name-input').fill(applicant.name);
+  await page.getByTestId('email-input').fill(applicant.email);
+  await page.getByTestId('country-select').selectOption(applicant.country);
+  await page.getByTestId('doc-type-select').selectOption(applicant.docType);
+
+  await page.getByTestId('submit-btn').click();
+
+  // Both the INPUT and the EXPECTED OUTPUT come from the fixture.
+  // If you want a new test case, add a new object to applicants.json.
+  await expect(page.getByTestId('submit-status')).toContainText(applicant.expectedRef);
+  await expect(page.getByTestId('submit-status')).toHaveClass(/status-success/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Subset Filtering
+// --------------------------------------------------------------------------
+// Filter the fixture data to test only specific scenarios.
+const usApplicants = typedApplicants.filter(a => a.country === 'US');
+
+for (const applicant of usApplicants) {
+  test(`exercise 5: US-only test for ${applicant.name}`, async ({ page }) => {
+    await page.route('/api/kyc/submit', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ referenceId: applicant.expectedRef })
+      });
+    });
+
+    await page.goto(PLAYGROUND);
+
+    await page.getByTestId('full-name-input').fill(applicant.name);
+    await page.getByTestId('email-input').fill(applicant.email);
+    await page.getByTestId('country-select').selectOption(applicant.country);
+    await page.getByTestId('doc-type-select').selectOption(applicant.docType);
+
+    await page.getByTestId('submit-btn').click();
+
+    // Verify the country is US in the fixture (sanity check).
+    expect(applicant.country).toBe('US');
+    await expect(page.getByTestId('submit-status')).toContainText(applicant.expectedRef);
+  });
+}
+
+// --------------------------------------------------------------------------
+// Exercise 6: Multiple Fixture Files
+// --------------------------------------------------------------------------
+// In real projects, you might have separate fixtures for different scenarios:
+//   fixtures/valid-applicants.json
+//   fixtures/invalid-applicants.json
+//   fixtures/edge-case-applicants.json
+//
+// This test demonstrates using fixture data for error scenarios.
+test('exercise 6: test with error scenario data', async ({ page }) => {
+  // Simulate an invalid applicant by creating one with a factory.
+  const invalidApplicant = createApplicant({
+    name: '',           // empty name — should cause a validation error
+    email: 'invalid',   // invalid email format
+    scenario: 'invalid-data'
+  });
+
+  // In a real app, the server would reject invalid data.
+  await page.route('/api/kyc/submit', async (route) => {
+    await route.fulfill({
+      status: 400,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: 'Validation failed: name is required' })
+    });
+  });
+
+  await page.goto(PLAYGROUND);
+
+  await page.getByTestId('full-name-input').fill(invalidApplicant.name || ' ');
+  await page.getByTestId('email-input').fill(invalidApplicant.email);
+
+  await page.getByTestId('submit-btn').click();
+
+  // Verify the error response is displayed.
+  await expect(page.getByTestId('submit-status')).toHaveClass(/status-error/);
+});
+b:T24c4,// =============================================================================
+// Kata 40: Test Data and Fixtures — Cypress Tests
+// =============================================================================
+// These tests demonstrate Cypress's cy.fixture() for loading test data
+// and data-driven testing patterns.
+//
+// cy.fixture(path) loads a JSON file from the cypress/fixtures/ directory.
+// The path is relative to cypress/fixtures/.
+// =============================================================================
+
+const PLAYGROUND = '/phase-07-advanced-patterns/40-test-data-and-fixtures/playground/';
+
+// Define the applicant type for clarity.
+interface Applicant {
+  name: string;
+  email: string;
+  country: string;
+  docType: string;
+  expectedRef: string;
+  scenario: string;
+}
+
+describe('Kata 40: Test Data and Fixtures', () => {
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Load Fixture with cy.fixture()
+  // --------------------------------------------------------------------------
+  // cy.fixture() loads a JSON file and makes it available in the test.
+  it('exercise 1: load fixture and use first applicant', () => {
+    // cy.fixture(filePath) loads a JSON file from cypress/fixtures/.
+    // The path 'applicants.json' resolves to cypress/fixtures/applicants.json.
+    // .then() receives the parsed JSON data.
+    //
+    // NOTE: The fixture path here is relative to THIS kata's cypress/fixtures/
+    // directory. In a real project, you would configure the fixturesFolder
+    // in cypress.config.ts or use the full path.
+    cy.fixture('applicants.json').then((applicants: Applicant[]) => {
+      const applicant = applicants[0];
+
+      // Set up the mock response BEFORE visiting the page.
+      cy.intercept('POST', '/api/kyc/submit', {
+        statusCode: 200,
+        body: { referenceId: applicant.expectedRef }
+      }).as('submitKyc');
+
+      cy.visit(PLAYGROUND);
+
+      // Fill the form using fixture data.
+      cy.get('[data-testid="full-name-input"]').type(applicant.name);
+      cy.get('[data-testid="email-input"]').type(applicant.email);
+      cy.get('[data-testid="country-select"]').select(applicant.country);
+      cy.get('[data-testid="doc-type-select"]').select(applicant.docType);
+
+      cy.get('[data-testid="submit-btn"]').click();
+      cy.wait('@submitKyc');
+
+      // Assert using the fixture's expected reference.
+      cy.get('[data-testid="submit-status"]')
+        .should('contain.text', applicant.expectedRef)
+        .and('have.class', 'status-success');
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Parameterized Tests with forEach
+  // --------------------------------------------------------------------------
+  // In Cypress, you generate parameterized tests by loading the fixture
+  // OUTSIDE the test and looping with forEach.
+  //
+  // IMPORTANT: cy.fixture() is async and only works inside Cypress commands.
+  // For dynamic test generation, you can import the JSON directly.
+
+  // Import the fixture data directly for test generation.
+  // This works because the file is a static JSON file.
+  const applicants: Applicant[] = require('./fixtures/applicants.json');
+
+  applicants.forEach((applicant) => {
+    it(`exercise 2: submit KYC for ${applicant.name} (${applicant.scenario})`, () => {
+      cy.intercept('POST', '/api/kyc/submit', {
+        statusCode: 200,
+        body: { referenceId: applicant.expectedRef }
+      }).as('submitKyc');
+
+      cy.visit(PLAYGROUND);
+
+      cy.get('[data-testid="full-name-input"]').type(applicant.name);
+      cy.get('[data-testid="email-input"]').type(applicant.email);
+      cy.get('[data-testid="country-select"]').select(applicant.country);
+      cy.get('[data-testid="doc-type-select"]').select(applicant.docType);
+
+      cy.get('[data-testid="submit-btn"]').click();
+      cy.wait('@submitKyc');
+
+      cy.get('[data-testid="submit-status"]')
+        .should('contain.text', applicant.expectedRef)
+        .and('have.class', 'status-success');
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Fixture with Aliases (this.* pattern)
+  // --------------------------------------------------------------------------
+  // cy.fixture().as('alias') makes data available via this.alias.
+  // NOTE: You MUST use function() syntax, NOT arrow functions,
+  // because arrow functions don't have their own `this` context.
+  describe('exercise 3: fixture aliases', function () {
+    // Load the fixture in beforeEach and alias it.
+    beforeEach(function () {
+      // .as('applicantData') stores the fixture data on `this.applicantData`.
+      cy.fixture('applicants.json').as('applicantData');
+    });
+
+    it('should use aliased fixture data', function () {
+      // Access the fixture data via this.applicantData.
+      // This only works with function() — NOT with arrow functions () => {}.
+      const applicant = (this.applicantData as Applicant[])[1];
+
+      cy.intercept('POST', '/api/kyc/submit', {
+        statusCode: 200,
+        body: { referenceId: applicant.expectedRef }
+      }).as('submitKyc');
+
+      cy.visit(PLAYGROUND);
+
+      cy.get('[data-testid="full-name-input"]').type(applicant.name);
+      cy.get('[data-testid="email-input"]').type(applicant.email);
+      cy.get('[data-testid="country-select"]').select(applicant.country);
+
+      cy.get('[data-testid="submit-btn"]').click();
+      cy.wait('@submitKyc');
+
+      cy.get('[data-testid="submit-status"]')
+        .should('contain.text', applicant.expectedRef);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Dynamic Data Factory
+  // --------------------------------------------------------------------------
+  // A factory function creates unique data for each test run.
+  it('exercise 4: use dynamic data factory', () => {
+    /**
+     * createApplicant — generates a unique applicant object.
+     *
+     * @param overrides — custom fields to merge with defaults
+     * @returns a complete Applicant object with a unique timestamp-based email
+     */
+    function createApplicant(overrides: Partial<Applicant> = {}): Applicant {
+      const ts = Date.now();
+      return {
+        name: `Test User ${ts}`,
+        email: `test-${ts}@example.com`,
+        country: 'US',
+        docType: 'passport',
+        expectedRef: `KYC-DYN-${ts}`,
+        scenario: 'dynamic',
+        ...overrides  // spread operator merges overrides on top of defaults
+      };
+    }
+
+    const applicant = createApplicant({ name: 'Dynamic Cypress User' });
+
+    cy.intercept('POST', '/api/kyc/submit', {
+      statusCode: 200,
+      body: { referenceId: applicant.expectedRef }
+    }).as('submitKyc');
+
+    cy.visit(PLAYGROUND);
+
+    cy.get('[data-testid="full-name-input"]').type(applicant.name);
+    cy.get('[data-testid="email-input"]').type(applicant.email);
+    cy.get('[data-testid="country-select"]').select(applicant.country);
+
+    cy.get('[data-testid="submit-btn"]').click();
+    cy.wait('@submitKyc');
+
+    cy.get('[data-testid="submit-status"]')
+      .should('contain.text', applicant.expectedRef);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Filter Fixture Data
+  // --------------------------------------------------------------------------
+  // Run tests only for applicants matching a specific criteria.
+  const usApplicants = applicants.filter((a) => a.country === 'US');
+
+  usApplicants.forEach((applicant) => {
+    it(`exercise 5: US-only test for ${applicant.name}`, () => {
+      cy.intercept('POST', '/api/kyc/submit', {
+        statusCode: 200,
+        body: { referenceId: applicant.expectedRef }
+      }).as('submitKyc');
+
+      cy.visit(PLAYGROUND);
+
+      cy.get('[data-testid="full-name-input"]').type(applicant.name);
+      cy.get('[data-testid="email-input"]').type(applicant.email);
+      cy.get('[data-testid="country-select"]').select(applicant.country);
+      cy.get('[data-testid="doc-type-select"]').select(applicant.docType);
+
+      cy.get('[data-testid="submit-btn"]').click();
+      cy.wait('@submitKyc');
+
+      // Verify country is US (sanity check from fixture data).
+      expect(applicant.country).to.equal('US');
+
+      cy.get('[data-testid="submit-status"]')
+        .should('contain.text', applicant.expectedRef);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Error Scenario with Fixture Data
+  // --------------------------------------------------------------------------
+  // Use fixture data to drive error scenario tests.
+  it('exercise 6: test error scenario with factory data', () => {
+    // Simulate a server rejection for invalid data.
+    cy.intercept('POST', '/api/kyc/submit', {
+      statusCode: 400,
+      body: { error: 'Validation failed: name is required' }
+    }).as('submitKyc');
+
+    cy.visit(PLAYGROUND);
+
+    // Submit with minimal data to trigger an error.
+    cy.get('[data-testid="full-name-input"]').type(' ');
+    cy.get('[data-testid="email-input"]').type('bad-email');
+
+    cy.get('[data-testid="submit-btn"]').click();
+    cy.wait('@submitKyc');
+
+    // Verify the error response is displayed.
+    cy.get('[data-testid="submit-status"]')
+      .should('have.class', 'status-error');
+  });
+});
+c:T9779,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { test, expect } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> '@playwright/test'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> AxeBuilder </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> '@axe-core/playwright'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// =============================================================================</span></span>
+<span class="line"><span style="color:#6A737D">// Kata 39: Accessibility Testing — Playwright Tests</span></span>
+<span class="line"><span style="color:#6A737D">// =============================================================================</span></span>
+<span class="line"><span style="color:#6A737D">// These tests use @axe-core/playwright to scan for accessibility violations.</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// SETUP: npm install --save-dev @axe-core/playwright</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// AxeBuilder is a class that configures and runs axe-core scans.</span></span>
+<span class="line"><span style="color:#6A737D">// It returns a results object with violations, passes, and incomplete checks.</span></span>
+<span class="line"><span style="color:#6A737D">// =============================================================================</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-07-advanced-patterns/39-accessibility-testing/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 1: Full Page a11y Scan</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Run axe-core on the entire page and examine the violations.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: scan entire page for a11y violations'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">  // Navigate to the playground with intentional a11y issues.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // AxeBuilder(page) creates a new scanner attached to the current page.</span></span>
+<span class="line"><span style="color:#6A737D">  // .analyze() runs the scan and returns a results object.</span></span>
+<span class="line"><span style="color:#6A737D">  //</span></span>
+<span class="line"><span style="color:#6A737D">  // Results object shape:</span></span>
+<span class="line"><span style="color:#6A737D">  //   results.violations — array of rules that FAILED (issues found)</span></span>
+<span class="line"><span style="color:#6A737D">  //   results.passes     — array of rules that PASSED</span></span>
+<span class="line"><span style="color:#6A737D">  //   results.incomplete — array of rules that need manual review</span></span>
+<span class="line"><span style="color:#6A737D">  //   results.inapplicable — array of rules that don't apply to this page</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> results</span><span style="color:#F97583"> =</span><span style="color:#F97583"> await</span><span style="color:#F97583"> new</span><span style="color:#B392F0"> AxeBuilder</span><span style="color:#E1E4E8">({ page }).</span><span style="color:#B392F0">analyze</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Log violations for learning purposes.</span></span>
+<span class="line"><span style="color:#6A737D">  // Each violation has: id, impact, description, help, helpUrl, nodes[].</span></span>
+<span class="line"><span style="color:#6A737D">  // eslint-disable-next-line no-console</span></span>
+<span class="line"><span style="color:#E1E4E8">  console.</span><span style="color:#B392F0">log</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Violations found:'</span><span style="color:#E1E4E8">, results.violations.</span><span style="color:#79B8FF">length</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  for</span><span style="color:#E1E4E8"> (</span><span style="color:#F97583">const</span><span style="color:#79B8FF"> violation</span><span style="color:#F97583"> of</span><span style="color:#E1E4E8"> results.violations) {</span></span>
+<span class="line"><span style="color:#6A737D">    // eslint-disable-next-line no-console</span></span>
+<span class="line"><span style="color:#E1E4E8">    console.</span><span style="color:#B392F0">log</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`  [${</span><span style="color:#E1E4E8">violation</span><span style="color:#9ECBFF">.</span><span style="color:#E1E4E8">impact</span><span style="color:#9ECBFF">}] ${</span><span style="color:#E1E4E8">violation</span><span style="color:#9ECBFF">.</span><span style="color:#E1E4E8">id</span><span style="color:#9ECBFF">}: ${</span><span style="color:#E1E4E8">violation</span><span style="color:#9ECBFF">.</span><span style="color:#E1E4E8">help</span><span style="color:#9ECBFF">}`</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // We EXPECT violations because the playground has intentional issues.</span></span>
+<span class="line"><span style="color:#6A737D">  // In a real test, you would assert: expect(results.violations).toHaveLength(0);</span></span>
+<span class="line"><span style="color:#6A737D">  // Here we assert that violations were found (proving the scan works).</span></span>
+<span class="line"><span style="color:#B392F0">  expect</span><span style="color:#E1E4E8">(results.violations.</span><span style="color:#79B8FF">length</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">toBeGreaterThan</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 2: Check Specific Rules Only</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// You can run axe with only specific rules enabled.</span></span>
+<span class="line"><span style="color:#6A737D">// This is useful when fixing issues one at a time.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: scan for label violations only'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // .withRules(['rule-id']) runs ONLY the specified rules.</span></span>
+<span class="line"><span style="color:#6A737D">  // 'label' checks that every form input has an associated &#x3C;label>.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> results</span><span style="color:#F97583"> =</span><span style="color:#F97583"> await</span><span style="color:#F97583"> new</span><span style="color:#B392F0"> AxeBuilder</span><span style="color:#E1E4E8">({ page })</span></span>
+<span class="line"><span style="color:#E1E4E8">    .</span><span style="color:#B392F0">withRules</span><span style="color:#E1E4E8">([</span><span style="color:#9ECBFF">'label'</span><span style="color:#E1E4E8">])  </span><span style="color:#6A737D">// only check the 'label' rule</span></span>
+<span class="line"><span style="color:#E1E4E8">    .</span><span style="color:#B392F0">analyze</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // eslint-disable-next-line no-console</span></span>
+<span class="line"><span style="color:#E1E4E8">  console.</span><span style="color:#B392F0">log</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Label violations:'</span><span style="color:#E1E4E8">, results.violations.</span><span style="color:#79B8FF">length</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // The playground has multiple inputs without labels.</span></span>
+<span class="line"><span style="color:#6A737D">  // Each violation.nodes[] array contains the specific DOM elements.</span></span>
+<span class="line"><span style="color:#F97583">  for</span><span style="color:#E1E4E8"> (</span><span style="color:#F97583">const</span><span style="color:#79B8FF"> violation</span><span style="color:#F97583"> of</span><span style="color:#E1E4E8"> results.violations) {</span></span>
+<span class="line"><span style="color:#6A737D">    // eslint-disable-next-line no-console</span></span>
+<span class="line"><span style="color:#E1E4E8">    console.</span><span style="color:#B392F0">log</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`  Found ${</span><span style="color:#E1E4E8">violation</span><span style="color:#9ECBFF">.</span><span style="color:#E1E4E8">nodes</span><span style="color:#9ECBFF">.</span><span style="color:#79B8FF">length</span><span style="color:#9ECBFF">} elements without labels`</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // We expect the 'label' rule to have violations.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> labelViolation</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> results.violations.</span><span style="color:#B392F0">find</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">v</span><span style="color:#F97583"> =></span><span style="color:#E1E4E8"> v.id </span><span style="color:#F97583">===</span><span style="color:#9ECBFF"> 'label'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#B392F0">  expect</span><span style="color:#E1E4E8">(labelViolation).</span><span style="color:#B392F0">toBeDefined</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 3: Scan a Specific Section</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Instead of scanning the whole page, scan just one section.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: scan only the form section'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // .include(selector) limits the scan to elements matching the CSS selector.</span></span>
+<span class="line"><span style="color:#6A737D">  // This is useful when you want to focus on one component at a time.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> results</span><span style="color:#F97583"> =</span><span style="color:#F97583"> await</span><span style="color:#F97583"> new</span><span style="color:#B392F0"> AxeBuilder</span><span style="color:#E1E4E8">({ page })</span></span>
+<span class="line"><span style="color:#E1E4E8">    .</span><span style="color:#B392F0">include</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="kyc-form-section"]'</span><span style="color:#E1E4E8">)  </span><span style="color:#6A737D">// scan only the form</span></span>
+<span class="line"><span style="color:#E1E4E8">    .</span><span style="color:#B392F0">analyze</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // eslint-disable-next-line no-console</span></span>
+<span class="line"><span style="color:#E1E4E8">  console.</span><span style="color:#B392F0">log</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Form section violations:'</span><span style="color:#E1E4E8">, results.violations.</span><span style="color:#79B8FF">length</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  for</span><span style="color:#E1E4E8"> (</span><span style="color:#F97583">const</span><span style="color:#79B8FF"> violation</span><span style="color:#F97583"> of</span><span style="color:#E1E4E8"> results.violations) {</span></span>
+<span class="line"><span style="color:#6A737D">    // eslint-disable-next-line no-console</span></span>
+<span class="line"><span style="color:#E1E4E8">    console.</span><span style="color:#B392F0">log</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`  [${</span><span style="color:#E1E4E8">violation</span><span style="color:#9ECBFF">.</span><span style="color:#E1E4E8">impact</span><span style="color:#9ECBFF">}] ${</span><span style="color:#E1E4E8">violation</span><span style="color:#9ECBFF">.</span><span style="color:#E1E4E8">id</span><span style="color:#9ECBFF">}: ${</span><span style="color:#E1E4E8">violation</span><span style="color:#9ECBFF">.</span><span style="color:#E1E4E8">help</span><span style="color:#9ECBFF">}`</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // The form section should have violations (missing labels, contrast).</span></span>
+<span class="line"><span style="color:#B392F0">  expect</span><span style="color:#E1E4E8">(results.violations.</span><span style="color:#79B8FF">length</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">toBeGreaterThan</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 4: Check for Missing Image Alt Text</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// The 'image-alt' rule checks that all &#x3C;img> elements have alt attributes.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: check image alt text'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> results</span><span style="color:#F97583"> =</span><span style="color:#F97583"> await</span><span style="color:#F97583"> new</span><span style="color:#B392F0"> AxeBuilder</span><span style="color:#E1E4E8">({ page })</span></span>
+<span class="line"><span style="color:#E1E4E8">    .</span><span style="color:#B392F0">withRules</span><span style="color:#E1E4E8">([</span><span style="color:#9ECBFF">'image-alt'</span><span style="color:#E1E4E8">])  </span><span style="color:#6A737D">// only check image alt text</span></span>
+<span class="line"><span style="color:#E1E4E8">    .</span><span style="color:#B392F0">analyze</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // eslint-disable-next-line no-console</span></span>
+<span class="line"><span style="color:#E1E4E8">  console.</span><span style="color:#B392F0">log</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Image alt violations:'</span><span style="color:#E1E4E8">, results.violations.</span><span style="color:#79B8FF">length</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // The playground has an &#x3C;img> without alt — this should be a violation.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> imageAltViolation</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> results.violations.</span><span style="color:#B392F0">find</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">v</span><span style="color:#F97583"> =></span><span style="color:#E1E4E8"> v.id </span><span style="color:#F97583">===</span><span style="color:#9ECBFF"> 'image-alt'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#B392F0">  expect</span><span style="color:#E1E4E8">(imageAltViolation).</span><span style="color:#B392F0">toBeDefined</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Log which elements are missing alt text.</span></span>
+<span class="line"><span style="color:#F97583">  if</span><span style="color:#E1E4E8"> (imageAltViolation) {</span></span>
+<span class="line"><span style="color:#F97583">    for</span><span style="color:#E1E4E8"> (</span><span style="color:#F97583">const</span><span style="color:#79B8FF"> node</span><span style="color:#F97583"> of</span><span style="color:#E1E4E8"> imageAltViolation.nodes) {</span></span>
+<span class="line"><span style="color:#6A737D">      // node.html contains the HTML of the violating element.</span></span>
+<span class="line"><span style="color:#6A737D">      // eslint-disable-next-line no-console</span></span>
+<span class="line"><span style="color:#E1E4E8">      console.</span><span style="color:#B392F0">log</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'  Missing alt on:'</span><span style="color:#E1E4E8">, node.html.</span><span style="color:#B392F0">substring</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">80</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">+</span><span style="color:#9ECBFF"> '...'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#E1E4E8">  }</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 5: Check Color Contrast</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// The 'color-contrast' rule checks that text meets WCAG contrast ratios.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: check color contrast'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> results</span><span style="color:#F97583"> =</span><span style="color:#F97583"> await</span><span style="color:#F97583"> new</span><span style="color:#B392F0"> AxeBuilder</span><span style="color:#E1E4E8">({ page })</span></span>
+<span class="line"><span style="color:#E1E4E8">    .</span><span style="color:#B392F0">withRules</span><span style="color:#E1E4E8">([</span><span style="color:#9ECBFF">'color-contrast'</span><span style="color:#E1E4E8">])</span></span>
+<span class="line"><span style="color:#E1E4E8">    .</span><span style="color:#B392F0">analyze</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // eslint-disable-next-line no-console</span></span>
+<span class="line"><span style="color:#E1E4E8">  console.</span><span style="color:#B392F0">log</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Contrast violations:'</span><span style="color:#E1E4E8">, results.violations.</span><span style="color:#79B8FF">length</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // The .low-contrast text in the playground has insufficient contrast.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> contrastViolation</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> results.violations.</span><span style="color:#B392F0">find</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">v</span><span style="color:#F97583"> =></span><span style="color:#E1E4E8"> v.id </span><span style="color:#F97583">===</span><span style="color:#9ECBFF"> 'color-contrast'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  if</span><span style="color:#E1E4E8"> (contrastViolation) {</span></span>
+<span class="line"><span style="color:#F97583">    for</span><span style="color:#E1E4E8"> (</span><span style="color:#F97583">const</span><span style="color:#79B8FF"> node</span><span style="color:#F97583"> of</span><span style="color:#E1E4E8"> contrastViolation.nodes) {</span></span>
+<span class="line"><span style="color:#6A737D">      // node.any[0].message contains the contrast ratio details.</span></span>
+<span class="line"><span style="color:#6A737D">      // eslint-disable-next-line no-console</span></span>
+<span class="line"><span style="color:#E1E4E8">      console.</span><span style="color:#B392F0">log</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'  Contrast issue:'</span><span style="color:#E1E4E8">, node.any?.[</span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">]?.message </span><span style="color:#F97583">||</span><span style="color:#9ECBFF"> 'see details'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#E1E4E8">  }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // We expect a contrast violation from the .low-contrast text.</span></span>
+<span class="line"><span style="color:#B392F0">  expect</span><span style="color:#E1E4E8">(contrastViolation).</span><span style="color:#B392F0">toBeDefined</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 6: Fix Violations and Re-Scan</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Inject fixes into the DOM and verify axe-core passes.</span></span>
+<span class="line"><span style="color:#6A737D">// This simulates the fix-verify cycle developers go through.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: fix label violations and re-scan'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // STEP 1: Verify violations exist BEFORE the fix.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> beforeResults</span><span style="color:#F97583"> =</span><span style="color:#F97583"> await</span><span style="color:#F97583"> new</span><span style="color:#B392F0"> AxeBuilder</span><span style="color:#E1E4E8">({ page })</span></span>
+<span class="line"><span style="color:#E1E4E8">    .</span><span style="color:#B392F0">withRules</span><span style="color:#E1E4E8">([</span><span style="color:#9ECBFF">'label'</span><span style="color:#E1E4E8">])</span></span>
+<span class="line"><span style="color:#E1E4E8">    .</span><span style="color:#B392F0">include</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="kyc-form-section"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">    .</span><span style="color:#B392F0">analyze</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">  expect</span><span style="color:#E1E4E8">(beforeResults.violations.</span><span style="color:#79B8FF">length</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">toBeGreaterThan</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#6A737D">  // eslint-disable-next-line no-console</span></span>
+<span class="line"><span style="color:#E1E4E8">  console.</span><span style="color:#B392F0">log</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Before fix — label violations:'</span><span style="color:#E1E4E8">, beforeResults.violations.</span><span style="color:#79B8FF">length</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // STEP 2: Fix the violations by adding labels.</span></span>
+<span class="line"><span style="color:#6A737D">  // page.evaluate() runs JavaScript in the browser context.</span></span>
+<span class="line"><span style="color:#6A737D">  // We add &#x3C;label> elements before each input that is missing one.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">evaluate</span><span style="color:#E1E4E8">(() </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Define the fixes: each entry maps an input ID to its label text.</span></span>
+<span class="line"><span style="color:#F97583">    const</span><span style="color:#79B8FF"> fixes</span><span style="color:#F97583">:</span><span style="color:#B392F0"> Array</span><span style="color:#E1E4E8">&#x3C;{ </span><span style="color:#FFAB70">inputId</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> string</span><span style="color:#E1E4E8">; </span><span style="color:#FFAB70">labelText</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> string</span><span style="color:#E1E4E8"> }> </span><span style="color:#F97583">=</span><span style="color:#E1E4E8"> [</span></span>
+<span class="line"><span style="color:#E1E4E8">      { inputId: </span><span style="color:#9ECBFF">'full-name'</span><span style="color:#E1E4E8">, labelText: </span><span style="color:#9ECBFF">'Full Name'</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">      { inputId: </span><span style="color:#9ECBFF">'email'</span><span style="color:#E1E4E8">, labelText: </span><span style="color:#9ECBFF">'Email Address'</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">      { inputId: </span><span style="color:#9ECBFF">'phone'</span><span style="color:#E1E4E8">, labelText: </span><span style="color:#9ECBFF">'Phone Number'</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">      { inputId: </span><span style="color:#9ECBFF">'country'</span><span style="color:#E1E4E8">, labelText: </span><span style="color:#9ECBFF">'Country'</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">      { inputId: </span><span style="color:#9ECBFF">'notes'</span><span style="color:#E1E4E8">, labelText: </span><span style="color:#9ECBFF">'Additional Notes'</span><span style="color:#E1E4E8"> }</span></span>
+<span class="line"><span style="color:#E1E4E8">    ];</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">    for</span><span style="color:#E1E4E8"> (</span><span style="color:#F97583">const</span><span style="color:#79B8FF"> fix</span><span style="color:#F97583"> of</span><span style="color:#E1E4E8"> fixes) {</span></span>
+<span class="line"><span style="color:#F97583">      const</span><span style="color:#79B8FF"> input</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> document.</span><span style="color:#B392F0">getElementById</span><span style="color:#E1E4E8">(fix.inputId);</span></span>
+<span class="line"><span style="color:#F97583">      if</span><span style="color:#E1E4E8"> (input </span><span style="color:#F97583">&#x26;&#x26;</span><span style="color:#F97583"> !</span><span style="color:#E1E4E8">document.</span><span style="color:#B392F0">querySelector</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`label[for="${</span><span style="color:#E1E4E8">fix</span><span style="color:#9ECBFF">.</span><span style="color:#E1E4E8">inputId</span><span style="color:#9ECBFF">}"]`</span><span style="color:#E1E4E8">)) {</span></span>
+<span class="line"><span style="color:#6A737D">        // Create a &#x3C;label> element.</span></span>
+<span class="line"><span style="color:#F97583">        const</span><span style="color:#79B8FF"> label</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> document.</span><span style="color:#B392F0">createElement</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'label'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#6A737D">        // 'for' connects the label to the input by ID.</span></span>
+<span class="line"><span style="color:#E1E4E8">        label.</span><span style="color:#B392F0">setAttribute</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'for'</span><span style="color:#E1E4E8">, fix.inputId);</span></span>
+<span class="line"><span style="color:#E1E4E8">        label.textContent </span><span style="color:#F97583">=</span><span style="color:#E1E4E8"> fix.labelText;</span></span>
+<span class="line"><span style="color:#E1E4E8">        label.style.display </span><span style="color:#F97583">=</span><span style="color:#9ECBFF"> 'block'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#E1E4E8">        label.style.fontSize </span><span style="color:#F97583">=</span><span style="color:#9ECBFF"> '0.85rem'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#E1E4E8">        label.style.fontWeight </span><span style="color:#F97583">=</span><span style="color:#9ECBFF"> '600'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#E1E4E8">        label.style.color </span><span style="color:#F97583">=</span><span style="color:#9ECBFF"> '#475569'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#E1E4E8">        label.style.marginBottom </span><span style="color:#F97583">=</span><span style="color:#9ECBFF"> '0.25rem'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#6A737D">        // Insert the label before the input.</span></span>
+<span class="line"><span style="color:#E1E4E8">        input.parentNode?.</span><span style="color:#B392F0">insertBefore</span><span style="color:#E1E4E8">(label, input);</span></span>
+<span class="line"><span style="color:#E1E4E8">      }</span></span>
+<span class="line"><span style="color:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // STEP 3: Re-scan to verify the fixes worked.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> afterResults</span><span style="color:#F97583"> =</span><span style="color:#F97583"> await</span><span style="color:#F97583"> new</span><span style="color:#B392F0"> AxeBuilder</span><span style="color:#E1E4E8">({ page })</span></span>
+<span class="line"><span style="color:#E1E4E8">    .</span><span style="color:#B392F0">withRules</span><span style="color:#E1E4E8">([</span><span style="color:#9ECBFF">'label'</span><span style="color:#E1E4E8">])</span></span>
+<span class="line"><span style="color:#E1E4E8">    .</span><span style="color:#B392F0">include</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="kyc-form-section"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">    .</span><span style="color:#B392F0">analyze</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // eslint-disable-next-line no-console</span></span>
+<span class="line"><span style="color:#E1E4E8">  console.</span><span style="color:#B392F0">log</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'After fix — label violations:'</span><span style="color:#E1E4E8">, afterResults.violations.</span><span style="color:#79B8FF">length</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // After adding labels, the 'label' rule should pass.</span></span>
+<span class="line"><span style="color:#B392F0">  expect</span><span style="color:#E1E4E8">(afterResults.violations).</span><span style="color:#B392F0">toHaveLength</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>d:T8b62,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#6A737D">// =============================================================================</span></span>
+<span class="line"><span style="color:#6A737D">// Kata 39: Accessibility Testing — Cypress Tests</span></span>
+<span class="line"><span style="color:#6A737D">// =============================================================================</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// These tests use cypress-axe to scan for accessibility violations.</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// SETUP:</span></span>
+<span class="line"><span style="color:#6A737D">//   1. npm install --save-dev cypress-axe axe-core</span></span>
+<span class="line"><span style="color:#6A737D">//   2. In cypress/support/e2e.ts, add:</span></span>
+<span class="line"><span style="color:#6A737D">//      import 'cypress-axe';</span></span>
+<span class="line"><span style="color:#6A737D">//   3. In cypress/support/index.d.ts (or tsconfig), declare the types:</span></span>
+<span class="line"><span style="color:#6A737D">//      /// &#x3C;reference types="cypress-axe" /></span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// USAGE PATTERN:</span></span>
+<span class="line"><span style="color:#6A737D">//   cy.injectAxe()  — loads axe-core into the page (call AFTER cy.visit)</span></span>
+<span class="line"><span style="color:#6A737D">//   cy.checkA11y()  — runs the scan and fails if violations exist</span></span>
+<span class="line"><span style="color:#6A737D">//   cy.checkA11y(selector, options) — scan specific element with options</span></span>
+<span class="line"><span style="color:#6A737D">// =============================================================================</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-07-advanced-patterns/39-accessibility-testing/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">describe</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Kata 39: Accessibility Testing'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">  beforeEach</span><span style="color:#E1E4E8">(() </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Visit the playground before each test.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // cy.injectAxe() loads the axe-core library into the page.</span></span>
+<span class="line"><span style="color:#6A737D">    // This MUST be called after cy.visit() and before cy.checkA11y().</span></span>
+<span class="line"><span style="color:#6A737D">    // It injects a &#x3C;script> tag with the axe-core code.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">injectAxe</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 1: Full Page a11y Scan (Expect Failures)</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // cy.checkA11y() scans the entire page and fails if violations are found.</span></span>
+<span class="line"><span style="color:#6A737D">  // Since our playground has intentional issues, we configure it to LOG</span></span>
+<span class="line"><span style="color:#6A737D">  // violations instead of failing the test.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: scan entire page and log violations'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // cy.checkA11y() with a callback lets us handle violations manually.</span></span>
+<span class="line"><span style="color:#6A737D">    //</span></span>
+<span class="line"><span style="color:#6A737D">    // Signature:</span></span>
+<span class="line"><span style="color:#6A737D">    //   cy.checkA11y(</span></span>
+<span class="line"><span style="color:#6A737D">    //     context?,    — CSS selector or element to scan (null = whole page)</span></span>
+<span class="line"><span style="color:#6A737D">    //     options?,    — axe-core configuration options</span></span>
+<span class="line"><span style="color:#6A737D">    //     callback?,   — function called with violations array</span></span>
+<span class="line"><span style="color:#6A737D">    //     skipFailures? — if true, don't fail the test on violations</span></span>
+<span class="line"><span style="color:#6A737D">    //   )</span></span>
+<span class="line"><span style="color:#6A737D">    //</span></span>
+<span class="line"><span style="color:#6A737D">    // We use skipFailures: true because the playground has intentional issues.</span></span>
+<span class="line"><span style="color:#6A737D">    // In a real test, you would NOT set skipFailures — you want it to fail.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">checkA11y</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#79B8FF">      null</span><span style="color:#E1E4E8">,   </span><span style="color:#6A737D">// null = scan the entire page</span></span>
+<span class="line"><span style="color:#E1E4E8">      {},     </span><span style="color:#6A737D">// no special options</span></span>
+<span class="line"><span style="color:#E1E4E8">      (</span><span style="color:#FFAB70">violations</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">        // This callback receives the violations array.</span></span>
+<span class="line"><span style="color:#6A737D">        // Each violation has: id, impact, description, help, nodes[].</span></span>
+<span class="line"><span style="color:#E1E4E8">        cy.</span><span style="color:#B392F0">log</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`Found ${</span><span style="color:#E1E4E8">violations</span><span style="color:#9ECBFF">.</span><span style="color:#79B8FF">length</span><span style="color:#9ECBFF">} a11y violations`</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">        // Log each violation for learning purposes.</span></span>
+<span class="line"><span style="color:#E1E4E8">        violations.</span><span style="color:#B392F0">forEach</span><span style="color:#E1E4E8">((</span><span style="color:#FFAB70">violation</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">          cy.</span><span style="color:#B392F0">log</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#9ECBFF">            `[${</span><span style="color:#E1E4E8">violation</span><span style="color:#9ECBFF">.</span><span style="color:#E1E4E8">impact</span><span style="color:#9ECBFF">}] ${</span><span style="color:#E1E4E8">violation</span><span style="color:#9ECBFF">.</span><span style="color:#E1E4E8">id</span><span style="color:#9ECBFF">}: ${</span><span style="color:#E1E4E8">violation</span><span style="color:#9ECBFF">.</span><span style="color:#E1E4E8">help</span><span style="color:#9ECBFF">} (${</span><span style="color:#E1E4E8">violation</span><span style="color:#9ECBFF">.</span><span style="color:#E1E4E8">nodes</span><span style="color:#9ECBFF">.</span><span style="color:#79B8FF">length</span><span style="color:#9ECBFF">} elements)`</span></span>
+<span class="line"><span style="color:#E1E4E8">          );</span></span>
+<span class="line"><span style="color:#E1E4E8">        });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">        // We EXPECT violations because the playground has issues.</span></span>
+<span class="line"><span style="color:#B392F0">        expect</span><span style="color:#E1E4E8">(violations.</span><span style="color:#79B8FF">length</span><span style="color:#E1E4E8">).to.be.</span><span style="color:#B392F0">greaterThan</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">      },</span></span>
+<span class="line"><span style="color:#79B8FF">      true</span><span style="color:#6A737D">  // skipFailures: true — don't fail the test on violations</span></span>
+<span class="line"><span style="color:#E1E4E8">    );</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 2: Check Specific Rules Only</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Narrow the scan to a single rule to focus on one issue at a time.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: check label rules only'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // The second parameter is an axe-core options object.</span></span>
+<span class="line"><span style="color:#6A737D">    // runOnly.values specifies which rules to check.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">checkA11y</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#79B8FF">      null</span><span style="color:#E1E4E8">,   </span><span style="color:#6A737D">// scan the whole page</span></span>
+<span class="line"><span style="color:#E1E4E8">      {</span></span>
+<span class="line"><span style="color:#E1E4E8">        runOnly: {</span></span>
+<span class="line"><span style="color:#E1E4E8">          type: </span><span style="color:#9ECBFF">'rule'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">          values: [</span><span style="color:#9ECBFF">'label'</span><span style="color:#E1E4E8">]  </span><span style="color:#6A737D">// only check the 'label' rule</span></span>
+<span class="line"><span style="color:#E1E4E8">        }</span></span>
+<span class="line"><span style="color:#E1E4E8">      },</span></span>
+<span class="line"><span style="color:#E1E4E8">      (</span><span style="color:#FFAB70">violations</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">        cy.</span><span style="color:#B392F0">log</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`Label violations: ${</span><span style="color:#E1E4E8">violations</span><span style="color:#9ECBFF">.</span><span style="color:#79B8FF">length</span><span style="color:#9ECBFF">}`</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">        // The playground has inputs without labels.</span></span>
+<span class="line"><span style="color:#F97583">        const</span><span style="color:#79B8FF"> labelViolation</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> violations.</span><span style="color:#B392F0">find</span><span style="color:#E1E4E8">((</span><span style="color:#FFAB70">v</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> v.id </span><span style="color:#F97583">===</span><span style="color:#9ECBFF"> 'label'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">        if</span><span style="color:#E1E4E8"> (labelViolation) {</span></span>
+<span class="line"><span style="color:#E1E4E8">          cy.</span><span style="color:#B392F0">log</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`${</span><span style="color:#E1E4E8">labelViolation</span><span style="color:#9ECBFF">.</span><span style="color:#E1E4E8">nodes</span><span style="color:#9ECBFF">.</span><span style="color:#79B8FF">length</span><span style="color:#9ECBFF">} inputs missing labels`</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">        }</span></span>
+<span class="line"><span style="color:#B392F0">        expect</span><span style="color:#E1E4E8">(labelViolation).to.not.be.undefined;</span></span>
+<span class="line"><span style="color:#E1E4E8">      },</span></span>
+<span class="line"><span style="color:#79B8FF">      true</span><span style="color:#6A737D">  // don't fail the test</span></span>
+<span class="line"><span style="color:#E1E4E8">    );</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 3: Scan a Specific Section</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Pass a CSS selector as the first argument to scan just that element.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: scan only the form section'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // The first parameter is a CSS selector string.</span></span>
+<span class="line"><span style="color:#6A737D">    // Only elements within this selector are scanned.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">checkA11y</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#9ECBFF">      '[data-testid="kyc-form-section"]'</span><span style="color:#E1E4E8">,  </span><span style="color:#6A737D">// scan only the form</span></span>
+<span class="line"><span style="color:#E1E4E8">      {},</span></span>
+<span class="line"><span style="color:#E1E4E8">      (</span><span style="color:#FFAB70">violations</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">        cy.</span><span style="color:#B392F0">log</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`Form section violations: ${</span><span style="color:#E1E4E8">violations</span><span style="color:#9ECBFF">.</span><span style="color:#79B8FF">length</span><span style="color:#9ECBFF">}`</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">        violations.</span><span style="color:#B392F0">forEach</span><span style="color:#E1E4E8">((</span><span style="color:#FFAB70">v</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">          cy.</span><span style="color:#B392F0">log</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`  [${</span><span style="color:#E1E4E8">v</span><span style="color:#9ECBFF">.</span><span style="color:#E1E4E8">impact</span><span style="color:#9ECBFF">}] ${</span><span style="color:#E1E4E8">v</span><span style="color:#9ECBFF">.</span><span style="color:#E1E4E8">id</span><span style="color:#9ECBFF">}: ${</span><span style="color:#E1E4E8">v</span><span style="color:#9ECBFF">.</span><span style="color:#E1E4E8">help</span><span style="color:#9ECBFF">}`</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">        });</span></span>
+<span class="line"><span style="color:#B392F0">        expect</span><span style="color:#E1E4E8">(violations.</span><span style="color:#79B8FF">length</span><span style="color:#E1E4E8">).to.be.</span><span style="color:#B392F0">greaterThan</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">      },</span></span>
+<span class="line"><span style="color:#79B8FF">      true</span></span>
+<span class="line"><span style="color:#E1E4E8">    );</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 4: Check for Missing Image Alt Text</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: check image alt text'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">checkA11y</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#9ECBFF">      '[data-testid="profile-section"]'</span><span style="color:#E1E4E8">,  </span><span style="color:#6A737D">// scan the profile section</span></span>
+<span class="line"><span style="color:#E1E4E8">      {</span></span>
+<span class="line"><span style="color:#E1E4E8">        runOnly: {</span></span>
+<span class="line"><span style="color:#E1E4E8">          type: </span><span style="color:#9ECBFF">'rule'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">          values: [</span><span style="color:#9ECBFF">'image-alt'</span><span style="color:#E1E4E8">]  </span><span style="color:#6A737D">// only check image alt text</span></span>
+<span class="line"><span style="color:#E1E4E8">        }</span></span>
+<span class="line"><span style="color:#E1E4E8">      },</span></span>
+<span class="line"><span style="color:#E1E4E8">      (</span><span style="color:#FFAB70">violations</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">        cy.</span><span style="color:#B392F0">log</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`Image alt violations: ${</span><span style="color:#E1E4E8">violations</span><span style="color:#9ECBFF">.</span><span style="color:#79B8FF">length</span><span style="color:#9ECBFF">}`</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">        const</span><span style="color:#79B8FF"> imageViolation</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> violations.</span><span style="color:#B392F0">find</span><span style="color:#E1E4E8">((</span><span style="color:#FFAB70">v</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> v.id </span><span style="color:#F97583">===</span><span style="color:#9ECBFF"> 'image-alt'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#B392F0">        expect</span><span style="color:#E1E4E8">(imageViolation).to.not.be.undefined;</span></span>
+<span class="line"><span style="color:#E1E4E8">      },</span></span>
+<span class="line"><span style="color:#79B8FF">      true</span></span>
+<span class="line"><span style="color:#E1E4E8">    );</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 5: Check Color Contrast</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: check color contrast'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">checkA11y</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#79B8FF">      null</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      {</span></span>
+<span class="line"><span style="color:#E1E4E8">        runOnly: {</span></span>
+<span class="line"><span style="color:#E1E4E8">          type: </span><span style="color:#9ECBFF">'rule'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">          values: [</span><span style="color:#9ECBFF">'color-contrast'</span><span style="color:#E1E4E8">]</span></span>
+<span class="line"><span style="color:#E1E4E8">        }</span></span>
+<span class="line"><span style="color:#E1E4E8">      },</span></span>
+<span class="line"><span style="color:#E1E4E8">      (</span><span style="color:#FFAB70">violations</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">        cy.</span><span style="color:#B392F0">log</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`Contrast violations: ${</span><span style="color:#E1E4E8">violations</span><span style="color:#9ECBFF">.</span><span style="color:#79B8FF">length</span><span style="color:#9ECBFF">}`</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">        const</span><span style="color:#79B8FF"> contrastViolation</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> violations.</span><span style="color:#B392F0">find</span><span style="color:#E1E4E8">((</span><span style="color:#FFAB70">v</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> v.id </span><span style="color:#F97583">===</span><span style="color:#9ECBFF"> 'color-contrast'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">        if</span><span style="color:#E1E4E8"> (contrastViolation) {</span></span>
+<span class="line"><span style="color:#E1E4E8">          cy.</span><span style="color:#B392F0">log</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`${</span><span style="color:#E1E4E8">contrastViolation</span><span style="color:#9ECBFF">.</span><span style="color:#E1E4E8">nodes</span><span style="color:#9ECBFF">.</span><span style="color:#79B8FF">length</span><span style="color:#9ECBFF">} elements with poor contrast`</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">        }</span></span>
+<span class="line"><span style="color:#6A737D">        // The .low-contrast text should trigger a violation.</span></span>
+<span class="line"><span style="color:#B392F0">        expect</span><span style="color:#E1E4E8">(contrastViolation).to.not.be.undefined;</span></span>
+<span class="line"><span style="color:#E1E4E8">      },</span></span>
+<span class="line"><span style="color:#79B8FF">      true</span></span>
+<span class="line"><span style="color:#E1E4E8">    );</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 6: Fix Violations and Re-Scan</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Inject fixes into the DOM and verify the violations are resolved.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: fix label violations and verify'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // STEP 1: Confirm violations exist.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">checkA11y</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#9ECBFF">      '[data-testid="kyc-form-section"]'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      { runOnly: { type: </span><span style="color:#9ECBFF">'rule'</span><span style="color:#E1E4E8">, values: [</span><span style="color:#9ECBFF">'label'</span><span style="color:#E1E4E8">] } },</span></span>
+<span class="line"><span style="color:#E1E4E8">      (</span><span style="color:#FFAB70">violations</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#B392F0">        expect</span><span style="color:#E1E4E8">(violations.</span><span style="color:#79B8FF">length</span><span style="color:#E1E4E8">).to.be.</span><span style="color:#B392F0">greaterThan</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">        cy.</span><span style="color:#B392F0">log</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`Before fix: ${</span><span style="color:#E1E4E8">violations</span><span style="color:#9ECBFF">.</span><span style="color:#79B8FF">length</span><span style="color:#9ECBFF">} label violations`</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">      },</span></span>
+<span class="line"><span style="color:#79B8FF">      true</span></span>
+<span class="line"><span style="color:#E1E4E8">    );</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // STEP 2: Fix by adding labels.</span></span>
+<span class="line"><span style="color:#6A737D">    // cy.window().then(win => { ... }) gives access to the browser's window.</span></span>
+<span class="line"><span style="color:#6A737D">    // We use standard DOM APIs to create and insert &#x3C;label> elements.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">window</span><span style="color:#E1E4E8">().</span><span style="color:#B392F0">then</span><span style="color:#E1E4E8">((</span><span style="color:#FFAB70">win</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">      const</span><span style="color:#79B8FF"> doc</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> win.document;</span></span>
+<span class="line"><span style="color:#F97583">      const</span><span style="color:#79B8FF"> fixes</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> [</span></span>
+<span class="line"><span style="color:#E1E4E8">        { inputId: </span><span style="color:#9ECBFF">'full-name'</span><span style="color:#E1E4E8">, labelText: </span><span style="color:#9ECBFF">'Full Name'</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">        { inputId: </span><span style="color:#9ECBFF">'email'</span><span style="color:#E1E4E8">, labelText: </span><span style="color:#9ECBFF">'Email Address'</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">        { inputId: </span><span style="color:#9ECBFF">'phone'</span><span style="color:#E1E4E8">, labelText: </span><span style="color:#9ECBFF">'Phone Number'</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">        { inputId: </span><span style="color:#9ECBFF">'country'</span><span style="color:#E1E4E8">, labelText: </span><span style="color:#9ECBFF">'Country'</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">        { inputId: </span><span style="color:#9ECBFF">'notes'</span><span style="color:#E1E4E8">, labelText: </span><span style="color:#9ECBFF">'Additional Notes'</span><span style="color:#E1E4E8"> }</span></span>
+<span class="line"><span style="color:#E1E4E8">      ];</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">      fixes.</span><span style="color:#B392F0">forEach</span><span style="color:#E1E4E8">((</span><span style="color:#FFAB70">fix</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">        const</span><span style="color:#79B8FF"> input</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> doc.</span><span style="color:#B392F0">getElementById</span><span style="color:#E1E4E8">(fix.inputId);</span></span>
+<span class="line"><span style="color:#F97583">        if</span><span style="color:#E1E4E8"> (input </span><span style="color:#F97583">&#x26;&#x26;</span><span style="color:#F97583"> !</span><span style="color:#E1E4E8">doc.</span><span style="color:#B392F0">querySelector</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`label[for="${</span><span style="color:#E1E4E8">fix</span><span style="color:#9ECBFF">.</span><span style="color:#E1E4E8">inputId</span><span style="color:#9ECBFF">}"]`</span><span style="color:#E1E4E8">)) {</span></span>
+<span class="line"><span style="color:#F97583">          const</span><span style="color:#79B8FF"> label</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> doc.</span><span style="color:#B392F0">createElement</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'label'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">          label.</span><span style="color:#B392F0">setAttribute</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'for'</span><span style="color:#E1E4E8">, fix.inputId);</span></span>
+<span class="line"><span style="color:#E1E4E8">          label.textContent </span><span style="color:#F97583">=</span><span style="color:#E1E4E8"> fix.labelText;</span></span>
+<span class="line"><span style="color:#E1E4E8">          input.parentNode?.</span><span style="color:#B392F0">insertBefore</span><span style="color:#E1E4E8">(label, input);</span></span>
+<span class="line"><span style="color:#E1E4E8">        }</span></span>
+<span class="line"><span style="color:#E1E4E8">      });</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // STEP 3: Re-inject axe (needed after DOM changes in some cases).</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">injectAxe</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // STEP 4: Re-scan and verify labels pass.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">checkA11y</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#9ECBFF">      '[data-testid="kyc-form-section"]'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      { runOnly: { type: </span><span style="color:#9ECBFF">'rule'</span><span style="color:#E1E4E8">, values: [</span><span style="color:#9ECBFF">'label'</span><span style="color:#E1E4E8">] } },</span></span>
+<span class="line"><span style="color:#E1E4E8">      (</span><span style="color:#FFAB70">violations</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">        cy.</span><span style="color:#B392F0">log</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`After fix: ${</span><span style="color:#E1E4E8">violations</span><span style="color:#9ECBFF">.</span><span style="color:#79B8FF">length</span><span style="color:#9ECBFF">} label violations`</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#B392F0">        expect</span><span style="color:#E1E4E8">(violations.</span><span style="color:#79B8FF">length</span><span style="color:#E1E4E8">).to.</span><span style="color:#B392F0">equal</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">      },</span></span>
+<span class="line"><span style="color:#79B8FF">      true</span></span>
+<span class="line"><span style="color:#E1E4E8">    );</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"kata":{"slug":"39-accessibility-testing","number":39,"title":"Accessibility Testing (a11y)","phaseSlug":"phase-07-advanced-patterns","phaseNumber":7,"phaseName":"Advanced Patterns","readmeRaw":"$3","hasPlayground":true,"playwrightFiles":[{"filename":"accessibility-testing.spec.ts","content":"$4"}],"cypressFiles":[{"filename":"accessibility-testing.cy.ts","content":"$5"}]},"prev":{"slug":"38-visual-regression","number":38,"title":"Visual Regression Testing","phaseSlug":"phase-07-advanced-patterns","phaseNumber":7,"phaseName":"Advanced Patterns","readmeRaw":"$6","hasPlayground":true,"playwrightFiles":[{"filename":"visual-regression.spec.ts","content":"$7"}],"cypressFiles":[{"filename":"visual-regression.cy.ts","content":"$8"}]},"next":{"slug":"40-test-data-and-fixtures","number":40,"title":"Test Data and Fixtures","phaseSlug":"phase-07-advanced-patterns","phaseNumber":7,"phaseName":"Advanced Patterns","readmeRaw":"$9","hasPlayground":true,"playwrightFiles":[{"filename":"test-data-and-fixtures.spec.ts","content":"$a"}],"cypressFiles":[{"filename":"test-data-and-fixtures.cy.ts","content":"$b"}]},"playwrightHtml":[{"filename":"accessibility-testing.spec.ts","html":"$c"}],"cypressHtml":[{"filename":"accessibility-testing.cy.ts","html":"$d"}]}],["$Le"],"$Lf"]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"iDtrTKWIN4zzRgDRiiDd2"}
+e:["$","script","script-0",{"src":"/qa-labs/_next/static/chunks/03nvm.8~ftt80.js","async":true}]
+f:["$","$L10",null,{"children":["$","$11",null,{"name":"Next.MetadataOutlet","children":"$@12"}]}]
+12:null

@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kata 07: Drag and Drop | QA Labs</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #1e293b; padding: 2rem; }
+    .header { background: #0f172a; color: white; padding: 1rem 2rem; margin: -2rem -2rem 2rem; }
+    .header h1 { font-size: 1.25rem; }
+    .kata-badge { display: inline-block; background: #38bdf8; color: #0f172a; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 4px; margin-right: 0.5rem; }
+
+    /* Kanban board layout */
+    .board { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-bottom: 2rem; }
+
+    .column {
+      background: #f1f5f9; border-radius: 8px; padding: 1rem;
+      min-height: 350px; transition: background 0.2s;
+    }
+    .column.drag-over {
+      background: #dbeafe; border: 2px dashed #3b82f6;
+    }
+    .column h2 {
+      font-size: 0.875rem; text-transform: uppercase; letter-spacing: 0.05em;
+      color: #475569; margin-bottom: 0.75rem; padding-bottom: 0.5rem;
+      border-bottom: 2px solid #cbd5e1; display: flex; justify-content: space-between;
+    }
+    .column h2 .count {
+      background: #cbd5e1; color: #334155; border-radius: 10px;
+      padding: 0.1rem 0.5rem; font-size: 0.75rem;
+    }
+
+    /* KYC application cards */
+    .card {
+      background: white; border-radius: 6px; padding: 0.75rem;
+      margin-bottom: 0.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      cursor: grab; position: relative; transition: opacity 0.2s, box-shadow 0.2s;
+      border-left: 4px solid #cbd5e1;
+    }
+    .card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.12); }
+    .card.dragging { opacity: 0.4; cursor: grabbing; }
+    .card .drag-handle {
+      display: inline-block; margin-right: 0.5rem; cursor: grab;
+      color: #94a3b8; font-size: 1rem; vertical-align: middle;
+    }
+    .card .card-name { font-weight: 600; font-size: 0.875rem; }
+    .card .card-risk {
+      display: inline-block; font-size: 0.7rem; font-weight: 600;
+      padding: 0.15rem 0.5rem; border-radius: 10px; margin-top: 0.35rem;
+    }
+    .risk-high { background: #fee2e2; color: #991b1b; border-left-color: #ef4444 !important; }
+    .risk-medium { background: #fef3c7; color: #92400e; border-left-color: #f59e0b !important; }
+    .risk-low { background: #dcfce7; color: #166534; border-left-color: #22c55e !important; }
+
+    /* Sortable list section */
+    .section { margin-bottom: 2rem; padding: 1.5rem; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .section h2 { font-size: 1rem; color: #475569; margin-bottom: 1rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.5rem; }
+
+    .sortable-list { list-style: none; padding: 0; max-width: 400px; }
+    .sortable-item {
+      padding: 0.75rem 1rem; margin-bottom: 0.5rem; background: #f8fafc;
+      border: 2px solid #e2e8f0; border-radius: 6px; cursor: grab;
+      display: flex; justify-content: space-between; align-items: center;
+      transition: background 0.15s, border-color 0.15s, opacity 0.2s;
+    }
+    .sortable-item.dragging { opacity: 0.4; }
+    .sortable-item.drag-over-item { border-color: #3b82f6; background: #eff6ff; }
+    .sortable-item .item-handle { color: #94a3b8; margin-right: 0.75rem; cursor: grab; }
+
+    /* Status bar */
+    .status-bar {
+      margin-top: 1rem; padding: 0.75rem 1rem; background: #f1f5f9;
+      border-radius: 6px; font-size: 0.85rem; color: #475569;
+    }
+  </style>
+</head>
+<body>
+
+  <header class="header" data-testid="page-header">
+    <span class="kata-badge">KATA 07</span>
+    <h1>KYC Kanban Board - Drag and Drop Practice</h1>
+  </header>
+
+  <!-- Kanban Board -->
+  <div class="board" data-testid="kanban-board">
+
+    <!-- New column -->
+    <div class="column" data-testid="column-new" data-column="new" id="column-new">
+      <h2>New <span class="count" data-testid="count-new" id="count-new">3</span></h2>
+      <div class="card risk-high" draggable="true" data-testid="card-aisha" data-card-id="aisha" id="card-aisha">
+        <span class="drag-handle" data-testid="handle-aisha">&#9776;</span>
+        <span class="card-name">Aisha Patel</span>
+        <div><span class="card-risk risk-high">High Risk</span></div>
+      </div>
+      <div class="card risk-medium" draggable="true" data-testid="card-ben" data-card-id="ben" id="card-ben">
+        <span class="drag-handle" data-testid="handle-ben">&#9776;</span>
+        <span class="card-name">Ben Okafor</span>
+        <div><span class="card-risk risk-medium">Medium Risk</span></div>
+      </div>
+      <div class="card risk-low" draggable="true" data-testid="card-clara" data-card-id="clara" id="card-clara">
+        <span class="drag-handle" data-testid="handle-clara">&#9776;</span>
+        <span class="card-name">Clara Jansen</span>
+        <div><span class="card-risk risk-low">Low Risk</span></div>
+      </div>
+    </div>
+
+    <!-- In Review column -->
+    <div class="column" data-testid="column-review" data-column="review" id="column-review">
+      <h2>In Review <span class="count" data-testid="count-review" id="count-review">1</span></h2>
+      <div class="card risk-medium" draggable="true" data-testid="card-derek" data-card-id="derek" id="card-derek">
+        <span class="drag-handle" data-testid="handle-derek">&#9776;</span>
+        <span class="card-name">Derek Wong</span>
+        <div><span class="card-risk risk-medium">Medium Risk</span></div>
+      </div>
+    </div>
+
+    <!-- Approved column -->
+    <div class="column" data-testid="column-approved" data-column="approved" id="column-approved">
+      <h2>Approved <span class="count" data-testid="count-approved" id="count-approved">0</span></h2>
+    </div>
+
+    <!-- Rejected column -->
+    <div class="column" data-testid="column-rejected" data-column="rejected" id="column-rejected">
+      <h2>Rejected <span class="count" data-testid="count-rejected" id="count-rejected">0</span></h2>
+    </div>
+  </div>
+
+  <!-- Status bar showing last action -->
+  <div class="status-bar" data-testid="status-bar" id="status-bar">
+    Last action: <strong data-testid="last-action" id="last-action">None</strong>
+  </div>
+
+  <!-- Sortable priority list -->
+  <div class="section" data-testid="sortable-section">
+    <h2>Review Priority Order (Drag to Reorder)</h2>
+    <p style="font-size: 0.8rem; color: #64748b; margin-bottom: 0.75rem;">
+      Drag items up or down to set the review priority.
+    </p>
+    <ul class="sortable-list" data-testid="sortable-list" id="sortable-list">
+      <li class="sortable-item" draggable="true" data-testid="priority-sanctions" data-priority="sanctions">
+        <span><span class="item-handle">&#9776;</span> Sanctions Screening</span>
+      </li>
+      <li class="sortable-item" draggable="true" data-testid="priority-identity" data-priority="identity">
+        <span><span class="item-handle">&#9776;</span> Identity Verification</span>
+      </li>
+      <li class="sortable-item" draggable="true" data-testid="priority-address" data-priority="address">
+        <span><span class="item-handle">&#9776;</span> Address Proof</span>
+      </li>
+      <li class="sortable-item" draggable="true" data-testid="priority-income" data-priority="income">
+        <span><span class="item-handle">&#9776;</span> Income Verification</span>
+      </li>
+    </ul>
+    <p style="font-size: 0.8rem; margin-top: 0.5rem;">
+      Order: <strong data-testid="priority-order" id="priority-order">sanctions, identity, address, income</strong>
+    </p>
+  </div>
+
+  <script>
+    // -----------------------------------------------------------------------
+    // 1. Kanban Board — HTML5 Drag and Drop between columns
+    // -----------------------------------------------------------------------
+    // We store a reference to the card being dragged so the drop handler
+    // knows which DOM element to move.
+    let draggedCard = null;
+
+    // updateColumnCounts() recalculates the card count badge in each column
+    // header by counting .card elements inside each column.
+    function updateColumnCounts() {
+      ['new', 'review', 'approved', 'rejected'].forEach(col => {
+        const column = document.getElementById('column-' + col);
+        const count = column.querySelectorAll('.card').length;
+        document.getElementById('count-' + col).textContent = count;
+      });
+    }
+
+    // setLastAction(msg) updates the status bar at the bottom of the board
+    // so tests can verify what drag-and-drop action just happened.
+    function setLastAction(msg) {
+      document.getElementById('last-action').textContent = msg;
+    }
+
+    // Attach drag events to all .card elements.
+    // We use event delegation on the board to handle cards that may move
+    // between columns.
+    const board = document.querySelector('[data-testid="kanban-board"]');
+
+    // --- dragstart: fires when the user begins dragging a card ---
+    board.addEventListener('dragstart', (e) => {
+      const card = e.target.closest('.card');
+      if (!card) return;
+
+      draggedCard = card;
+      // Add 'dragging' class after a short delay so the browser can capture
+      // the drag ghost image before we make the card semi-transparent.
+      setTimeout(() => card.classList.add('dragging'), 0);
+
+      // Store the card's id in the dataTransfer so drop targets can read it.
+      // setData(format, data) attaches data to the drag event.
+      e.dataTransfer.setData('text/plain', card.getAttribute('data-card-id'));
+      // effectAllowed tells the browser what operations are permitted.
+      e.dataTransfer.effectAllowed = 'move';
+    });
+
+    // --- dragend: fires when drag is complete (successful or cancelled) ---
+    board.addEventListener('dragend', (e) => {
+      const card = e.target.closest('.card');
+      if (card) card.classList.remove('dragging');
+      draggedCard = null;
+      // Remove highlight from all columns.
+      document.querySelectorAll('.column').forEach(col => col.classList.remove('drag-over'));
+    });
+
+    // --- dragover: fires continuously while a dragged item is over a drop target ---
+    // We must call e.preventDefault() here to allow dropping.
+    document.querySelectorAll('.column').forEach(column => {
+      column.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        // dropEffect tells the browser to show a "move" cursor.
+        e.dataTransfer.dropEffect = 'move';
+        column.classList.add('drag-over');
+      });
+
+      // --- dragleave: fires when the dragged item leaves a drop target ---
+      column.addEventListener('dragleave', (e) => {
+        // Only remove highlight if we truly left the column (not a child element).
+        if (!column.contains(e.relatedTarget)) {
+          column.classList.remove('drag-over');
+        }
+      });
+
+      // --- drop: fires when the dragged item is released over a valid target ---
+      column.addEventListener('drop', (e) => {
+        e.preventDefault();
+        column.classList.remove('drag-over');
+
+        if (!draggedCard) return;
+
+        const sourceColumn = draggedCard.parentElement.getAttribute('data-column');
+        const targetColumn = column.getAttribute('data-column');
+        const cardId = draggedCard.getAttribute('data-card-id');
+
+        // Move the card DOM element into this column (appends after the header).
+        column.appendChild(draggedCard);
+
+        // Update the column count badges.
+        updateColumnCounts();
+
+        // Log the action.
+        setLastAction(`Moved ${cardId} from ${sourceColumn} to ${targetColumn}`);
+      });
+    });
+
+    // Fallback: some automation drivers simulate drag with raw mousedown +
+    // mousemove without firing HTML5 drag events. Mirror the drag-over
+    // highlight using native mouse events so tooling-driven drags also show
+    // the drop zone feedback.
+    let pointerDragging = false;
+    board.addEventListener('mousedown', (e) => {
+      const card = e.target.closest('.card');
+      if (!card) return;
+      pointerDragging = true;
+    });
+    document.addEventListener('mouseup', () => {
+      pointerDragging = false;
+      document.querySelectorAll('.column').forEach(col => col.classList.remove('drag-over'));
+    });
+    document.querySelectorAll('.column').forEach(column => {
+      column.addEventListener('mouseenter', () => {
+        if (pointerDragging) column.classList.add('drag-over');
+      });
+      column.addEventListener('mouseleave', () => {
+        if (pointerDragging) column.classList.remove('drag-over');
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // 2. Sortable Priority List — Drag to reorder items within a list
+    // -----------------------------------------------------------------------
+    const sortableList = document.getElementById('sortable-list');
+    let draggedItem = null;
+
+    // updatePriorityOrder() reads the current DOM order and updates the
+    // text display so tests can verify reordering.
+    function updatePriorityOrder() {
+      const items = sortableList.querySelectorAll('.sortable-item');
+      const order = Array.from(items).map(i => i.getAttribute('data-priority')).join(', ');
+      document.getElementById('priority-order').textContent = order;
+    }
+
+    sortableList.addEventListener('dragstart', (e) => {
+      const item = e.target.closest('.sortable-item');
+      if (!item) return;
+      draggedItem = item;
+      setTimeout(() => item.classList.add('dragging'), 0);
+      e.dataTransfer.setData('text/plain', item.getAttribute('data-priority'));
+      e.dataTransfer.effectAllowed = 'move';
+    });
+
+    sortableList.addEventListener('dragend', (e) => {
+      const item = e.target.closest('.sortable-item');
+      if (item) item.classList.remove('dragging');
+      draggedItem = null;
+      sortableList.querySelectorAll('.sortable-item').forEach(i => i.classList.remove('drag-over-item'));
+    });
+
+    sortableList.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+
+      const target = e.target.closest('.sortable-item');
+      if (!target || target === draggedItem) return;
+
+      // Highlight the item we're hovering over.
+      sortableList.querySelectorAll('.sortable-item').forEach(i => i.classList.remove('drag-over-item'));
+      target.classList.add('drag-over-item');
+    });
+
+    sortableList.addEventListener('drop', (e) => {
+      e.preventDefault();
+      if (!draggedItem) return;
+
+      const target = e.target.closest('.sortable-item');
+      if (!target || target === draggedItem) return;
+
+      // Determine whether to insert before or after the target based on
+      // the mouse position relative to the target's vertical center.
+      const rect = target.getBoundingClientRect();
+      const midY = rect.top + rect.height / 2;
+      if (e.clientY < midY) {
+        sortableList.insertBefore(draggedItem, target);
+      } else {
+        sortableList.insertBefore(draggedItem, target.nextSibling);
+      }
+
+      sortableList.querySelectorAll('.sortable-item').forEach(i => i.classList.remove('drag-over-item'));
+      updatePriorityOrder();
+      setLastAction(`Reordered priorities: ${document.getElementById('priority-order').textContent}`);
+    });
+  </script>
+
+</body>
+</html>

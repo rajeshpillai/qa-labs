@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kata 03: Waits and Timing | QA Labs</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #1e293b; padding: 2rem; }
+    .header { background: #0f172a; color: white; padding: 1rem 2rem; margin: -2rem -2rem 2rem; }
+    .header h1 { font-size: 1.25rem; }
+    .kata-badge { display: inline-block; background: #38bdf8; color: #0f172a; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 4px; margin-right: 0.5rem; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+    .section { margin-bottom: 2rem; padding: 1.5rem; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .section h2 { font-size: 1rem; color: #475569; margin-bottom: 1rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.5rem; }
+    button { padding: 0.5rem 1rem; border: none; border-radius: 6px; font-size: 0.875rem; cursor: pointer; margin-right: 0.5rem; margin-bottom: 0.5rem; }
+    .btn-primary { background: #3b82f6; color: white; }
+    .btn-success { background: #22c55e; color: white; }
+    .btn-danger { background: #ef4444; color: white; }
+    .btn-secondary { background: #64748b; color: white; }
+    .alert { padding: 0.75rem 1rem; border-radius: 6px; margin-top: 0.75rem; font-size: 0.875rem; }
+    .alert-success { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+    .alert-error { background: #fecaca; color: #991b1b; border: 1px solid #fca5a5; }
+    .alert-info { background: #dbeafe; color: #1e40af; border: 1px solid #93c5fd; }
+    .hidden { display: none; }
+    .spinner { display: inline-block; width: 20px; height: 20px; border: 3px solid #e2e8f0; border-top-color: #3b82f6; border-radius: 50%; animation: spin 0.8s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .status-badge { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; }
+    .status-loading { background: #dbeafe; color: #1e40af; }
+    .status-complete { background: #dcfce7; color: #166534; }
+    .status-error { background: #fecaca; color: #991b1b; }
+    .progress-bar { width: 100%; height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; margin: 0.5rem 0; }
+    .progress-fill { height: 100%; background: #3b82f6; border-radius: 4px; transition: width 0.3s ease; }
+    input { padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.875rem; width: 100%; margin-bottom: 0.75rem; }
+    .card { border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem; margin-bottom: 0.75rem; }
+    .notification { padding: 0.75rem 1rem; border-radius: 6px; margin-bottom: 0.5rem; font-size: 0.875rem; background: #f0f9ff; border: 1px solid #bae6fd; color: #0c4a6e; animation: fadeIn 0.3s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+    .fade-out { animation: fadeOut 0.5s ease forwards; }
+    @keyframes fadeOut { to { opacity: 0; transform: translateY(-10px); } }
+    .skeleton { background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%); background-size: 200% 100%; animation: shimmer 1.5s infinite; border-radius: 4px; height: 1rem; margin-bottom: 0.5rem; }
+    @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
+  </style>
+</head>
+<body>
+
+  <header class="header" data-testid="page-header">
+    <span class="kata-badge">KATA 03</span>
+    <h1>KYC Portal - Waits and Timing Practice</h1>
+  </header>
+
+  <div class="grid">
+    <!-- LEFT COLUMN -->
+    <div>
+
+      <!-- 1: Delayed Element Rendering -->
+      <div class="section" data-testid="delayed-section">
+        <h2>Delayed Element Rendering</h2>
+        <p style="font-size: 0.875rem; color: #64748b; margin-bottom: 0.75rem;">Click to trigger elements that appear after delays</p>
+        <button class="btn-primary" data-testid="btn-delay-1s" id="btn-delay-1s">Show after 1s</button>
+        <button class="btn-primary" data-testid="btn-delay-3s" id="btn-delay-3s">Show after 3s</button>
+        <button class="btn-danger" data-testid="btn-delay-7s" id="btn-delay-7s">Show after 7s (slow!)</button>
+        <div id="delayed-results" data-testid="delayed-results"></div>
+      </div>
+
+      <!-- 2: Loading State Simulation -->
+      <div class="section" data-testid="loading-section">
+        <h2>Loading State</h2>
+        <button class="btn-primary" data-testid="btn-fetch-data" id="btn-fetch-data">Fetch Applicant Data</button>
+        <div id="loading-area" data-testid="loading-area" style="margin-top: 1rem;">
+          <p style="color: #94a3b8; font-size: 0.875rem;" data-testid="initial-message">Click the button to load data.</p>
+        </div>
+      </div>
+
+      <!-- 3: Auto-Refreshing Content -->
+      <div class="section" data-testid="auto-refresh-section">
+        <h2>Auto-Refreshing Status</h2>
+        <p style="font-size: 0.875rem; color: #64748b; margin-bottom: 0.5rem;">Status updates every 2 seconds after starting</p>
+        <button class="btn-primary" data-testid="btn-start-polling" id="btn-start-polling">Start Verification</button>
+        <button class="btn-danger" data-testid="btn-stop-polling" id="btn-stop-polling" disabled>Stop</button>
+        <div style="margin-top: 0.75rem;">
+          <p style="font-size: 0.875rem;">Current Status: <span data-testid="polling-status" id="polling-status" class="status-badge status-loading">Not Started</span></p>
+          <p style="font-size: 0.875rem; margin-top: 0.25rem;">Step: <strong data-testid="polling-step" id="polling-step">0</strong> / 5</p>
+        </div>
+      </div>
+
+      <!-- 4: Debounced Search -->
+      <div class="section" data-testid="debounce-section">
+        <h2>Debounced Search (300ms delay)</h2>
+        <p style="font-size: 0.875rem; color: #64748b; margin-bottom: 0.5rem;">Search triggers 300ms after you stop typing</p>
+        <input type="text" data-testid="input-debounce-search" id="debounce-search" placeholder="Search applicants..." />
+        <div id="debounce-results" data-testid="debounce-results">
+          <p style="color: #94a3b8; font-size: 0.875rem;">Type to search...</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div>
+
+      <!-- 5: Progress Simulation -->
+      <div class="section" data-testid="progress-section">
+        <h2>Document Processing</h2>
+        <button class="btn-primary" data-testid="btn-start-upload" id="btn-start-upload">Upload & Process Document</button>
+        <div style="margin-top: 1rem;">
+          <p style="font-size: 0.875rem;" data-testid="upload-status" id="upload-status">Ready to upload</p>
+          <div class="progress-bar">
+            <div class="progress-fill" style="width: 0%;" data-testid="upload-progress" id="upload-progress"></div>
+          </div>
+          <p style="font-size: 0.75rem; color: #64748b;" data-testid="upload-percent" id="upload-percent">0%</p>
+        </div>
+      </div>
+
+      <!-- 6: Toast Notifications -->
+      <div class="section" data-testid="toast-section">
+        <h2>Toast Notifications (auto-dismiss)</h2>
+        <p style="font-size: 0.875rem; color: #64748b; margin-bottom: 0.5rem;">Toasts appear and auto-dismiss after 3 seconds</p>
+        <button class="btn-success" data-testid="btn-toast-success" id="btn-toast-success">Success Toast</button>
+        <button class="btn-danger" data-testid="btn-toast-error" id="btn-toast-error">Error Toast</button>
+        <div id="toast-container" data-testid="toast-container" style="margin-top: 0.75rem;"></div>
+      </div>
+
+      <!-- 7: Conditional Rendering -->
+      <div class="section" data-testid="conditional-section">
+        <h2>Conditional Content</h2>
+        <p style="font-size: 0.875rem; color: #64748b; margin-bottom: 0.5rem;">Content changes based on API response (simulated)</p>
+        <button class="btn-success" data-testid="btn-simulate-success" id="btn-simulate-success">Simulate Success</button>
+        <button class="btn-danger" data-testid="btn-simulate-error" id="btn-simulate-error">Simulate Error</button>
+        <div id="conditional-result" data-testid="conditional-result" style="margin-top: 0.75rem;"></div>
+      </div>
+
+      <!-- 8: Skeleton Loading -->
+      <div class="section" data-testid="skeleton-section">
+        <h2>Skeleton Loading</h2>
+        <button class="btn-primary" data-testid="btn-load-profile" id="btn-load-profile">Load Profile</button>
+        <div id="profile-area" data-testid="profile-area" style="margin-top: 1rem;">
+          <p style="color: #94a3b8; font-size: 0.875rem;">Click to load profile data.</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    // 1: Delayed Element Rendering
+    document.getElementById('btn-delay-1s').addEventListener('click', () => {
+      setTimeout(() => {
+        const div = document.createElement('div');
+        div.className = 'alert alert-success';
+        div.setAttribute('data-testid', 'delayed-1s');
+        div.textContent = 'Appeared after 1 second!';
+        document.getElementById('delayed-results').appendChild(div);
+      }, 1000);
+    });
+
+    document.getElementById('btn-delay-3s').addEventListener('click', () => {
+      setTimeout(() => {
+        const div = document.createElement('div');
+        div.className = 'alert alert-info';
+        div.setAttribute('data-testid', 'delayed-3s');
+        div.textContent = 'Appeared after 3 seconds!';
+        document.getElementById('delayed-results').appendChild(div);
+      }, 3000);
+    });
+
+    document.getElementById('btn-delay-7s').addEventListener('click', () => {
+      setTimeout(() => {
+        const div = document.createElement('div');
+        div.className = 'alert alert-error';
+        div.setAttribute('data-testid', 'delayed-7s');
+        div.textContent = 'Appeared after 7 seconds!';
+        document.getElementById('delayed-results').appendChild(div);
+      }, 7000);
+    });
+
+    // 2: Loading State Simulation
+    document.getElementById('btn-fetch-data').addEventListener('click', () => {
+      const area = document.getElementById('loading-area');
+      area.innerHTML = '<div style="text-align: center; padding: 1rem;"><div class="spinner"></div><p style="margin-top: 0.5rem; font-size: 0.875rem; color: #64748b;" data-testid="loading-spinner">Loading applicant data...</p></div>';
+
+      setTimeout(() => {
+        area.innerHTML = `
+          <div class="card" data-testid="applicant-data">
+            <p style="font-size: 0.875rem;"><strong>Name:</strong> <span data-testid="loaded-name">Priya Sharma</span></p>
+            <p style="font-size: 0.875rem;"><strong>Email:</strong> <span data-testid="loaded-email">priya@example.com</span></p>
+            <p style="font-size: 0.875rem;"><strong>Status:</strong> <span class="status-badge status-complete" data-testid="loaded-status">Verified</span></p>
+            <p style="font-size: 0.875rem;"><strong>Risk Score:</strong> <span data-testid="loaded-risk">68</span>/100</p>
+          </div>`;
+      }, 2000);
+    });
+
+    // 3: Auto-Refreshing Content (Polling)
+    let pollingInterval = null;
+    let pollingStep = 0;
+    const statuses = ['Queued', 'Identity Check', 'Address Check', 'Background Check', 'Final Review', 'Complete'];
+
+    document.getElementById('btn-start-polling').addEventListener('click', () => {
+      pollingStep = 0;
+      document.getElementById('btn-start-polling').disabled = true;
+      document.getElementById('btn-stop-polling').disabled = false;
+      updatePollingUI();
+
+      pollingInterval = setInterval(() => {
+        pollingStep++;
+        updatePollingUI();
+        if (pollingStep >= 5) {
+          clearInterval(pollingInterval);
+          document.getElementById('btn-start-polling').disabled = false;
+          document.getElementById('btn-stop-polling').disabled = true;
+        }
+      }, 2000);
+    });
+
+    document.getElementById('btn-stop-polling').addEventListener('click', () => {
+      clearInterval(pollingInterval);
+      document.getElementById('btn-start-polling').disabled = false;
+      document.getElementById('btn-stop-polling').disabled = true;
+    });
+
+    function updatePollingUI() {
+      const statusEl = document.getElementById('polling-status');
+      const stepEl = document.getElementById('polling-step');
+      stepEl.textContent = pollingStep;
+      statusEl.textContent = statuses[pollingStep];
+      if (pollingStep >= 5) {
+        statusEl.className = 'status-badge status-complete';
+      } else {
+        statusEl.className = 'status-badge status-loading';
+      }
+    }
+
+    // 4: Debounced Search
+    let debounceTimer = null;
+    const applicants = [
+      { name: 'Priya Sharma', id: 'KYC-101', status: 'Verified' },
+      { name: 'James Wilson', id: 'KYC-102', status: 'Pending' },
+      { name: 'Aisha Khan', id: 'KYC-103', status: 'Rejected' },
+      { name: 'David Lee', id: 'KYC-104', status: 'Verified' },
+      { name: 'Maria Garcia', id: 'KYC-105', status: 'Pending' },
+    ];
+
+    document.getElementById('debounce-search').addEventListener('input', (e) => {
+      clearTimeout(debounceTimer);
+      const results = document.getElementById('debounce-results');
+      results.innerHTML = '<p style="color: #64748b; font-size: 0.875rem;" data-testid="searching-indicator"><span class="spinner" style="width: 14px; height: 14px; border-width: 2px; vertical-align: middle; margin-right: 0.5rem;"></span>Searching...</p>';
+
+      debounceTimer = setTimeout(() => {
+        const query = e.target.value.toLowerCase();
+        if (!query) {
+          results.innerHTML = '<p style="color: #94a3b8; font-size: 0.875rem;">Type to search...</p>';
+          return;
+        }
+        const matches = applicants.filter(a => a.name.toLowerCase().includes(query) || a.id.toLowerCase().includes(query));
+        if (matches.length === 0) {
+          results.innerHTML = '<p style="color: #94a3b8; font-size: 0.875rem;" data-testid="no-results">No results found.</p>';
+        } else {
+          results.innerHTML = matches.map(m =>
+            '<div class="card" data-testid="search-result" style="padding: 0.5rem 0.75rem;">' +
+            '<strong>' + m.id + '</strong> — ' + m.name + ' (' + m.status + ')' +
+            '</div>'
+          ).join('');
+        }
+      }, 300);
+    });
+
+    // 5: Progress Simulation
+    document.getElementById('btn-start-upload').addEventListener('click', () => {
+      const btn = document.getElementById('btn-start-upload');
+      const statusEl = document.getElementById('upload-status');
+      const progressEl = document.getElementById('upload-progress');
+      const percentEl = document.getElementById('upload-percent');
+
+      btn.disabled = true;
+      let progress = 0;
+      statusEl.textContent = 'Uploading...';
+
+      const interval = setInterval(() => {
+        progress += Math.floor(Math.random() * 15) + 5;
+        if (progress >= 100) {
+          progress = 100;
+          clearInterval(interval);
+          statusEl.textContent = 'Processing complete!';
+          btn.disabled = false;
+        } else if (progress > 60 && statusEl.textContent === 'Uploading...') {
+          statusEl.textContent = 'Processing document...';
+        }
+        progressEl.style.width = progress + '%';
+        percentEl.textContent = progress + '%';
+      }, 400);
+    });
+
+    // 6: Toast Notifications
+    let toastId = 0;
+    function showToast(type) {
+      toastId++;
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      toast.className = 'notification';
+      toast.setAttribute('data-testid', 'toast-' + toastId);
+      toast.style.borderColor = type === 'success' ? '#bbf7d0' : '#fca5a5';
+      toast.style.background = type === 'success' ? '#f0fdf4' : '#fef2f2';
+      toast.style.color = type === 'success' ? '#166534' : '#991b1b';
+      toast.textContent = type === 'success' ? 'Application approved successfully!' : 'Verification failed. Please retry.';
+      container.appendChild(toast);
+
+      // Auto-dismiss after 3 seconds
+      setTimeout(() => {
+        toast.classList.add('fade-out');
+        setTimeout(() => toast.remove(), 500);
+      }, 3000);
+    }
+
+    document.getElementById('btn-toast-success').addEventListener('click', () => showToast('success'));
+    document.getElementById('btn-toast-error').addEventListener('click', () => showToast('error'));
+
+    // 7: Conditional Rendering
+    document.getElementById('btn-simulate-success').addEventListener('click', () => {
+      const area = document.getElementById('conditional-result');
+      area.innerHTML = '<div class="spinner" style="margin: 0.5rem 0;"></div>';
+      setTimeout(() => {
+        area.innerHTML = '<div class="alert alert-success" data-testid="result-success"><strong>Verification Complete!</strong> Applicant has been approved.</div>';
+      }, 1500);
+    });
+
+    document.getElementById('btn-simulate-error').addEventListener('click', () => {
+      const area = document.getElementById('conditional-result');
+      area.innerHTML = '<div class="spinner" style="margin: 0.5rem 0;"></div>';
+      setTimeout(() => {
+        area.innerHTML = '<div class="alert alert-error" data-testid="result-error"><strong>Verification Failed!</strong> Document could not be validated.</div>';
+      }, 1500);
+    });
+
+    // 8: Skeleton Loading
+    document.getElementById('btn-load-profile').addEventListener('click', () => {
+      const area = document.getElementById('profile-area');
+      area.innerHTML = `
+        <div data-testid="skeleton-loader">
+          <div class="skeleton" style="width: 40%;"></div>
+          <div class="skeleton" style="width: 70%;"></div>
+          <div class="skeleton" style="width: 55%;"></div>
+        </div>`;
+
+      setTimeout(() => {
+        area.innerHTML = `
+          <div class="card" data-testid="profile-data">
+            <p style="font-size: 0.875rem;"><strong>Name:</strong> <span data-testid="profile-name">Amit Patel</span></p>
+            <p style="font-size: 0.875rem;"><strong>KYC Level:</strong> <span data-testid="profile-level">Level 3 - Enhanced</span></p>
+            <p style="font-size: 0.875rem;"><strong>Last Verified:</strong> <span data-testid="profile-date">2024-12-15</span></p>
+          </div>`;
+      }, 2500);
+    });
+  </script>
+
+</body>
+</html>

@@ -1,0 +1,2619 @@
+1:"$Sreact.fragment"
+2:I[31749,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js","/qa-labs/_next/static/chunks/03nvm.8~ftt80.js"],"KataPageClient"]
+10:I[49583,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js"],"OutletBoundary"]
+11:"$Sreact.suspense"
+3:T28fb,# Kata 07: Drag and Drop
+
+## What You Will Learn
+
+- How to drag elements from one container to another using HTML5 Drag and Drop
+- How to verify that a dragged card moved to the correct target column
+- How to check that column card counts update after a move
+- How to reorder items within a list by dragging
+- How to detect visual feedback during drag operations (ghost image, drop zone highlight)
+- Differences between Playwright's built-in `dragTo()` and Cypress's trigger-based approach
+
+## Prerequisites
+
+- Completed Kata 01-06
+- Understanding of DOM selectors and assertions
+
+## Concepts Explained
+
+### HTML5 Drag and Drop API
+
+```
+The browser's native drag-and-drop system uses these events:
+
+  dragstart  — fires on the element being dragged when drag begins
+  drag       — fires continuously on the dragged element while moving
+  dragenter  — fires on a drop target when a dragged item enters it
+  dragover   — fires continuously on a drop target while item is over it
+  dragleave  — fires on a drop target when a dragged item leaves it
+  drop       — fires on a drop target when the dragged item is released
+  dragend    — fires on the dragged element when drag operation ends
+
+For an element to be draggable, it needs: draggable="true"
+For a container to accept drops, its dragover handler must call e.preventDefault()
+```
+
+### Playwright: dragTo()
+
+```typescript
+// PLAYWRIGHT
+// dragTo(target) performs a full drag-and-drop sequence:
+//   1. Hover the source element
+//   2. Press the mouse button
+//   3. Move the mouse to the target element
+//   4. Release the mouse button
+//
+// Signature:
+//   locator.dragTo(target: Locator, options?: {
+//     force?: boolean,
+//     sourcePosition?: { x: number, y: number },
+//     targetPosition?: { x: number, y: number },
+//     timeout?: number
+//   }): Promise<void>
+//
+// Parameters:
+//   target          — the Locator of the drop target element
+//   sourcePosition  — offset within the source element to start the drag
+//   targetPosition  — offset within the target element to drop onto
+//   force           — bypass actionability checks (default: false)
+
+// Drag a card from the "New" column to the "In Review" column:
+await page.getByTestId('card-aisha').dragTo(page.getByTestId('column-review'));
+```
+
+### Cypress: trigger-based Drag and Drop
+
+```typescript
+// CYPRESS
+// Cypress does NOT have a built-in drag-and-drop command. Instead, we
+// simulate the HTML5 Drag and Drop events manually using trigger().
+//
+// trigger(eventName, options) dispatches a DOM event on the element.
+//
+// The drag-and-drop sequence requires three triggers:
+//   1. trigger('dragstart') on the source element — begins the drag
+//   2. trigger('drop')      on the target element — performs the drop
+//   3. trigger('dragend')   on the source element — cleans up
+//
+// We pass a dataTransfer object to carry data between events.
+
+// Create a DataTransfer object to pass between events:
+const dataTransfer = new DataTransfer();
+
+// Step 1: Start the drag on the card
+cy.get('[data-testid="card-aisha"]').trigger('dragstart', { dataTransfer });
+
+// Step 2: Trigger dragover on the target (required to allow drop)
+cy.get('[data-testid="column-review"]').trigger('dragover', { dataTransfer });
+
+// Step 3: Drop the card on the target column
+cy.get('[data-testid="column-review"]').trigger('drop', { dataTransfer });
+
+// Step 4: End the drag on the source card
+cy.get('[data-testid="card-aisha"]').trigger('dragend', { dataTransfer });
+```
+
+### Verifying Card Movement
+
+```typescript
+// PLAYWRIGHT
+// After dragging, verify the card is inside the target column by checking
+// that the target column contains the card element.
+const reviewColumn = page.getByTestId('column-review');
+await expect(reviewColumn.getByTestId('card-aisha')).toBeVisible();
+
+// Verify column count badge updated:
+await expect(page.getByTestId('count-review')).toHaveText('2');
+
+// CYPRESS
+// Use find() to search within a parent element:
+cy.get('[data-testid="column-review"]')
+  .find('[data-testid="card-aisha"]')
+  .should('exist');
+
+// Verify column count:
+cy.get('[data-testid="count-review"]').should('have.text', '2');
+```
+
+### Verifying Drop Zone Highlight
+
+```typescript
+// PLAYWRIGHT
+// During drag, the target column gets a 'drag-over' CSS class.
+// We can check for it during a manual drag sequence:
+await page.getByTestId('card-aisha').hover();
+await page.mouse.down();
+await page.getByTestId('column-review').hover();
+// Now check the class:
+await expect(page.getByTestId('column-review')).toHaveClass(/drag-over/);
+await page.mouse.up();
+
+// CYPRESS
+// After triggering dragover on a column, check for the class:
+cy.get('[data-testid="column-review"]').trigger('dragover', { dataTransfer });
+cy.get('[data-testid="column-review"]').should('have.class', 'drag-over');
+```
+
+## Playground
+
+The playground is a "KYC Kanban Board" themed as a fintech compliance tool. It contains:
+
+1. **Kanban Board** — four columns: "New", "In Review", "Approved", "Rejected". Each column accepts cards dropped into it via HTML5 Drag and Drop.
+2. **KYC Application Cards** — each card represents a KYC application with a name and risk level (High, Medium, Low). Cards have drag handles and are fully draggable.
+3. **Column Count Badges** — each column header shows the current number of cards, updating automatically after each drag operation.
+4. **Visual Feedback** — cards become semi-transparent while being dragged; target columns get a blue dashed border highlight when a card hovers over them.
+5. **Status Bar** — displays the last drag action (e.g., "Moved aisha from new to review").
+6. **Sortable Priority List** — a separate list of review priorities that can be reordered by dragging items up or down.
+
+### Initial Card Placement
+
+| Column     | Cards                                   |
+|------------|----------------------------------------|
+| New        | Aisha Patel (High), Ben Okafor (Medium), Clara Jansen (Low) |
+| In Review  | Derek Wong (Medium)                     |
+| Approved   | (empty)                                 |
+| Rejected   | (empty)                                 |
+
+## Exercises
+
+### Exercise 1: Drag a Card from "New" to "In Review"
+Drag the "Aisha Patel" card from the New column to the In Review column. Verify the status bar shows the correct action message.
+
+### Exercise 2: Verify Card Moved to Target Column
+After dragging "Aisha Patel" to In Review, verify the card element is now inside the In Review column and is visible.
+
+### Exercise 3: Drag a Card to "Approved" Column
+Drag "Clara Jansen" from the New column to the Approved column. Verify the card appears in the Approved column.
+
+### Exercise 4: Drag a Card to "Rejected" Column
+Drag "Ben Okafor" from the New column to the Rejected column. Verify the card appears in the Rejected column.
+
+### Exercise 5: Verify Source Column Card Count Decreases
+After moving all three cards out of New, verify the New column count shows "0" and the target columns show correct counts.
+
+### Exercise 6: Reorder Items Within the Sortable List
+Drag "Income Verification" above "Sanctions Screening" in the priority list. Verify the order text updates.
+
+### Exercise 7: Verify Drop Zone Highlights During Drag
+Start a drag on a card and hover over a column. Verify the column gets the "drag-over" CSS class. Release the drag and verify the class is removed.
+
+### Exercise 8: Drag Back from Rejected to New
+Drag "Ben Okafor" from the Rejected column back to the New column. Verify it appears in New and the counts update.
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/drag-and-drop.spec.ts`
+
+### Cypress Solution
+
+See `cypress/drag-and-drop.cy.ts`
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Forgetting `e.preventDefault()` in dragover handler | The browser's default is to NOT allow dropping. Without preventDefault(), the drop event never fires | Always call `e.preventDefault()` in the dragover handler |
+| Using `trigger('drag')` instead of the full sequence | A single drag trigger does nothing useful. HTML5 DnD requires dragstart, dragover, drop, dragend in sequence | Use the full trigger sequence: dragstart -> dragover -> drop -> dragend |
+| Not passing `dataTransfer` between Cypress triggers | Without a shared DataTransfer object, the drop handler can't read the data set during dragstart | Create one `new DataTransfer()` and pass it to all triggers |
+| Checking card position before the drop completes | The DOM hasn't updated yet if you assert too quickly | In Playwright, dragTo() is awaited. In Cypress, commands are auto-queued |
+| Dragging to a non-droppable area | If the target element doesn't have dragover/drop handlers, nothing happens | Drag to the column container, not arbitrary page areas |
+| Forgetting to verify column counts after drag | Card counts are a key acceptance criteria in kanban boards | Always check both source and target column counts |
+
+## Quick Reference
+
+### Playwright Drag and Drop
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Drag to target | `locator.dragTo(target)` | `await card.dragTo(column)` |
+| Drag with position | `locator.dragTo(target, { targetPosition })` | `await card.dragTo(col, { targetPosition: { x: 50, y: 50 } })` |
+| Manual drag start | `locator.hover() + page.mouse.down()` | `await card.hover(); await page.mouse.down()` |
+| Manual drag move | `locator.hover()` (while mouse is down) | `await target.hover()` |
+| Manual drag end | `page.mouse.up()` | `await page.mouse.up()` |
+| Check class | `expect(locator).toHaveClass(regex)` | `await expect(col).toHaveClass(/drag-over/)` |
+| Check child exists | `parent.getByTestId(id)` | `await expect(col.getByTestId('card-x')).toBeVisible()` |
+
+### Cypress Drag and Drop
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Start drag | `.trigger('dragstart', { dataTransfer })` | `cy.get(card).trigger('dragstart', { dataTransfer })` |
+| Hover over target | `.trigger('dragover', { dataTransfer })` | `cy.get(col).trigger('dragover', { dataTransfer })` |
+| Drop on target | `.trigger('drop', { dataTransfer })` | `cy.get(col).trigger('drop', { dataTransfer })` |
+| End drag | `.trigger('dragend', { dataTransfer })` | `cy.get(card).trigger('dragend', { dataTransfer })` |
+| Check class | `.should('have.class', name)` | `cy.get(col).should('have.class', 'drag-over')` |
+| Find child | `.find(selector)` | `cy.get(col).find('[data-testid="card-x"]')` |
+4:T2ab0,import { test, expect } from '@playwright/test';
+
+// The base URL for our playground page. All tests navigate here first.
+const PLAYGROUND = '/phase-01-dom-and-browser-apis/07-drag-and-drop/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Drag a Card from "New" to "In Review"
+// --------------------------------------------------------------------------
+// This exercise demonstrates Playwright's dragTo() method, which performs
+// a complete HTML5 drag-and-drop sequence (hover source, mousedown, move
+// to target, mouseup) in a single awaitable call.
+test('exercise 1: drag a card from New to In Review', async ({ page }) => {
+  // Navigate to the playground page.
+  // page.goto(url) loads the URL and waits for the 'load' event by default.
+  await page.goto(PLAYGROUND);
+
+  // Verify the card starts in the New column by checking the status bar
+  // shows no action yet.
+  await expect(page.getByTestId('last-action')).toHaveText('None');
+
+  // Drag the "Aisha Patel" card to the "In Review" column.
+  // dragTo(target) performs the full drag-and-drop operation:
+  //   1. Hovers the source element to find its center
+  //   2. Presses the left mouse button (mousedown)
+  //   3. Moves the mouse to the center of the target element
+  //   4. Releases the mouse button (mouseup)
+  // This triggers the HTML5 dragstart, dragover, drop, and dragend events.
+  await page.getByTestId('card-aisha').dragTo(page.getByTestId('column-review'));
+
+  // Verify the status bar reports the drag action.
+  // toContainText(substring) checks if textContent contains the substring.
+  await expect(page.getByTestId('last-action')).toContainText('aisha');
+  await expect(page.getByTestId('last-action')).toContainText('review');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Verify Card Moved to Target Column
+// --------------------------------------------------------------------------
+// After dragging, we verify the card DOM element is now a child of the
+// target column, not the source column.
+test('exercise 2: verify card is inside the target column after drag', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify the card is initially in the New column.
+  // We scope the search to the New column using a parent locator.
+  const newColumn = page.getByTestId('column-new');
+  await expect(newColumn.getByTestId('card-aisha')).toBeVisible();
+
+  // Drag the card to In Review.
+  await page.getByTestId('card-aisha').dragTo(page.getByTestId('column-review'));
+
+  // Verify the card is now inside the In Review column.
+  // getByTestId() on a parent locator scopes the search to that parent's
+  // descendants only. If the card were still in New, this would fail.
+  const reviewColumn = page.getByTestId('column-review');
+  await expect(reviewColumn.getByTestId('card-aisha')).toBeVisible();
+
+  // Verify the card is no longer in the New column.
+  // toBeHidden() asserts the element is not visible (or not in the DOM
+  // subtree of the parent locator).
+  await expect(newColumn.getByTestId('card-aisha')).toBeHidden();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Drag a Card to "Approved" Column
+// --------------------------------------------------------------------------
+// This exercise drags a different card to the Approved column to practice
+// targeting various drop zones.
+test('exercise 3: drag a card to the Approved column', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify the Approved column starts empty (count = 0).
+  await expect(page.getByTestId('count-approved')).toHaveText('0');
+
+  // Drag "Clara Jansen" to the Approved column.
+  await page.getByTestId('card-clara').dragTo(page.getByTestId('column-approved'));
+
+  // Verify the card is now in the Approved column.
+  const approvedColumn = page.getByTestId('column-approved');
+  await expect(approvedColumn.getByTestId('card-clara')).toBeVisible();
+
+  // Verify the Approved column count updated to 1.
+  await expect(page.getByTestId('count-approved')).toHaveText('1');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Drag a Card to "Rejected" Column
+// --------------------------------------------------------------------------
+// This exercise drags a card to the Rejected column.
+test('exercise 4: drag a card to the Rejected column', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify the Rejected column starts empty.
+  await expect(page.getByTestId('count-rejected')).toHaveText('0');
+
+  // Drag "Ben Okafor" to the Rejected column.
+  await page.getByTestId('card-ben').dragTo(page.getByTestId('column-rejected'));
+
+  // Verify the card is in the Rejected column.
+  const rejectedColumn = page.getByTestId('column-rejected');
+  await expect(rejectedColumn.getByTestId('card-ben')).toBeVisible();
+
+  // Verify the Rejected column count updated.
+  await expect(page.getByTestId('count-rejected')).toHaveText('1');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Verify Source Column Card Count Decreases
+// --------------------------------------------------------------------------
+// This exercise moves multiple cards and checks that both source and target
+// counts are correct.
+test('exercise 5: verify column counts update after moving cards', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify initial counts: New has 3 cards, Review has 1.
+  await expect(page.getByTestId('count-new')).toHaveText('3');
+  await expect(page.getByTestId('count-review')).toHaveText('1');
+
+  // Move all three cards out of New.
+  await page.getByTestId('card-aisha').dragTo(page.getByTestId('column-review'));
+  await page.getByTestId('card-ben').dragTo(page.getByTestId('column-rejected'));
+  await page.getByTestId('card-clara').dragTo(page.getByTestId('column-approved'));
+
+  // Verify New column now has 0 cards.
+  await expect(page.getByTestId('count-new')).toHaveText('0');
+
+  // Verify target columns have correct counts.
+  // Review: had 1 (Derek) + 1 (Aisha) = 2
+  await expect(page.getByTestId('count-review')).toHaveText('2');
+  // Rejected: had 0 + 1 (Ben) = 1
+  await expect(page.getByTestId('count-rejected')).toHaveText('1');
+  // Approved: had 0 + 1 (Clara) = 1
+  await expect(page.getByTestId('count-approved')).toHaveText('1');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Reorder Items Within the Sortable List
+// --------------------------------------------------------------------------
+// This exercise demonstrates dragging an item within a list to reorder it.
+// We use dragTo() with the target being another list item.
+test('exercise 6: reorder items within the sortable priority list', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify the initial order.
+  await expect(page.getByTestId('priority-order')).toHaveText(
+    'sanctions, identity, address, income'
+  );
+
+  // Drag "Income Verification" (last item) above "Sanctions Screening" (first item).
+  // dragTo() works for reordering within a list too — we just target another
+  // list item instead of a column container.
+  await page.getByTestId('priority-income').dragTo(
+    page.getByTestId('priority-sanctions')
+  );
+
+  // Verify the order changed — "income" should now be first.
+  // Note: The exact result depends on drop position calculation in the
+  // playground's drop handler (above/below midpoint). We verify income
+  // moved above sanctions.
+  const order = await page.getByTestId('priority-order').textContent();
+  // income should appear before sanctions in the new order.
+  expect(order!.indexOf('income')).toBeLessThan(order!.indexOf('sanctions'));
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Verify Drop Zone Highlights During Drag
+// --------------------------------------------------------------------------
+// This exercise uses a manual drag sequence (hover + mouse.down + hover
+// over target) to verify the CSS class applied during drag hover.
+test('exercise 7: verify drop zone highlight during drag', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify the column does NOT have the drag-over class initially.
+  // toHaveClass() with a regex checks if the element's class attribute
+  // matches the pattern. We negate it here.
+  await expect(page.getByTestId('column-approved')).not.toHaveClass(/drag-over/);
+
+  // Start a manual drag sequence:
+  // Step 1: Hover over the card to position the mouse on it.
+  await page.getByTestId('card-aisha').hover();
+
+  // Step 2: Press the mouse button to begin dragging.
+  // page.mouse.down() dispatches a mousedown event at the current position.
+  await page.mouse.down();
+
+  // Step 3: Move the mouse over the target column.
+  // This triggers dragenter and dragover events on the column, which
+  // cause the playground to add the 'drag-over' CSS class.
+  await page.getByTestId('column-approved').hover();
+
+  // Verify the column now has the 'drag-over' class.
+  // toHaveClass(regex) checks that the element's className matches.
+  await expect(page.getByTestId('column-approved')).toHaveClass(/drag-over/);
+
+  // Step 4: Release the mouse to complete the drop.
+  await page.mouse.up();
+
+  // After drop, the 'drag-over' class should be removed.
+  await expect(page.getByTestId('column-approved')).not.toHaveClass(/drag-over/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Drag Back from Rejected to New
+// --------------------------------------------------------------------------
+// This exercise verifies cards can be dragged back to their original column,
+// confirming the drop targets work in all directions.
+test('exercise 8: drag a card from Rejected back to New', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // First, move "Ben Okafor" to the Rejected column.
+  await page.getByTestId('card-ben').dragTo(page.getByTestId('column-rejected'));
+
+  // Verify it's in Rejected.
+  await expect(page.getByTestId('column-rejected').getByTestId('card-ben')).toBeVisible();
+  await expect(page.getByTestId('count-new')).toHaveText('2');
+  await expect(page.getByTestId('count-rejected')).toHaveText('1');
+
+  // Now drag it back to New.
+  await page.getByTestId('card-ben').dragTo(page.getByTestId('column-new'));
+
+  // Verify it's back in New.
+  await expect(page.getByTestId('column-new').getByTestId('card-ben')).toBeVisible();
+
+  // Verify counts restored.
+  await expect(page.getByTestId('count-new')).toHaveText('3');
+  await expect(page.getByTestId('count-rejected')).toHaveText('0');
+
+  // Verify the status bar shows the return move.
+  await expect(page.getByTestId('last-action')).toContainText('ben');
+  await expect(page.getByTestId('last-action')).toContainText('new');
+});
+5:T2df3,const PLAYGROUND = '/phase-01-dom-and-browser-apis/07-drag-and-drop/playground/';
+
+describe('Kata 07: Drag and Drop', () => {
+
+  // beforeEach runs before every test in this describe block.
+  // We navigate to the playground page so each test starts fresh.
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Helper: Perform an HTML5 drag-and-drop from source to target.
+  // --------------------------------------------------------------------------
+  // Cypress does NOT have a built-in drag-and-drop command. We must manually
+  // trigger the HTML5 Drag and Drop events in sequence. This helper function
+  // encapsulates that pattern so each test can use it simply.
+  //
+  // The sequence is:
+  //   1. dragstart on source — tells the browser "this element is being dragged"
+  //   2. dragover on target  — required to allow dropping (calls preventDefault)
+  //   3. drop on target      — performs the drop action
+  //   4. dragend on source   — cleans up the drag state
+  //
+  // We create a DataTransfer object and share it between all events so that
+  // data set in dragstart (via setData) is available in drop (via getData).
+  function dragAndDrop(sourceSelector: string, targetSelector: string) {
+    // Create a new DataTransfer object. This is the browser's built-in API
+    // for carrying data between drag events. We pass it to each trigger()
+    // call so all events share the same data.
+    const dataTransfer = new DataTransfer();
+
+    // Step 1: Fire dragstart on the source element.
+    // trigger(eventName, options) dispatches a DOM event on the element.
+    // { dataTransfer } passes our DataTransfer as part of the event.
+    cy.get(sourceSelector).trigger('dragstart', { dataTransfer });
+
+    // Step 2: Fire dragover on the target to allow dropping.
+    // Without this, the browser won't allow the drop event to fire.
+    cy.get(targetSelector).trigger('dragover', { dataTransfer });
+
+    // Step 3: Fire drop on the target to perform the drop action.
+    // The drop handler in our playground moves the card into this column.
+    cy.get(targetSelector).trigger('drop', { dataTransfer });
+
+    // Step 4: Fire dragend on the source to clean up.
+    // This removes the 'dragging' CSS class and resets drag state.
+    cy.get(sourceSelector).trigger('dragend', { dataTransfer });
+  }
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Drag a Card from "New" to "In Review"
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates the trigger-based drag-and-drop pattern in
+  // Cypress by moving a KYC card between kanban columns.
+  it('exercise 1: drag a card from New to In Review', () => {
+    // Verify no action has been taken yet.
+    cy.get('[data-testid="last-action"]').should('have.text', 'None');
+
+    // Perform the drag-and-drop using our helper.
+    dragAndDrop('[data-testid="card-aisha"]', '[data-testid="column-review"]');
+
+    // Verify the status bar reports the drag action.
+    // .should('contain.text', str) checks if textContent contains the string.
+    cy.get('[data-testid="last-action"]').should('contain.text', 'aisha');
+    cy.get('[data-testid="last-action"]').should('contain.text', 'review');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Verify Card Moved to Target Column
+  // --------------------------------------------------------------------------
+  // After dragging, we verify the card is a DOM child of the target column.
+  it('exercise 2: verify card is inside the target column after drag', () => {
+    // Verify the card is initially in the New column.
+    // find(selector) searches within the subject element's descendants.
+    cy.get('[data-testid="column-new"]')
+      .find('[data-testid="card-aisha"]')
+      .should('exist');
+
+    // Drag the card to In Review.
+    dragAndDrop('[data-testid="card-aisha"]', '[data-testid="column-review"]');
+
+    // Verify the card is now inside the In Review column.
+    // find() scopes the search to descendants of the Review column only.
+    cy.get('[data-testid="column-review"]')
+      .find('[data-testid="card-aisha"]')
+      .should('exist')
+      .and('be.visible');
+
+    // Verify the card is no longer in the New column.
+    // .should('not.exist') asserts the element is not in the DOM subtree.
+    cy.get('[data-testid="column-new"]')
+      .find('[data-testid="card-aisha"]')
+      .should('not.exist');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Drag a Card to "Approved" Column
+  // --------------------------------------------------------------------------
+  it('exercise 3: drag a card to the Approved column', () => {
+    // Verify the Approved column starts empty (count = 0).
+    cy.get('[data-testid="count-approved"]').should('have.text', '0');
+
+    // Drag "Clara Jansen" to the Approved column.
+    dragAndDrop('[data-testid="card-clara"]', '[data-testid="column-approved"]');
+
+    // Verify the card is now in the Approved column.
+    cy.get('[data-testid="column-approved"]')
+      .find('[data-testid="card-clara"]')
+      .should('exist');
+
+    // Verify the Approved column count updated to 1.
+    cy.get('[data-testid="count-approved"]').should('have.text', '1');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Drag a Card to "Rejected" Column
+  // --------------------------------------------------------------------------
+  it('exercise 4: drag a card to the Rejected column', () => {
+    // Verify the Rejected column starts empty.
+    cy.get('[data-testid="count-rejected"]').should('have.text', '0');
+
+    // Drag "Ben Okafor" to the Rejected column.
+    dragAndDrop('[data-testid="card-ben"]', '[data-testid="column-rejected"]');
+
+    // Verify the card is in the Rejected column.
+    cy.get('[data-testid="column-rejected"]')
+      .find('[data-testid="card-ben"]')
+      .should('exist');
+
+    // Verify the Rejected column count updated.
+    cy.get('[data-testid="count-rejected"]').should('have.text', '1');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Verify Source Column Card Count Decreases
+  // --------------------------------------------------------------------------
+  // This exercise moves multiple cards and checks all column counts.
+  it('exercise 5: verify column counts update after moving cards', () => {
+    // Verify initial counts.
+    cy.get('[data-testid="count-new"]').should('have.text', '3');
+    cy.get('[data-testid="count-review"]').should('have.text', '1');
+
+    // Move all three cards out of New.
+    dragAndDrop('[data-testid="card-aisha"]', '[data-testid="column-review"]');
+    dragAndDrop('[data-testid="card-ben"]', '[data-testid="column-rejected"]');
+    dragAndDrop('[data-testid="card-clara"]', '[data-testid="column-approved"]');
+
+    // Verify New column now has 0 cards.
+    cy.get('[data-testid="count-new"]').should('have.text', '0');
+
+    // Verify target columns have correct counts.
+    // Review: 1 (Derek) + 1 (Aisha) = 2
+    cy.get('[data-testid="count-review"]').should('have.text', '2');
+    // Rejected: 0 + 1 (Ben) = 1
+    cy.get('[data-testid="count-rejected"]').should('have.text', '1');
+    // Approved: 0 + 1 (Clara) = 1
+    cy.get('[data-testid="count-approved"]').should('have.text', '1');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Reorder Items Within the Sortable List
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates reordering items within a single list
+  // using the same trigger-based drag pattern.
+  it('exercise 6: reorder items within the sortable priority list', () => {
+    // Verify the initial order.
+    cy.get('[data-testid="priority-order"]').should(
+      'have.text',
+      'sanctions, identity, address, income'
+    );
+
+    // Drag "Income Verification" (last item) onto "Sanctions Screening" (first item).
+    // This reorders the list, placing income before sanctions.
+    dragAndDrop('[data-testid="priority-income"]', '[data-testid="priority-sanctions"]');
+
+    // Verify that "income" now appears before "sanctions" in the order string.
+    cy.get('[data-testid="priority-order"]').invoke('text').then((text) => {
+      // indexOf(str) returns the position of the first occurrence of str.
+      // We verify income's position is earlier than sanctions' position.
+      expect(text.indexOf('income')).to.be.lessThan(text.indexOf('sanctions'));
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Verify Drop Zone Highlights During Drag
+  // --------------------------------------------------------------------------
+  // This exercise checks that the CSS class 'drag-over' is applied to a
+  // column when a dragged card hovers over it.
+  it('exercise 7: verify drop zone highlight during drag', () => {
+    // Verify the column does NOT have the drag-over class initially.
+    // .should('not.have.class', name) checks the element's classList.
+    cy.get('[data-testid="column-approved"]').should('not.have.class', 'drag-over');
+
+    // Create a shared DataTransfer for the drag events.
+    const dataTransfer = new DataTransfer();
+
+    // Start the drag on the card.
+    cy.get('[data-testid="card-aisha"]').trigger('dragstart', { dataTransfer });
+
+    // Trigger dragover on the Approved column — this adds the highlight class.
+    cy.get('[data-testid="column-approved"]').trigger('dragover', { dataTransfer });
+
+    // Verify the column now has the 'drag-over' class.
+    // .should('have.class', name) asserts the element's classList contains name.
+    cy.get('[data-testid="column-approved"]').should('have.class', 'drag-over');
+
+    // Complete the drag by dropping (which removes the highlight).
+    cy.get('[data-testid="column-approved"]').trigger('drop', { dataTransfer });
+    cy.get('[data-testid="card-aisha"]').trigger('dragend', { dataTransfer });
+
+    // Verify the highlight class is removed after drop.
+    cy.get('[data-testid="column-approved"]').should('not.have.class', 'drag-over');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Drag Back from Rejected to New
+  // --------------------------------------------------------------------------
+  // This exercise verifies cards can be moved back to their original column.
+  it('exercise 8: drag a card from Rejected back to New', () => {
+    // First, move "Ben Okafor" to the Rejected column.
+    dragAndDrop('[data-testid="card-ben"]', '[data-testid="column-rejected"]');
+
+    // Verify it's in Rejected.
+    cy.get('[data-testid="column-rejected"]')
+      .find('[data-testid="card-ben"]')
+      .should('exist');
+    cy.get('[data-testid="count-new"]').should('have.text', '2');
+    cy.get('[data-testid="count-rejected"]').should('have.text', '1');
+
+    // Now drag it back to New.
+    dragAndDrop('[data-testid="card-ben"]', '[data-testid="column-new"]');
+
+    // Verify it's back in New.
+    cy.get('[data-testid="column-new"]')
+      .find('[data-testid="card-ben"]')
+      .should('exist');
+
+    // Verify counts restored.
+    cy.get('[data-testid="count-new"]').should('have.text', '3');
+    cy.get('[data-testid="count-rejected"]').should('have.text', '0');
+
+    // Verify the status bar shows the return move.
+    cy.get('[data-testid="last-action"]').should('contain.text', 'ben');
+    cy.get('[data-testid="last-action"]').should('contain.text', 'new');
+  });
+
+});
+6:T266e,# Kata 06: Iframes and Shadow DOM
+
+## What You Will Learn
+
+- How to access and interact with elements inside `<iframe>` elements
+- How to handle nested iframes (iframe within iframe)
+- How to work with Shadow DOM and custom web components
+- Playwright `frameLocator()` API (no frame switching needed)
+- Cypress iframe pattern using `contentDocument.body`
+- Shadow DOM piercing: automatic in Playwright, `includeShadowDom` option in Cypress
+- Cross-boundary assertions: reading iframe content, acting on the parent page
+
+## Prerequisites
+
+- Completed Kata 01-05
+- Understanding of CSS selectors and `data-testid` attributes
+
+## Concepts Explained
+
+### What Are Iframes?
+
+An `<iframe>` (inline frame) embeds a separate HTML document inside the current page. The iframe has its own DOM, separate from the parent page. This means normal selectors **cannot** reach inside an iframe -- you need special APIs.
+
+Common real-world uses: embedded payment forms (Stripe, PayPal), third-party widgets, terms-and-conditions documents, ads.
+
+### What Is Shadow DOM?
+
+Shadow DOM is a web standard that encapsulates a component's internal structure. Elements inside a shadow root are hidden from the main page's DOM. Custom elements (like `<compliance-widget>`) use shadow DOM to prevent style leakage and maintain encapsulation.
+
+### Playwright: frameLocator() API
+
+```typescript
+// frameLocator() returns a FrameLocator scoped to the iframe's document.
+// You pass a CSS selector that matches the <iframe> element on the parent page.
+const frame = page.frameLocator('[data-testid="payment-iframe"]');
+
+// Inside the frame, use normal locator methods.
+await frame.getByTestId('input-cardholder').fill('Jane Doe');
+await expect(frame.getByTestId('payment-title')).toHaveText('Payment');
+
+// No "switching" needed -- you can use multiple frameLocators independently.
+const termsFrame = page.frameLocator('[data-testid="terms-iframe"]');
+await expect(termsFrame.getByTestId('terms-title')).toHaveText('Terms');
+
+// You can still access the main page with `page` at any time.
+await expect(page.getByTestId('page-header')).toBeVisible();
+```
+
+**Key points:**
+- `frameLocator()` does NOT switch context (unlike Selenium's `switchTo().frame()`)
+- Each `FrameLocator` is an independent scoped view into one iframe
+- You can use multiple frame locators in the same test without switching back
+- All locator methods (`.getByTestId()`, `.getByRole()`, `.locator()`) work inside frames
+
+### Playwright: Nested Iframes
+
+```typescript
+// Chain frameLocator() calls to access iframes within iframes.
+const outer = page.frameLocator('[data-testid="outer-iframe"]');
+const inner = outer.frameLocator('[data-testid="inner-iframe"]');
+
+// Now interact with elements inside the nested iframe.
+await expect(inner.getByTestId('inner-text')).toContainText('passed');
+```
+
+### Playwright: Shadow DOM (Automatic Piercing)
+
+```typescript
+// Playwright automatically pierces open shadow roots.
+// No special configuration needed -- getByTestId, getByRole, locator() all work.
+await page.getByTestId('widget-title');                    // finds inside shadow DOM
+await page.getByTestId('input-entity-name').fill('Acme');  // fills inside shadow DOM
+```
+
+### Cypress: Iframe Pattern
+
+Cypress does **not** have a built-in `frameLocator()`. You must manually access the iframe's `contentDocument.body`:
+
+```typescript
+// Helper function to get an iframe's body as a Cypress-wrapped element.
+function getIframeBody(selector: string) {
+  return cy
+    .get(selector)                          // find the <iframe> element
+    .its('0.contentDocument.body')          // get the DOM node of the iframe body
+    .should('not.be.empty')                 // wait until the iframe has loaded
+    .then(cy.wrap);                         // wrap it for chaining Cypress commands
+}
+
+// Usage:
+getIframeBody('[data-testid="payment-iframe"]')
+  .find('[data-testid="input-cardholder"]')
+  .type('Jane Doe');
+```
+
+**Key points:**
+- `.its('0.contentDocument.body')` accesses the first matched element's content document
+- `.should('not.be.empty')` acts as a retry/wait until the iframe loads
+- `cy.wrap()` converts the raw DOM node into a Cypress chainable
+- Use `.find()` (not `.get()`) to scope searches within the iframe body
+
+### Cypress: Nested Iframes
+
+```typescript
+// Get the outer iframe body, then find the inner iframe within it.
+getIframeBody('[data-testid="outer-iframe"]').then(($outerBody) => {
+  cy.wrap($outerBody)
+    .find('[data-testid="inner-iframe"]')
+    .its('0.contentDocument.body')
+    .should('not.be.empty')
+    .then(cy.wrap)
+    .then(($innerBody) => {
+      cy.wrap($innerBody).find('[data-testid="inner-text"]')
+        .should('contain.text', 'passed');
+    });
+});
+```
+
+### Cypress: Shadow DOM
+
+```typescript
+// Option 1: Per-command -- pass { includeShadowDom: true } to cy.get() or .find()
+cy.get('[data-testid="widget-title"]', { includeShadowDom: true })
+  .should('have.text', 'Compliance Check');
+
+// Option 2: Global -- set in cypress.config.ts (affects ALL commands)
+// export default defineConfig({ includeShadowDom: true });
+```
+
+## Function Signatures
+
+### Playwright
+
+| Method | Signature | Purpose |
+|--------|-----------|---------|
+| `page.frameLocator()` | `frameLocator(selector: string): FrameLocator` | Returns a scoped view into an iframe |
+| `frameLocator.getByTestId()` | `getByTestId(testId: string): Locator` | Find element by data-testid inside the frame |
+| `frameLocator.locator()` | `locator(selector: string): Locator` | Find element by CSS/text inside the frame |
+| `frameLocator.frameLocator()` | `frameLocator(selector: string): FrameLocator` | Access nested iframe within a frame |
+
+### Cypress
+
+| Method | Signature | Purpose |
+|--------|-----------|---------|
+| `.its()` | `.its(propertyPath: string)` | Access a property on the subject (used for `contentDocument.body`) |
+| `cy.wrap()` | `cy.wrap(subject: any)` | Wrap a DOM node so Cypress commands can chain on it |
+| `.find()` | `.find(selector: string, options?)` | Find descendants within the current subject |
+| `{ includeShadowDom: true }` | option on `cy.get()` / `.find()` | Pierce shadow DOM boundaries |
+
+## Exercises
+
+| # | Exercise | What You Practice |
+|---|----------|-------------------|
+| 1 | Read text inside an iframe | `frameLocator()` / `getIframeBody()` basics |
+| 2 | Fill payment form inside iframe | `fill()` / `type()` within iframe scope |
+| 3 | Submit form in iframe, verify result | Click + assertion inside iframe |
+| 4 | Read text inside Shadow DOM | Shadow DOM piercing |
+| 5 | Fill and submit Shadow DOM form | Full interaction with shadow root elements |
+| 6 | Access nested iframe (iframe in iframe) | Chained `frameLocator()` / nested `contentDocument` |
+| 7 | Switch between multiple iframes | Multiple frame locators, no switching overhead |
+| 8 | Assert across iframe boundary | Read iframe, act on parent page |
+
+## Solutions
+
+- Playwright: `playwright/iframes-and-shadow-dom.spec.ts`
+- Cypress: `cypress/iframes-and-shadow-dom.cy.ts`
+
+## Common Mistakes
+
+### 1. Using `page.locator()` to find elements inside an iframe
+```typescript
+// WRONG -- this searches the parent page DOM only
+await page.getByTestId('input-cardholder').fill('Jane');
+
+// RIGHT -- use frameLocator() first
+const frame = page.frameLocator('[data-testid="payment-iframe"]');
+await frame.getByTestId('input-cardholder').fill('Jane');
+```
+
+### 2. Using `cy.get()` instead of `.find()` inside an iframe body
+```typescript
+// WRONG -- cy.get() searches from the root document, not the iframe
+getIframeBody('[data-testid="payment-iframe"]');
+cy.get('[data-testid="input-cardholder"]').type('Jane');  // searches main page!
+
+// RIGHT -- chain .find() on the wrapped iframe body
+getIframeBody('[data-testid="payment-iframe"]')
+  .find('[data-testid="input-cardholder"]')
+  .type('Jane');
+```
+
+### 3. Forgetting `{ includeShadowDom: true }` in Cypress
+```typescript
+// WRONG -- Cypress cannot see inside shadow roots by default
+cy.get('[data-testid="widget-title"]').should('have.text', 'Check');
+// Error: element not found
+
+// RIGHT -- pass the option
+cy.get('[data-testid="widget-title"]', { includeShadowDom: true })
+  .should('have.text', 'Check');
+```
+
+### 4. Trying to "switch back" to the main page in Playwright
+```typescript
+// UNNECESSARY -- Playwright does not have an active frame concept
+// There is no need to "switch back" like in Selenium
+const frame = page.frameLocator('[data-testid="payment-iframe"]');
+await frame.getByTestId('input-cardholder').fill('Jane');
+// You can immediately use `page` for the main page -- no switching needed
+await page.getByTestId('page-header').click();
+```
+
+### 5. Not waiting for iframe to load in Cypress
+```typescript
+// WRONG -- iframe body may not be ready yet
+cy.get('[data-testid="payment-iframe"]')
+  .its('0.contentDocument.body')
+  .then(cy.wrap)  // might wrap an empty body!
+
+// RIGHT -- add .should('not.be.empty') to retry until loaded
+cy.get('[data-testid="payment-iframe"]')
+  .its('0.contentDocument.body')
+  .should('not.be.empty')   // retries until the iframe body has content
+  .then(cy.wrap);
+```
+
+## Quick Reference
+
+```
+Playwright                                   Cypress
+----------------------------------------------  ------------------------------------------------
+page.frameLocator(sel)                        cy.get(sel).its('0.contentDocument.body')
+                                                .should('not.be.empty').then(cy.wrap)
+frame.getByTestId('x')                        iframeBody.find('[data-testid="x"]')
+outer.frameLocator(sel)  // nested            iframeBody.find(sel).its('0.contentDocument.body')
+page.getByTestId('x')    // auto-pierce       cy.get(sel, { includeShadowDom: true })
+No switching needed                           No switching needed (but more boilerplate)
+```
+7:T22a4,import { test, expect } from '@playwright/test';
+
+// The playground URL for this kata.
+const PLAYGROUND = '/phase-00-foundations/06-iframes-and-shadow-dom/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Access iframe content using frameLocator
+// --------------------------------------------------------------------------
+test('exercise 1: read text inside an iframe', async ({ page }) => {
+  // Navigate to the playground page.
+  await page.goto(PLAYGROUND);
+
+  // frameLocator() returns a FrameLocator scoped to the iframe.
+  // You pass a CSS selector (or data-testid) that matches the <iframe> element.
+  const paymentFrame = page.frameLocator('[data-testid="payment-iframe"]');
+
+  // Inside the frame, use normal locator methods to find elements.
+  // The locator is scoped to the iframe's document, not the parent page.
+  await expect(paymentFrame.getByTestId('payment-title')).toHaveText('Secure Payment Gateway');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Fill form inside iframe
+// --------------------------------------------------------------------------
+test('exercise 2: fill the payment form inside an iframe', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Get a FrameLocator for the payment iframe.
+  const paymentFrame = page.frameLocator('[data-testid="payment-iframe"]');
+
+  // fill() works exactly the same inside a frameLocator as on the main page.
+  // It clears the field first, then sets the value.
+  await paymentFrame.getByTestId('input-cardholder').fill('Alice Johnson');
+  await paymentFrame.getByTestId('input-card-number').fill('4242 4242 4242 4242');
+  await paymentFrame.getByTestId('input-amount').fill('250.00');
+
+  // selectOption() works for <select> elements inside iframes too.
+  await paymentFrame.getByTestId('select-currency').selectOption('EUR');
+
+  // Verify the values were entered correctly.
+  await expect(paymentFrame.getByTestId('input-cardholder')).toHaveValue('Alice Johnson');
+  await expect(paymentFrame.getByTestId('input-card-number')).toHaveValue('4242 4242 4242 4242');
+  await expect(paymentFrame.getByTestId('input-amount')).toHaveValue('250.00');
+  await expect(paymentFrame.getByTestId('select-currency')).toHaveValue('EUR');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Click button inside iframe and verify result
+// --------------------------------------------------------------------------
+test('exercise 3: submit the payment form and verify confirmation', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  const paymentFrame = page.frameLocator('[data-testid="payment-iframe"]');
+
+  // Fill the form fields.
+  await paymentFrame.getByTestId('input-cardholder').fill('Bob Smith');
+  await paymentFrame.getByTestId('input-amount').fill('99.99');
+  await paymentFrame.getByTestId('select-currency').selectOption('GBP');
+
+  // Click the submit button inside the iframe.
+  await paymentFrame.getByTestId('btn-submit-payment').click();
+
+  // Verify the result message appeared inside the iframe.
+  // The result div is inside the iframe, so we use the same frameLocator.
+  await expect(paymentFrame.getByTestId('payment-result')).toBeVisible();
+  await expect(paymentFrame.getByTestId('payment-result')).toContainText('99.99 GBP');
+  await expect(paymentFrame.getByTestId('payment-result')).toContainText('Bob Smith');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Access Shadow DOM elements
+// --------------------------------------------------------------------------
+test('exercise 4: read text inside a shadow DOM component', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Playwright automatically pierces open shadow roots!
+  // You can use getByTestId() and it will find elements inside shadow DOM
+  // without any special configuration. This is a major advantage over Cypress.
+  const widgetTitle = page.getByTestId('widget-title');
+
+  // Verify the title text inside the shadow root.
+  await expect(widgetTitle).toHaveText('Compliance Check');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Interact with Shadow DOM form
+// --------------------------------------------------------------------------
+test('exercise 5: fill and submit the compliance widget form', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Fill fields inside the shadow DOM component.
+  // Playwright pierces shadow DOM automatically for all locator methods.
+  await page.getByTestId('input-entity-name').fill('Acme Corp');
+  await page.getByTestId('input-entity-id').fill('ENT-007');
+  await page.getByTestId('select-check-type').selectOption('aml');
+
+  // Click the button inside the shadow root.
+  await page.getByTestId('btn-run-check').click();
+
+  // Verify the status message appeared inside the shadow DOM.
+  const status = page.getByTestId('check-status');
+  await expect(status).toBeVisible();
+  await expect(status).toContainText('AML check passed for Acme Corp (ENT-007)');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Access nested iframes (iframe inside iframe)
+// --------------------------------------------------------------------------
+test('exercise 6: read content from a nested iframe', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // First, get the outer iframe using frameLocator().
+  const outerFrame = page.frameLocator('[data-testid="outer-iframe"]');
+
+  // Verify content in the outer frame.
+  await expect(outerFrame.getByTestId('outer-title')).toHaveText('Outer Audit Frame');
+  await expect(outerFrame.getByTestId('outer-text')).toContainText('outer compliance audit layer');
+
+  // To access a nested iframe, chain another frameLocator() on the outer one.
+  // This is how Playwright handles iframe-within-iframe scenarios.
+  const innerFrame = outerFrame.frameLocator('[data-testid="inner-iframe"]');
+
+  // Now you can interact with elements inside the nested iframe.
+  await expect(innerFrame.getByTestId('inner-text')).toContainText('All checks passed');
+  await expect(innerFrame.getByTestId('inner-text')).toContainText('AUD-2026-0415');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Switch between multiple iframes
+// --------------------------------------------------------------------------
+test('exercise 7: interact with multiple iframes in sequence', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Unlike Selenium, Playwright does NOT require "switching" to a frame.
+  // You simply create frameLocators for each iframe and use them independently.
+  // There is no "active frame" concept — each frameLocator is a scoped view.
+
+  // Access the payment iframe.
+  const paymentFrame = page.frameLocator('[data-testid="payment-iframe"]');
+  await paymentFrame.getByTestId('input-cardholder').fill('Multi-Frame Test');
+
+  // Access the terms iframe — no need to "switch back" to the main page first.
+  const termsFrame = page.frameLocator('[data-testid="terms-iframe"]');
+  await expect(termsFrame.getByTestId('terms-title')).toHaveText('Terms of Service v3.1');
+
+  // Go back and verify the payment iframe still has the value we entered.
+  // Since there is no frame switching, the value is still accessible.
+  await expect(paymentFrame.getByTestId('input-cardholder')).toHaveValue('Multi-Frame Test');
+
+  // Access something on the main page (outside any iframe) — no switching needed.
+  await expect(page.getByTestId('page-header')).toBeVisible();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Assert content across iframe boundary
+// --------------------------------------------------------------------------
+test('exercise 8: verify terms iframe content and accept on main page', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Step 1: Read content from inside the terms iframe.
+  const termsFrame = page.frameLocator('[data-testid="terms-iframe"]');
+  await expect(termsFrame.getByTestId('terms-section-1')).toContainText('compliance regulations');
+  await expect(termsFrame.getByTestId('terms-last-updated')).toHaveText('Last updated: 2026-04-01');
+
+  // Step 2: Interact with the checkbox and button on the MAIN page (not in iframe).
+  // The terms checkbox and accept button are on the main page, not inside the iframe.
+  // This tests the common pattern: read iframe content, then act on the parent page.
+  await page.getByTestId('terms-checkbox').check();
+  await page.getByTestId('btn-accept-terms').click();
+
+  // Step 3: Verify the result on the main page.
+  await expect(page.getByTestId('terms-result')).toHaveText('Terms accepted successfully. You may proceed.');
+});
+8:T23d7,const PLAYGROUND = '/phase-00-foundations/06-iframes-and-shadow-dom/playground/';
+
+// ---------------------------------------------------------------------------
+// Helper: get the <body> of an iframe.
+// Cypress does NOT have built-in iframe support like Playwright's frameLocator.
+// This helper reaches into the iframe's contentDocument and wraps its body
+// so you can chain normal Cypress commands on it.
+// ---------------------------------------------------------------------------
+function getIframeBody(selector: string) {
+  return cy
+    .get(selector)                              // find the <iframe> element
+    .its('0.contentDocument.body')              // get its contentDocument.body (DOM node)
+    .should('not.be.empty')                     // make sure the iframe has loaded
+    .then(cy.wrap);                             // wrap it so we can chain Cypress commands
+}
+
+describe('Kata 06: Iframes and Shadow DOM', () => {
+
+  beforeEach(() => {
+    // Visit the playground before every test.
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Access iframe content using the iframe helper
+  // --------------------------------------------------------------------------
+  it('exercise 1: read text inside an iframe', () => {
+    // Use the helper to get the payment iframe's body.
+    // Once wrapped, you can use .find() to locate elements inside.
+    getIframeBody('[data-testid="payment-iframe"]')
+      .find('[data-testid="payment-title"]')      // find element inside the iframe body
+      .should('have.text', 'Secure Payment Gateway');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Fill form inside iframe
+  // --------------------------------------------------------------------------
+  it('exercise 2: fill the payment form inside an iframe', () => {
+    // Get the iframe body, then use .find() + .type() to fill fields.
+    // Remember: Cypress type() appends text (fields start empty here, so that's fine).
+    getIframeBody('[data-testid="payment-iframe"]').then(($body) => {
+      // .find() scopes the search to the iframe body.
+      cy.wrap($body).find('[data-testid="input-cardholder"]').type('Alice Johnson');
+      cy.wrap($body).find('[data-testid="input-card-number"]').type('4242 4242 4242 4242');
+      cy.wrap($body).find('[data-testid="input-amount"]').type('250.00');
+      cy.wrap($body).find('[data-testid="select-currency"]').select('EUR');
+
+      // Verify the values.
+      cy.wrap($body).find('[data-testid="input-cardholder"]').should('have.value', 'Alice Johnson');
+      cy.wrap($body).find('[data-testid="input-card-number"]').should('have.value', '4242 4242 4242 4242');
+      cy.wrap($body).find('[data-testid="input-amount"]').should('have.value', '250.00');
+      cy.wrap($body).find('[data-testid="select-currency"]').should('have.value', 'EUR');
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Click button inside iframe and verify result
+  // --------------------------------------------------------------------------
+  it('exercise 3: submit the payment form and verify confirmation', () => {
+    getIframeBody('[data-testid="payment-iframe"]').then(($body) => {
+      // Fill the form.
+      cy.wrap($body).find('[data-testid="input-cardholder"]').type('Bob Smith');
+      cy.wrap($body).find('[data-testid="input-amount"]').type('99.99');
+      cy.wrap($body).find('[data-testid="select-currency"]').select('GBP');
+
+      // Click submit inside the iframe.
+      cy.wrap($body).find('[data-testid="btn-submit-payment"]').click();
+
+      // Verify the result message appeared inside the iframe.
+      cy.wrap($body).find('[data-testid="payment-result"]')
+        .should('be.visible')
+        .and('contain.text', '99.99 GBP')
+        .and('contain.text', 'Bob Smith');
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Access Shadow DOM elements
+  // --------------------------------------------------------------------------
+  it('exercise 4: read text inside a shadow DOM component', () => {
+    // Cypress needs { includeShadowDom: true } to pierce shadow roots.
+    // This option tells cy.get() / .find() to search inside shadow DOM.
+    cy.get('[data-testid="widget-title"]', { includeShadowDom: true })
+      .should('have.text', 'Compliance Check');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Interact with Shadow DOM form
+  // --------------------------------------------------------------------------
+  it('exercise 5: fill and submit the compliance widget form', () => {
+    // Each command that targets a shadow DOM element needs { includeShadowDom: true }.
+    // Alternatively, set "includeShadowDom": true in cypress.config.ts globally.
+    cy.get('[data-testid="input-entity-name"]', { includeShadowDom: true })
+      .type('Acme Corp');
+
+    cy.get('[data-testid="input-entity-id"]', { includeShadowDom: true })
+      .type('ENT-007');
+
+    cy.get('[data-testid="select-check-type"]', { includeShadowDom: true })
+      .select('aml');
+
+    // Click the button inside the shadow root.
+    cy.get('[data-testid="btn-run-check"]', { includeShadowDom: true })
+      .click();
+
+    // Verify the status message.
+    cy.get('[data-testid="check-status"]', { includeShadowDom: true })
+      .should('be.visible')
+      .and('contain.text', 'AML check passed for Acme Corp (ENT-007)');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Access nested iframes (iframe inside iframe)
+  // --------------------------------------------------------------------------
+  it('exercise 6: read content from a nested iframe', () => {
+    // Step 1: Get the outer iframe body.
+    getIframeBody('[data-testid="outer-iframe"]').then(($outerBody) => {
+      // Verify content in the outer frame.
+      cy.wrap($outerBody).find('[data-testid="outer-title"]')
+        .should('have.text', 'Outer Audit Frame');
+
+      cy.wrap($outerBody).find('[data-testid="outer-text"]')
+        .should('contain.text', 'outer compliance audit layer');
+
+      // Step 2: Get the inner iframe body from within the outer iframe.
+      // We find the inner <iframe> element, then access its contentDocument.
+      cy.wrap($outerBody)
+        .find('[data-testid="inner-iframe"]')
+        .its('0.contentDocument.body')
+        .should('not.be.empty')
+        .then(cy.wrap)
+        .then(($innerBody) => {
+          // Now we can assert on elements inside the nested iframe.
+          cy.wrap($innerBody).find('[data-testid="inner-text"]')
+            .should('contain.text', 'All checks passed')
+            .and('contain.text', 'AUD-2026-0415');
+        });
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Switch between multiple iframes
+  // --------------------------------------------------------------------------
+  it('exercise 7: interact with multiple iframes in sequence', () => {
+    // In Cypress, there is no explicit "switch to frame" like Selenium.
+    // You just get each iframe's body whenever you need it.
+
+    // Access the payment iframe and fill a field.
+    getIframeBody('[data-testid="payment-iframe"]')
+      .find('[data-testid="input-cardholder"]')
+      .type('Multi-Frame Test');
+
+    // Access the terms iframe — no "switching" required.
+    getIframeBody('[data-testid="terms-iframe"]')
+      .find('[data-testid="terms-title"]')
+      .should('have.text', 'Terms of Service v3.1');
+
+    // Go back and verify the payment iframe still has the entered value.
+    getIframeBody('[data-testid="payment-iframe"]')
+      .find('[data-testid="input-cardholder"]')
+      .should('have.value', 'Multi-Frame Test');
+
+    // Access something on the main page (outside any iframe).
+    cy.get('[data-testid="page-header"]').should('be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Assert content across iframe boundary
+  // --------------------------------------------------------------------------
+  it('exercise 8: verify terms iframe content and accept on main page', () => {
+    // Step 1: Read content from inside the terms iframe.
+    getIframeBody('[data-testid="terms-iframe"]').then(($body) => {
+      cy.wrap($body).find('[data-testid="terms-section-1"]')
+        .should('contain.text', 'compliance regulations');
+
+      cy.wrap($body).find('[data-testid="terms-last-updated"]')
+        .should('have.text', 'Last updated: 2026-04-01');
+    });
+
+    // Step 2: Interact with elements on the MAIN page (not in iframe).
+    // The checkbox and button are on the parent page, not inside the iframe.
+    cy.get('[data-testid="terms-checkbox"]').check();
+    cy.get('[data-testid="btn-accept-terms"]').click();
+
+    // Step 3: Verify the result on the main page.
+    cy.get('[data-testid="terms-result"]')
+      .should('have.text', 'Terms accepted successfully. You may proceed.');
+  });
+
+});
+9:T2869,# Kata 08: CSS Animations and Transitions
+
+## What You Will Learn
+
+- How to detect and verify CSS animations (e.g., spinner rotation)
+- How to verify CSS transitions (e.g., opacity fade, width change, transform)
+- How to check computed styles during and after transitions
+- How to wait for animations/transitions to complete before asserting
+- How to test card flip animations, slide-in panels, and accordion components
+- How to handle overlays that appear and disappear with CSS transitions
+
+## Prerequisites
+
+- Completed Kata 01-07
+- Basic understanding of CSS transitions and animations
+
+## Concepts Explained
+
+### CSS Transitions vs Animations
+
+```
+CSS TRANSITIONS
+  - Triggered by a property change (e.g., adding a class that changes opacity)
+  - Defined with: transition: property duration timing-function
+  - Run once per trigger, from start value to end value
+  - Example: opacity 0 -> 1 over 0.5s when class "visible" is added
+
+CSS ANIMATIONS
+  - Defined with @keyframes rules
+  - Can run continuously (infinite) or a set number of times
+  - Controlled with: animation: name duration timing-function iteration-count
+  - Example: spinner rotating 360 degrees in a loop
+```
+
+### Playwright: Checking Computed CSS Styles
+
+```typescript
+// PLAYWRIGHT
+// To check CSS properties, use locator.evaluate() to access the browser's
+// window.getComputedStyle() API, which returns the actual rendered values.
+//
+// getComputedStyle(element) returns a CSSStyleDeclaration object with
+// all CSS properties as they are actually rendered (after all CSS rules,
+// transitions, and animations have been applied).
+
+// Check opacity:
+const opacity = await page.getByTestId('fade-element').evaluate(
+  (el) => window.getComputedStyle(el).opacity
+);
+// opacity is a string like "0" or "1"
+
+// Check transform:
+const transform = await page.getByTestId('sidebar-panel').evaluate(
+  (el) => window.getComputedStyle(el).transform
+);
+// transform is a string like "matrix(1, 0, 0, 1, 0, 0)" for translateX(0)
+
+// Check animation-name:
+const animName = await page.getByTestId('spinner').evaluate(
+  (el) => window.getComputedStyle(el).animationName
+);
+// animName is "spin" if the animation is active, "none" if not
+
+// Check a CSS class is present:
+await expect(page.getByTestId('flip-card')).toHaveClass(/flipped/);
+```
+
+### Cypress: Checking Computed CSS Styles
+
+```typescript
+// CYPRESS
+// Use .should('have.css', property, value) to check computed CSS properties.
+// Cypress automatically calls getComputedStyle() under the hood.
+//
+// .should('have.css', property) — asserts the property exists
+// .should('have.css', property, value) — asserts exact value match
+//
+// Note: Computed values may be in different formats than what you set.
+// For example, "translateX(0)" becomes "matrix(1, 0, 0, 1, 0, 0)".
+
+// Check opacity:
+cy.get('[data-testid="fade-element"]').should('have.css', 'opacity', '1');
+
+// Check transform (note: computed value is a matrix string):
+cy.get('[data-testid="sidebar-panel"]')
+  .should('have.css', 'transform', 'matrix(1, 0, 0, 1, 0, 0)');
+
+// Check animation-name:
+cy.get('[data-testid="spinner"]').should('have.css', 'animation-name', 'spin');
+
+// Check a CSS class is present:
+cy.get('[data-testid="flip-card"]').should('have.class', 'flipped');
+```
+
+### Waiting for Transitions to Complete
+
+```typescript
+// PLAYWRIGHT
+// Option 1: Wait for a specific CSS state to be reached.
+// Playwright's expect() auto-retries until the assertion passes or times out.
+await expect(page.getByTestId('fade-element')).toHaveCSS('opacity', '1');
+
+// Option 2: Use page.waitForTimeout() if you need a fixed delay.
+// (Not recommended — prefer assertions that auto-retry.)
+await page.waitForTimeout(600); // wait for 0.5s transition + buffer
+
+// CYPRESS
+// Cypress .should() assertions auto-retry until they pass or timeout.
+// So checking a CSS value will naturally wait for transitions to finish.
+cy.get('[data-testid="fade-element"]').should('have.css', 'opacity', '1');
+
+// You can also use cy.wait() for a fixed delay (not recommended):
+cy.wait(600);
+```
+
+### Playwright: toHaveCSS() Assertion
+
+```typescript
+// PLAYWRIGHT
+// toHaveCSS(property, value) is a built-in assertion that checks the
+// computed style of an element. It auto-retries until the value matches
+// or the timeout expires.
+//
+// Signature:
+//   expect(locator).toHaveCSS(name: string, value: string | RegExp): Promise<void>
+//
+// Parameters:
+//   name  — CSS property name (e.g., 'opacity', 'transform', 'width')
+//   value — expected value as string or regex pattern
+
+await expect(page.getByTestId('progress-fill')).toHaveCSS('width', '200px');
+await expect(page.getByTestId('sidebar-panel')).toHaveCSS('transform', /matrix/);
+await expect(page.getByTestId('fade-element')).toHaveCSS('opacity', '1');
+```
+
+## Playground
+
+The playground is a "Compliance Dashboard" themed as a fintech tool. It contains:
+
+1. **Card Flip** — an applicant card with front (summary) and back (details) faces. Clicking flips the card with a 3D Y-axis rotation transition (0.6s).
+2. **Slide-in Sidebar** — a filter panel that slides in from the right using CSS transform transition (0.4s). Toggle with the "Toggle Filters" button.
+3. **Loading Spinner** — a circular spinner using CSS @keyframes animation that rotates 360 degrees continuously. Toggle with "Start/Stop Loading".
+4. **Fade-in/out Alert** — a notification box that fades in (opacity 0 to 1) and out using a CSS transition (0.5s). Controlled by "Show Alert" and "Hide Alert" buttons.
+5. **Progress Bar** — a bar that transitions its width (0.8s ease) to 25%, 50%, 75%, or 100% when buttons are clicked.
+6. **Accordion** — three collapsible sections with smooth max-height transitions (0.4s). Click a header to toggle open/close.
+7. **Processing Overlay** — a full-screen overlay that fades in (opacity transition), stays for 2 seconds, then automatically fades out.
+
+## Exercises
+
+### Exercise 1: Click Card to Trigger Flip, Verify Back Content Visible
+Click the applicant card to flip it. Verify the card has the "flipped" class and the back face content (risk level, country) is accessible.
+
+### Exercise 2: Open Sidebar, Verify It Slides In
+Click "Toggle Filters" to open the sidebar panel. Verify the sidebar has the "open" class and its CSS transform changes from translateX(100%) to translateX(0).
+
+### Exercise 3: Verify Spinner is Animating
+Click "Start Loading" to activate the spinner. Verify the spinner has the "active" class and its CSS animation-name property is "spin".
+
+### Exercise 4: Trigger Fade-in, Verify Opacity Changes
+Click "Show Alert" to fade in the notification. Verify the element's opacity transitions to 1. Then click "Hide Alert" and verify opacity returns to 0.
+
+### Exercise 5: Verify Progress Bar Width Transition
+Click the 50% button and verify the progress bar's width transitions to 50%. Click 100% and verify it reaches full width.
+
+### Exercise 6: Open/Close Accordion, Verify Height
+Click the first accordion header to open it. Verify the accordion body has the "open" class and its max-height is greater than 0. Click again to close and verify max-height returns to 0.
+
+### Exercise 7: Trigger Processing Overlay, Wait for It to Disappear
+Click "Process Application" to show the overlay. Verify it becomes visible (opacity 1). Wait for it to automatically disappear after 2 seconds (opacity returns to 0).
+
+### Exercise 8: Verify Computed Styles During Transitions
+Click the 75% progress button and immediately read the progress bar's computed width. Then wait for the transition to complete and verify the final width. This demonstrates reading styles mid-transition.
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/css-animations-and-transitions.spec.ts`
+
+### Cypress Solution
+
+See `cypress/css-animations-and-transitions.cy.ts`
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Asserting styles immediately after triggering a transition | The transition hasn't finished yet, so the computed value is still mid-transition | Use toHaveCSS() or should('have.css') which auto-retry until the final value |
+| Checking `element.style.opacity` instead of computed style | Inline style may not be set — the value comes from CSS classes | Always use getComputedStyle() or toHaveCSS() to get the rendered value |
+| Expecting `transform: translateX(0)` as the computed value | Browsers return transform as a matrix string, not the shorthand | Check for `matrix(1, 0, 0, 1, 0, 0)` or use a regex pattern |
+| Testing animation-name when spinner is hidden (display:none) | Hidden elements may not have active animations | Verify the element is visible first, then check animation properties |
+| Using fixed `sleep()` instead of assertion-based waits | Flaky and slow — transitions may be faster or slower depending on system load | Use auto-retrying assertions: toHaveCSS() in Playwright, should('have.css') in Cypress |
+| Forgetting that max-height transition doesn't mean actual height | max-height: 200px doesn't mean the content is 200px tall | Check the 'open' class or use the max-height value as a proxy |
+
+## Quick Reference
+
+### Playwright CSS Assertions
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Check CSS property | `expect(loc).toHaveCSS(prop, val)` | `await expect(el).toHaveCSS('opacity', '1')` |
+| Check CSS with regex | `expect(loc).toHaveCSS(prop, regex)` | `await expect(el).toHaveCSS('transform', /matrix/)` |
+| Get computed style | `locator.evaluate(fn)` | `await el.evaluate(e => getComputedStyle(e).width)` |
+| Check class | `expect(loc).toHaveClass(regex)` | `await expect(el).toHaveClass(/flipped/)` |
+| Check visible | `expect(loc).toBeVisible()` | `await expect(el).toBeVisible()` |
+| Wait for timeout | `page.waitForTimeout(ms)` | `await page.waitForTimeout(500)` |
+
+### Cypress CSS Assertions
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Check CSS property | `.should('have.css', prop, val)` | `cy.get(s).should('have.css', 'opacity', '1')` |
+| Get computed style | `.invoke('css', prop)` | `cy.get(s).invoke('css', 'opacity')` |
+| Check class | `.should('have.class', name)` | `cy.get(s).should('have.class', 'flipped')` |
+| Check visible | `.should('be.visible')` | `cy.get(s).should('be.visible')` |
+| Fixed wait | `cy.wait(ms)` | `cy.wait(500)` |
+a:T3a91,import { test, expect } from '@playwright/test';
+
+// The base URL for our playground page. All tests navigate here first.
+const PLAYGROUND = '/phase-01-dom-and-browser-apis/08-css-animations-and-transitions/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Click Card to Trigger Flip, Verify Back Content Visible
+// --------------------------------------------------------------------------
+// This exercise demonstrates testing a CSS 3D flip animation. The card
+// rotates 180 degrees on the Y axis when clicked, revealing the back face.
+test('exercise 1: click card to flip and verify back content', async ({ page }) => {
+  // Navigate to the playground page.
+  await page.goto(PLAYGROUND);
+
+  // Verify the card starts in the "front" state (not flipped).
+  await expect(page.getByTestId('flip-state')).toHaveText('front');
+
+  // Verify the flip card does NOT have the 'flipped' class initially.
+  // toHaveClass(regex) checks if the element's className attribute matches
+  // the regular expression. The 'not' modifier negates the assertion.
+  await expect(page.getByTestId('flip-card')).not.toHaveClass(/flipped/);
+
+  // Click the card container to trigger the flip animation.
+  // The click handler toggles the 'flipped' class on the .flip-card element,
+  // which triggers a CSS transition: transform 0.6s ease (rotateY 180deg).
+  await page.getByTestId('flip-container').click();
+
+  // Verify the card now has the 'flipped' class.
+  // toHaveClass(regex) auto-retries until the class is present or timeout.
+  await expect(page.getByTestId('flip-card')).toHaveClass(/flipped/);
+
+  // Verify the state text updated to "back".
+  await expect(page.getByTestId('flip-state')).toHaveText('back');
+
+  // Verify the back face content is accessible. Even though the front face
+  // is now hidden (via backface-visibility: hidden), the back face content
+  // is in the DOM and we can read its text.
+  await expect(page.getByTestId('flip-back')).toContainText('Risk Level: High');
+  await expect(page.getByTestId('flip-back')).toContainText('United Kingdom');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Open Sidebar, Verify It Slides In (Check CSS Transform)
+// --------------------------------------------------------------------------
+// This exercise demonstrates checking CSS transform values to verify that
+// a slide-in sidebar has fully transitioned into view.
+test('exercise 2: open sidebar and verify slide-in transform', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify the sidebar starts in the closed state.
+  await expect(page.getByTestId('sidebar-state')).toHaveText('closed');
+
+  // Verify the sidebar panel does NOT have the 'open' class.
+  await expect(page.getByTestId('sidebar-panel')).not.toHaveClass(/open/);
+
+  // Click "Toggle Filters" to slide in the sidebar.
+  await page.getByTestId('btn-toggle-sidebar').click();
+
+  // Verify the sidebar now has the 'open' class.
+  await expect(page.getByTestId('sidebar-panel')).toHaveClass(/open/);
+
+  // Verify the sidebar state updated to "open".
+  await expect(page.getByTestId('sidebar-state')).toHaveText('open');
+
+  // Verify the CSS transform changed. When the sidebar is open, its
+  // transform is translateX(0), which the browser computes as a matrix.
+  // toHaveCSS(property, value) checks the computed style of the element.
+  // It auto-retries, so it waits for the 0.4s transition to complete.
+  //
+  // translateX(0) computes to the identity matrix: matrix(1, 0, 0, 1, 0, 0)
+  // We use 'none' or the matrix — browsers may return either for translateX(0).
+  await expect(page.getByTestId('sidebar-panel')).toHaveCSS(
+    'transform',
+    'matrix(1, 0, 0, 1, 0, 0)'
+  );
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Verify Spinner is Animating (Check animation-name CSS Property)
+// --------------------------------------------------------------------------
+// This exercise demonstrates reading the CSS animation-name property to
+// verify that a CSS @keyframes animation is actively running.
+test('exercise 3: verify spinner animation is active', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify the spinner is initially hidden (display: none via absence of 'active' class).
+  await expect(page.getByTestId('spinner')).not.toBeVisible();
+
+  // Click "Start Loading" to activate the spinner.
+  await page.getByTestId('btn-toggle-spinner').click();
+
+  // Verify the spinner is now visible.
+  // The 'active' class sets display: block, making the spinner visible.
+  await expect(page.getByTestId('spinner')).toBeVisible();
+
+  // Verify the spinner has the 'active' class.
+  await expect(page.getByTestId('spinner')).toHaveClass(/active/);
+
+  // Verify the CSS animation-name is 'spin'. This confirms that the
+  // @keyframes animation defined in CSS is actively running on this element.
+  // locator.evaluate(fn) runs a function in the browser context and returns
+  // the result. We use getComputedStyle() to read the animation-name property.
+  const animationName = await page.getByTestId('spinner').evaluate(
+    (el) => window.getComputedStyle(el).animationName
+  );
+
+  // The animation-name should be 'spin' (defined in the CSS @keyframes rule).
+  expect(animationName).toBe('spin');
+
+  // Verify the status text updated.
+  await expect(page.getByTestId('spinner-status')).toHaveText('Loading...');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Trigger Fade-in, Verify Opacity Changes
+// --------------------------------------------------------------------------
+// This exercise demonstrates verifying CSS opacity transitions. The alert
+// notification fades in (opacity 0 -> 1) and out (opacity 1 -> 0).
+test('exercise 4: fade in and fade out, verify opacity', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify the element starts with opacity 0 (hidden via CSS).
+  // toHaveCSS(property, value) checks the computed style.
+  await expect(page.getByTestId('fade-element')).toHaveCSS('opacity', '0');
+
+  // Click "Show Alert" to trigger the fade-in.
+  // This adds the 'visible' class, which sets opacity: 1 with a 0.5s transition.
+  await page.getByTestId('btn-fade-in').click();
+
+  // Verify the opacity transitions to 1. toHaveCSS() auto-retries, so it
+  // will wait for the 0.5s transition to complete before passing.
+  await expect(page.getByTestId('fade-element')).toHaveCSS('opacity', '1');
+
+  // Verify the opacity display text updated.
+  await expect(page.getByTestId('fade-opacity')).toHaveText('1');
+
+  // Click "Hide Alert" to trigger the fade-out.
+  // This removes the 'visible' class, transitioning opacity back to 0.
+  await page.getByTestId('btn-fade-out').click();
+
+  // Verify the opacity returns to 0.
+  await expect(page.getByTestId('fade-element')).toHaveCSS('opacity', '0');
+  await expect(page.getByTestId('fade-opacity')).toHaveText('0');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Verify Progress Bar Width Transition
+// --------------------------------------------------------------------------
+// This exercise demonstrates checking an element's width after a CSS
+// transition. The progress bar fills to a percentage with a 0.8s transition.
+test('exercise 5: verify progress bar width transitions', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify the progress starts at 0%.
+  await expect(page.getByTestId('progress-value')).toHaveText('0%');
+
+  // Click the 50% button to set progress to 50%.
+  await page.getByTestId('btn-progress-50').click();
+
+  // Verify the progress value text updated immediately.
+  await expect(page.getByTestId('progress-value')).toHaveText('50%');
+
+  // Wait for the width transition to complete, then verify the inline style.
+  // We check the inline style.width because the playground sets it directly.
+  // evaluate() runs in the browser and returns the element's style.width value.
+  await page.waitForTimeout(900); // wait for 0.8s transition + buffer
+  const width50 = await page.getByTestId('progress-fill').evaluate(
+    (el) => el.style.width
+  );
+  expect(width50).toBe('50%');
+
+  // Click the 100% button to fill the bar completely.
+  await page.getByTestId('btn-progress-100').click();
+  await expect(page.getByTestId('progress-value')).toHaveText('100%');
+
+  // Wait and verify the final width.
+  await page.waitForTimeout(900);
+  const width100 = await page.getByTestId('progress-fill').evaluate(
+    (el) => el.style.width
+  );
+  expect(width100).toBe('100%');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Open/Close Accordion, Verify Height
+// --------------------------------------------------------------------------
+// This exercise demonstrates testing accordion components that use CSS
+// max-height transitions for smooth expand/collapse animations.
+test('exercise 6: open and close accordion, verify height transition', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify the first accordion body starts closed (no 'open' class).
+  await expect(page.getByTestId('accordion-body-1')).not.toHaveClass(/open/);
+
+  // Verify the accordion body has max-height: 0px when closed.
+  // toHaveCSS() reads the computed style. max-height: 0 computes to "0px".
+  await expect(page.getByTestId('accordion-body-1')).toHaveCSS('max-height', '0px');
+
+  // Click the first accordion header to open it.
+  await page.getByTestId('accordion-header-1').click();
+
+  // Verify the body now has the 'open' class.
+  await expect(page.getByTestId('accordion-body-1')).toHaveClass(/open/);
+
+  // Verify the arrow rotated (it gets the 'open' class for the rotation).
+  await expect(page.getByTestId('accordion-arrow-1')).toHaveClass(/open/);
+
+  // Verify the max-height is now greater than 0 (the 'open' class sets
+  // max-height: 200px). We read the computed value and check it's not "0px".
+  const maxHeight = await page.getByTestId('accordion-body-1').evaluate(
+    (el) => window.getComputedStyle(el).maxHeight
+  );
+  expect(maxHeight).not.toBe('0px');
+
+  // Click the header again to close the accordion.
+  await page.getByTestId('accordion-header-1').click();
+
+  // Verify the body no longer has the 'open' class.
+  await expect(page.getByTestId('accordion-body-1')).not.toHaveClass(/open/);
+
+  // Verify max-height returns to 0px after the transition.
+  await expect(page.getByTestId('accordion-body-1')).toHaveCSS('max-height', '0px');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Trigger Processing Overlay, Wait for It to Disappear
+// --------------------------------------------------------------------------
+// This exercise demonstrates waiting for a timed animation sequence:
+// the overlay fades in, stays visible for 2 seconds, then fades out.
+test('exercise 7: processing overlay appears and auto-disappears', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify the overlay starts in the idle state.
+  await expect(page.getByTestId('processing-state')).toHaveText('idle');
+
+  // Verify the overlay is not visible (opacity: 0, pointer-events: none).
+  await expect(page.getByTestId('processing-overlay')).toHaveCSS('opacity', '0');
+
+  // Click "Process Application" to trigger the overlay.
+  await page.getByTestId('btn-process').click();
+
+  // Verify the overlay becomes visible (opacity transitions to 1).
+  // toHaveCSS() auto-retries, waiting for the 0.3s fade-in to complete.
+  await expect(page.getByTestId('processing-overlay')).toHaveCSS('opacity', '1');
+
+  // Verify the processing state changed to "processing".
+  await expect(page.getByTestId('processing-state')).toHaveText('processing');
+
+  // Verify the processing box content is visible.
+  await expect(page.getByTestId('processing-box')).toContainText('Please wait');
+
+  // Wait for the overlay to automatically disappear. The playground removes
+  // the 'active' class after 2 seconds, which triggers a 0.3s fade-out.
+  // We increase the assertion timeout to account for the 2s + 0.3s delay.
+  await expect(page.getByTestId('processing-overlay')).toHaveCSS('opacity', '0', {
+    timeout: 5000, // wait up to 5 seconds for the full cycle
+  });
+
+  // Verify the state changed to "complete".
+  await expect(page.getByTestId('processing-state')).toHaveText('complete');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Verify Computed Styles During Transitions
+// --------------------------------------------------------------------------
+// This exercise demonstrates reading CSS computed styles at different points
+// to observe transition behavior. We check the progress bar style before
+// and after the transition completes.
+test('exercise 8: verify computed styles before and after transition', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Click the 75% button to start the progress bar transition.
+  await page.getByTestId('btn-progress-75').click();
+
+  // Immediately read the inline style (set instantly by JavaScript).
+  // The inline style.width is set to "75%" right away, but the computed
+  // (rendered) width transitions over 0.8s.
+  const inlineWidth = await page.getByTestId('progress-fill').evaluate(
+    (el) => el.style.width
+  );
+  // The inline style should be "75%" immediately.
+  expect(inlineWidth).toBe('75%');
+
+  // Read the computed width immediately — it may still be mid-transition.
+  // getComputedStyle().width returns the actual rendered pixel width.
+  const computedWidthDuring = await page.getByTestId('progress-fill').evaluate(
+    (el) => parseFloat(window.getComputedStyle(el).width)
+  );
+  // During the transition, the computed width is being animated from 0
+  // toward the final value. We just verify it's a number.
+  expect(typeof computedWidthDuring).toBe('number');
+
+  // Wait for the 0.8s transition to finish.
+  await page.waitForTimeout(1000);
+
+  // Read the computed width after the transition completes.
+  const computedWidthAfter = await page.getByTestId('progress-fill').evaluate(
+    (el) => parseFloat(window.getComputedStyle(el).width)
+  );
+
+  // After the transition, the computed width should be greater than
+  // the mid-transition value (or equal if we were slow reading the first).
+  expect(computedWidthAfter).toBeGreaterThanOrEqual(computedWidthDuring);
+
+  // Also verify the progress bar's parent (track) width to calculate
+  // expected percentage.
+  const trackWidth = await page.getByTestId('progress-track').evaluate(
+    (el) => parseFloat(window.getComputedStyle(el).width)
+  );
+  const expectedWidth = trackWidth * 0.75;
+
+  // The final computed width should be approximately 75% of the track width.
+  // We allow 2px tolerance for rounding.
+  expect(computedWidthAfter).toBeGreaterThan(expectedWidth - 2);
+  expect(computedWidthAfter).toBeLessThan(expectedWidth + 2);
+});
+b:T36e2,const PLAYGROUND = '/phase-01-dom-and-browser-apis/08-css-animations-and-transitions/playground/';
+
+describe('Kata 08: CSS Animations and Transitions', () => {
+
+  // beforeEach runs before every test in this describe block.
+  // We navigate to the playground page so each test starts fresh.
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Click Card to Trigger Flip, Verify Back Content Visible
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates testing a CSS 3D flip animation by checking
+  // for the "flipped" class and reading back-face content.
+  it('exercise 1: click card to flip and verify back content', () => {
+    // Verify the card starts in the "front" state.
+    // .should('have.text', str) asserts the element's textContent equals str.
+    cy.get('[data-testid="flip-state"]').should('have.text', 'front');
+
+    // Verify the flip card does NOT have the 'flipped' class.
+    // .should('not.have.class', name) checks the element's classList
+    // does not contain the specified class name.
+    cy.get('[data-testid="flip-card"]').should('not.have.class', 'flipped');
+
+    // Click the card container to trigger the flip animation.
+    // The click handler toggles the 'flipped' class, which triggers a CSS
+    // transition: transform 0.6s ease (rotateY 180deg).
+    cy.get('[data-testid="flip-container"]').click();
+
+    // Verify the card now has the 'flipped' class.
+    // .should('have.class', name) auto-retries until the class is present
+    // or the assertion timeout expires.
+    cy.get('[data-testid="flip-card"]').should('have.class', 'flipped');
+
+    // Verify the state text updated to "back".
+    cy.get('[data-testid="flip-state"]').should('have.text', 'back');
+
+    // Verify the back face content is accessible.
+    // .should('contain.text', str) checks if textContent contains the string.
+    cy.get('[data-testid="flip-back"]').should('contain.text', 'Risk Level: High');
+    cy.get('[data-testid="flip-back"]').should('contain.text', 'United Kingdom');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Open Sidebar, Verify It Slides In (Check CSS Transform)
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates checking computed CSS transform values to
+  // verify a slide-in transition completed.
+  it('exercise 2: open sidebar and verify slide-in transform', () => {
+    // Verify the sidebar starts closed.
+    cy.get('[data-testid="sidebar-state"]').should('have.text', 'closed');
+    cy.get('[data-testid="sidebar-panel"]').should('not.have.class', 'open');
+
+    // Click "Toggle Filters" to slide in the sidebar.
+    cy.get('[data-testid="btn-toggle-sidebar"]').click();
+
+    // Verify the sidebar now has the 'open' class.
+    cy.get('[data-testid="sidebar-panel"]').should('have.class', 'open');
+
+    // Verify the state updated.
+    cy.get('[data-testid="sidebar-state"]').should('have.text', 'open');
+
+    // Verify the CSS transform changed to translateX(0).
+    // .should('have.css', property, value) checks the computed style.
+    // Browsers compute translateX(0) as the identity matrix string.
+    // The 0.4s transition must complete before this assertion passes.
+    // Cypress auto-retries .should() assertions, so it waits naturally.
+    cy.get('[data-testid="sidebar-panel"]').should(
+      'have.css',
+      'transform',
+      'matrix(1, 0, 0, 1, 0, 0)'
+    );
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Verify Spinner is Animating (Check animation-name CSS Property)
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates reading the CSS animation-name property to
+  // confirm a @keyframes animation is running.
+  it('exercise 3: verify spinner animation is active', () => {
+    // Verify the spinner is initially hidden.
+    // .should('not.be.visible') asserts the element is not visible (display:none).
+    cy.get('[data-testid="spinner"]').should('not.be.visible');
+
+    // Click "Start Loading" to activate the spinner.
+    cy.get('[data-testid="btn-toggle-spinner"]').click();
+
+    // Verify the spinner is now visible.
+    cy.get('[data-testid="spinner"]').should('be.visible');
+
+    // Verify the spinner has the 'active' class.
+    cy.get('[data-testid="spinner"]').should('have.class', 'active');
+
+    // Verify the CSS animation-name is 'spin'.
+    // .should('have.css', 'animation-name', 'spin') checks the computed
+    // animation-name property. When the @keyframes 'spin' animation is
+    // assigned to the element, this property returns 'spin'.
+    cy.get('[data-testid="spinner"]').should('have.css', 'animation-name', 'spin');
+
+    // Verify the status text updated.
+    cy.get('[data-testid="spinner-status"]').should('have.text', 'Loading...');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Trigger Fade-in, Verify Opacity Changes
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates verifying CSS opacity transitions using
+  // Cypress's have.css assertion.
+  it('exercise 4: fade in and fade out, verify opacity', () => {
+    // Verify the element starts with opacity 0.
+    // .should('have.css', 'opacity', '0') checks the computed opacity.
+    cy.get('[data-testid="fade-element"]').should('have.css', 'opacity', '0');
+
+    // Click "Show Alert" to trigger the fade-in transition.
+    // This adds the 'visible' class, setting opacity: 1 with a 0.5s transition.
+    cy.get('[data-testid="btn-fade-in"]').click();
+
+    // Verify the opacity transitioned to 1.
+    // Cypress auto-retries .should() assertions, so it naturally waits
+    // for the 0.5s transition to complete before this passes.
+    cy.get('[data-testid="fade-element"]').should('have.css', 'opacity', '1');
+
+    // Verify the opacity display updated.
+    cy.get('[data-testid="fade-opacity"]').should('have.text', '1');
+
+    // Click "Hide Alert" to trigger the fade-out transition.
+    cy.get('[data-testid="btn-fade-out"]').click();
+
+    // Verify the opacity returns to 0.
+    cy.get('[data-testid="fade-element"]').should('have.css', 'opacity', '0');
+    cy.get('[data-testid="fade-opacity"]').should('have.text', '0');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Verify Progress Bar Width Transition
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates checking element width after a CSS transition.
+  it('exercise 5: verify progress bar width transitions', () => {
+    // Verify the progress starts at 0%.
+    cy.get('[data-testid="progress-value"]').should('have.text', '0%');
+
+    // Click the 50% button.
+    cy.get('[data-testid="btn-progress-50"]').click();
+
+    // Verify the progress value text updated.
+    cy.get('[data-testid="progress-value"]').should('have.text', '50%');
+
+    // Verify the inline style width was set to 50%.
+    // .invoke('css', property) reads the jQuery-computed CSS property value.
+    // We wait for the transition to complete with a should() chain.
+    // Checking the inline style.width via invoke('attr', 'style') gives us
+    // the value set by JavaScript, not the transitioning computed value.
+    cy.get('[data-testid="progress-fill"]')
+      .should('have.attr', 'style')
+      .and('contain', 'width: 50%');
+
+    // Click the 100% button.
+    cy.get('[data-testid="btn-progress-100"]').click();
+    cy.get('[data-testid="progress-value"]').should('have.text', '100%');
+
+    // Verify the style updated.
+    cy.get('[data-testid="progress-fill"]')
+      .should('have.attr', 'style')
+      .and('contain', 'width: 100%');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Open/Close Accordion, Verify Height
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates testing accordion expand/collapse using
+  // CSS max-height transitions.
+  it('exercise 6: open and close accordion, verify height transition', () => {
+    // Verify the first accordion body starts closed.
+    cy.get('[data-testid="accordion-body-1"]').should('not.have.class', 'open');
+
+    // Verify the max-height is 0px when closed.
+    // .should('have.css', 'max-height', '0px') checks the computed max-height.
+    cy.get('[data-testid="accordion-body-1"]').should('have.css', 'max-height', '0px');
+
+    // Click the first accordion header to open it.
+    cy.get('[data-testid="accordion-header-1"]').click();
+
+    // Verify the body has the 'open' class.
+    cy.get('[data-testid="accordion-body-1"]').should('have.class', 'open');
+
+    // Verify the arrow rotated (has 'open' class).
+    cy.get('[data-testid="accordion-arrow-1"]').should('have.class', 'open');
+
+    // Verify the max-height is greater than 0px.
+    // .invoke('css', 'max-height') returns the computed max-height value.
+    // .then() lets us run custom assertions on the value.
+    cy.get('[data-testid="accordion-body-1"]')
+      .invoke('css', 'max-height')
+      .then((maxHeight) => {
+        // maxHeight is a string like "200px". parseFloat extracts the number.
+        expect(parseFloat(maxHeight as string)).to.be.greaterThan(0);
+      });
+
+    // Click the header again to close the accordion.
+    cy.get('[data-testid="accordion-header-1"]').click();
+
+    // Verify the body no longer has the 'open' class.
+    cy.get('[data-testid="accordion-body-1"]').should('not.have.class', 'open');
+
+    // Verify max-height returns to 0px.
+    cy.get('[data-testid="accordion-body-1"]').should('have.css', 'max-height', '0px');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Trigger Processing Overlay, Wait for It to Disappear
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates waiting for a timed animation sequence.
+  // The overlay fades in, shows for 2 seconds, then automatically fades out.
+  it('exercise 7: processing overlay appears and auto-disappears', () => {
+    // Verify the overlay starts idle.
+    cy.get('[data-testid="processing-state"]').should('have.text', 'idle');
+
+    // Verify the overlay is not visible (opacity 0).
+    cy.get('[data-testid="processing-overlay"]').should('have.css', 'opacity', '0');
+
+    // Click "Process Application" to trigger the overlay.
+    cy.get('[data-testid="btn-process"]').click();
+
+    // Verify the overlay becomes visible (opacity transitions to 1).
+    // Cypress auto-retries, waiting for the 0.3s fade-in transition.
+    cy.get('[data-testid="processing-overlay"]').should('have.css', 'opacity', '1');
+
+    // Verify the state changed to "processing".
+    cy.get('[data-testid="processing-state"]').should('have.text', 'processing');
+
+    // Verify the processing box content.
+    cy.get('[data-testid="processing-box"]').should('contain.text', 'Please wait');
+
+    // Wait for the overlay to automatically disappear (2s delay + 0.3s fade-out).
+    // We increase the Cypress default command timeout for this assertion.
+    // { timeout: 5000 } tells Cypress to retry for up to 5 seconds.
+    cy.get('[data-testid="processing-overlay"]', { timeout: 5000 })
+      .should('have.css', 'opacity', '0');
+
+    // Verify the state changed to "complete".
+    cy.get('[data-testid="processing-state"]').should('have.text', 'complete');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Verify Computed Styles During Transitions
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates reading computed CSS styles at different
+  // points during a transition to observe intermediate values.
+  it('exercise 8: verify computed styles before and after transition', () => {
+    // Click the 75% button to start the progress bar transition.
+    cy.get('[data-testid="btn-progress-75"]').click();
+
+    // Immediately verify the inline style was set (JavaScript sets this instantly).
+    // .should('have.attr', 'style') reads the element's style attribute.
+    // .and('contain', str) chains an additional assertion on the same subject.
+    cy.get('[data-testid="progress-fill"]')
+      .should('have.attr', 'style')
+      .and('contain', 'width: 75%');
+
+    // Read the computed width immediately — it may be mid-transition.
+    // .invoke('css', 'width') calls jQuery's .css('width') on the element,
+    // which returns the computed pixel width as a string (e.g., "300px").
+    cy.get('[data-testid="progress-fill"]')
+      .invoke('css', 'width')
+      .then((widthDuring) => {
+        // Store the mid-transition value. It's a string like "123.45px".
+        const valueDuring = parseFloat(widthDuring as string);
+        // It should be a valid number greater than or equal to 0.
+        expect(valueDuring).to.be.at.least(0);
+      });
+
+    // Wait for the 0.8s transition to complete, then verify the final width.
+    // We use cy.wait() to pause, then re-read the computed width.
+    cy.wait(1000);
+
+    // Read the final computed width and verify it's approximately 75% of
+    // the track width.
+    cy.get('[data-testid="progress-track"]')
+      .invoke('css', 'width')
+      .then((trackWidth) => {
+        const track = parseFloat(trackWidth as string);
+        const expected = track * 0.75;
+
+        // Now read the progress fill's computed width and compare.
+        cy.get('[data-testid="progress-fill"]')
+          .invoke('css', 'width')
+          .then((fillWidth) => {
+            const fill = parseFloat(fillWidth as string);
+            // Allow 2px tolerance for rounding.
+            expect(fill).to.be.closeTo(expected, 2);
+          });
+      });
+  });
+
+});
+c:Tae6a,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { test, expect } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> '@playwright/test'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// The base URL for our playground page. All tests navigate here first.</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-01-dom-and-browser-apis/07-drag-and-drop/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 1: Drag a Card from "New" to "In Review"</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// This exercise demonstrates Playwright's dragTo() method, which performs</span></span>
+<span class="line"><span style="color:#6A737D">// a complete HTML5 drag-and-drop sequence (hover source, mousedown, move</span></span>
+<span class="line"><span style="color:#6A737D">// to target, mouseup) in a single awaitable call.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: drag a card from New to In Review'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">  // Navigate to the playground page.</span></span>
+<span class="line"><span style="color:#6A737D">  // page.goto(url) loads the URL and waits for the 'load' event by default.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the card starts in the New column by checking the status bar</span></span>
+<span class="line"><span style="color:#6A737D">  // shows no action yet.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'last-action'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'None'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Drag the "Aisha Patel" card to the "In Review" column.</span></span>
+<span class="line"><span style="color:#6A737D">  // dragTo(target) performs the full drag-and-drop operation:</span></span>
+<span class="line"><span style="color:#6A737D">  //   1. Hovers the source element to find its center</span></span>
+<span class="line"><span style="color:#6A737D">  //   2. Presses the left mouse button (mousedown)</span></span>
+<span class="line"><span style="color:#6A737D">  //   3. Moves the mouse to the center of the target element</span></span>
+<span class="line"><span style="color:#6A737D">  //   4. Releases the mouse button (mouseup)</span></span>
+<span class="line"><span style="color:#6A737D">  // This triggers the HTML5 dragstart, dragover, drop, and dragend events.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'card-aisha'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">dragTo</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'column-review'</span><span style="color:#E1E4E8">));</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the status bar reports the drag action.</span></span>
+<span class="line"><span style="color:#6A737D">  // toContainText(substring) checks if textContent contains the substring.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'last-action'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'aisha'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'last-action'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'review'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 2: Verify Card Moved to Target Column</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// After dragging, we verify the card DOM element is now a child of the</span></span>
+<span class="line"><span style="color:#6A737D">// target column, not the source column.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: verify card is inside the target column after drag'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the card is initially in the New column.</span></span>
+<span class="line"><span style="color:#6A737D">  // We scope the search to the New column using a parent locator.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> newColumn</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'column-new'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(newColumn.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'card-aisha'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Drag the card to In Review.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'card-aisha'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">dragTo</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'column-review'</span><span style="color:#E1E4E8">));</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the card is now inside the In Review column.</span></span>
+<span class="line"><span style="color:#6A737D">  // getByTestId() on a parent locator scopes the search to that parent's</span></span>
+<span class="line"><span style="color:#6A737D">  // descendants only. If the card were still in New, this would fail.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> reviewColumn</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'column-review'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(reviewColumn.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'card-aisha'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the card is no longer in the New column.</span></span>
+<span class="line"><span style="color:#6A737D">  // toBeHidden() asserts the element is not visible (or not in the DOM</span></span>
+<span class="line"><span style="color:#6A737D">  // subtree of the parent locator).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(newColumn.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'card-aisha'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeHidden</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 3: Drag a Card to "Approved" Column</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// This exercise drags a different card to the Approved column to practice</span></span>
+<span class="line"><span style="color:#6A737D">// targeting various drop zones.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: drag a card to the Approved column'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the Approved column starts empty (count = 0).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'count-approved'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'0'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Drag "Clara Jansen" to the Approved column.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'card-clara'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">dragTo</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'column-approved'</span><span style="color:#E1E4E8">));</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the card is now in the Approved column.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> approvedColumn</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'column-approved'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(approvedColumn.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'card-clara'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the Approved column count updated to 1.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'count-approved'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'1'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 4: Drag a Card to "Rejected" Column</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// This exercise drags a card to the Rejected column.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: drag a card to the Rejected column'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the Rejected column starts empty.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'count-rejected'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'0'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Drag "Ben Okafor" to the Rejected column.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'card-ben'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">dragTo</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'column-rejected'</span><span style="color:#E1E4E8">));</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the card is in the Rejected column.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> rejectedColumn</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'column-rejected'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(rejectedColumn.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'card-ben'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the Rejected column count updated.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'count-rejected'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'1'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 5: Verify Source Column Card Count Decreases</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// This exercise moves multiple cards and checks that both source and target</span></span>
+<span class="line"><span style="color:#6A737D">// counts are correct.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: verify column counts update after moving cards'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify initial counts: New has 3 cards, Review has 1.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'count-new'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'3'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'count-review'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'1'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Move all three cards out of New.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'card-aisha'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">dragTo</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'column-review'</span><span style="color:#E1E4E8">));</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'card-ben'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">dragTo</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'column-rejected'</span><span style="color:#E1E4E8">));</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'card-clara'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">dragTo</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'column-approved'</span><span style="color:#E1E4E8">));</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify New column now has 0 cards.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'count-new'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'0'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify target columns have correct counts.</span></span>
+<span class="line"><span style="color:#6A737D">  // Review: had 1 (Derek) + 1 (Aisha) = 2</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'count-review'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'2'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#6A737D">  // Rejected: had 0 + 1 (Ben) = 1</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'count-rejected'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'1'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#6A737D">  // Approved: had 0 + 1 (Clara) = 1</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'count-approved'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'1'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 6: Reorder Items Within the Sortable List</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// This exercise demonstrates dragging an item within a list to reorder it.</span></span>
+<span class="line"><span style="color:#6A737D">// We use dragTo() with the target being another list item.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: reorder items within the sortable priority list'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the initial order.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'priority-order'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#9ECBFF">    'sanctions, identity, address, income'</span></span>
+<span class="line"><span style="color:#E1E4E8">  );</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Drag "Income Verification" (last item) above "Sanctions Screening" (first item).</span></span>
+<span class="line"><span style="color:#6A737D">  // dragTo() works for reordering within a list too — we just target another</span></span>
+<span class="line"><span style="color:#6A737D">  // list item instead of a column container.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'priority-income'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">dragTo</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'priority-sanctions'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">  );</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the order changed — "income" should now be first.</span></span>
+<span class="line"><span style="color:#6A737D">  // Note: The exact result depends on drop position calculation in the</span></span>
+<span class="line"><span style="color:#6A737D">  // playground's drop handler (above/below midpoint). We verify income</span></span>
+<span class="line"><span style="color:#6A737D">  // moved above sanctions.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> order</span><span style="color:#F97583"> =</span><span style="color:#F97583"> await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'priority-order'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">textContent</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#6A737D">  // income should appear before sanctions in the new order.</span></span>
+<span class="line"><span style="color:#B392F0">  expect</span><span style="color:#E1E4E8">(order</span><span style="color:#F97583">!</span><span style="color:#E1E4E8">.</span><span style="color:#B392F0">indexOf</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'income'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeLessThan</span><span style="color:#E1E4E8">(order</span><span style="color:#F97583">!</span><span style="color:#E1E4E8">.</span><span style="color:#B392F0">indexOf</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'sanctions'</span><span style="color:#E1E4E8">));</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 7: Verify Drop Zone Highlights During Drag</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// This exercise uses a manual drag sequence (hover + mouse.down + hover</span></span>
+<span class="line"><span style="color:#6A737D">// over target) to verify the CSS class applied during drag hover.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 7: verify drop zone highlight during drag'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the column does NOT have the drag-over class initially.</span></span>
+<span class="line"><span style="color:#6A737D">  // toHaveClass() with a regex checks if the element's class attribute</span></span>
+<span class="line"><span style="color:#6A737D">  // matches the pattern. We negate it here.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'column-approved'</span><span style="color:#E1E4E8">)).not.</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">drag-over</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Start a manual drag sequence:</span></span>
+<span class="line"><span style="color:#6A737D">  // Step 1: Hover over the card to position the mouse on it.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'card-aisha'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">hover</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Step 2: Press the mouse button to begin dragging.</span></span>
+<span class="line"><span style="color:#6A737D">  // page.mouse.down() dispatches a mousedown event at the current position.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.mouse.</span><span style="color:#B392F0">down</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Step 3: Move the mouse over the target column.</span></span>
+<span class="line"><span style="color:#6A737D">  // This triggers dragenter and dragover events on the column, which</span></span>
+<span class="line"><span style="color:#6A737D">  // cause the playground to add the 'drag-over' CSS class.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'column-approved'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">hover</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the column now has the 'drag-over' class.</span></span>
+<span class="line"><span style="color:#6A737D">  // toHaveClass(regex) checks that the element's className matches.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'column-approved'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">drag-over</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Step 4: Release the mouse to complete the drop.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.mouse.</span><span style="color:#B392F0">up</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // After drop, the 'drag-over' class should be removed.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'column-approved'</span><span style="color:#E1E4E8">)).not.</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">drag-over</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 8: Drag Back from Rejected to New</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// This exercise verifies cards can be dragged back to their original column,</span></span>
+<span class="line"><span style="color:#6A737D">// confirming the drop targets work in all directions.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 8: drag a card from Rejected back to New'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // First, move "Ben Okafor" to the Rejected column.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'card-ben'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">dragTo</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'column-rejected'</span><span style="color:#E1E4E8">));</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify it's in Rejected.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'column-rejected'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'card-ben'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'count-new'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'2'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'count-rejected'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'1'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Now drag it back to New.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'card-ben'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">dragTo</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'column-new'</span><span style="color:#E1E4E8">));</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify it's back in New.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'column-new'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'card-ben'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify counts restored.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'count-new'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'3'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'count-rejected'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'0'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the status bar shows the return move.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'last-action'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'ben'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'last-action'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'new'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>d:Taad3,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-01-dom-and-browser-apis/07-drag-and-drop/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">describe</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Kata 07: Drag and Drop'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // beforeEach runs before every test in this describe block.</span></span>
+<span class="line"><span style="color:#6A737D">  // We navigate to the playground page so each test starts fresh.</span></span>
+<span class="line"><span style="color:#B392F0">  beforeEach</span><span style="color:#E1E4E8">(() </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Helper: Perform an HTML5 drag-and-drop from source to target.</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Cypress does NOT have a built-in drag-and-drop command. We must manually</span></span>
+<span class="line"><span style="color:#6A737D">  // trigger the HTML5 Drag and Drop events in sequence. This helper function</span></span>
+<span class="line"><span style="color:#6A737D">  // encapsulates that pattern so each test can use it simply.</span></span>
+<span class="line"><span style="color:#6A737D">  //</span></span>
+<span class="line"><span style="color:#6A737D">  // The sequence is:</span></span>
+<span class="line"><span style="color:#6A737D">  //   1. dragstart on source — tells the browser "this element is being dragged"</span></span>
+<span class="line"><span style="color:#6A737D">  //   2. dragover on target  — required to allow dropping (calls preventDefault)</span></span>
+<span class="line"><span style="color:#6A737D">  //   3. drop on target      — performs the drop action</span></span>
+<span class="line"><span style="color:#6A737D">  //   4. dragend on source   — cleans up the drag state</span></span>
+<span class="line"><span style="color:#6A737D">  //</span></span>
+<span class="line"><span style="color:#6A737D">  // We create a DataTransfer object and share it between all events so that</span></span>
+<span class="line"><span style="color:#6A737D">  // data set in dragstart (via setData) is available in drop (via getData).</span></span>
+<span class="line"><span style="color:#F97583">  function</span><span style="color:#B392F0"> dragAndDrop</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">sourceSelector</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> string</span><span style="color:#E1E4E8">, </span><span style="color:#FFAB70">targetSelector</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> string</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#6A737D">    // Create a new DataTransfer object. This is the browser's built-in API</span></span>
+<span class="line"><span style="color:#6A737D">    // for carrying data between drag events. We pass it to each trigger()</span></span>
+<span class="line"><span style="color:#6A737D">    // call so all events share the same data.</span></span>
+<span class="line"><span style="color:#F97583">    const</span><span style="color:#79B8FF"> dataTransfer</span><span style="color:#F97583"> =</span><span style="color:#F97583"> new</span><span style="color:#B392F0"> DataTransfer</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Step 1: Fire dragstart on the source element.</span></span>
+<span class="line"><span style="color:#6A737D">    // trigger(eventName, options) dispatches a DOM event on the element.</span></span>
+<span class="line"><span style="color:#6A737D">    // { dataTransfer } passes our DataTransfer as part of the event.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(sourceSelector).</span><span style="color:#B392F0">trigger</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'dragstart'</span><span style="color:#E1E4E8">, { dataTransfer });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Step 2: Fire dragover on the target to allow dropping.</span></span>
+<span class="line"><span style="color:#6A737D">    // Without this, the browser won't allow the drop event to fire.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(targetSelector).</span><span style="color:#B392F0">trigger</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'dragover'</span><span style="color:#E1E4E8">, { dataTransfer });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Step 3: Fire drop on the target to perform the drop action.</span></span>
+<span class="line"><span style="color:#6A737D">    // The drop handler in our playground moves the card into this column.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(targetSelector).</span><span style="color:#B392F0">trigger</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'drop'</span><span style="color:#E1E4E8">, { dataTransfer });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Step 4: Fire dragend on the source to clean up.</span></span>
+<span class="line"><span style="color:#6A737D">    // This removes the 'dragging' CSS class and resets drag state.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(sourceSelector).</span><span style="color:#B392F0">trigger</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'dragend'</span><span style="color:#E1E4E8">, { dataTransfer });</span></span>
+<span class="line"><span style="color:#E1E4E8">  }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 1: Drag a Card from "New" to "In Review"</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // This exercise demonstrates the trigger-based drag-and-drop pattern in</span></span>
+<span class="line"><span style="color:#6A737D">  // Cypress by moving a KYC card between kanban columns.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: drag a card from New to In Review'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Verify no action has been taken yet.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="last-action"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'None'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Perform the drag-and-drop using our helper.</span></span>
+<span class="line"><span style="color:#B392F0">    dragAndDrop</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="card-aisha"]'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'[data-testid="column-review"]'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the status bar reports the drag action.</span></span>
+<span class="line"><span style="color:#6A737D">    // .should('contain.text', str) checks if textContent contains the string.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="last-action"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'aisha'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="last-action"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'review'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 2: Verify Card Moved to Target Column</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // After dragging, we verify the card is a DOM child of the target column.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: verify card is inside the target column after drag'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Verify the card is initially in the New column.</span></span>
+<span class="line"><span style="color:#6A737D">    // find(selector) searches within the subject element's descendants.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="column-new"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">find</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="card-aisha"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exist'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Drag the card to In Review.</span></span>
+<span class="line"><span style="color:#B392F0">    dragAndDrop</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="card-aisha"]'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'[data-testid="column-review"]'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the card is now inside the In Review column.</span></span>
+<span class="line"><span style="color:#6A737D">    // find() scopes the search to descendants of the Review column only.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="column-review"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">find</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="card-aisha"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exist'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the card is no longer in the New column.</span></span>
+<span class="line"><span style="color:#6A737D">    // .should('not.exist') asserts the element is not in the DOM subtree.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="column-new"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">find</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="card-aisha"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.exist'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 3: Drag a Card to "Approved" Column</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: drag a card to the Approved column'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Verify the Approved column starts empty (count = 0).</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="count-approved"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'0'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Drag "Clara Jansen" to the Approved column.</span></span>
+<span class="line"><span style="color:#B392F0">    dragAndDrop</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="card-clara"]'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'[data-testid="column-approved"]'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the card is now in the Approved column.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="column-approved"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">find</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="card-clara"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exist'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the Approved column count updated to 1.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="count-approved"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'1'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 4: Drag a Card to "Rejected" Column</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: drag a card to the Rejected column'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Verify the Rejected column starts empty.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="count-rejected"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'0'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Drag "Ben Okafor" to the Rejected column.</span></span>
+<span class="line"><span style="color:#B392F0">    dragAndDrop</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="card-ben"]'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'[data-testid="column-rejected"]'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the card is in the Rejected column.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="column-rejected"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">find</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="card-ben"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exist'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the Rejected column count updated.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="count-rejected"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'1'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 5: Verify Source Column Card Count Decreases</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // This exercise moves multiple cards and checks all column counts.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: verify column counts update after moving cards'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Verify initial counts.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="count-new"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'3'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="count-review"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'1'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Move all three cards out of New.</span></span>
+<span class="line"><span style="color:#B392F0">    dragAndDrop</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="card-aisha"]'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'[data-testid="column-review"]'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#B392F0">    dragAndDrop</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="card-ben"]'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'[data-testid="column-rejected"]'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#B392F0">    dragAndDrop</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="card-clara"]'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'[data-testid="column-approved"]'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify New column now has 0 cards.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="count-new"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'0'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify target columns have correct counts.</span></span>
+<span class="line"><span style="color:#6A737D">    // Review: 1 (Derek) + 1 (Aisha) = 2</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="count-review"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'2'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#6A737D">    // Rejected: 0 + 1 (Ben) = 1</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="count-rejected"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'1'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#6A737D">    // Approved: 0 + 1 (Clara) = 1</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="count-approved"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'1'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 6: Reorder Items Within the Sortable List</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // This exercise demonstrates reordering items within a single list</span></span>
+<span class="line"><span style="color:#6A737D">  // using the same trigger-based drag pattern.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: reorder items within the sortable priority list'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Verify the initial order.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="priority-order"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#9ECBFF">      'have.text'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#9ECBFF">      'sanctions, identity, address, income'</span></span>
+<span class="line"><span style="color:#E1E4E8">    );</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Drag "Income Verification" (last item) onto "Sanctions Screening" (first item).</span></span>
+<span class="line"><span style="color:#6A737D">    // This reorders the list, placing income before sanctions.</span></span>
+<span class="line"><span style="color:#B392F0">    dragAndDrop</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="priority-income"]'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'[data-testid="priority-sanctions"]'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify that "income" now appears before "sanctions" in the order string.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="priority-order"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">invoke</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'text'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">then</span><span style="color:#E1E4E8">((</span><span style="color:#FFAB70">text</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">      // indexOf(str) returns the position of the first occurrence of str.</span></span>
+<span class="line"><span style="color:#6A737D">      // We verify income's position is earlier than sanctions' position.</span></span>
+<span class="line"><span style="color:#B392F0">      expect</span><span style="color:#E1E4E8">(text.</span><span style="color:#B392F0">indexOf</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'income'</span><span style="color:#E1E4E8">)).to.be.</span><span style="color:#B392F0">lessThan</span><span style="color:#E1E4E8">(text.</span><span style="color:#B392F0">indexOf</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'sanctions'</span><span style="color:#E1E4E8">));</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 7: Verify Drop Zone Highlights During Drag</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // This exercise checks that the CSS class 'drag-over' is applied to a</span></span>
+<span class="line"><span style="color:#6A737D">  // column when a dragged card hovers over it.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 7: verify drop zone highlight during drag'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Verify the column does NOT have the drag-over class initially.</span></span>
+<span class="line"><span style="color:#6A737D">    // .should('not.have.class', name) checks the element's classList.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="column-approved"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'drag-over'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Create a shared DataTransfer for the drag events.</span></span>
+<span class="line"><span style="color:#F97583">    const</span><span style="color:#79B8FF"> dataTransfer</span><span style="color:#F97583"> =</span><span style="color:#F97583"> new</span><span style="color:#B392F0"> DataTransfer</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Start the drag on the card.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="card-aisha"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">trigger</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'dragstart'</span><span style="color:#E1E4E8">, { dataTransfer });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Trigger dragover on the Approved column — this adds the highlight class.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="column-approved"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">trigger</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'dragover'</span><span style="color:#E1E4E8">, { dataTransfer });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the column now has the 'drag-over' class.</span></span>
+<span class="line"><span style="color:#6A737D">    // .should('have.class', name) asserts the element's classList contains name.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="column-approved"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'drag-over'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Complete the drag by dropping (which removes the highlight).</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="column-approved"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">trigger</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'drop'</span><span style="color:#E1E4E8">, { dataTransfer });</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="card-aisha"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">trigger</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'dragend'</span><span style="color:#E1E4E8">, { dataTransfer });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the highlight class is removed after drop.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="column-approved"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'drag-over'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 8: Drag Back from Rejected to New</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // This exercise verifies cards can be moved back to their original column.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 8: drag a card from Rejected back to New'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // First, move "Ben Okafor" to the Rejected column.</span></span>
+<span class="line"><span style="color:#B392F0">    dragAndDrop</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="card-ben"]'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'[data-testid="column-rejected"]'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify it's in Rejected.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="column-rejected"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">find</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="card-ben"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exist'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="count-new"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'2'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="count-rejected"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'1'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Now drag it back to New.</span></span>
+<span class="line"><span style="color:#B392F0">    dragAndDrop</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="card-ben"]'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'[data-testid="column-new"]'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify it's back in New.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="column-new"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">find</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="card-ben"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exist'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify counts restored.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="count-new"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'3'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="count-rejected"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'0'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the status bar shows the return move.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="last-action"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'ben'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="last-action"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'new'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"kata":{"slug":"07-drag-and-drop","number":7,"title":"Drag and Drop","phaseSlug":"phase-01-dom-and-browser-apis","phaseNumber":1,"phaseName":"Dom And Browser Apis","readmeRaw":"$3","hasPlayground":true,"playwrightFiles":[{"filename":"drag-and-drop.spec.ts","content":"$4"}],"cypressFiles":[{"filename":"drag-and-drop.cy.ts","content":"$5"}]},"prev":{"slug":"06-iframes-and-shadow-dom","number":6,"title":"Iframes and Shadow DOM","phaseSlug":"phase-00-foundations","phaseNumber":0,"phaseName":"Foundations","readmeRaw":"$6","hasPlayground":true,"playwrightFiles":[{"filename":"iframes-and-shadow-dom.spec.ts","content":"$7"}],"cypressFiles":[{"filename":"iframes-and-shadow-dom.cy.ts","content":"$8"}]},"next":{"slug":"08-css-animations-and-transitions","number":8,"title":"CSS Animations and Transitions","phaseSlug":"phase-01-dom-and-browser-apis","phaseNumber":1,"phaseName":"Dom And Browser Apis","readmeRaw":"$9","hasPlayground":true,"playwrightFiles":[{"filename":"css-animations-and-transitions.spec.ts","content":"$a"}],"cypressFiles":[{"filename":"css-animations-and-transitions.cy.ts","content":"$b"}]},"playwrightHtml":[{"filename":"drag-and-drop.spec.ts","html":"$c"}],"cypressHtml":[{"filename":"drag-and-drop.cy.ts","html":"$d"}]}],["$Le"],"$Lf"]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"iDtrTKWIN4zzRgDRiiDd2"}
+e:["$","script","script-0",{"src":"/qa-labs/_next/static/chunks/03nvm.8~ftt80.js","async":true}]
+f:["$","$L10",null,{"children":["$","$11",null,{"name":"Next.MetadataOutlet","children":"$@12"}]}]
+12:null

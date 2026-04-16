@@ -1,0 +1,2265 @@
+1:"$Sreact.fragment"
+2:I[31749,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js","/qa-labs/_next/static/chunks/03nvm.8~ftt80.js"],"KataPageClient"]
+10:I[49583,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js"],"OutletBoundary"]
+11:"$Sreact.suspense"
+3:T17cd,# Kata 33: Session Management
+
+## What You Will Learn
+
+- How to test login flows that create timed sessions
+- How to handle session timeout warnings and expiration overlays
+- How to test token refresh flows (simulated JWT)
+- How to use clock manipulation (fake timers) to fast-forward session timeouts
+- How to verify session state persists across page reloads
+- How to test re-login after session expiry
+
+## Prerequisites
+
+- Completed Katas 01-32
+- Understanding of authentication flows and session concepts
+
+## Concepts Explained
+
+### Session Lifecycle
+
+```
+Login  -->  Active  -->  Warning (10s)  -->  Expired (15s)
+                |                               |
+                +--- Refresh (resets to 15s)     +--- Re-login
+                |                               
+                +--- Interact (resets timer)    
+                |
+                +--- Logout (ends session)
+```
+
+### Mock JWT Tokens
+
+```
+A JSON Web Token (JWT) has three parts separated by dots:
+  header.payload.signature
+
+Our playground generates mock JWTs with:
+  header:    { alg: "HS256", typ: "JWT" }
+  payload:   { sub: "admin", iat: ..., exp: ..., jti: ... }
+  signature: random base64 string
+
+Each token refresh generates a new JWT with an updated expiry.
+```
+
+### Playwright: Fake Timers
+
+```typescript
+// PLAYWRIGHT
+// Playwright can control the browser's clock to fast-forward timers.
+// This avoids waiting real seconds for session timeouts.
+
+// Install fake timers before navigation:
+await page.clock.install();
+
+// Advance time by 10 seconds (triggers any setTimeout/setInterval
+// callbacks that would fire within that period):
+await page.clock.fastForward(10000);
+
+// Or set a specific time:
+await page.clock.setFixedTime(new Date('2025-01-01T00:00:15Z'));
+```
+
+### Cypress: cy.clock() and cy.tick()
+
+```typescript
+// CYPRESS
+// cy.clock() overrides the browser's Date, setTimeout, setInterval, etc.
+// cy.tick(ms) advances the fake clock by the given milliseconds.
+
+cy.clock();                    // install fake timers
+cy.tick(10000);                // advance 10 seconds
+cy.clock().invoke('restore');  // restore real timers
+```
+
+## Playground Overview
+
+A single-page app with login, session management, and timeout:
+
+- **Login form**: Username "admin", password "password123"
+- **Dashboard**: Shows session timer, status, token, refresh count
+- **Warning banner**: Appears at 10s remaining
+- **Session expiry**: Overlay appears at 15s with "Sign In Again" button
+- **Refresh button**: Resets timer and generates new token
+- **Interact button**: Simulates user activity, resets timer
+- **Session storage**: Session survives page reload if not expired
+
+## Exercises
+
+1. **Login and verify session active** — Sign in and verify the dashboard appears with "Active" status
+2. **Wait for session warning** — Use fake timers to advance to the warning threshold
+3. **Refresh session before expiry** — Refresh the session and verify timer resets
+4. **Let session expire, verify overlay** — Wait for full timeout and verify expired overlay
+5. **Re-login after expiry** — Click "Sign In Again" on the expired overlay and log in again
+6. **Verify token refresh** — Refresh the session and verify a new token is generated
+7. **Rapid interactions keep session alive** — Click Interact repeatedly before timeout
+8. **Verify session state across page reload** — Reload the page and verify session is restored
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Installing fake timers after page navigation | Fake timers must be installed before the page loads, otherwise real timers are already running | Call `page.clock.install()` (Playwright) or `cy.clock()` (Cypress) before visiting the page |
+| Advancing time without waiting for UI updates | `fastForward()` / `cy.tick()` triggers callbacks but the DOM update is asynchronous | After advancing time, wait for the expected UI element (warning banner, expiry overlay) to appear |
+| Forgetting to log in before testing session features | The dashboard is only visible after login; interacting with session controls before login fails | Always complete the login flow first, then test session behavior |
+| Comparing exact token strings without accounting for refresh | Each token refresh generates a new JWT; storing the old token and comparing with `toBe()` will pass only if you compare correctly | Store the token before refresh, then assert the new token is different (`not.toBe(oldToken)`) |
+| Not restoring real timers before page reload tests | Fake timers can interfere with page reload behavior and navigation timing | Restore real timers (`cy.clock().invoke('restore')`) before testing reload scenarios |
+
+## Quick Reference
+
+### Playwright Fake Timers
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Install fake timers | `page.clock.install()` | `await page.clock.install()` |
+| Fast-forward time | `page.clock.fastForward(ms)` | `await page.clock.fastForward(10000)` |
+| Set fixed time | `page.clock.setFixedTime()` | `await page.clock.setFixedTime(new Date('2025-01-01T00:00:15Z'))` |
+| Fill login form | `locator.fill()` | `await page.getByTestId('username').fill('admin')` |
+| Click button | `locator.click()` | `await page.getByTestId('login-btn').click()` |
+| Check text content | `expect().toHaveText()` | `await expect(status).toHaveText('Active')` |
+| Verify visibility | `expect().toBeVisible()` | `await expect(overlay).toBeVisible()` |
+
+### Cypress Fake Timers
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Install fake timers | `cy.clock()` | `cy.clock()` |
+| Advance time | `cy.tick(ms)` | `cy.tick(10000)` |
+| Restore real timers | `.invoke('restore')` | `cy.clock().invoke('restore')` |
+| Fill login form | `.type()` | `cy.get('[data-testid="username"]').type('admin')` |
+| Click button | `.click()` | `cy.get('[data-testid="login-btn"]').click()` |
+| Check text content | `.should('have.text')` | `cy.get(status).should('have.text', 'Active')` |
+| Verify visibility | `.should('be.visible')` | `cy.get(overlay).should('be.visible')` |
+4:T27a5,import { test, expect } from '@playwright/test';
+
+// Base URL for the playground page.
+const PLAYGROUND = '/phase-06-complex-scenarios/33-session-management/playground/';
+
+// Helper: Log in with the default credentials.
+// Fills the username and password fields, clicks Sign In, and waits for
+// the dashboard to become visible.
+async function login(page: import('@playwright/test').Page) {
+  await page.getByTestId('username-input').fill('admin');
+  await page.getByTestId('password-input').fill('password123');
+  await page.getByTestId('login-btn').click();
+  await expect(page.getByTestId('dashboard')).toBeVisible();
+}
+
+// --------------------------------------------------------------------------
+// Exercise 1: Login and Verify Session Active
+// --------------------------------------------------------------------------
+// Signs in with valid credentials and verifies the dashboard shows an
+// active session with the correct user.
+test('exercise 1: login and verify session active', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify the login panel is visible before signing in.
+  await expect(page.getByTestId('login-panel')).toBeVisible();
+
+  // Fill in credentials and click Sign In.
+  await page.getByTestId('username-input').fill('admin');
+  await page.getByTestId('password-input').fill('password123');
+  await page.getByTestId('login-btn').click();
+
+  // Verify the dashboard is now visible and shows correct session info.
+  await expect(page.getByTestId('dashboard')).toBeVisible();
+  await expect(page.getByTestId('session-status')).toHaveText('Active');
+  await expect(page.getByTestId('session-user')).toHaveText('admin');
+
+  // Verify a token was generated (should contain dots like a JWT).
+  const token = await page.getByTestId('token-display').textContent();
+  expect(token).toContain('.');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Wait for Session Warning
+// --------------------------------------------------------------------------
+// Uses Playwright's clock API to fast-forward time to the warning threshold
+// (10 seconds) without waiting real seconds.
+test('exercise 2: wait for session warning', async ({ page }) => {
+  // Install fake timers BEFORE navigating so all timers are captured.
+  // page.clock.install() replaces setTimeout, setInterval, and Date
+  // with controllable versions.
+  await page.clock.install();
+  await page.goto(PLAYGROUND);
+  await login(page);
+
+  // Verify the warning banner is not visible initially.
+  await expect(page.getByTestId('session-warning')).not.toBeVisible();
+
+  // Advance the clock by 10 seconds. This triggers all setInterval
+  // callbacks that would have fired in that period, including the
+  // session timer's tick function.
+  await page.clock.fastForward(10000);
+
+  // Verify the warning banner is now visible.
+  await expect(page.getByTestId('session-warning')).toBeVisible();
+
+  // Verify the session status changed to "Warning".
+  await expect(page.getByTestId('session-status')).toHaveText('Warning');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Refresh Session Before Expiry
+// --------------------------------------------------------------------------
+// Advances to the warning state, then clicks Refresh to reset the timer.
+test('exercise 3: refresh session before expiry', async ({ page }) => {
+  await page.clock.install();
+  await page.goto(PLAYGROUND);
+  await login(page);
+
+  // Advance to warning state (10 seconds).
+  await page.clock.fastForward(10000);
+  await expect(page.getByTestId('session-warning')).toBeVisible();
+
+  // Click the Refresh Session button to reset the timer.
+  await page.getByTestId('refresh-session-btn').click();
+
+  // Verify the warning banner disappeared (timer was reset).
+  await expect(page.getByTestId('session-warning')).not.toBeVisible();
+
+  // Verify the session is back to "Active".
+  await expect(page.getByTestId('session-status')).toHaveText('Active');
+
+  // Verify the timer reset to 15s.
+  await expect(page.getByTestId('session-timer')).toHaveText('15s');
+
+  // Verify the refresh count incremented.
+  await expect(page.getByTestId('refresh-count')).toHaveText('1');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Let Session Expire, Verify Overlay
+// --------------------------------------------------------------------------
+// Advances the clock past the full timeout (15 seconds) and verifies the
+// expired overlay appears.
+test('exercise 4: let session expire and verify overlay', async ({ page }) => {
+  await page.clock.install();
+  await page.goto(PLAYGROUND);
+  await login(page);
+
+  // Advance the clock by 15 seconds (full session timeout).
+  await page.clock.fastForward(15000);
+
+  // Verify the expired overlay is visible.
+  await expect(page.getByTestId('expired-overlay')).toBeVisible();
+
+  // Verify the overlay shows the expired message.
+  await expect(page.getByTestId('expired-message')).toContainText('timed out');
+
+  // Verify the session status shows "Expired".
+  await expect(page.getByTestId('session-status')).toHaveText('Expired');
+
+  // Verify the timer shows 0s.
+  await expect(page.getByTestId('session-timer')).toHaveText('0s');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Re-login After Expiry
+// --------------------------------------------------------------------------
+// Lets the session expire, clicks "Sign In Again", and logs in again.
+test('exercise 5: re-login after session expiry', async ({ page }) => {
+  await page.clock.install();
+  await page.goto(PLAYGROUND);
+  await login(page);
+
+  // Let the session expire.
+  await page.clock.fastForward(15000);
+  await expect(page.getByTestId('expired-overlay')).toBeVisible();
+
+  // Click the "Sign In Again" button on the overlay.
+  await page.getByTestId('relogin-btn').click();
+
+  // Verify the overlay is hidden and the login panel reappears.
+  await expect(page.getByTestId('expired-overlay')).not.toBeVisible();
+  await expect(page.getByTestId('login-panel')).toBeVisible();
+
+  // Log in again with the same credentials.
+  // Need to reinstall clock for the new session timers.
+  await page.getByTestId('username-input').fill('admin');
+  await page.getByTestId('password-input').fill('password123');
+  await page.getByTestId('login-btn').click();
+
+  // Verify the new session is active.
+  await expect(page.getByTestId('dashboard')).toBeVisible();
+  await expect(page.getByTestId('session-status')).toHaveText('Active');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Verify Token Refresh
+// --------------------------------------------------------------------------
+// Refreshes the session and verifies a new token is generated (different
+// from the original).
+test('exercise 6: verify token refresh generates new token', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+  await login(page);
+
+  // Capture the initial token.
+  const initialToken = await page.getByTestId('token-display').textContent();
+
+  // Click Refresh Session to generate a new token.
+  await page.getByTestId('refresh-session-btn').click();
+
+  // Verify a new token was generated (different from the initial).
+  // toHaveText with a negation: we get the new text and compare.
+  const newToken = await page.getByTestId('token-display').textContent();
+  expect(newToken).not.toBe(initialToken);
+
+  // Verify the refresh count incremented to 1.
+  await expect(page.getByTestId('refresh-count')).toHaveText('1');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Rapid Interactions Keep Session Alive
+// --------------------------------------------------------------------------
+// Clicks the Interact button repeatedly to keep the session timer from
+// reaching the warning or expiry threshold.
+test('exercise 7: rapid interactions keep session alive', async ({ page }) => {
+  await page.clock.install();
+  await page.goto(PLAYGROUND);
+  await login(page);
+
+  // Advance 8 seconds (close to warning at 10s).
+  await page.clock.fastForward(8000);
+
+  // Click Interact to reset the timer.
+  await page.getByTestId('interact-btn').click();
+
+  // Verify the session is still Active (not Warning).
+  await expect(page.getByTestId('session-status')).toHaveText('Active');
+  await expect(page.getByTestId('session-timer')).toHaveText('15s');
+
+  // Advance another 8 seconds (would have expired without interaction).
+  await page.clock.fastForward(8000);
+
+  // Click Interact again.
+  await page.getByTestId('interact-btn').click();
+
+  // Verify the session is still active.
+  await expect(page.getByTestId('session-status')).toHaveText('Active');
+
+  // Verify the expired overlay never appeared.
+  await expect(page.getByTestId('expired-overlay')).not.toBeVisible();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Verify Session State Across Page Reload
+// --------------------------------------------------------------------------
+// Logs in, reloads the page, and verifies the session is restored from
+// sessionStorage.
+test('exercise 8: session state persists across page reload', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+  await login(page);
+
+  // Verify the session is active before reload.
+  await expect(page.getByTestId('session-status')).toHaveText('Active');
+
+  // Reload the page. The session should be restored from sessionStorage.
+  // page.reload() navigates the page to its current URL.
+  await page.reload();
+
+  // Verify the dashboard is still visible (not the login panel).
+  await expect(page.getByTestId('dashboard')).toBeVisible();
+
+  // Verify the session user is still "admin".
+  await expect(page.getByTestId('session-user')).toHaveText('admin');
+
+  // Verify the session status is Active (restored from storage).
+  await expect(page.getByTestId('session-status')).toHaveText('Active');
+
+  // Verify the token was restored.
+  const token = await page.getByTestId('token-display').textContent();
+  expect(token).toContain('.');
+});
+5:T227b,const PLAYGROUND = '/phase-06-complex-scenarios/33-session-management/playground/';
+
+describe('Kata 33: Session Management', () => {
+
+  // Helper: Log in with default credentials.
+  // Fills the form and clicks Sign In. Uses Cypress command chaining.
+  function login() {
+    // cy.get(selector).type(text) types into an input field.
+    cy.get('[data-testid="username-input"]').type('admin');
+    cy.get('[data-testid="password-input"]').type('password123');
+    cy.get('[data-testid="login-btn"]').click();
+    // Wait for the dashboard to appear.
+    cy.get('[data-testid="dashboard"]').should('be.visible');
+  }
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Login and Verify Session Active
+  // --------------------------------------------------------------------------
+  // Signs in and verifies the dashboard shows an active session.
+  it('exercise 1: login and verify session active', () => {
+    cy.visit(PLAYGROUND);
+
+    // Verify login panel is visible.
+    cy.get('[data-testid="login-panel"]').should('be.visible');
+
+    // Log in.
+    login();
+
+    // Verify session info is displayed correctly.
+    cy.get('[data-testid="session-status"]').should('have.text', 'Active');
+    cy.get('[data-testid="session-user"]').should('have.text', 'admin');
+
+    // Verify a token was generated (contains dots like a JWT).
+    cy.get('[data-testid="token-display"]')
+      .invoke('text')
+      .should('include', '.');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Wait for Session Warning
+  // --------------------------------------------------------------------------
+  // Uses cy.clock() and cy.tick() to fast-forward time to the warning.
+  it('exercise 2: wait for session warning', () => {
+    // cy.clock() installs fake timers (overrides setTimeout, setInterval,
+    // and Date). Must be called before cy.visit() to capture all timers.
+    cy.clock();
+    cy.visit(PLAYGROUND);
+    login();
+
+    // Verify the warning banner is not visible initially.
+    cy.get('[data-testid="session-warning"]').should('not.be.visible');
+
+    // cy.tick(ms) advances the fake clock by the given milliseconds.
+    // This triggers any setInterval/setTimeout callbacks that would
+    // fire within that period.
+    cy.tick(10000);
+
+    // Verify the warning banner appeared.
+    cy.get('[data-testid="session-warning"]').should('be.visible');
+
+    // Verify session status changed to "Warning".
+    cy.get('[data-testid="session-status"]').should('have.text', 'Warning');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Refresh Session Before Expiry
+  // --------------------------------------------------------------------------
+  // Advances to warning, refreshes, and verifies the timer reset.
+  it('exercise 3: refresh session before expiry', () => {
+    cy.clock();
+    cy.visit(PLAYGROUND);
+    login();
+
+    // Advance to warning state.
+    cy.tick(10000);
+    cy.get('[data-testid="session-warning"]').should('be.visible');
+
+    // Click Refresh Session.
+    cy.get('[data-testid="refresh-session-btn"]').click();
+
+    // Verify warning disappeared and timer reset.
+    cy.get('[data-testid="session-warning"]').should('not.be.visible');
+    cy.get('[data-testid="session-status"]').should('have.text', 'Active');
+    cy.get('[data-testid="session-timer"]').should('have.text', '15s');
+    cy.get('[data-testid="refresh-count"]').should('have.text', '1');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Let Session Expire, Verify Overlay
+  // --------------------------------------------------------------------------
+  // Advances the clock past the full 15-second timeout.
+  it('exercise 4: let session expire and verify overlay', () => {
+    cy.clock();
+    cy.visit(PLAYGROUND);
+    login();
+
+    // Advance 15 seconds (full timeout).
+    cy.tick(15000);
+
+    // Verify the expired overlay is visible.
+    cy.get('[data-testid="expired-overlay"]').should('be.visible');
+
+    // Verify the expired message content.
+    cy.get('[data-testid="expired-message"]').should('contain.text', 'timed out');
+
+    // Verify session status is "Expired" and timer shows 0s.
+    cy.get('[data-testid="session-status"]').should('have.text', 'Expired');
+    cy.get('[data-testid="session-timer"]').should('have.text', '0s');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Re-login After Expiry
+  // --------------------------------------------------------------------------
+  // Lets session expire, clicks re-login, and signs in again.
+  it('exercise 5: re-login after session expiry', () => {
+    cy.clock();
+    cy.visit(PLAYGROUND);
+    login();
+
+    // Let session expire.
+    cy.tick(15000);
+    cy.get('[data-testid="expired-overlay"]').should('be.visible');
+
+    // Click "Sign In Again".
+    cy.get('[data-testid="relogin-btn"]').click();
+
+    // Verify overlay hidden and login panel visible.
+    cy.get('[data-testid="expired-overlay"]').should('not.be.visible');
+    cy.get('[data-testid="login-panel"]').should('be.visible');
+
+    // Restore real timers before logging in again so the new session
+    // timers work. cy.clock().invoke('restore') removes the fake timers.
+    cy.clock().invoke('restore');
+
+    // Log in again.
+    login();
+
+    // Verify new session is active.
+    cy.get('[data-testid="session-status"]').should('have.text', 'Active');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Verify Token Refresh
+  // --------------------------------------------------------------------------
+  // Refreshes the session and verifies a new token was generated.
+  it('exercise 6: verify token refresh generates new token', () => {
+    cy.visit(PLAYGROUND);
+    login();
+
+    // Capture the initial token using .invoke('text') and .then().
+    cy.get('[data-testid="token-display"]')
+      .invoke('text')
+      .then(initialToken => {
+        // Click Refresh Session.
+        cy.get('[data-testid="refresh-session-btn"]').click();
+
+        // Verify the new token is different from the initial one.
+        // .invoke('text') gets the current text, .should() asserts.
+        cy.get('[data-testid="token-display"]')
+          .invoke('text')
+          .should('not.eq', initialToken);
+      });
+
+    // Verify refresh count is 1.
+    cy.get('[data-testid="refresh-count"]').should('have.text', '1');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Rapid Interactions Keep Session Alive
+  // --------------------------------------------------------------------------
+  // Clicks Interact before timeout to keep the session alive.
+  it('exercise 7: rapid interactions keep session alive', () => {
+    cy.clock();
+    cy.visit(PLAYGROUND);
+    login();
+
+    // Advance 8 seconds (close to warning at 10s).
+    cy.tick(8000);
+
+    // Click Interact to reset the timer.
+    cy.get('[data-testid="interact-btn"]').click();
+
+    // Verify session is still Active.
+    cy.get('[data-testid="session-status"]').should('have.text', 'Active');
+    cy.get('[data-testid="session-timer"]').should('have.text', '15s');
+
+    // Advance another 8 seconds (total 16s from login, would have expired).
+    cy.tick(8000);
+
+    // Click Interact again.
+    cy.get('[data-testid="interact-btn"]').click();
+
+    // Verify session is still active (interactions kept it alive).
+    cy.get('[data-testid="session-status"]').should('have.text', 'Active');
+
+    // Verify the expired overlay never appeared.
+    cy.get('[data-testid="expired-overlay"]').should('not.be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Verify Session State Across Page Reload
+  // --------------------------------------------------------------------------
+  // Logs in, reloads the page, and verifies the session is restored.
+  it('exercise 8: session state persists across page reload', () => {
+    cy.visit(PLAYGROUND);
+    login();
+
+    // Verify session is active.
+    cy.get('[data-testid="session-status"]').should('have.text', 'Active');
+
+    // Reload the page. cy.reload() is equivalent to pressing F5.
+    cy.reload();
+
+    // Verify the dashboard is still visible (session restored from
+    // sessionStorage by the page's JavaScript).
+    cy.get('[data-testid="dashboard"]').should('be.visible');
+    cy.get('[data-testid="session-user"]').should('have.text', 'admin');
+    cy.get('[data-testid="session-status"]').should('have.text', 'Active');
+
+    // Verify the token was restored.
+    cy.get('[data-testid="token-display"]')
+      .invoke('text')
+      .should('include', '.');
+  });
+});
+6:T10c3,# Kata 32: Multi-Window Workflows
+
+## What You Will Learn
+
+- How to open and interact with popup windows spawned by window.open()
+- How to switch between multiple browser windows/tabs in your tests
+- How to verify content inside a popup window
+- How to test cross-window communication via postMessage
+- How to handle popup lifecycle (open, interact, close) in both Playwright and Cypress
+- Differences between Playwright's multi-page context model and Cypress's single-tab limitation
+
+## Prerequisites
+
+- Completed Katas 01-31
+- Understanding of browser window.open() and postMessage APIs
+
+## Concepts Explained
+
+### window.open() and Popups
+
+```
+window.open(url, target, features) opens a new browser window or tab.
+
+  url      — the URL to load in the new window
+  target   — a name for the window (reuses if a window with that name exists)
+  features — a comma-separated string like "width=500,height=400"
+
+The returned value is a Window object (or null if blocked).
+The popup can communicate with its opener via:
+  - window.opener   — reference to the window that opened the popup
+  - postMessage()   — safe cross-origin messaging between windows
+```
+
+### postMessage for Cross-Window Communication
+
+```
+window.postMessage(data, targetOrigin) sends a message to another window.
+
+The receiving window listens with:
+  window.addEventListener('message', (event) => {
+    event.data         — the data sent
+    event.origin       — the origin of the sender
+    event.source       — reference to the sending Window
+  });
+
+In our playground:
+  1. Main page opens a popup with applicant details as URL params
+  2. Admin acts (approve/reject) in the popup
+  3. Popup sends postMessage to window.opener
+  4. Main page receives the message and updates the applicant status
+```
+
+### Playwright: Handling Multiple Pages
+
+```typescript
+// PLAYWRIGHT
+// Playwright represents each browser tab/window as a separate Page object.
+// When window.open() is called, Playwright fires a 'popup' event on the
+// page that triggered it. You can wait for this event:
+
+const [popup] = await Promise.all([
+  page.waitForEvent('popup'),           // wait for the popup event
+  page.getByTestId('review-1').click(), // click triggers window.open()
+]);
+
+// Now 'popup' is a full Page object — you can interact with it just
+// like the main page:
+await popup.waitForLoadState();
+await popup.getByTestId('approve-btn').click();
+```
+
+### Cypress: Popup Limitations and Workarounds
+
+```typescript
+// CYPRESS
+// Cypress runs inside a single browser tab and cannot natively switch
+// to popup windows. The recommended approach is to:
+//
+//   1. Stub window.open() to prevent the popup from actually opening
+//   2. Instead, visit the popup URL directly in the same Cypress tab
+//   3. Or use cy.origin() for cross-origin scenarios (Cypress 12+)
+//
+// Approach: Stub window.open and capture the URL
+
+cy.window().then(win => {
+  cy.stub(win, 'open').as('windowOpen');
+});
+cy.get('[data-testid="review-1"]').click();
+cy.get('@windowOpen').should('have.been.called');
+
+// To test the popup content, visit the captured URL:
+cy.get('@windowOpen').then(stub => {
+  const url = stub.getCall(0).args[0];
+  cy.visit(url);
+});
+```
+
+## Playground Overview
+
+The playground has two pages:
+
+**index.html** — Main page with an applicant list table. Each row has a "Review" button that opens a popup window.
+
+**admin-panel.html** — Popup page showing applicant details with Approve/Reject buttons. When the admin acts, the popup sends a postMessage back to the main page.
+
+## Exercises
+
+1. **Open review window** — Click the Review button and verify a popup opens
+2. **Interact with popup** — Click a button inside the popup window
+3. **Verify popup content** — Check that the popup displays the correct applicant details
+4. **Approve in popup, verify main page** — Approve an applicant and verify the main page status updates
+5. **Reject in popup** — Reject an applicant and verify the main page shows "rejected"
+6. **Close popup, verify main state** — Close the popup and verify the main page state is preserved
+7. **Handle multiple popups** — Open review windows for two different applicants
+8. **Synchronize state between windows** — Act in one popup and verify another popup still works correctly
+7:T288a,import { test, expect } from '@playwright/test';
+
+// Base URL for the main playground page.
+const PLAYGROUND = '/phase-06-complex-scenarios/32-multi-window-workflows/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Open Review Window
+// --------------------------------------------------------------------------
+// Demonstrates how to wait for a popup event when window.open() is called.
+// Playwright fires a 'popup' event on the page that triggered the open.
+test('exercise 1: open review window', async ({ page }) => {
+  // Navigate to the main applicant list page.
+  await page.goto(PLAYGROUND);
+
+  // Verify the status bar shows no action taken yet.
+  await expect(page.getByTestId('last-action')).toHaveText('None');
+
+  // Promise.all ensures we start waiting for the popup BEFORE the click
+  // triggers window.open(). If we clicked first, the popup event might
+  // fire before we start listening, causing a timeout.
+  const [popup] = await Promise.all([
+    // waitForEvent('popup') resolves with the new Page object when
+    // a new window/tab is opened by this page.
+    page.waitForEvent('popup'),
+    // Click the Review button for applicant 1 (Alice Johnson).
+    page.getByTestId('review-1').click(),
+  ]);
+
+  // Wait for the popup to finish loading its HTML and scripts.
+  // waitForLoadState() defaults to 'load', meaning the page's load event.
+  await popup.waitForLoadState();
+
+  // Verify the popup opened by checking its title.
+  await expect(popup).toHaveTitle(/Admin Review Panel/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Interact with Popup
+// --------------------------------------------------------------------------
+// Shows how to click buttons inside a popup window. The popup is a full
+// Page object, so all Playwright locator methods work on it.
+test('exercise 2: interact with popup window', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  const [popup] = await Promise.all([
+    page.waitForEvent('popup'),
+    page.getByTestId('review-1').click(),
+  ]);
+  await popup.waitForLoadState();
+
+  // Verify the Approve button is visible and enabled in the popup.
+  await expect(popup.getByTestId('approve-btn')).toBeVisible();
+  await expect(popup.getByTestId('approve-btn')).toBeEnabled();
+
+  // Click the Approve button inside the popup.
+  await popup.getByTestId('approve-btn').click();
+
+  // Verify the decision banner appears in the popup after clicking.
+  // The popup shows a success/error banner confirming the action.
+  await expect(popup.getByTestId('decision-banner')).toBeVisible();
+  await expect(popup.getByTestId('decision-banner')).toContainText('approved');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Verify Popup Content
+// --------------------------------------------------------------------------
+// Checks that the popup displays the correct applicant details by reading
+// the data-testid elements in the popup page.
+test('exercise 3: verify popup shows correct applicant details', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Open the review popup for applicant 1 (Alice Johnson).
+  const [popup] = await Promise.all([
+    page.waitForEvent('popup'),
+    page.getByTestId('review-1').click(),
+  ]);
+  await popup.waitForLoadState();
+
+  // Verify each field in the popup matches the data from the main page.
+  // The popup reads applicant data from URL search parameters.
+  await expect(popup.getByTestId('applicant-name')).toHaveText('Alice Johnson');
+  await expect(popup.getByTestId('applicant-email')).toHaveText('alice@example.com');
+  await expect(popup.getByTestId('applicant-position')).toHaveText('Engineer');
+  await expect(popup.getByTestId('applicant-risk')).toHaveText('low');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Approve in Popup, Verify Main Page Updates
+// --------------------------------------------------------------------------
+// The core cross-window test: act in the popup, verify the main page
+// received the postMessage and updated the applicant status.
+test('exercise 4: approve in popup and verify main page updates', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify Alice starts with "pending" status on the main page.
+  await expect(page.getByTestId('status-1')).toHaveText('pending');
+
+  // Open the review popup for Alice.
+  const [popup] = await Promise.all([
+    page.waitForEvent('popup'),
+    page.getByTestId('review-1').click(),
+  ]);
+  await popup.waitForLoadState();
+
+  // Click Approve in the popup. This calls postMessage on window.opener.
+  await popup.getByTestId('approve-btn').click();
+
+  // Switch focus back to the main page and verify the status updated.
+  // Playwright does not require an explicit "switch" — we simply use the
+  // main page's locators. The postMessage handler on the main page updates
+  // the DOM asynchronously, so we rely on Playwright's auto-waiting.
+  await expect(page.getByTestId('status-1')).toHaveText('approved');
+
+  // Verify the status bar also updated.
+  await expect(page.getByTestId('last-action')).toContainText('Alice Johnson');
+  await expect(page.getByTestId('last-action')).toContainText('approved');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Reject in Popup
+// --------------------------------------------------------------------------
+// Same cross-window flow as exercise 4, but with the Reject action.
+test('exercise 5: reject in popup and verify main page updates', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Open the review popup for applicant 2 (Bob Smith).
+  const [popup] = await Promise.all([
+    page.waitForEvent('popup'),
+    page.getByTestId('review-2').click(),
+  ]);
+  await popup.waitForLoadState();
+
+  // Click Reject in the popup.
+  await popup.getByTestId('reject-btn').click();
+
+  // Verify the popup shows the rejection banner.
+  await expect(popup.getByTestId('decision-banner')).toContainText('rejected');
+
+  // Verify the main page updated Bob's status to "rejected".
+  await expect(page.getByTestId('status-2')).toHaveText('rejected');
+
+  // Verify the Review button for Bob is now disabled on the main page
+  // (you cannot review an already-decided applicant).
+  await expect(page.getByTestId('review-2')).toBeDisabled();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Close Popup, Verify Main State
+// --------------------------------------------------------------------------
+// Tests that closing a popup without taking action preserves the main
+// page state (applicant stays pending).
+test('exercise 6: close popup without action preserves main state', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Open a review popup for applicant 3 (Clara Nguyen).
+  const [popup] = await Promise.all([
+    page.waitForEvent('popup'),
+    page.getByTestId('review-3').click(),
+  ]);
+  await popup.waitForLoadState();
+
+  // Close the popup without approving or rejecting.
+  // popup.close() closes the browser tab/window.
+  await popup.close();
+
+  // Verify Clara's status is still "pending" on the main page.
+  await expect(page.getByTestId('status-3')).toHaveText('pending');
+
+  // Verify the last action is still "None" (no decision was made).
+  await expect(page.getByTestId('last-action')).toHaveText('None');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Handle Multiple Popups
+// --------------------------------------------------------------------------
+// Opens two review popups simultaneously and interacts with both.
+test('exercise 7: handle multiple popups', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Open popup for applicant 1 (Alice).
+  const [popup1] = await Promise.all([
+    page.waitForEvent('popup'),
+    page.getByTestId('review-1').click(),
+  ]);
+  await popup1.waitForLoadState();
+
+  // Open popup for applicant 2 (Bob).
+  const [popup2] = await Promise.all([
+    page.waitForEvent('popup'),
+    page.getByTestId('review-2').click(),
+  ]);
+  await popup2.waitForLoadState();
+
+  // Verify both popups show the correct applicant names.
+  await expect(popup1.getByTestId('applicant-name')).toHaveText('Alice Johnson');
+  await expect(popup2.getByTestId('applicant-name')).toHaveText('Bob Smith');
+
+  // Approve Alice in popup1.
+  await popup1.getByTestId('approve-btn').click();
+  await expect(page.getByTestId('status-1')).toHaveText('approved');
+
+  // Reject Bob in popup2.
+  await popup2.getByTestId('reject-btn').click();
+  await expect(page.getByTestId('status-2')).toHaveText('rejected');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Synchronize State Between Windows
+// --------------------------------------------------------------------------
+// Approves one applicant, then opens another popup and verifies the
+// first applicant's decision is reflected on the main page throughout.
+test('exercise 8: synchronize state between windows', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Approve applicant 4 (David Park) via popup.
+  const [popup4] = await Promise.all([
+    page.waitForEvent('popup'),
+    page.getByTestId('review-4').click(),
+  ]);
+  await popup4.waitForLoadState();
+  await popup4.getByTestId('approve-btn').click();
+
+  // Wait for the main page to update.
+  await expect(page.getByTestId('status-4')).toHaveText('approved');
+
+  // Close the first popup.
+  await popup4.close();
+
+  // Now open a popup for applicant 5 (Eva Martinez).
+  const [popup5] = await Promise.all([
+    page.waitForEvent('popup'),
+    page.getByTestId('review-5').click(),
+  ]);
+  await popup5.waitForLoadState();
+
+  // Verify David's status is still "approved" on the main page
+  // (state was not lost when we opened a new popup).
+  await expect(page.getByTestId('status-4')).toHaveText('approved');
+
+  // Reject Eva in her popup.
+  await popup5.getByTestId('reject-btn').click();
+  await expect(page.getByTestId('status-5')).toHaveText('rejected');
+
+  // Verify both decisions are reflected on the main page.
+  await expect(page.getByTestId('status-4')).toHaveText('approved');
+  await expect(page.getByTestId('status-5')).toHaveText('rejected');
+});
+8:T2551,const PLAYGROUND = '/phase-06-complex-scenarios/32-multi-window-workflows/playground/';
+
+describe('Kata 32: Multi-Window Workflows', () => {
+
+  // -----------------------------------------------------------------------
+  // IMPORTANT: Cypress runs inside a single browser tab and cannot natively
+  // interact with popup windows opened by window.open(). The standard
+  // workaround is to stub window.open() and then visit the popup URL
+  // directly in the Cypress-controlled tab. This lets us test the popup
+  // content and simulate postMessage communication back to the main page.
+  // -----------------------------------------------------------------------
+
+  // Helper: Stub window.open and return the URL it would have opened.
+  // This prevents a real popup from opening (which Cypress can't control)
+  // and captures the URL so we can visit it later.
+  function stubWindowOpen() {
+    cy.window().then(win => {
+      // cy.stub(object, method) replaces the method with a spy/stub.
+      // .callsFake(fn) provides a custom implementation that records
+      // the URL and returns a fake window object.
+      cy.stub(win, 'open').callsFake((url: string) => {
+        // Store the URL on the window so tests can retrieve it.
+        (win as any).__lastPopupUrl = url;
+        // Return a minimal fake Window object to avoid errors in the
+        // main page's code that checks if the popup opened.
+        return { closed: false } as Window;
+      }).as('windowOpen');
+    });
+  }
+
+  // Helper: Simulate a postMessage from the popup back to the main page.
+  // Since we can't actually have two windows, we send the message directly.
+  function simulatePopupDecision(id: string, decision: string) {
+    cy.window().then(win => {
+      // Dispatch a 'message' event on the main page's window, mimicking
+      // what the popup's postMessage would do.
+      win.postMessage(
+        { type: 'applicant-decision', id, decision },
+        '*'
+      );
+    });
+  }
+
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Open Review Window
+  // --------------------------------------------------------------------------
+  // Verifies that clicking Review calls window.open() with the correct URL.
+  it('exercise 1: open review window', () => {
+    // Stub window.open before clicking the button.
+    stubWindowOpen();
+
+    // Click the Review button for applicant 1 (Alice).
+    cy.get('[data-testid="review-1"]').click();
+
+    // Verify window.open was called.
+    // .should('have.been.calledOnce') uses Sinon assertion syntax since
+    // cy.stub creates a Sinon stub under the hood.
+    cy.get('@windowOpen').should('have.been.calledOnce');
+
+    // Verify the URL contains the admin-panel.html path and Alice's data.
+    cy.get('@windowOpen').then((stub: any) => {
+      const url: string = stub.getCall(0).args[0];
+      expect(url).to.include('admin-panel.html');
+      expect(url).to.include('name=Alice');
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Interact with Popup (Visit Popup URL)
+  // --------------------------------------------------------------------------
+  // Since Cypress can't switch to a popup, we visit the popup URL directly
+  // and interact with the admin panel page.
+  it('exercise 2: interact with popup page', () => {
+    // Visit the admin panel directly with query params for applicant 1.
+    cy.visit(
+      PLAYGROUND + 'admin-panel.html?id=1&name=Alice+Johnson&email=alice%40example.com&position=Engineer&risk=low&date=2025-01-15'
+    );
+
+    // Verify the Approve button is visible and click it.
+    cy.get('[data-testid="approve-btn"]').should('be.visible').click();
+
+    // Verify the decision banner appears.
+    cy.get('[data-testid="decision-banner"]')
+      .should('be.visible')
+      .and('contain.text', 'approved');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Verify Popup Content
+  // --------------------------------------------------------------------------
+  // Visits the popup URL and verifies all applicant fields are displayed.
+  it('exercise 3: verify popup shows correct applicant details', () => {
+    // Visit the admin panel with Bob's data.
+    cy.visit(
+      PLAYGROUND + 'admin-panel.html?id=2&name=Bob+Smith&email=bob%40example.com&position=Manager&risk=medium&date=2025-02-01'
+    );
+
+    // Verify each detail field matches the URL parameters.
+    cy.get('[data-testid="applicant-name"]').should('have.text', 'Bob Smith');
+    cy.get('[data-testid="applicant-email"]').should('have.text', 'bob@example.com');
+    cy.get('[data-testid="applicant-position"]').should('have.text', 'Manager');
+    cy.get('[data-testid="applicant-risk"]').should('have.text', 'medium');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Approve in Popup, Verify Main Page Updates
+  // --------------------------------------------------------------------------
+  // Simulates the approve flow using postMessage to update the main page.
+  it('exercise 4: approve and verify main page updates via postMessage', () => {
+    // Verify Alice starts as "pending".
+    cy.get('[data-testid="status-1"]').should('have.text', 'pending');
+
+    // Simulate the popup sending an "approved" postMessage for applicant 1.
+    // In a real scenario, the popup's Approve button triggers this message.
+    simulatePopupDecision('1', 'approved');
+
+    // Verify the main page updated Alice's status to "approved".
+    cy.get('[data-testid="status-1"]').should('have.text', 'approved');
+
+    // Verify the status bar shows the last action.
+    cy.get('[data-testid="last-action"]').should('contain.text', 'Alice Johnson');
+    cy.get('[data-testid="last-action"]').should('contain.text', 'approved');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Reject in Popup
+  // --------------------------------------------------------------------------
+  // Similar to exercise 4 but with the reject decision.
+  it('exercise 5: reject and verify main page updates', () => {
+    // Verify Bob starts as "pending".
+    cy.get('[data-testid="status-2"]').should('have.text', 'pending');
+
+    // Simulate the popup sending a "rejected" postMessage for applicant 2.
+    simulatePopupDecision('2', 'rejected');
+
+    // Verify the main page updated Bob's status to "rejected".
+    cy.get('[data-testid="status-2"]').should('have.text', 'rejected');
+
+    // Verify the Review button for Bob is now disabled.
+    cy.get('[data-testid="review-2"]').should('be.disabled');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Close Popup, Verify Main State
+  // --------------------------------------------------------------------------
+  // Tests that if no postMessage is sent (popup closed without action),
+  // the main page state remains unchanged.
+  it('exercise 6: no action preserves main page state', () => {
+    // Stub window.open so the "popup" opens.
+    stubWindowOpen();
+
+    // Click Review — this opens the popup (stubbed).
+    cy.get('[data-testid="review-3"]').click();
+
+    // No postMessage is sent (admin closed popup without acting).
+
+    // Verify Clara's status is still "pending".
+    cy.get('[data-testid="status-3"]').should('have.text', 'pending');
+
+    // Verify last action is still "None".
+    cy.get('[data-testid="last-action"]').should('have.text', 'None');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Handle Multiple Popups
+  // --------------------------------------------------------------------------
+  // Opens two review popups (stubbed) and sends decisions for both.
+  it('exercise 7: handle multiple popup decisions', () => {
+    // Simulate approving Alice and rejecting Bob via postMessage.
+    simulatePopupDecision('1', 'approved');
+    cy.get('[data-testid="status-1"]').should('have.text', 'approved');
+
+    simulatePopupDecision('2', 'rejected');
+    cy.get('[data-testid="status-2"]').should('have.text', 'rejected');
+
+    // Verify both statuses are correct simultaneously.
+    cy.get('[data-testid="status-1"]').should('have.text', 'approved');
+    cy.get('[data-testid="status-2"]').should('have.text', 'rejected');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Synchronize State Between Windows
+  // --------------------------------------------------------------------------
+  // Approves one applicant, then processes another, verifying the first
+  // decision is preserved throughout.
+  it('exercise 8: state persists across multiple decisions', () => {
+    // Approve David (applicant 4).
+    simulatePopupDecision('4', 'approved');
+    cy.get('[data-testid="status-4"]').should('have.text', 'approved');
+
+    // Reject Eva (applicant 5).
+    simulatePopupDecision('5', 'rejected');
+    cy.get('[data-testid="status-5"]').should('have.text', 'rejected');
+
+    // Verify David's approval was not overwritten when Eva was rejected.
+    cy.get('[data-testid="status-4"]').should('have.text', 'approved');
+
+    // Verify all other applicants are still pending.
+    cy.get('[data-testid="status-1"]').should('have.text', 'pending');
+    cy.get('[data-testid="status-2"]').should('have.text', 'pending');
+    cy.get('[data-testid="status-3"]').should('have.text', 'pending');
+  });
+});
+9:Tc7a,# Kata 34: Complex Multi-Step E2E
+
+## What You Will Learn
+
+- How to test a full end-to-end onboarding flow spanning 6 steps
+- How to verify step-by-step unlocking and progression
+- How to ensure data carries through multiple form steps
+- How to handle simulated async operations (video verification, background checks)
+- How to test that users cannot skip steps
+- How to verify a final summary page aggregates all entered data
+
+## Prerequisites
+
+- Completed Katas 01-33
+- Understanding of form interactions, file uploads, and async waits
+
+## Concepts Explained
+
+### Multi-Step Wizards
+
+```
+A multi-step wizard guides users through a sequence of forms/views.
+Each step must be completed before the next unlocks:
+
+  Register  -->  KYC  -->  Document  -->  Video  -->  Background  -->  Approval
+     1           2           3             4            5               6
+
+The tracker at the top shows:
+  - completed steps (green)
+  - the current active step (blue)
+  - locked future steps (grey)
+```
+
+### Testing Long Flows
+
+```
+Long E2E flows require:
+  1. Helper functions to avoid repetition (e.g., completeStep1, completeStep2)
+  2. Patience with async steps (video verification, background checks)
+  3. Assertions at each step boundary to catch regressions early
+  4. Data validation at the final summary to ensure nothing was lost
+```
+
+### Playwright: File Upload
+
+```typescript
+// PLAYWRIGHT
+// setInputFiles(path) sets a file on an <input type="file"> element.
+// The file does not need to exist physically — Playwright creates it.
+await page.getByTestId('file-input').setInputFiles({
+  name: 'id-card.pdf',
+  mimeType: 'application/pdf',
+  buffer: Buffer.from('fake file content'),
+});
+```
+
+### Cypress: File Upload
+
+```typescript
+// CYPRESS
+// selectFile(fileOrFixture) sets a file on a file input.
+cy.get('[data-testid="file-input"]').selectFile({
+  contents: Cypress.Buffer.from('fake content'),
+  fileName: 'id-card.pdf',
+  mimeType: 'application/pdf',
+});
+```
+
+## Playground Overview
+
+A 6-step onboarding wizard:
+
+1. **Register** — Email, password, full name
+2. **KYC** — Date of birth, nationality, address, phone
+3. **Document Upload** — Upload a government ID
+4. **Video Verification** — Simulated 2-second camera check
+5. **Background Check** — Simulated progress bar (4 stages)
+6. **Final Approval** — Success view with data summary
+
+A status tracker at the top shows completed, active, and locked steps.
+
+## Exercises
+
+1. **Complete full happy path** — Walk through all 6 steps and verify the final success view
+2. **Verify step unlocking** — Check that completing a step unlocks the next one
+3. **Verify cannot skip steps** — Ensure step 3 is locked when only step 1 is done
+4. **Partial completion and resume** — Complete steps 1-2, verify step 3 is active
+5. **Verify data carries through steps** — Enter data in step 1, verify it appears in the final summary
+6. **Error at one step doesn't lose data** — Submit step 2 with missing fields, fix and continue
+7. **Verify final success state** — Check the success icon, title, and message on step 6
+8. **Test with different data sets** — Run the flow with different user data and verify the summary
+a:T316c,import { test, expect } from '@playwright/test';
+
+// Base URL for the playground page.
+const PLAYGROUND = '/phase-06-complex-scenarios/34-complex-multi-step-e2e/playground/';
+
+// Default test data used across exercises.
+const DEFAULT_DATA = {
+  email: 'jane@example.com',
+  password: 'secret123',
+  name: 'Jane Doe',
+  dob: '1990-05-15',
+  nationality: 'US',
+  address: '123 Main St, Springfield',
+  phone: '+1 555-0123',
+  fileName: 'passport.pdf',
+};
+
+// --------------------------------------------------------------------------
+// Helpers: Complete individual steps to avoid repetition in tests.
+// Each helper fills the required fields and clicks the submit button.
+// --------------------------------------------------------------------------
+
+// Step 1: Register — fill email, password, name, then click submit.
+async function completeRegister(page: import('@playwright/test').Page, data = DEFAULT_DATA) {
+  await page.getByTestId('reg-email').fill(data.email);
+  await page.getByTestId('reg-password').fill(data.password);
+  await page.getByTestId('reg-name').fill(data.name);
+  await page.getByTestId('register-submit').click();
+}
+
+// Step 2: KYC — fill personal details, then click submit.
+async function completeKyc(page: import('@playwright/test').Page, data = DEFAULT_DATA) {
+  await page.getByTestId('kyc-dob').fill(data.dob);
+  await page.getByTestId('kyc-nationality').selectOption(data.nationality);
+  await page.getByTestId('kyc-address').fill(data.address);
+  await page.getByTestId('kyc-phone').fill(data.phone);
+  await page.getByTestId('kyc-submit').click();
+}
+
+// Step 3: Document Upload — upload a fake file, then click submit.
+async function completeDocument(page: import('@playwright/test').Page, data = DEFAULT_DATA) {
+  // setInputFiles creates a synthetic file without needing a real file.
+  // The buffer contains fake content — only the name matters for our test.
+  await page.getByTestId('file-input').setInputFiles({
+    name: data.fileName,
+    mimeType: 'application/pdf',
+    buffer: Buffer.from('fake pdf content'),
+  });
+  await page.getByTestId('document-submit').click();
+}
+
+// Step 4: Video Verification — start verification, wait for completion.
+async function completeVideo(page: import('@playwright/test').Page) {
+  await page.getByTestId('start-video-btn').click();
+  // Wait for the verification to finish (2 seconds simulated delay).
+  // We wait for the "Continue" button to appear instead of sleeping.
+  await expect(page.getByTestId('video-submit')).toBeVisible({ timeout: 5000 });
+  await page.getByTestId('video-submit').click();
+}
+
+// Step 5: Background Check — start check, wait for completion.
+async function completeBackground(page: import('@playwright/test').Page) {
+  await page.getByTestId('start-bg-check').click();
+  // Wait for the background check to finish (4 stages at 500ms each).
+  // We wait for the "Continue" button to appear.
+  await expect(page.getByTestId('bg-submit')).toBeVisible({ timeout: 5000 });
+  await page.getByTestId('bg-submit').click();
+}
+
+// --------------------------------------------------------------------------
+// Exercise 1: Complete Full Happy Path
+// --------------------------------------------------------------------------
+// Walks through all 6 steps and verifies the final success view.
+test('exercise 1: complete full happy path', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Step 1: Register
+  await completeRegister(page);
+  await expect(page.getByTestId('step-kyc')).toBeVisible();
+
+  // Step 2: KYC
+  await completeKyc(page);
+  await expect(page.getByTestId('step-document')).toBeVisible();
+
+  // Step 3: Document Upload
+  await completeDocument(page);
+  await expect(page.getByTestId('step-video')).toBeVisible();
+
+  // Step 4: Video Verification
+  await completeVideo(page);
+  await expect(page.getByTestId('step-background')).toBeVisible();
+
+  // Step 5: Background Check
+  await completeBackground(page);
+
+  // Step 6: Verify final success view.
+  await expect(page.getByTestId('step-approval')).toBeVisible();
+  await expect(page.getByTestId('success-title')).toHaveText('Onboarding Complete!');
+  await expect(page.getByTestId('summary-name')).toHaveText(DEFAULT_DATA.name);
+  await expect(page.getByTestId('summary-email')).toHaveText(DEFAULT_DATA.email);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Verify Step Unlocking
+// --------------------------------------------------------------------------
+// Checks that the tracker updates correctly as steps are completed.
+test('exercise 2: verify step unlocking', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Initially, only step 1 is active; step 2 is locked.
+  await expect(page.getByTestId('tracker-register')).toHaveClass(/active/);
+  await expect(page.getByTestId('tracker-kyc')).toHaveClass(/locked/);
+
+  // Complete step 1.
+  await completeRegister(page);
+
+  // Now step 1 should be completed, step 2 should be active.
+  // toHaveClass(regex) checks if the element's class attribute matches
+  // the given regular expression.
+  await expect(page.getByTestId('tracker-register')).toHaveClass(/completed/);
+  await expect(page.getByTestId('tracker-kyc')).toHaveClass(/active/);
+  await expect(page.getByTestId('tracker-document')).toHaveClass(/locked/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Verify Cannot Skip Steps
+// --------------------------------------------------------------------------
+// After completing only step 1, verifies that step 3+ panels are hidden.
+test('exercise 3: verify cannot skip steps', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Complete only step 1 (Register).
+  await completeRegister(page);
+
+  // Step 2 (KYC) should be visible (it's the current step).
+  await expect(page.getByTestId('step-kyc')).toBeVisible();
+
+  // Steps 3-6 should be hidden (cannot skip to them).
+  // toBeHidden() checks that the element is not visible or not in the DOM.
+  await expect(page.getByTestId('step-document')).toBeHidden();
+  await expect(page.getByTestId('step-video')).toBeHidden();
+  await expect(page.getByTestId('step-background')).toBeHidden();
+  await expect(page.getByTestId('step-approval')).toBeHidden();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Partial Completion and Resume
+// --------------------------------------------------------------------------
+// Completes steps 1-2, then verifies step 3 is active and ready.
+test('exercise 4: partial completion and resume', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Complete steps 1 and 2.
+  await completeRegister(page);
+  await completeKyc(page);
+
+  // Verify step 3 (Document Upload) is now active.
+  await expect(page.getByTestId('step-document')).toBeVisible();
+  await expect(page.getByTestId('tracker-document')).toHaveClass(/active/);
+
+  // Verify steps 1-2 are marked completed in the tracker.
+  await expect(page.getByTestId('tracker-register')).toHaveClass(/completed/);
+  await expect(page.getByTestId('tracker-kyc')).toHaveClass(/completed/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Verify Data Carries Through Steps
+// --------------------------------------------------------------------------
+// Enters data in steps 1-2 and verifies it appears in the final summary.
+test('exercise 5: verify data carries through steps', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Complete all steps with default data.
+  await completeRegister(page);
+  await completeKyc(page);
+  await completeDocument(page);
+  await completeVideo(page);
+  await completeBackground(page);
+
+  // Verify the final summary shows the data entered in earlier steps.
+  await expect(page.getByTestId('summary-name')).toHaveText(DEFAULT_DATA.name);
+  await expect(page.getByTestId('summary-email')).toHaveText(DEFAULT_DATA.email);
+  await expect(page.getByTestId('summary-nationality')).toHaveText(DEFAULT_DATA.nationality);
+  await expect(page.getByTestId('summary-document')).toHaveText(DEFAULT_DATA.fileName);
+  await expect(page.getByTestId('summary-video')).toHaveText('Yes');
+  await expect(page.getByTestId('summary-background')).toHaveText('Passed');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Error at One Step Doesn't Lose Data
+// --------------------------------------------------------------------------
+// Attempts to submit step 2 with missing fields, fixes the error, and
+// continues without losing data from step 1.
+test('exercise 6: error at one step does not lose data', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Complete step 1 with data.
+  await completeRegister(page);
+
+  // Try to submit step 2 without filling all fields (only fill DOB).
+  await page.getByTestId('kyc-dob').fill('1990-05-15');
+  await page.getByTestId('kyc-submit').click();
+
+  // Verify the error message is shown.
+  await expect(page.getByTestId('kyc-error')).toBeVisible();
+
+  // Now fill in the remaining fields and submit again.
+  await page.getByTestId('kyc-nationality').selectOption('US');
+  await page.getByTestId('kyc-address').fill('123 Main St');
+  await page.getByTestId('kyc-phone').fill('+1 555-0123');
+  await page.getByTestId('kyc-submit').click();
+
+  // Verify we advanced to step 3 (the error didn't break the flow).
+  await expect(page.getByTestId('step-document')).toBeVisible();
+
+  // Complete remaining steps and verify step 1 data is still in the summary.
+  await completeDocument(page);
+  await completeVideo(page);
+  await completeBackground(page);
+  await expect(page.getByTestId('summary-name')).toHaveText(DEFAULT_DATA.name);
+  await expect(page.getByTestId('summary-email')).toHaveText(DEFAULT_DATA.email);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Verify Final Success State
+// --------------------------------------------------------------------------
+// Completes all steps and verifies every element in the success view.
+test('exercise 7: verify final success state', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Complete all steps.
+  await completeRegister(page);
+  await completeKyc(page);
+  await completeDocument(page);
+  await completeVideo(page);
+  await completeBackground(page);
+
+  // Verify the success view elements.
+  await expect(page.getByTestId('success-view')).toBeVisible();
+  await expect(page.getByTestId('success-icon')).toBeVisible();
+  await expect(page.getByTestId('success-title')).toHaveText('Onboarding Complete!');
+  await expect(page.getByTestId('success-message')).toContainText('verified and approved');
+
+  // Verify the summary table exists and has content.
+  await expect(page.getByTestId('summary-table')).toBeVisible();
+
+  // Verify all tracker steps are completed or active (the last step is active).
+  await expect(page.getByTestId('tracker-register')).toHaveClass(/completed/);
+  await expect(page.getByTestId('tracker-kyc')).toHaveClass(/completed/);
+  await expect(page.getByTestId('tracker-document')).toHaveClass(/completed/);
+  await expect(page.getByTestId('tracker-video')).toHaveClass(/completed/);
+  await expect(page.getByTestId('tracker-background')).toHaveClass(/completed/);
+  await expect(page.getByTestId('tracker-approval')).toHaveClass(/active/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Test with Different Data Sets
+// --------------------------------------------------------------------------
+// Runs the flow with alternate user data and verifies the summary.
+test('exercise 8: test with different data sets', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  const altData = {
+    email: 'alex@company.org',
+    password: 'p@ssw0rd',
+    name: 'Alex Rivera',
+    dob: '1985-11-20',
+    nationality: 'DE',
+    address: 'Berliner Str 42, Berlin',
+    phone: '+49 30 1234567',
+    fileName: 'drivers-license.jpg',
+  };
+
+  // Complete all steps with alternate data.
+  await completeRegister(page, altData);
+  await completeKyc(page, altData);
+  await completeDocument(page, altData);
+  await completeVideo(page);
+  await completeBackground(page);
+
+  // Verify the summary shows the alternate data, not the defaults.
+  await expect(page.getByTestId('summary-name')).toHaveText('Alex Rivera');
+  await expect(page.getByTestId('summary-email')).toHaveText('alex@company.org');
+  await expect(page.getByTestId('summary-nationality')).toHaveText('DE');
+  await expect(page.getByTestId('summary-document')).toHaveText('drivers-license.jpg');
+});
+b:T294c,const PLAYGROUND = '/phase-06-complex-scenarios/34-complex-multi-step-e2e/playground/';
+
+// Default test data used across exercises.
+const DEFAULT_DATA = {
+  email: 'jane@example.com',
+  password: 'secret123',
+  name: 'Jane Doe',
+  dob: '1990-05-15',
+  nationality: 'US',
+  address: '123 Main St, Springfield',
+  phone: '+1 555-0123',
+  fileName: 'passport.pdf',
+};
+
+describe('Kata 34: Complex Multi-Step E2E', () => {
+
+  // -----------------------------------------------------------------------
+  // Helpers: Complete individual steps. Each helper fills the required
+  // fields and clicks the submit button. Cypress chains commands, so
+  // each .type() or .click() waits for the previous to finish.
+  // -----------------------------------------------------------------------
+
+  // Step 1: Register
+  function completeRegister(data = DEFAULT_DATA) {
+    cy.get('[data-testid="reg-email"]').type(data.email);
+    cy.get('[data-testid="reg-password"]').type(data.password);
+    cy.get('[data-testid="reg-name"]').type(data.name);
+    cy.get('[data-testid="register-submit"]').click();
+  }
+
+  // Step 2: KYC
+  function completeKyc(data = DEFAULT_DATA) {
+    cy.get('[data-testid="kyc-dob"]').type(data.dob);
+    // cy.get(select).select(value) selects an option by its value attribute.
+    cy.get('[data-testid="kyc-nationality"]').select(data.nationality);
+    cy.get('[data-testid="kyc-address"]').type(data.address);
+    cy.get('[data-testid="kyc-phone"]').type(data.phone);
+    cy.get('[data-testid="kyc-submit"]').click();
+  }
+
+  // Step 3: Document Upload
+  function completeDocument(data = DEFAULT_DATA) {
+    // cy.get(input).selectFile(fileSpec) simulates selecting a file.
+    // The contents parameter accepts a Cypress.Buffer for synthetic files.
+    cy.get('[data-testid="file-input"]').selectFile({
+      contents: Cypress.Buffer.from('fake pdf content'),
+      fileName: data.fileName,
+      mimeType: 'application/pdf',
+    }, { force: true }); // force: true because the input is hidden
+    cy.get('[data-testid="document-submit"]').click();
+  }
+
+  // Step 4: Video Verification
+  function completeVideo() {
+    cy.get('[data-testid="start-video-btn"]').click();
+    // Wait for the Continue button to appear (video verification takes ~2s).
+    cy.get('[data-testid="video-submit"]', { timeout: 5000 }).should('be.visible').click();
+  }
+
+  // Step 5: Background Check
+  function completeBackground() {
+    cy.get('[data-testid="start-bg-check"]').click();
+    // Wait for the Continue button to appear (background check takes ~2s).
+    cy.get('[data-testid="bg-submit"]', { timeout: 5000 }).should('be.visible').click();
+  }
+
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Complete Full Happy Path
+  // --------------------------------------------------------------------------
+  it('exercise 1: complete full happy path', () => {
+    completeRegister();
+    cy.get('[data-testid="step-kyc"]').should('be.visible');
+
+    completeKyc();
+    cy.get('[data-testid="step-document"]').should('be.visible');
+
+    completeDocument();
+    cy.get('[data-testid="step-video"]').should('be.visible');
+
+    completeVideo();
+    cy.get('[data-testid="step-background"]').should('be.visible');
+
+    completeBackground();
+
+    // Verify final success view.
+    cy.get('[data-testid="step-approval"]').should('be.visible');
+    cy.get('[data-testid="success-title"]').should('have.text', 'Onboarding Complete!');
+    cy.get('[data-testid="summary-name"]').should('have.text', DEFAULT_DATA.name);
+    cy.get('[data-testid="summary-email"]').should('have.text', DEFAULT_DATA.email);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Verify Step Unlocking
+  // --------------------------------------------------------------------------
+  it('exercise 2: verify step unlocking', () => {
+    // Initially step 1 active, step 2 locked.
+    cy.get('[data-testid="tracker-register"]').should('have.class', 'active');
+    cy.get('[data-testid="tracker-kyc"]').should('have.class', 'locked');
+
+    // Complete step 1.
+    completeRegister();
+
+    // Step 1 completed, step 2 active.
+    // .should('have.class', name) checks for a single CSS class.
+    cy.get('[data-testid="tracker-register"]').should('have.class', 'completed');
+    cy.get('[data-testid="tracker-kyc"]').should('have.class', 'active');
+    cy.get('[data-testid="tracker-document"]').should('have.class', 'locked');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Verify Cannot Skip Steps
+  // --------------------------------------------------------------------------
+  it('exercise 3: verify cannot skip steps', () => {
+    // Complete only step 1.
+    completeRegister();
+
+    // Step 2 visible, steps 3-6 hidden.
+    cy.get('[data-testid="step-kyc"]').should('be.visible');
+    cy.get('[data-testid="step-document"]').should('not.be.visible');
+    cy.get('[data-testid="step-video"]').should('not.be.visible');
+    cy.get('[data-testid="step-background"]').should('not.be.visible');
+    cy.get('[data-testid="step-approval"]').should('not.be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Partial Completion and Resume
+  // --------------------------------------------------------------------------
+  it('exercise 4: partial completion and resume', () => {
+    completeRegister();
+    completeKyc();
+
+    // Verify step 3 is now active.
+    cy.get('[data-testid="step-document"]').should('be.visible');
+    cy.get('[data-testid="tracker-document"]').should('have.class', 'active');
+
+    // Steps 1-2 are completed in the tracker.
+    cy.get('[data-testid="tracker-register"]').should('have.class', 'completed');
+    cy.get('[data-testid="tracker-kyc"]').should('have.class', 'completed');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Verify Data Carries Through Steps
+  // --------------------------------------------------------------------------
+  it('exercise 5: verify data carries through steps', () => {
+    completeRegister();
+    completeKyc();
+    completeDocument();
+    completeVideo();
+    completeBackground();
+
+    // Verify the final summary shows data from all earlier steps.
+    cy.get('[data-testid="summary-name"]').should('have.text', DEFAULT_DATA.name);
+    cy.get('[data-testid="summary-email"]').should('have.text', DEFAULT_DATA.email);
+    cy.get('[data-testid="summary-nationality"]').should('have.text', DEFAULT_DATA.nationality);
+    cy.get('[data-testid="summary-document"]').should('have.text', DEFAULT_DATA.fileName);
+    cy.get('[data-testid="summary-video"]').should('have.text', 'Yes');
+    cy.get('[data-testid="summary-background"]').should('have.text', 'Passed');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Error at One Step Doesn't Lose Data
+  // --------------------------------------------------------------------------
+  it('exercise 6: error at one step does not lose data', () => {
+    completeRegister();
+
+    // Try to submit step 2 with only DOB filled.
+    cy.get('[data-testid="kyc-dob"]').type('1990-05-15');
+    cy.get('[data-testid="kyc-submit"]').click();
+
+    // Verify error message is visible.
+    cy.get('[data-testid="kyc-error"]').should('be.visible');
+
+    // Fill remaining fields and submit again.
+    cy.get('[data-testid="kyc-nationality"]').select('US');
+    cy.get('[data-testid="kyc-address"]').type('123 Main St');
+    cy.get('[data-testid="kyc-phone"]').type('+1 555-0123');
+    cy.get('[data-testid="kyc-submit"]').click();
+
+    // Verify we advanced to step 3.
+    cy.get('[data-testid="step-document"]').should('be.visible');
+
+    // Complete remaining steps and verify step 1 data is preserved.
+    completeDocument();
+    completeVideo();
+    completeBackground();
+    cy.get('[data-testid="summary-name"]').should('have.text', DEFAULT_DATA.name);
+    cy.get('[data-testid="summary-email"]').should('have.text', DEFAULT_DATA.email);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Verify Final Success State
+  // --------------------------------------------------------------------------
+  it('exercise 7: verify final success state', () => {
+    completeRegister();
+    completeKyc();
+    completeDocument();
+    completeVideo();
+    completeBackground();
+
+    // Verify all elements of the success view.
+    cy.get('[data-testid="success-view"]').should('be.visible');
+    cy.get('[data-testid="success-icon"]').should('be.visible');
+    cy.get('[data-testid="success-title"]').should('have.text', 'Onboarding Complete!');
+    cy.get('[data-testid="success-message"]').should('contain.text', 'verified and approved');
+    cy.get('[data-testid="summary-table"]').should('be.visible');
+
+    // Verify tracker states.
+    cy.get('[data-testid="tracker-register"]').should('have.class', 'completed');
+    cy.get('[data-testid="tracker-kyc"]').should('have.class', 'completed');
+    cy.get('[data-testid="tracker-document"]').should('have.class', 'completed');
+    cy.get('[data-testid="tracker-video"]').should('have.class', 'completed');
+    cy.get('[data-testid="tracker-background"]').should('have.class', 'completed');
+    cy.get('[data-testid="tracker-approval"]').should('have.class', 'active');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Test with Different Data Sets
+  // --------------------------------------------------------------------------
+  it('exercise 8: test with different data sets', () => {
+    const altData = {
+      email: 'alex@company.org',
+      password: 'p@ssw0rd',
+      name: 'Alex Rivera',
+      dob: '1985-11-20',
+      nationality: 'DE',
+      address: 'Berliner Str 42, Berlin',
+      phone: '+49 30 1234567',
+      fileName: 'drivers-license.jpg',
+    };
+
+    completeRegister(altData);
+    completeKyc(altData);
+    completeDocument(altData);
+    completeVideo();
+    completeBackground();
+
+    // Verify summary shows the alternate data.
+    cy.get('[data-testid="summary-name"]').should('have.text', 'Alex Rivera');
+    cy.get('[data-testid="summary-email"]').should('have.text', 'alex@company.org');
+    cy.get('[data-testid="summary-nationality"]').should('have.text', 'DE');
+    cy.get('[data-testid="summary-document"]').should('have.text', 'drivers-license.jpg');
+  });
+});
+c:Tb1db,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { test, expect } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> '@playwright/test'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// Base URL for the playground page.</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-06-complex-scenarios/33-session-management/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// Helper: Log in with the default credentials.</span></span>
+<span class="line"><span style="color:#6A737D">// Fills the username and password fields, clicks Sign In, and waits for</span></span>
+<span class="line"><span style="color:#6A737D">// the dashboard to become visible.</span></span>
+<span class="line"><span style="color:#F97583">async</span><span style="color:#F97583"> function</span><span style="color:#B392F0"> login</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">page</span><span style="color:#F97583">:</span><span style="color:#F97583"> import</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'@playwright/test'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">Page</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'username-input'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'admin'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'password-input'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'password123'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'login-btn'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'dashboard'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 1: Login and Verify Session Active</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Signs in with valid credentials and verifies the dashboard shows an</span></span>
+<span class="line"><span style="color:#6A737D">// active session with the correct user.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: login and verify session active'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the login panel is visible before signing in.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'login-panel'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Fill in credentials and click Sign In.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'username-input'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'admin'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'password-input'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'password123'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'login-btn'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the dashboard is now visible and shows correct session info.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'dashboard'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'session-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Active'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'session-user'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'admin'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify a token was generated (should contain dots like a JWT).</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> token</span><span style="color:#F97583"> =</span><span style="color:#F97583"> await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'token-display'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">textContent</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#B392F0">  expect</span><span style="color:#E1E4E8">(token).</span><span style="color:#B392F0">toContain</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'.'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 2: Wait for Session Warning</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Uses Playwright's clock API to fast-forward time to the warning threshold</span></span>
+<span class="line"><span style="color:#6A737D">// (10 seconds) without waiting real seconds.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: wait for session warning'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">  // Install fake timers BEFORE navigating so all timers are captured.</span></span>
+<span class="line"><span style="color:#6A737D">  // page.clock.install() replaces setTimeout, setInterval, and Date</span></span>
+<span class="line"><span style="color:#6A737D">  // with controllable versions.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.clock.</span><span style="color:#B392F0">install</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> login</span><span style="color:#E1E4E8">(page);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the warning banner is not visible initially.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'session-warning'</span><span style="color:#E1E4E8">)).not.</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Advance the clock by 10 seconds. This triggers all setInterval</span></span>
+<span class="line"><span style="color:#6A737D">  // callbacks that would have fired in that period, including the</span></span>
+<span class="line"><span style="color:#6A737D">  // session timer's tick function.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.clock.</span><span style="color:#B392F0">fastForward</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">10000</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the warning banner is now visible.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'session-warning'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the session status changed to "Warning".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'session-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Warning'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 3: Refresh Session Before Expiry</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Advances to the warning state, then clicks Refresh to reset the timer.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: refresh session before expiry'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.clock.</span><span style="color:#B392F0">install</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> login</span><span style="color:#E1E4E8">(page);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Advance to warning state (10 seconds).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.clock.</span><span style="color:#B392F0">fastForward</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">10000</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'session-warning'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click the Refresh Session button to reset the timer.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'refresh-session-btn'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the warning banner disappeared (timer was reset).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'session-warning'</span><span style="color:#E1E4E8">)).not.</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the session is back to "Active".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'session-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Active'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the timer reset to 15s.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'session-timer'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'15s'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the refresh count incremented.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'refresh-count'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'1'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 4: Let Session Expire, Verify Overlay</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Advances the clock past the full timeout (15 seconds) and verifies the</span></span>
+<span class="line"><span style="color:#6A737D">// expired overlay appears.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: let session expire and verify overlay'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.clock.</span><span style="color:#B392F0">install</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> login</span><span style="color:#E1E4E8">(page);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Advance the clock by 15 seconds (full session timeout).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.clock.</span><span style="color:#B392F0">fastForward</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">15000</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the expired overlay is visible.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'expired-overlay'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the overlay shows the expired message.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'expired-message'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'timed out'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the session status shows "Expired".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'session-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Expired'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the timer shows 0s.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'session-timer'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'0s'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 5: Re-login After Expiry</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Lets the session expire, clicks "Sign In Again", and logs in again.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: re-login after session expiry'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.clock.</span><span style="color:#B392F0">install</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> login</span><span style="color:#E1E4E8">(page);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Let the session expire.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.clock.</span><span style="color:#B392F0">fastForward</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">15000</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'expired-overlay'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click the "Sign In Again" button on the overlay.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'relogin-btn'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the overlay is hidden and the login panel reappears.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'expired-overlay'</span><span style="color:#E1E4E8">)).not.</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'login-panel'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Log in again with the same credentials.</span></span>
+<span class="line"><span style="color:#6A737D">  // Need to reinstall clock for the new session timers.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'username-input'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'admin'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'password-input'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'password123'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'login-btn'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the new session is active.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'dashboard'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'session-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Active'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 6: Verify Token Refresh</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Refreshes the session and verifies a new token is generated (different</span></span>
+<span class="line"><span style="color:#6A737D">// from the original).</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: verify token refresh generates new token'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> login</span><span style="color:#E1E4E8">(page);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Capture the initial token.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> initialToken</span><span style="color:#F97583"> =</span><span style="color:#F97583"> await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'token-display'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">textContent</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click Refresh Session to generate a new token.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'refresh-session-btn'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify a new token was generated (different from the initial).</span></span>
+<span class="line"><span style="color:#6A737D">  // toHaveText with a negation: we get the new text and compare.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> newToken</span><span style="color:#F97583"> =</span><span style="color:#F97583"> await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'token-display'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">textContent</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#B392F0">  expect</span><span style="color:#E1E4E8">(newToken).not.</span><span style="color:#B392F0">toBe</span><span style="color:#E1E4E8">(initialToken);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the refresh count incremented to 1.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'refresh-count'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'1'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 7: Rapid Interactions Keep Session Alive</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Clicks the Interact button repeatedly to keep the session timer from</span></span>
+<span class="line"><span style="color:#6A737D">// reaching the warning or expiry threshold.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 7: rapid interactions keep session alive'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.clock.</span><span style="color:#B392F0">install</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> login</span><span style="color:#E1E4E8">(page);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Advance 8 seconds (close to warning at 10s).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.clock.</span><span style="color:#B392F0">fastForward</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">8000</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click Interact to reset the timer.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'interact-btn'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the session is still Active (not Warning).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'session-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Active'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'session-timer'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'15s'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Advance another 8 seconds (would have expired without interaction).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.clock.</span><span style="color:#B392F0">fastForward</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">8000</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click Interact again.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'interact-btn'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the session is still active.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'session-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Active'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the expired overlay never appeared.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'expired-overlay'</span><span style="color:#E1E4E8">)).not.</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 8: Verify Session State Across Page Reload</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Logs in, reloads the page, and verifies the session is restored from</span></span>
+<span class="line"><span style="color:#6A737D">// sessionStorage.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 8: session state persists across page reload'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> login</span><span style="color:#E1E4E8">(page);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the session is active before reload.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'session-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Active'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Reload the page. The session should be restored from sessionStorage.</span></span>
+<span class="line"><span style="color:#6A737D">  // page.reload() navigates the page to its current URL.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">reload</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the dashboard is still visible (not the login panel).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'dashboard'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the session user is still "admin".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'session-user'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'admin'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the session status is Active (restored from storage).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'session-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Active'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the token was restored.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> token</span><span style="color:#F97583"> =</span><span style="color:#F97583"> await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'token-display'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">textContent</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#B392F0">  expect</span><span style="color:#E1E4E8">(token).</span><span style="color:#B392F0">toContain</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'.'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>d:T9784,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-06-complex-scenarios/33-session-management/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">describe</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Kata 33: Session Management'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Helper: Log in with default credentials.</span></span>
+<span class="line"><span style="color:#6A737D">  // Fills the form and clicks Sign In. Uses Cypress command chaining.</span></span>
+<span class="line"><span style="color:#F97583">  function</span><span style="color:#B392F0"> login</span><span style="color:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#6A737D">    // cy.get(selector).type(text) types into an input field.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="username-input"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'admin'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="password-input"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'password123'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="login-btn"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#6A737D">    // Wait for the dashboard to appear.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="dashboard"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 1: Login and Verify Session Active</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Signs in and verifies the dashboard shows an active session.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: login and verify session active'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify login panel is visible.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="login-panel"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Log in.</span></span>
+<span class="line"><span style="color:#B392F0">    login</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify session info is displayed correctly.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="session-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Active'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="session-user"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'admin'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify a token was generated (contains dots like a JWT).</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="token-display"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">invoke</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'text'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'include'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'.'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 2: Wait for Session Warning</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Uses cy.clock() and cy.tick() to fast-forward time to the warning.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: wait for session warning'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // cy.clock() installs fake timers (overrides setTimeout, setInterval,</span></span>
+<span class="line"><span style="color:#6A737D">    // and Date). Must be called before cy.visit() to capture all timers.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">clock</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#B392F0">    login</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the warning banner is not visible initially.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="session-warning"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // cy.tick(ms) advances the fake clock by the given milliseconds.</span></span>
+<span class="line"><span style="color:#6A737D">    // This triggers any setInterval/setTimeout callbacks that would</span></span>
+<span class="line"><span style="color:#6A737D">    // fire within that period.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">tick</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">10000</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the warning banner appeared.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="session-warning"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify session status changed to "Warning".</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="session-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Warning'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 3: Refresh Session Before Expiry</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Advances to warning, refreshes, and verifies the timer reset.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: refresh session before expiry'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">clock</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#B392F0">    login</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Advance to warning state.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">tick</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">10000</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="session-warning"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Click Refresh Session.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="refresh-session-btn"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify warning disappeared and timer reset.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="session-warning"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="session-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Active'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="session-timer"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'15s'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="refresh-count"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'1'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 4: Let Session Expire, Verify Overlay</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Advances the clock past the full 15-second timeout.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: let session expire and verify overlay'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">clock</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#B392F0">    login</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Advance 15 seconds (full timeout).</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">tick</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">15000</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the expired overlay is visible.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="expired-overlay"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the expired message content.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="expired-message"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'timed out'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify session status is "Expired" and timer shows 0s.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="session-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Expired'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="session-timer"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'0s'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 5: Re-login After Expiry</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Lets session expire, clicks re-login, and signs in again.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: re-login after session expiry'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">clock</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#B392F0">    login</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Let session expire.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">tick</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">15000</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="expired-overlay"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Click "Sign In Again".</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="relogin-btn"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify overlay hidden and login panel visible.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="expired-overlay"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="login-panel"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Restore real timers before logging in again so the new session</span></span>
+<span class="line"><span style="color:#6A737D">    // timers work. cy.clock().invoke('restore') removes the fake timers.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">clock</span><span style="color:#E1E4E8">().</span><span style="color:#B392F0">invoke</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'restore'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Log in again.</span></span>
+<span class="line"><span style="color:#B392F0">    login</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify new session is active.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="session-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Active'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 6: Verify Token Refresh</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Refreshes the session and verifies a new token was generated.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: verify token refresh generates new token'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#B392F0">    login</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Capture the initial token using .invoke('text') and .then().</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="token-display"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">invoke</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'text'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">then</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">initialToken</span><span style="color:#F97583"> =></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">        // Click Refresh Session.</span></span>
+<span class="line"><span style="color:#E1E4E8">        cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="refresh-session-btn"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">        // Verify the new token is different from the initial one.</span></span>
+<span class="line"><span style="color:#6A737D">        // .invoke('text') gets the current text, .should() asserts.</span></span>
+<span class="line"><span style="color:#E1E4E8">        cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="token-display"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">          .</span><span style="color:#B392F0">invoke</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'text'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">          .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.eq'</span><span style="color:#E1E4E8">, initialToken);</span></span>
+<span class="line"><span style="color:#E1E4E8">      });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify refresh count is 1.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="refresh-count"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'1'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 7: Rapid Interactions Keep Session Alive</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Clicks Interact before timeout to keep the session alive.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 7: rapid interactions keep session alive'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">clock</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#B392F0">    login</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Advance 8 seconds (close to warning at 10s).</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">tick</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">8000</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Click Interact to reset the timer.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="interact-btn"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify session is still Active.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="session-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Active'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="session-timer"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'15s'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Advance another 8 seconds (total 16s from login, would have expired).</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">tick</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">8000</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Click Interact again.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="interact-btn"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify session is still active (interactions kept it alive).</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="session-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Active'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the expired overlay never appeared.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="expired-overlay"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 8: Verify Session State Across Page Reload</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Logs in, reloads the page, and verifies the session is restored.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 8: session state persists across page reload'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#B392F0">    login</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify session is active.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="session-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Active'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Reload the page. cy.reload() is equivalent to pressing F5.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">reload</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the dashboard is still visible (session restored from</span></span>
+<span class="line"><span style="color:#6A737D">    // sessionStorage by the page's JavaScript).</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="dashboard"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="session-user"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'admin'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="session-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Active'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the token was restored.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="token-display"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">invoke</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'text'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'include'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'.'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"kata":{"slug":"33-session-management","number":33,"title":"Session Management","phaseSlug":"phase-06-complex-scenarios","phaseNumber":6,"phaseName":"Complex Scenarios","readmeRaw":"$3","hasPlayground":true,"playwrightFiles":[{"filename":"session-management.spec.ts","content":"$4"}],"cypressFiles":[{"filename":"session-management.cy.ts","content":"$5"}]},"prev":{"slug":"32-multi-window-workflows","number":32,"title":"Multi-Window Workflows","phaseSlug":"phase-06-complex-scenarios","phaseNumber":6,"phaseName":"Complex Scenarios","readmeRaw":"$6","hasPlayground":true,"playwrightFiles":[{"filename":"multi-window-workflows.spec.ts","content":"$7"}],"cypressFiles":[{"filename":"multi-window-workflows.cy.ts","content":"$8"}]},"next":{"slug":"34-complex-multi-step-e2e","number":34,"title":"Complex Multi-Step E2E","phaseSlug":"phase-06-complex-scenarios","phaseNumber":6,"phaseName":"Complex Scenarios","readmeRaw":"$9","hasPlayground":true,"playwrightFiles":[{"filename":"complex-multi-step-e2e.spec.ts","content":"$a"}],"cypressFiles":[{"filename":"complex-multi-step-e2e.cy.ts","content":"$b"}]},"playwrightHtml":[{"filename":"session-management.spec.ts","html":"$c"}],"cypressHtml":[{"filename":"session-management.cy.ts","html":"$d"}]}],["$Le"],"$Lf"]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"iDtrTKWIN4zzRgDRiiDd2"}
+e:["$","script","script-0",{"src":"/qa-labs/_next/static/chunks/03nvm.8~ftt80.js","async":true}]
+f:["$","$L10",null,{"children":["$","$11",null,{"name":"Next.MetadataOutlet","children":"$@12"}]}]
+12:null

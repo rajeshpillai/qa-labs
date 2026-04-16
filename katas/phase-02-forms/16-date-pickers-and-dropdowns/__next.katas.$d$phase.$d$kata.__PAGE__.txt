@@ -1,0 +1,2151 @@
+1:"$Sreact.fragment"
+2:I[31749,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js","/qa-labs/_next/static/chunks/03nvm.8~ftt80.js"],"KataPageClient"]
+10:I[49583,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js"],"OutletBoundary"]
+11:"$Sreact.suspense"
+3:T1ba1,# Kata 16: Date Pickers and Dropdowns
+
+## What You Will Learn
+
+- How to set values on native date and time inputs
+- How to interact with a custom calendar picker (open, navigate months, click days)
+- How to use a searchable/filterable dropdown
+- How to test cascading dropdowns (where one controls the options in another)
+- How to select and deselect items in a multi-select tag component
+- How to verify displayed selection text
+
+## Prerequisites
+
+- Completed Katas 13-15
+- Understanding of form interactions, clicking, and typing
+
+## Concepts Explained
+
+### Setting a Native Date Input
+
+```typescript
+// PLAYWRIGHT
+// fill(value) sets a date input's value. The format must be "YYYY-MM-DD".
+await page.getByTestId('input-native-date').fill('1990-05-15');
+
+// CYPRESS
+// type() works for date inputs when you provide an ISO date string.
+cy.get('[data-testid="input-native-date"]').type('1990-05-15');
+```
+
+### Interacting with a Custom Calendar
+
+```typescript
+// PLAYWRIGHT
+// 1. Click the trigger button to open the calendar popup.
+await page.getByTestId('calendar-trigger').click();
+// 2. Navigate months using prev/next buttons.
+await page.getByTestId('btn-next-month').click();
+// 3. Click a specific day.
+await page.getByTestId('cal-day-15').click();
+
+// CYPRESS
+cy.get('[data-testid="calendar-trigger"]').click();
+cy.get('[data-testid="btn-next-month"]').click();
+cy.get('[data-testid="cal-day-15"]').click();
+```
+
+### Searchable Dropdown
+
+```typescript
+// PLAYWRIGHT
+// Type in the search input to filter options, then click the desired option.
+await page.getByTestId('input-country-search').fill('India');
+await page.getByTestId('country-option-india').click();
+
+// CYPRESS
+cy.get('[data-testid="input-country-search"]').type('India');
+cy.get('[data-testid="country-option-india"]').click();
+```
+
+### Cascading Dropdown
+
+```typescript
+// PLAYWRIGHT
+// Select an industry first, then the occupation dropdown becomes enabled
+// with options specific to that industry.
+await page.getByTestId('select-industry').selectOption('technology');
+await page.getByTestId('select-occupation').selectOption('software-engineer');
+
+// CYPRESS
+cy.get('[data-testid="select-industry"]').select('technology');
+cy.get('[data-testid="select-occupation"]').select('software-engineer');
+```
+
+### Multi-Select Tags
+
+```typescript
+// PLAYWRIGHT
+// Click options to toggle selection. Selected items appear as tags.
+await page.getByTestId('input-doc-search').click();
+await page.getByTestId('doc-option-passport').click();
+// Verify the tag appeared.
+await expect(page.getByTestId('tag-passport')).toBeVisible();
+
+// CYPRESS
+cy.get('[data-testid="input-doc-search"]').click();
+cy.get('[data-testid="doc-option-passport"]').click();
+cy.get('[data-testid="tag-passport"]').should('be.visible');
+```
+
+## Playground
+
+The playground is a KYC form with various date and dropdown controls:
+
+1. **Native Date Input** — An `<input type="date">` for date of birth, with min/max range (1920-2010). Shows selected date in text.
+2. **Custom Calendar Picker** — A vanilla JS calendar with month navigation (prev/next arrows), clickable days, "today" highlight, and "selected" highlight. Opens as a popup.
+3. **Searchable Country Dropdown** — A text input that filters a list of 37 countries as you type. Clicking an option selects it.
+4. **Cascading Industry/Occupation Dropdown** — Selecting an industry populates the occupation dropdown with relevant options. The occupation dropdown is disabled until an industry is chosen.
+5. **Time Picker** — An `<input type="time">` for appointment scheduling (09:00-17:00).
+6. **Multi-Select Document Types** — A searchable dropdown where clicking options toggles selection. Selected items appear as removable tags below the dropdown.
+
+## Exercises
+
+### Exercise 1: Set a Date via the Native Date Input
+Use `fill()` or `type()` to set a date on the native date input. Verify the display text shows the formatted date.
+
+### Exercise 2: Interact with the Custom Calendar
+Open the calendar popup, navigate to a specific month, and click a day. Verify the trigger button updates with the selected date.
+
+### Exercise 3: Select from the Searchable Country Dropdown
+Type a search term to filter countries, then click an option. Verify the display shows the selected country.
+
+### Exercise 4: Verify Cascading Dropdown Behavior
+Select an industry and verify the occupation dropdown becomes enabled with the correct options. Select an occupation and verify the display.
+
+### Exercise 5: Validate Date Range on Native Input
+Enter a date outside the valid range (e.g., 2020) and verify the error message appears.
+
+### Exercise 6: Clear the Calendar Selection
+Open the calendar, select a date, then open it again and select a different date. Verify the display updates.
+
+### Exercise 7: Verify Selected Display Text
+Set values on multiple inputs and verify each display text element shows the correct human-readable text.
+
+### Exercise 8: Multi-Select Tags
+Open the document type dropdown, select multiple items, verify tags appear. Remove a tag and verify it disappears.
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/date-pickers-and-dropdowns.spec.ts`
+
+### Cypress Solution
+
+See `cypress/date-pickers-and-dropdowns.cy.ts`
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Using wrong date format for native input | Date inputs require "YYYY-MM-DD" format, not "MM/DD/YYYY" | Use ISO format: "1990-05-15" |
+| Clicking a day without opening the calendar first | The calendar popup has display:none until opened | Click the trigger button first to open the popup |
+| Not waiting for the dropdown list to appear | The list opens on focus/input, but assertions may run too fast | Verify the list has the "open" class before clicking options |
+| Selecting occupation before industry | The occupation dropdown is disabled until an industry is selected | Always select the industry first |
+| Forgetting to handle the search input for searchable dropdowns | The search input filters options — without typing, all options show | Type to filter, then click the visible option |
+
+## Quick Reference
+
+| Action | Playwright | Cypress |
+|--------|-----------|---------|
+| Set native date | `fill('1990-05-15')` | `type('1990-05-15')` |
+| Open calendar | `getByTestId('calendar-trigger').click()` | `cy.get('[data-testid="calendar-trigger"]').click()` |
+| Navigate month | `getByTestId('btn-next-month').click()` | `cy.get('[data-testid="btn-next-month"]').click()` |
+| Click calendar day | `getByTestId('cal-day-15').click()` | `cy.get('[data-testid="cal-day-15"]').click()` |
+| Search dropdown | `fill('India')` | `type('India')` |
+| Select option | `getByTestId('country-option-india').click()` | `cy.get('[data-testid="country-option-india"]').click()` |
+| Cascading select | `selectOption('technology')` | `select('technology')` |
+| Verify tag | `expect(tag).toBeVisible()` | `cy.get(tag).should('be.visible')` |
+| Remove tag | `getByTestId('remove-tag-x').click()` | `cy.get('[data-testid="remove-tag-x"]').click()` |
+4:T2728,import { test, expect } from '@playwright/test';
+
+const PLAYGROUND = '/phase-02-forms/16-date-pickers-and-dropdowns/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Set a Date via the Native Date Input
+// --------------------------------------------------------------------------
+// Use fill() to set a date value on an <input type="date">.
+test('exercise 1: set date via native date input', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify the display initially shows "None".
+  await expect(page.getByTestId('value-native-date')).toHaveText('None');
+
+  // fill(value) on a date input accepts an ISO date string "YYYY-MM-DD".
+  // This sets the input's value and triggers the "change" event.
+  await page.getByTestId('input-native-date').fill('1990-05-15');
+
+  // Verify the display text updates to the formatted date.
+  // The playground formats the date as "Month Day, Year" using toLocaleDateString.
+  await expect(page.getByTestId('value-native-date')).toHaveText('May 15, 1990');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Interact with the Custom Calendar
+// --------------------------------------------------------------------------
+// Open the calendar, navigate months, and click a specific day.
+test('exercise 2: interact with custom calendar picker', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Click the trigger button to open the calendar popup.
+  await page.getByTestId('calendar-trigger').click();
+
+  // Verify the calendar popup is visible (it should have the "open" class).
+  await expect(page.getByTestId('calendar-popup')).toBeVisible();
+
+  // Verify the initial month/year display.
+  await expect(page.getByTestId('calendar-month-year')).toContainText('April');
+  await expect(page.getByTestId('calendar-month-year')).toContainText('2026');
+
+  // Click "Next" to go to May 2026.
+  await page.getByTestId('btn-next-month').click();
+  await expect(page.getByTestId('calendar-month-year')).toContainText('May');
+
+  // Click day 20.
+  // Each day has a data-testid like "cal-day-20".
+  await page.getByTestId('cal-day-20').click();
+
+  // Verify the trigger button now shows the selected date.
+  await expect(page.getByTestId('calendar-trigger')).toContainText('May');
+  await expect(page.getByTestId('calendar-trigger')).toContainText('20');
+  await expect(page.getByTestId('calendar-trigger')).toContainText('2026');
+
+  // Verify the display text also updated.
+  await expect(page.getByTestId('value-calendar-date')).toContainText('May 20, 2026');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Select from the Searchable Country Dropdown
+// --------------------------------------------------------------------------
+// Type a search term to filter, then click an option.
+test('exercise 3: select from searchable country dropdown', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify initial display.
+  await expect(page.getByTestId('value-country')).toHaveText('None');
+
+  // Type "India" in the search input to filter the country list.
+  // fill() replaces the input content and triggers the "input" event,
+  // which causes the dropdown to filter and open.
+  await page.getByTestId('input-country-search').fill('India');
+
+  // Verify the dropdown list is open and shows filtered results.
+  await expect(page.getByTestId('country-list')).toHaveClass(/open/);
+
+  // Click the "India" option.
+  // The option's testid is derived from the country name in lowercase with
+  // spaces replaced by hyphens.
+  await page.getByTestId('country-option-india').click();
+
+  // Verify the display text shows "India".
+  await expect(page.getByTestId('value-country')).toHaveText('India');
+  // Verify the search input now contains "India".
+  await expect(page.getByTestId('input-country-search')).toHaveValue('India');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Verify Cascading Dropdown Behavior
+// --------------------------------------------------------------------------
+// Select an industry, verify occupation options populate.
+test('exercise 4: cascading dropdown populates options', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify the occupation dropdown is initially disabled.
+  // toBeDisabled() checks the "disabled" attribute on the element.
+  await expect(page.getByTestId('select-occupation')).toBeDisabled();
+
+  // Select "Technology" industry.
+  // selectOption(value) picks the <option> with the matching value attribute.
+  await page.getByTestId('select-industry').selectOption('technology');
+
+  // Verify the occupation dropdown is now enabled.
+  await expect(page.getByTestId('select-occupation')).toBeEnabled();
+
+  // Select "Software Engineer" from the occupation dropdown.
+  await page.getByTestId('select-occupation').selectOption('software-engineer');
+
+  // Verify the display text shows the selected occupation.
+  await expect(page.getByTestId('value-occupation')).toHaveText('Software Engineer');
+
+  // Now change the industry to "Healthcare" and verify occupations update.
+  await page.getByTestId('select-industry').selectOption('healthcare');
+
+  // The occupation dropdown should reset (no occupation selected yet).
+  await expect(page.getByTestId('value-occupation')).toHaveText('None');
+
+  // Verify a healthcare-specific option is available.
+  await page.getByTestId('select-occupation').selectOption('doctor');
+  await expect(page.getByTestId('value-occupation')).toHaveText('Doctor');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Validate Date Range on Native Input
+// --------------------------------------------------------------------------
+// Enter a date outside the valid range and verify the error.
+test('exercise 5: date outside valid range shows error', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Enter a date in 2020 — outside the max of 2010.
+  await page.getByTestId('input-native-date').fill('2020-06-15');
+
+  // Verify the error message is visible.
+  await expect(page.getByTestId('error-native-date')).toBeVisible();
+  await expect(page.getByTestId('error-native-date')).toContainText('1920');
+  await expect(page.getByTestId('error-native-date')).toContainText('2010');
+
+  // The display should still show "None" since the date is invalid.
+  await expect(page.getByTestId('value-native-date')).toHaveText('None');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Change Calendar Selection
+// --------------------------------------------------------------------------
+// Select one date, then select a different date.
+test('exercise 6: change calendar selection updates display', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Select April 10.
+  await page.getByTestId('calendar-trigger').click();
+  await page.getByTestId('cal-day-10').click();
+
+  await expect(page.getByTestId('value-calendar-date')).toContainText('April 10, 2026');
+
+  // Now select a different date — April 25.
+  await page.getByTestId('calendar-trigger').click();
+  await page.getByTestId('cal-day-25').click();
+
+  // Verify the display updated to the new date.
+  await expect(page.getByTestId('value-calendar-date')).toContainText('April 25, 2026');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Verify Selected Display Text
+// --------------------------------------------------------------------------
+// Set multiple values and verify each display element.
+test('exercise 7: verify display text for multiple inputs', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Set native date.
+  await page.getByTestId('input-native-date').fill('1985-12-25');
+  await expect(page.getByTestId('value-native-date')).toHaveText('December 25, 1985');
+
+  // Set time.
+  // fill() on a time input accepts "HH:MM" format.
+  await page.getByTestId('input-time').fill('14:30');
+  await expect(page.getByTestId('value-time')).toHaveText('14:30');
+
+  // Set country.
+  await page.getByTestId('input-country-search').fill('Singapore');
+  await page.getByTestId('country-option-singapore').click();
+  await expect(page.getByTestId('value-country')).toHaveText('Singapore');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Multi-Select Tags
+// --------------------------------------------------------------------------
+// Select multiple document types, verify tags appear, remove one.
+test('exercise 8: multi-select tags selection and removal', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Click the document type search input to open the dropdown.
+  await page.getByTestId('input-doc-search').click();
+
+  // Click "Passport" to select it.
+  await page.getByTestId('doc-option-passport').click();
+
+  // Verify the tag appeared.
+  await expect(page.getByTestId('tag-passport')).toBeVisible();
+
+  // Select another: "Driver License".
+  await page.getByTestId('input-doc-search').click();
+  await page.getByTestId('doc-option-driver-license').click();
+
+  // Verify both tags are visible.
+  await expect(page.getByTestId('tag-passport')).toBeVisible();
+  await expect(page.getByTestId('tag-driver-license')).toBeVisible();
+
+  // Verify the display text shows both selections.
+  await expect(page.getByTestId('value-doc-types')).toContainText('Passport');
+  await expect(page.getByTestId('value-doc-types')).toContainText('Driver License');
+
+  // Remove the "Passport" tag by clicking its X button.
+  await page.getByTestId('remove-tag-passport').click();
+
+  // Verify the Passport tag is gone but Driver License remains.
+  await expect(page.getByTestId('tag-passport')).toBeHidden();
+  await expect(page.getByTestId('tag-driver-license')).toBeVisible();
+
+  // Verify the display text updated.
+  await expect(page.getByTestId('value-doc-types')).toHaveText('Driver License');
+});
+5:T200f,const PLAYGROUND = '/phase-02-forms/16-date-pickers-and-dropdowns/playground/';
+
+describe('Kata 16: Date Pickers and Dropdowns', () => {
+
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Set a Date via the Native Date Input
+  // --------------------------------------------------------------------------
+  it('exercise 1: set date via native date input', () => {
+    // Verify initial display.
+    cy.get('[data-testid="value-native-date"]').should('have.text', 'None');
+
+    // type() on a date input accepts an ISO date string "YYYY-MM-DD".
+    // This triggers the "change" event on the input.
+    cy.get('[data-testid="input-native-date"]').type('1990-05-15');
+
+    // Verify the display updates.
+    cy.get('[data-testid="value-native-date"]').should('have.text', 'May 15, 1990');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Interact with the Custom Calendar
+  // --------------------------------------------------------------------------
+  it('exercise 2: interact with custom calendar picker', () => {
+    // Click the trigger to open the calendar popup.
+    cy.get('[data-testid="calendar-trigger"]').click();
+
+    // Verify the popup is visible.
+    cy.get('[data-testid="calendar-popup"]').should('be.visible');
+
+    // Verify initial month.
+    cy.get('[data-testid="calendar-month-year"]')
+      .should('contain.text', 'April')
+      .and('contain.text', '2026');
+
+    // Navigate to May.
+    cy.get('[data-testid="btn-next-month"]').click();
+    cy.get('[data-testid="calendar-month-year"]').should('contain.text', 'May');
+
+    // Click day 20.
+    cy.get('[data-testid="cal-day-20"]').click();
+
+    // Verify the trigger text updated.
+    cy.get('[data-testid="calendar-trigger"]')
+      .should('contain.text', 'May')
+      .and('contain.text', '20')
+      .and('contain.text', '2026');
+
+    cy.get('[data-testid="value-calendar-date"]').should('contain.text', 'May 20, 2026');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Select from the Searchable Country Dropdown
+  // --------------------------------------------------------------------------
+  it('exercise 3: select from searchable country dropdown', () => {
+    cy.get('[data-testid="value-country"]').should('have.text', 'None');
+
+    // Type "India" in the search input.
+    // type() simulates keystrokes, which triggers the "input" event,
+    // filtering the dropdown list.
+    cy.get('[data-testid="input-country-search"]').type('India');
+
+    // Verify the dropdown is open.
+    cy.get('[data-testid="country-list"]').should('have.class', 'open');
+
+    // Click the India option.
+    cy.get('[data-testid="country-option-india"]').click();
+
+    // Verify selected.
+    cy.get('[data-testid="value-country"]').should('have.text', 'India');
+    cy.get('[data-testid="input-country-search"]').should('have.value', 'India');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Verify Cascading Dropdown Behavior
+  // --------------------------------------------------------------------------
+  it('exercise 4: cascading dropdown populates options', () => {
+    // Verify occupation dropdown is disabled initially.
+    // should('be.disabled') checks the "disabled" attribute.
+    cy.get('[data-testid="select-occupation"]').should('be.disabled');
+
+    // Select Technology industry.
+    // select(value) picks the <option> with the matching value attribute.
+    cy.get('[data-testid="select-industry"]').select('technology');
+
+    // Verify occupation is now enabled.
+    cy.get('[data-testid="select-occupation"]').should('be.enabled');
+
+    // Select Software Engineer.
+    cy.get('[data-testid="select-occupation"]').select('software-engineer');
+    cy.get('[data-testid="value-occupation"]').should('have.text', 'Software Engineer');
+
+    // Change industry to Healthcare.
+    cy.get('[data-testid="select-industry"]').select('healthcare');
+
+    // Occupation display should reset.
+    cy.get('[data-testid="value-occupation"]').should('have.text', 'None');
+
+    // Select a healthcare occupation.
+    cy.get('[data-testid="select-occupation"]').select('doctor');
+    cy.get('[data-testid="value-occupation"]').should('have.text', 'Doctor');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Validate Date Range on Native Input
+  // --------------------------------------------------------------------------
+  it('exercise 5: date outside valid range shows error', () => {
+    // Enter a date in 2020 — outside the allowed max of 2010.
+    cy.get('[data-testid="input-native-date"]').type('2020-06-15');
+
+    // Verify the error message appears.
+    cy.get('[data-testid="error-native-date"]')
+      .should('be.visible')
+      .and('contain.text', '1920')
+      .and('contain.text', '2010');
+
+    // Display should still show "None".
+    cy.get('[data-testid="value-native-date"]').should('have.text', 'None');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Change Calendar Selection
+  // --------------------------------------------------------------------------
+  it('exercise 6: change calendar selection updates display', () => {
+    // Select April 10.
+    cy.get('[data-testid="calendar-trigger"]').click();
+    cy.get('[data-testid="cal-day-10"]').click();
+    cy.get('[data-testid="value-calendar-date"]').should('contain.text', 'April 10, 2026');
+
+    // Select a different date — April 25.
+    cy.get('[data-testid="calendar-trigger"]').click();
+    cy.get('[data-testid="cal-day-25"]').click();
+
+    cy.get('[data-testid="value-calendar-date"]').should('contain.text', 'April 25, 2026');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Verify Selected Display Text
+  // --------------------------------------------------------------------------
+  it('exercise 7: verify display text for multiple inputs', () => {
+    // Native date.
+    cy.get('[data-testid="input-native-date"]').type('1985-12-25');
+    cy.get('[data-testid="value-native-date"]').should('have.text', 'December 25, 1985');
+
+    // Time.
+    cy.get('[data-testid="input-time"]').type('14:30');
+    cy.get('[data-testid="value-time"]').should('have.text', '14:30');
+
+    // Country.
+    cy.get('[data-testid="input-country-search"]').type('Singapore');
+    cy.get('[data-testid="country-option-singapore"]').click();
+    cy.get('[data-testid="value-country"]').should('have.text', 'Singapore');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Multi-Select Tags
+  // --------------------------------------------------------------------------
+  it('exercise 8: multi-select tags selection and removal', () => {
+    // Open the dropdown and select Passport.
+    cy.get('[data-testid="input-doc-search"]').click();
+    cy.get('[data-testid="doc-option-passport"]').click();
+
+    // Verify tag appeared.
+    // should('be.visible') asserts the element is rendered and visible.
+    cy.get('[data-testid="tag-passport"]').should('be.visible');
+
+    // Select Driver License.
+    cy.get('[data-testid="input-doc-search"]').click();
+    cy.get('[data-testid="doc-option-driver-license"]').click();
+
+    // Verify both tags.
+    cy.get('[data-testid="tag-passport"]').should('be.visible');
+    cy.get('[data-testid="tag-driver-license"]').should('be.visible');
+
+    // Verify display text.
+    cy.get('[data-testid="value-doc-types"]')
+      .should('contain.text', 'Passport')
+      .and('contain.text', 'Driver License');
+
+    // Remove Passport tag.
+    cy.get('[data-testid="remove-tag-passport"]').click();
+
+    // Passport tag should be gone, Driver License should remain.
+    cy.get('[data-testid="tag-passport"]').should('not.exist');
+    cy.get('[data-testid="tag-driver-license"]').should('be.visible');
+
+    // Display should only show Driver License.
+    cy.get('[data-testid="value-doc-types"]').should('have.text', 'Driver License');
+  });
+
+});
+6:T1b95,# Kata 15: File Upload
+
+## What You Will Learn
+
+- How to upload files via a file input using test frameworks
+- How to verify uploaded files appear in a file list
+- How to test file type validation (rejecting invalid types)
+- How to simulate drag-and-drop file upload
+- How to verify file previews and remove uploaded files
+- Differences between Playwright's `setInputFiles()` and Cypress's `selectFile()`
+
+## Prerequisites
+
+- Completed Katas 13-14
+- Understanding of form interactions and assertions
+
+## Concepts Explained
+
+### Playwright: setInputFiles()
+
+```typescript
+// PLAYWRIGHT
+// setInputFiles(files) sets the files for an <input type="file"> element.
+// It accepts a file path string, an array of paths, or a file-like object.
+//
+// Signature:
+//   locator.setInputFiles(files: string | string[] | {
+//     name: string, mimeType: string, buffer: Buffer
+//   } | Array<{ name: string, mimeType: string, buffer: Buffer }>)
+//
+// Using a file path (reads from disk):
+await page.getByTestId('file-input').setInputFiles('path/to/document.pdf');
+
+// Using a buffer (creates a virtual file — no disk file needed):
+await page.getByTestId('file-input').setInputFiles({
+  name: 'id-proof.pdf',
+  mimeType: 'application/pdf',
+  buffer: Buffer.from('fake pdf content'),
+});
+
+// Multiple files at once:
+await page.getByTestId('file-input').setInputFiles([
+  { name: 'id.pdf', mimeType: 'application/pdf', buffer: Buffer.from('pdf') },
+  { name: 'photo.jpg', mimeType: 'image/jpeg', buffer: Buffer.from('jpg') },
+]);
+
+// Clear file input:
+await page.getByTestId('file-input').setInputFiles([]);
+```
+
+### Cypress: selectFile()
+
+```typescript
+// CYPRESS
+// selectFile() sets files on an <input type="file"> element.
+// It was added in Cypress 9.3 as a built-in command (no plugin needed).
+//
+// Signature:
+//   .selectFile(file | file[], options?)
+//
+// file can be:
+//   - A string path (relative to cypress project root)
+//   - A Cypress.Buffer with { fileName, mimeType }
+//   - A { contents, fileName, mimeType } object
+//
+// Using a buffer (creates a virtual file):
+cy.get('[data-testid="file-input"]').selectFile({
+  contents: Cypress.Buffer.from('fake pdf content'),
+  fileName: 'id-proof.pdf',
+  mimeType: 'application/pdf',
+});
+
+// Multiple files:
+cy.get('[data-testid="file-input"]').selectFile([
+  { contents: Cypress.Buffer.from('pdf'), fileName: 'id.pdf', mimeType: 'application/pdf' },
+  { contents: Cypress.Buffer.from('jpg'), fileName: 'photo.jpg', mimeType: 'image/jpeg' },
+]);
+
+// Drag-and-drop mode (drops file onto an element instead of setting input):
+cy.get('[data-testid="drop-zone"]').selectFile(
+  { contents: Cypress.Buffer.from('pdf'), fileName: 'doc.pdf', mimeType: 'application/pdf' },
+  { action: 'drag-drop' }
+);
+```
+
+### Verifying Uploaded Files
+
+```typescript
+// PLAYWRIGHT
+// After uploading, the file appears in the list. We check by finding
+// elements that contain the file name.
+const fileList = page.getByTestId('file-items');
+await expect(fileList).toContainText('id-proof.pdf');
+
+// CYPRESS
+cy.get('[data-testid="file-items"]').should('contain.text', 'id-proof.pdf');
+```
+
+## Playground
+
+The playground is a "KYC Document Upload" page. It contains:
+
+1. **Drop Zone** — A dashed-border area that accepts drag-and-drop files. Clicking it opens the browser's file picker dialog.
+2. **Hidden File Input** — An `<input type="file">` element that accepts `.pdf`, `.jpg`, `.png` files. It supports the `multiple` attribute for multi-file selection.
+3. **File Type Validation** — Only `.pdf`, `.jpg`, `.jpeg`, `.png` files are accepted. Invalid files show a red error message.
+4. **File Size Limit** — Files over 5 MB show an error. The display shows each file's size in human-readable format (KB/MB).
+5. **Upload Progress Bar** — A simulated progress bar animates from 0% to 100% when a file is "uploaded".
+6. **Uploaded Files List** — Each uploaded file appears as a card showing its name, size, preview thumbnail (for images), and a "Remove" button.
+7. **File Count** — A counter showing the number of uploaded files.
+8. **Preview Thumbnails** — Image files (`.jpg`, `.png`) show a thumbnail preview. PDF files show a "PDF" label.
+
+## Exercises
+
+### Exercise 1: Upload a File via the File Input
+Use `setInputFiles()` (Playwright) or `selectFile()` (Cypress) to upload a PDF file. Verify the file count updates to 1.
+
+### Exercise 2: Verify Uploaded File Appears in the List
+Upload a file and verify its name appears in the file items list.
+
+### Exercise 3: Upload Wrong File Type and Verify Error
+Upload a `.txt` file and verify the error message appears saying the file type is not allowed.
+
+### Exercise 4: Drag-and-Drop Upload
+Use drag-and-drop to upload a file onto the drop zone. Verify it appears in the file list.
+
+### Exercise 5: Verify File Preview
+Upload an image file (`.jpg` or `.png`) and verify the preview element exists for that file.
+
+### Exercise 6: Remove an Uploaded File
+Upload a file, then click its "Remove" button. Verify the file is removed from the list and the count decreases.
+
+### Exercise 7: Upload Multiple Files
+Upload two files at once and verify both appear in the file list with a count of 2.
+
+### Exercise 8: Verify File Size Display
+Upload a file and verify the size display shows a human-readable value (e.g., "1.0 KB").
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/file-upload.spec.ts`
+
+### Cypress Solution
+
+See `cypress/file-upload.cy.ts`
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Trying to type a file path into the input | File inputs cannot be typed into — they require a special API | Use `setInputFiles()` (Playwright) or `selectFile()` (Cypress) |
+| Forgetting the `mimeType` when creating virtual files | Without a MIME type, the file validation may reject the file | Always provide `mimeType` matching the file extension |
+| Using real file paths that don't exist | The test will fail with a file-not-found error | Use buffer-based virtual files for portability |
+| Not waiting for the upload progress to complete | Assertions run before the file appears in the list | Wait for the file name to appear in the DOM |
+| Targeting the drop zone instead of the input for selectFile | By default, selectFile targets an input element | Use `{ action: 'drag-drop' }` option for drop zone targets |
+
+## Quick Reference
+
+### File Upload Methods
+
+| Action | Playwright | Cypress |
+|--------|-----------|---------|
+| Upload single file | `setInputFiles({ name, mimeType, buffer })` | `selectFile({ contents, fileName, mimeType })` |
+| Upload multiple files | `setInputFiles([file1, file2])` | `selectFile([file1, file2])` |
+| Drag-drop upload | `setInputFiles()` on input + dispatch events | `selectFile(file, { action: 'drag-drop' })` |
+| Clear file input | `setInputFiles([])` | N/A (re-select or reload) |
+| Check file in list | `expect(list).toContainText(name)` | `cy.get(list).should('contain.text', name)` |
+| Check file count | `expect(count).toHaveText('2')` | `cy.get(count).should('have.text', '2')` |
+7:T227b,import { test, expect } from '@playwright/test';
+
+// The base URL for our playground page.
+const PLAYGROUND = '/phase-02-forms/15-file-upload/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Upload a File via the File Input
+// --------------------------------------------------------------------------
+// Use setInputFiles() to upload a virtual PDF file and verify the count.
+test('exercise 1: upload a file via file input', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify the file count starts at 0.
+  await expect(page.getByTestId('file-count')).toHaveText('0');
+
+  // setInputFiles() sets files on an <input type="file"> element.
+  // We create a virtual file using a Buffer — no real file on disk is needed.
+  // Parameters:
+  //   name     — the file name the browser will see
+  //   mimeType — the MIME type (must match an allowed type)
+  //   buffer   — the file content as a Node.js Buffer
+  await page.getByTestId('file-input').setInputFiles({
+    name: 'id-proof.pdf',
+    mimeType: 'application/pdf',
+    buffer: Buffer.from('fake pdf content'),
+  });
+
+  // Wait for the simulated upload to complete and the file to appear.
+  // toHaveText('1') waits until the file count element's text becomes '1'.
+  await expect(page.getByTestId('file-count')).toHaveText('1');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Verify Uploaded File Appears in the List
+// --------------------------------------------------------------------------
+// After uploading, verify the file name is visible in the file items area.
+test('exercise 2: verify uploaded file appears in the list', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  await page.getByTestId('file-input').setInputFiles({
+    name: 'passport-scan.jpg',
+    mimeType: 'image/jpeg',
+    buffer: Buffer.from('fake jpeg content'),
+  });
+
+  // toContainText(substring) checks if the element's textContent contains
+  // the given substring anywhere within it.
+  await expect(page.getByTestId('file-items')).toContainText('passport-scan.jpg');
+
+  // Also verify the "no files" message is hidden.
+  await expect(page.getByTestId('empty-list')).toBeHidden();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Upload Wrong File Type and Verify Error
+// --------------------------------------------------------------------------
+// Uploading a .txt file should trigger a validation error message.
+test('exercise 3: upload wrong file type shows error', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Upload a .txt file — this type is not in the allowed list.
+  await page.getByTestId('file-input').setInputFiles({
+    name: 'notes.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('some text content'),
+  });
+
+  // Verify the error message is visible and contains the file name.
+  await expect(page.getByTestId('upload-error')).toBeVisible();
+  await expect(page.getByTestId('upload-error')).toContainText('notes.txt');
+  await expect(page.getByTestId('upload-error')).toContainText('not allowed');
+
+  // The file should NOT appear in the uploaded list.
+  await expect(page.getByTestId('file-count')).toHaveText('0');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Drag-and-Drop Upload
+// --------------------------------------------------------------------------
+// Simulate a drag-and-drop by using setInputFiles() on the file input.
+// Note: True drag-and-drop file upload from outside the browser cannot be
+// fully simulated in Playwright. We use setInputFiles() which triggers
+// the same code path via the input's change event.
+test('exercise 4: upload file via input (simulating drag-drop path)', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Upload via the file input — this exercises the same handleFiles() logic
+  // that the drop event uses.
+  await page.getByTestId('file-input').setInputFiles({
+    name: 'address-proof.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from('fake png content'),
+  });
+
+  // Verify the file appears in the list.
+  await expect(page.getByTestId('file-items')).toContainText('address-proof.png');
+  await expect(page.getByTestId('file-count')).toHaveText('1');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Verify File Preview
+// --------------------------------------------------------------------------
+// Upload an image file and verify a preview element is rendered.
+test('exercise 5: verify file preview exists for image upload', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  await page.getByTestId('file-input').setInputFiles({
+    name: 'selfie.jpg',
+    mimeType: 'image/jpeg',
+    buffer: Buffer.from('fake jpeg content'),
+  });
+
+  // Wait for the file to appear in the list.
+  await expect(page.getByTestId('file-count')).toHaveText('1');
+
+  // Find the file item in the list. Each file item gets a dynamic testid.
+  // We locate it by checking for the file name text, then look for a
+  // preview element within it.
+  const fileItem = page.locator('.file-item').filter({ hasText: 'selfie.jpg' });
+  await expect(fileItem).toBeVisible();
+
+  // Verify the preview element exists within the file item.
+  // The preview is a <div class="file-preview"> containing an <img>.
+  const preview = fileItem.locator('.file-preview');
+  await expect(preview).toBeVisible();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Remove an Uploaded File
+// --------------------------------------------------------------------------
+// Upload a file, then click Remove. Verify the file disappears.
+test('exercise 6: remove an uploaded file', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Upload a file.
+  await page.getByTestId('file-input').setInputFiles({
+    name: 'old-id.pdf',
+    mimeType: 'application/pdf',
+    buffer: Buffer.from('fake pdf'),
+  });
+
+  // Verify it appeared.
+  await expect(page.getByTestId('file-count')).toHaveText('1');
+
+  // Find the file item and its Remove button.
+  const fileItem = page.locator('.file-item').filter({ hasText: 'old-id.pdf' });
+  const removeBtn = fileItem.locator('.btn-remove');
+
+  // Click the Remove button.
+  await removeBtn.click();
+
+  // Verify the file count is back to 0.
+  await expect(page.getByTestId('file-count')).toHaveText('0');
+
+  // Verify the "no files" message reappears.
+  await expect(page.getByTestId('empty-list')).toBeVisible();
+
+  // Verify the file name is no longer in the list.
+  await expect(page.getByTestId('file-items')).not.toContainText('old-id.pdf');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Upload Multiple Files
+// --------------------------------------------------------------------------
+// Upload two files at once and verify both appear.
+test('exercise 7: upload multiple files at once', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // setInputFiles() accepts an array of file objects to upload multiple
+  // files in a single call.
+  await page.getByTestId('file-input').setInputFiles([
+    {
+      name: 'id-front.jpg',
+      mimeType: 'image/jpeg',
+      buffer: Buffer.from('jpeg front'),
+    },
+    {
+      name: 'id-back.jpg',
+      mimeType: 'image/jpeg',
+      buffer: Buffer.from('jpeg back'),
+    },
+  ]);
+
+  // Wait for both files to finish uploading (progress bar runs sequentially).
+  // The count should reach 2.
+  await expect(page.getByTestId('file-count')).toHaveText('2');
+
+  // Verify both file names appear in the list.
+  await expect(page.getByTestId('file-items')).toContainText('id-front.jpg');
+  await expect(page.getByTestId('file-items')).toContainText('id-back.jpg');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Verify File Size Display
+// --------------------------------------------------------------------------
+// Upload a file and verify the size is shown in a human-readable format.
+test('exercise 8: verify file size display', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Create a file with a known size. Buffer.alloc(1024) creates a 1 KB buffer.
+  await page.getByTestId('file-input').setInputFiles({
+    name: 'sized-doc.pdf',
+    mimeType: 'application/pdf',
+    buffer: Buffer.alloc(1024),
+  });
+
+  // Wait for upload.
+  await expect(page.getByTestId('file-count')).toHaveText('1');
+
+  // Find the file item and check the size display.
+  const fileItem = page.locator('.file-item').filter({ hasText: 'sized-doc.pdf' });
+  const sizeEl = fileItem.locator('.file-size');
+
+  // The size should show "1.0 KB" for a 1024-byte file.
+  await expect(sizeEl).toHaveText('1.0 KB');
+});
+8:T1df2,const PLAYGROUND = '/phase-02-forms/15-file-upload/playground/';
+
+describe('Kata 15: File Upload', () => {
+
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Upload a File via the File Input
+  // --------------------------------------------------------------------------
+  // Use selectFile() to upload a virtual PDF file.
+  it('exercise 1: upload a file via file input', () => {
+    // Verify file count starts at 0.
+    cy.get('[data-testid="file-count"]').should('have.text', '0');
+
+    // selectFile() is a built-in Cypress command (since v9.3) that sets
+    // files on an <input type="file"> element.
+    //
+    // Parameters:
+    //   contents — a Cypress.Buffer holding the file data
+    //   fileName — the name the browser will see for the file
+    //   mimeType — the MIME type (must match an allowed type for validation)
+    cy.get('[data-testid="file-input"]').selectFile({
+      contents: Cypress.Buffer.from('fake pdf content'),
+      fileName: 'id-proof.pdf',
+      mimeType: 'application/pdf',
+    }, { force: true }); // force:true because the input is hidden (display:none)
+
+    // Wait for the simulated upload progress to complete.
+    // The file count should update to 1.
+    cy.get('[data-testid="file-count"]').should('have.text', '1');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Verify Uploaded File Appears in the List
+  // --------------------------------------------------------------------------
+  it('exercise 2: verify uploaded file appears in the list', () => {
+    cy.get('[data-testid="file-input"]').selectFile({
+      contents: Cypress.Buffer.from('fake jpeg content'),
+      fileName: 'passport-scan.jpg',
+      mimeType: 'image/jpeg',
+    }, { force: true });
+
+    // should('contain.text', str) checks if textContent contains the string.
+    cy.get('[data-testid="file-items"]').should('contain.text', 'passport-scan.jpg');
+
+    // The "no files" message should be hidden.
+    cy.get('[data-testid="empty-list"]').should('not.be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Upload Wrong File Type and Verify Error
+  // --------------------------------------------------------------------------
+  it('exercise 3: upload wrong file type shows error', () => {
+    // Upload a .txt file — not in the allowed types list.
+    cy.get('[data-testid="file-input"]').selectFile({
+      contents: Cypress.Buffer.from('some text content'),
+      fileName: 'notes.txt',
+      mimeType: 'text/plain',
+    }, { force: true });
+
+    // Verify the error message is visible.
+    cy.get('[data-testid="upload-error"]')
+      .should('be.visible')
+      .and('contain.text', 'notes.txt')
+      .and('contain.text', 'not allowed');
+
+    // File should NOT be added to the list.
+    cy.get('[data-testid="file-count"]').should('have.text', '0');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Drag-and-Drop Upload
+  // --------------------------------------------------------------------------
+  // Use selectFile() with { action: 'drag-drop' } to drop a file onto
+  // the drop zone element instead of the hidden file input.
+  it('exercise 4: drag-and-drop upload onto drop zone', () => {
+    // selectFile with action: 'drag-drop' simulates dropping a file
+    // onto any element (not just <input type="file">).
+    // This dispatches drop events on the target element.
+    cy.get('[data-testid="drop-zone"]').selectFile({
+      contents: Cypress.Buffer.from('fake png content'),
+      fileName: 'address-proof.png',
+      mimeType: 'image/png',
+    }, { action: 'drag-drop' });
+
+    // Verify the file appears.
+    cy.get('[data-testid="file-items"]').should('contain.text', 'address-proof.png');
+    cy.get('[data-testid="file-count"]').should('have.text', '1');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Verify File Preview
+  // --------------------------------------------------------------------------
+  it('exercise 5: verify file preview exists for image upload', () => {
+    cy.get('[data-testid="file-input"]').selectFile({
+      contents: Cypress.Buffer.from('fake jpeg content'),
+      fileName: 'selfie.jpg',
+      mimeType: 'image/jpeg',
+    }, { force: true });
+
+    // Wait for the file to appear.
+    cy.get('[data-testid="file-count"]').should('have.text', '1');
+
+    // Find the file item containing our file name.
+    // contains() finds an element whose text content includes the string.
+    cy.get('.file-item').contains('selfie.jpg').parents('.file-item')
+      .find('.file-preview')
+      .should('be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Remove an Uploaded File
+  // --------------------------------------------------------------------------
+  it('exercise 6: remove an uploaded file', () => {
+    cy.get('[data-testid="file-input"]').selectFile({
+      contents: Cypress.Buffer.from('fake pdf'),
+      fileName: 'old-id.pdf',
+      mimeType: 'application/pdf',
+    }, { force: true });
+
+    // Verify it appeared.
+    cy.get('[data-testid="file-count"]').should('have.text', '1');
+
+    // Find the Remove button within the file item.
+    // parents('.file-item') traverses up to the file-item ancestor.
+    cy.get('.file-item').contains('old-id.pdf').parents('.file-item')
+      .find('.btn-remove')
+      .click();
+
+    // Verify the file is removed.
+    cy.get('[data-testid="file-count"]').should('have.text', '0');
+    cy.get('[data-testid="empty-list"]').should('be.visible');
+    cy.get('[data-testid="file-items"]').should('not.contain.text', 'old-id.pdf');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Upload Multiple Files
+  // --------------------------------------------------------------------------
+  it('exercise 7: upload multiple files at once', () => {
+    // selectFile() accepts an array of file objects to upload multiple files.
+    cy.get('[data-testid="file-input"]').selectFile([
+      {
+        contents: Cypress.Buffer.from('jpeg front'),
+        fileName: 'id-front.jpg',
+        mimeType: 'image/jpeg',
+      },
+      {
+        contents: Cypress.Buffer.from('jpeg back'),
+        fileName: 'id-back.jpg',
+        mimeType: 'image/jpeg',
+      },
+    ], { force: true });
+
+    // Both files should appear.
+    cy.get('[data-testid="file-count"]').should('have.text', '2');
+    cy.get('[data-testid="file-items"]').should('contain.text', 'id-front.jpg');
+    cy.get('[data-testid="file-items"]').should('contain.text', 'id-back.jpg');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Verify File Size Display
+  // --------------------------------------------------------------------------
+  it('exercise 8: verify file size display', () => {
+    // Create a file with a known size: 1024 bytes = 1.0 KB.
+    // Cypress.Buffer.alloc(size) creates a buffer of the given byte length.
+    cy.get('[data-testid="file-input"]').selectFile({
+      contents: Cypress.Buffer.alloc(1024),
+      fileName: 'sized-doc.pdf',
+      mimeType: 'application/pdf',
+    }, { force: true });
+
+    cy.get('[data-testid="file-count"]').should('have.text', '1');
+
+    // Find the file size element within the file item.
+    cy.get('.file-item').contains('sized-doc.pdf').parents('.file-item')
+      .find('.file-size')
+      .should('have.text', '1.0 KB');
+  });
+
+});
+9:T1cb8,# Kata 17: Dynamic Forms
+
+## What You Will Learn
+
+- How to test forms where fields appear and disappear based on user selections
+- How to verify conditional visibility of form sections
+- How to add and remove repeated form sections dynamically
+- How to test conditional validation (only validating visible fields)
+- How to verify form state after toggling options on and off
+
+## Prerequisites
+
+- Completed Katas 13-16
+- Understanding of form interactions, selectors, and visibility assertions
+
+## Concepts Explained
+
+### Conditional Visibility Based on Selection
+
+```typescript
+// PLAYWRIGHT
+// Select "Business" to show business fields.
+await page.getByTestId('select-account-type').selectOption('business');
+// Verify the business section became visible.
+await expect(page.getByTestId('business-section')).toBeVisible();
+// Verify individual-only sections are hidden.
+await expect(page.getByTestId('joint-section')).toBeHidden();
+
+// CYPRESS
+cy.get('[data-testid="select-account-type"]').select('business');
+cy.get('[data-testid="business-section"]').should('be.visible');
+cy.get('[data-testid="joint-section"]').should('not.be.visible');
+```
+
+### Checkbox Toggle
+
+```typescript
+// PLAYWRIGHT
+// check() checks an unchecked checkbox. uncheck() unchecks it.
+await page.getByTestId('checkbox-pep').check();
+await expect(page.getByTestId('pep-section')).toBeVisible();
+
+await page.getByTestId('checkbox-pep').uncheck();
+await expect(page.getByTestId('pep-section')).toBeHidden();
+
+// CYPRESS
+// check() and uncheck() toggle checkboxes.
+cy.get('[data-testid="checkbox-pep"]').check();
+cy.get('[data-testid="pep-section"]').should('be.visible');
+
+cy.get('[data-testid="checkbox-pep"]').uncheck();
+cy.get('[data-testid="pep-section"]').should('not.be.visible');
+```
+
+### Adding Dynamic Sections
+
+```typescript
+// PLAYWRIGHT
+// Click the "Add Beneficiary" button to create a new form section.
+await page.getByTestId('btn-add-beneficiary').click();
+// Verify the new section appeared. Each beneficiary gets a testid
+// like "beneficiary-1", "beneficiary-2", etc.
+await expect(page.getByTestId('beneficiary-1')).toBeVisible();
+// Verify the count updated.
+await expect(page.getByTestId('beneficiary-count')).toHaveText('1');
+
+// CYPRESS
+cy.get('[data-testid="btn-add-beneficiary"]').click();
+cy.get('[data-testid="beneficiary-1"]').should('be.visible');
+cy.get('[data-testid="beneficiary-count"]').should('have.text', '1');
+```
+
+### Removing Dynamic Sections
+
+```typescript
+// PLAYWRIGHT
+// Each beneficiary section has a Remove button.
+await page.getByTestId('btn-remove-beneficiary-1').click();
+await expect(page.getByTestId('beneficiary-1')).toBeHidden();
+
+// CYPRESS
+cy.get('[data-testid="btn-remove-beneficiary-1"]').click();
+cy.get('[data-testid="beneficiary-1"]').should('not.exist');
+```
+
+## Playground
+
+The playground is a KYC application form where fields dynamically appear and disappear:
+
+1. **Account Type Dropdown** — Options: "Individual" (default), "Business", "Joint Account".
+   - **Individual**: No extra sections shown.
+   - **Business**: Shows company name, registration number, and business type fields.
+   - **Joint Account**: Shows second applicant name, email, and relationship fields.
+
+2. **Primary Applicant Name** — Always visible and required.
+
+3. **Business Section** — Hidden by default. Appears when "Business" is selected. Contains company name (required), registration number (required), and business type dropdown.
+
+4. **Joint Account Section** — Hidden by default. Appears when "Joint Account" is selected. Contains second applicant name (required), email (required), and relationship dropdown.
+
+5. **PEP Checkbox** — "I am a Politically Exposed Person". When checked, shows PEP details section with position (required), country (required), and notes fields.
+
+6. **Beneficiaries** — An "Add Beneficiary" button creates repeated form sections. Each section has a name (required), percentage, relationship dropdown, and a Remove button. The beneficiary count updates.
+
+7. **Conditional Validation** — The submit button validates only the currently visible required fields. Hidden sections are not validated.
+
+## Exercises
+
+### Exercise 1: Select Individual and Verify Business Fields Are Hidden
+Select "Individual" account type. Verify the business and joint sections are both hidden.
+
+### Exercise 2: Select Business and Verify Business Fields Appear
+Select "Business" account type. Verify the business section is visible with company name and registration number fields.
+
+### Exercise 3: Add a Beneficiary and Verify New Section
+Click "Add Beneficiary". Verify a new beneficiary section appears with name, percentage, and relationship fields.
+
+### Exercise 4: Remove a Beneficiary
+Add a beneficiary, then click its Remove button. Verify the section disappears and the count decreases.
+
+### Exercise 5: PEP Checkbox Shows Detail Fields
+Check the PEP checkbox. Verify the PEP details section appears with position and country fields.
+
+### Exercise 6: Verify Conditional Validation
+Select "Business", leave company fields empty, and submit. Verify business-specific errors appear. Switch to "Individual" and submit with just the primary name — verify no business errors appear.
+
+### Exercise 7: Add Multiple Beneficiaries
+Click "Add Beneficiary" three times. Verify three sections appear with correct numbering and the count shows 3.
+
+### Exercise 8: Verify Form State After Toggling
+Select "Business" and fill company fields. Switch to "Joint Account" — verify business fields hide and joint fields appear. Switch back to "Business" — verify business fields reappear.
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/dynamic-forms.spec.ts`
+
+### Cypress Solution
+
+See `cypress/dynamic-forms.cy.ts`
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Filling fields in a hidden section | Hidden fields may not accept input or may be ignored | Only interact with fields after verifying their section is visible |
+| Asserting on hidden elements with `.toHaveValue()` | Hidden elements may still have values from before being hidden | Use visibility checks first, then value checks |
+| Not waiting for dynamic sections to render | Clicking "Add" creates DOM elements — assertions may run too fast | Playwright and Cypress auto-wait, but verify the element exists |
+| Expecting validation errors on hidden fields | The form only validates visible required fields | Validate only the currently visible sections |
+| Removing a beneficiary and checking the wrong testid | After removal, the element is gone from the DOM — use `not.exist` | Use `toBeHidden()` (PW) or `should('not.exist')` (Cy) |
+
+## Quick Reference
+
+| Action | Playwright | Cypress |
+|--------|-----------|---------|
+| Select dropdown option | `selectOption('business')` | `select('business')` |
+| Check checkbox | `check()` | `check()` |
+| Uncheck checkbox | `uncheck()` | `uncheck()` |
+| Verify visible | `expect(loc).toBeVisible()` | `should('be.visible')` |
+| Verify hidden | `expect(loc).toBeHidden()` | `should('not.be.visible')` |
+| Verify not in DOM | N/A (use toBeHidden) | `should('not.exist')` |
+| Click add button | `click()` | `click()` |
+| Count elements | `locator.count()` | `should('have.length', N)` |
+| Check text | `expect(loc).toHaveText(str)` | `should('have.text', str)` |
+a:T28fa,import { test, expect } from '@playwright/test';
+
+const PLAYGROUND = '/phase-02-forms/17-dynamic-forms/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Select Individual and Verify Business Fields Are Hidden
+// --------------------------------------------------------------------------
+// The default account type is "Individual". Business and joint sections
+// should both be hidden.
+test('exercise 1: individual account hides business and joint sections', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify the default selection is "Individual".
+  // toHaveValue(val) checks the <select>'s current value.
+  await expect(page.getByTestId('select-account-type')).toHaveValue('individual');
+
+  // Verify the business section is hidden.
+  // toBeHidden() checks the element has display:none (via the "hidden" class).
+  await expect(page.getByTestId('business-section')).toBeHidden();
+
+  // Verify the joint section is also hidden.
+  await expect(page.getByTestId('joint-section')).toBeHidden();
+
+  // Explicitly select "Individual" (it's already selected, but this tests
+  // the behavior of explicitly choosing it).
+  await page.getByTestId('select-account-type').selectOption('individual');
+
+  // Both sections should remain hidden.
+  await expect(page.getByTestId('business-section')).toBeHidden();
+  await expect(page.getByTestId('joint-section')).toBeHidden();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Select Business and Verify Business Fields Appear
+// --------------------------------------------------------------------------
+// Choosing "Business" should reveal the business details section.
+test('exercise 2: business account shows business section', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Select "Business" account type.
+  // selectOption(value) picks the <option> with the matching value.
+  await page.getByTestId('select-account-type').selectOption('business');
+
+  // Verify the business section is now visible.
+  await expect(page.getByTestId('business-section')).toBeVisible();
+
+  // Verify the business fields are present and interactable.
+  await expect(page.getByTestId('input-company-name')).toBeVisible();
+  await expect(page.getByTestId('input-reg-number')).toBeVisible();
+  await expect(page.getByTestId('select-business-type')).toBeVisible();
+
+  // Verify the joint section is still hidden.
+  await expect(page.getByTestId('joint-section')).toBeHidden();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Add a Beneficiary and Verify New Section
+// --------------------------------------------------------------------------
+// Clicking "Add Beneficiary" creates a new form section.
+test('exercise 3: add beneficiary creates new section', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify no beneficiaries initially.
+  await expect(page.getByTestId('beneficiary-count')).toHaveText('0');
+
+  // Click the "Add Beneficiary" button.
+  await page.getByTestId('btn-add-beneficiary').click();
+
+  // Verify a beneficiary section appeared.
+  // The first beneficiary gets data-testid="beneficiary-1".
+  await expect(page.getByTestId('beneficiary-1')).toBeVisible();
+
+  // Verify the beneficiary fields exist.
+  await expect(page.getByTestId('input-beneficiary-name-1')).toBeVisible();
+  await expect(page.getByTestId('input-beneficiary-pct-1')).toBeVisible();
+  await expect(page.getByTestId('select-beneficiary-rel-1')).toBeVisible();
+
+  // Verify the count updated.
+  await expect(page.getByTestId('beneficiary-count')).toHaveText('1');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Remove a Beneficiary
+// --------------------------------------------------------------------------
+// Add a beneficiary, then remove it.
+test('exercise 4: remove beneficiary removes section', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Add a beneficiary.
+  await page.getByTestId('btn-add-beneficiary').click();
+  await expect(page.getByTestId('beneficiary-1')).toBeVisible();
+  await expect(page.getByTestId('beneficiary-count')).toHaveText('1');
+
+  // Click the Remove button on beneficiary 1.
+  await page.getByTestId('btn-remove-beneficiary-1').click();
+
+  // Verify the section is gone.
+  // toBeHidden() works because the element is removed from the DOM entirely.
+  await expect(page.getByTestId('beneficiary-1')).toBeHidden();
+
+  // Verify the count decreased.
+  await expect(page.getByTestId('beneficiary-count')).toHaveText('0');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: PEP Checkbox Shows Detail Fields
+// --------------------------------------------------------------------------
+// Checking the PEP checkbox reveals PEP detail fields.
+test('exercise 5: PEP checkbox shows PEP details', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify PEP section is initially hidden.
+  await expect(page.getByTestId('pep-section')).toBeHidden();
+
+  // Check the PEP checkbox.
+  // check() clicks the checkbox to set it to checked state.
+  await page.getByTestId('checkbox-pep').check();
+
+  // Verify the PEP section appeared.
+  await expect(page.getByTestId('pep-section')).toBeVisible();
+  await expect(page.getByTestId('input-pep-position')).toBeVisible();
+  await expect(page.getByTestId('input-pep-country')).toBeVisible();
+
+  // Uncheck it — the section should hide again.
+  // uncheck() clicks the checkbox to set it to unchecked state.
+  await page.getByTestId('checkbox-pep').uncheck();
+  await expect(page.getByTestId('pep-section')).toBeHidden();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Verify Conditional Validation
+// --------------------------------------------------------------------------
+// The form only validates fields that are currently visible.
+test('exercise 6: conditional validation based on account type', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Select "Business" and submit without filling business fields.
+  await page.getByTestId('select-account-type').selectOption('business');
+  await page.getByTestId('input-primary-name').fill('Aisha Patel');
+  await page.getByTestId('btn-submit').click();
+
+  // Business-specific errors should appear.
+  await expect(page.getByTestId('error-company-name')).toBeVisible();
+  await expect(page.getByTestId('error-reg-number')).toBeVisible();
+
+  // Now switch to "Individual" — business fields hide.
+  await page.getByTestId('select-account-type').selectOption('individual');
+  await expect(page.getByTestId('business-section')).toBeHidden();
+
+  // Submit again — only the primary name is validated (which we already filled).
+  await page.getByTestId('btn-submit').click();
+
+  // No business errors should appear since those fields are hidden.
+  await expect(page.getByTestId('error-company-name')).toBeHidden();
+
+  // Success should show since only the primary name was required.
+  await expect(page.getByTestId('form-status')).toHaveClass(/success/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Add Multiple Beneficiaries
+// --------------------------------------------------------------------------
+// Click the Add button three times and verify all sections exist.
+test('exercise 7: add multiple beneficiaries', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Add three beneficiaries.
+  await page.getByTestId('btn-add-beneficiary').click();
+  await page.getByTestId('btn-add-beneficiary').click();
+  await page.getByTestId('btn-add-beneficiary').click();
+
+  // Verify all three sections exist.
+  await expect(page.getByTestId('beneficiary-1')).toBeVisible();
+  await expect(page.getByTestId('beneficiary-2')).toBeVisible();
+  await expect(page.getByTestId('beneficiary-3')).toBeVisible();
+
+  // Verify the count shows 3.
+  await expect(page.getByTestId('beneficiary-count')).toHaveText('3');
+
+  // Verify each has its own name input.
+  await expect(page.getByTestId('input-beneficiary-name-1')).toBeVisible();
+  await expect(page.getByTestId('input-beneficiary-name-2')).toBeVisible();
+  await expect(page.getByTestId('input-beneficiary-name-3')).toBeVisible();
+
+  // Remove the middle one (#2) and verify count updates.
+  await page.getByTestId('btn-remove-beneficiary-2').click();
+  await expect(page.getByTestId('beneficiary-count')).toHaveText('2');
+  await expect(page.getByTestId('beneficiary-2')).toBeHidden();
+  // Beneficiaries 1 and 3 should still be visible.
+  await expect(page.getByTestId('beneficiary-1')).toBeVisible();
+  await expect(page.getByTestId('beneficiary-3')).toBeVisible();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Verify Form State After Toggling
+// --------------------------------------------------------------------------
+// Switch between account types and verify sections toggle correctly.
+test('exercise 8: form state after toggling account types', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Select "Business" and fill company fields.
+  await page.getByTestId('select-account-type').selectOption('business');
+  await expect(page.getByTestId('business-section')).toBeVisible();
+  await page.getByTestId('input-company-name').fill('Acme Corp');
+  await page.getByTestId('input-reg-number').fill('RC-123');
+
+  // Switch to "Joint Account" — business should hide, joint should show.
+  await page.getByTestId('select-account-type').selectOption('joint');
+  await expect(page.getByTestId('business-section')).toBeHidden();
+  await expect(page.getByTestId('joint-section')).toBeVisible();
+
+  // Verify joint fields are visible.
+  await expect(page.getByTestId('input-joint-name')).toBeVisible();
+  await expect(page.getByTestId('input-joint-email')).toBeVisible();
+
+  // Switch back to "Business" — business should reappear, joint should hide.
+  await page.getByTestId('select-account-type').selectOption('business');
+  await expect(page.getByTestId('business-section')).toBeVisible();
+  await expect(page.getByTestId('joint-section')).toBeHidden();
+
+  // Verify the company name we entered earlier is still in the input.
+  // The input retains its value because we only toggled visibility,
+  // not removed the element from the DOM.
+  await expect(page.getByTestId('input-company-name')).toHaveValue('Acme Corp');
+});
+b:T2374,const PLAYGROUND = '/phase-02-forms/17-dynamic-forms/playground/';
+
+describe('Kata 17: Dynamic Forms', () => {
+
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Select Individual and Verify Business Fields Are Hidden
+  // --------------------------------------------------------------------------
+  it('exercise 1: individual account hides business and joint sections', () => {
+    // Verify the default selection is "Individual".
+    // should('have.value', val) checks the <select>'s current value.
+    cy.get('[data-testid="select-account-type"]').should('have.value', 'individual');
+
+    // Verify both dynamic sections are hidden.
+    // should('not.be.visible') checks the element has display:none.
+    cy.get('[data-testid="business-section"]').should('not.be.visible');
+    cy.get('[data-testid="joint-section"]').should('not.be.visible');
+
+    // Explicitly select Individual.
+    cy.get('[data-testid="select-account-type"]').select('individual');
+
+    // Both should remain hidden.
+    cy.get('[data-testid="business-section"]').should('not.be.visible');
+    cy.get('[data-testid="joint-section"]').should('not.be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Select Business and Verify Business Fields Appear
+  // --------------------------------------------------------------------------
+  it('exercise 2: business account shows business section', () => {
+    // select(value) picks the <option> with matching value.
+    cy.get('[data-testid="select-account-type"]').select('business');
+
+    // Verify business section is visible.
+    cy.get('[data-testid="business-section"]').should('be.visible');
+    cy.get('[data-testid="input-company-name"]').should('be.visible');
+    cy.get('[data-testid="input-reg-number"]').should('be.visible');
+    cy.get('[data-testid="select-business-type"]').should('be.visible');
+
+    // Joint section should remain hidden.
+    cy.get('[data-testid="joint-section"]').should('not.be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Add a Beneficiary and Verify New Section
+  // --------------------------------------------------------------------------
+  it('exercise 3: add beneficiary creates new section', () => {
+    // Verify no beneficiaries initially.
+    cy.get('[data-testid="beneficiary-count"]').should('have.text', '0');
+
+    // Click the "Add Beneficiary" button.
+    cy.get('[data-testid="btn-add-beneficiary"]').click();
+
+    // Verify the section appeared.
+    cy.get('[data-testid="beneficiary-1"]').should('be.visible');
+
+    // Verify the fields exist.
+    cy.get('[data-testid="input-beneficiary-name-1"]').should('be.visible');
+    cy.get('[data-testid="input-beneficiary-pct-1"]').should('be.visible');
+    cy.get('[data-testid="select-beneficiary-rel-1"]').should('be.visible');
+
+    // Verify count updated.
+    cy.get('[data-testid="beneficiary-count"]').should('have.text', '1');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Remove a Beneficiary
+  // --------------------------------------------------------------------------
+  it('exercise 4: remove beneficiary removes section', () => {
+    // Add a beneficiary.
+    cy.get('[data-testid="btn-add-beneficiary"]').click();
+    cy.get('[data-testid="beneficiary-1"]').should('be.visible');
+    cy.get('[data-testid="beneficiary-count"]').should('have.text', '1');
+
+    // Click Remove.
+    cy.get('[data-testid="btn-remove-beneficiary-1"]').click();
+
+    // Verify the section is gone from the DOM.
+    // should('not.exist') checks the element was removed entirely.
+    cy.get('[data-testid="beneficiary-1"]').should('not.exist');
+
+    // Count should be 0.
+    cy.get('[data-testid="beneficiary-count"]').should('have.text', '0');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: PEP Checkbox Shows Detail Fields
+  // --------------------------------------------------------------------------
+  it('exercise 5: PEP checkbox shows PEP details', () => {
+    // PEP section hidden initially.
+    cy.get('[data-testid="pep-section"]').should('not.be.visible');
+
+    // check() sets a checkbox to the checked state.
+    cy.get('[data-testid="checkbox-pep"]').check();
+
+    // PEP section visible.
+    cy.get('[data-testid="pep-section"]').should('be.visible');
+    cy.get('[data-testid="input-pep-position"]').should('be.visible');
+    cy.get('[data-testid="input-pep-country"]').should('be.visible');
+
+    // uncheck() sets a checkbox to the unchecked state.
+    cy.get('[data-testid="checkbox-pep"]').uncheck();
+    cy.get('[data-testid="pep-section"]').should('not.be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Verify Conditional Validation
+  // --------------------------------------------------------------------------
+  it('exercise 6: conditional validation based on account type', () => {
+    // Select Business, fill primary name, submit without business fields.
+    cy.get('[data-testid="select-account-type"]').select('business');
+    cy.get('[data-testid="input-primary-name"]').type('Aisha Patel');
+    cy.get('[data-testid="btn-submit"]').click();
+
+    // Business errors should appear.
+    cy.get('[data-testid="error-company-name"]').should('be.visible');
+    cy.get('[data-testid="error-reg-number"]').should('be.visible');
+
+    // Switch to Individual — business hides.
+    cy.get('[data-testid="select-account-type"]').select('individual');
+    cy.get('[data-testid="business-section"]').should('not.be.visible');
+
+    // Submit again.
+    cy.get('[data-testid="btn-submit"]').click();
+
+    // No business errors — they are hidden.
+    cy.get('[data-testid="error-company-name"]').should('not.be.visible');
+
+    // Success since only primary name was required.
+    cy.get('[data-testid="form-status"]').should('have.class', 'success');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Add Multiple Beneficiaries
+  // --------------------------------------------------------------------------
+  it('exercise 7: add multiple beneficiaries', () => {
+    // Add three.
+    cy.get('[data-testid="btn-add-beneficiary"]').click();
+    cy.get('[data-testid="btn-add-beneficiary"]').click();
+    cy.get('[data-testid="btn-add-beneficiary"]').click();
+
+    // All three visible.
+    cy.get('[data-testid="beneficiary-1"]').should('be.visible');
+    cy.get('[data-testid="beneficiary-2"]').should('be.visible');
+    cy.get('[data-testid="beneficiary-3"]').should('be.visible');
+
+    // Count is 3.
+    cy.get('[data-testid="beneficiary-count"]').should('have.text', '3');
+
+    // Each has its own name input.
+    cy.get('[data-testid="input-beneficiary-name-1"]').should('be.visible');
+    cy.get('[data-testid="input-beneficiary-name-2"]').should('be.visible');
+    cy.get('[data-testid="input-beneficiary-name-3"]').should('be.visible');
+
+    // Remove the middle one (#2).
+    cy.get('[data-testid="btn-remove-beneficiary-2"]').click();
+    cy.get('[data-testid="beneficiary-count"]').should('have.text', '2');
+    cy.get('[data-testid="beneficiary-2"]').should('not.exist');
+    // 1 and 3 remain.
+    cy.get('[data-testid="beneficiary-1"]').should('be.visible');
+    cy.get('[data-testid="beneficiary-3"]').should('be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Verify Form State After Toggling
+  // --------------------------------------------------------------------------
+  it('exercise 8: form state after toggling account types', () => {
+    // Select Business and fill fields.
+    cy.get('[data-testid="select-account-type"]').select('business');
+    cy.get('[data-testid="business-section"]').should('be.visible');
+    cy.get('[data-testid="input-company-name"]').type('Acme Corp');
+    cy.get('[data-testid="input-reg-number"]').type('RC-123');
+
+    // Switch to Joint — business hides, joint shows.
+    cy.get('[data-testid="select-account-type"]').select('joint');
+    cy.get('[data-testid="business-section"]').should('not.be.visible');
+    cy.get('[data-testid="joint-section"]').should('be.visible');
+
+    // Verify joint fields are visible.
+    cy.get('[data-testid="input-joint-name"]').should('be.visible');
+    cy.get('[data-testid="input-joint-email"]').should('be.visible');
+
+    // Switch back to Business — business reappears, joint hides.
+    cy.get('[data-testid="select-account-type"]').select('business');
+    cy.get('[data-testid="business-section"]').should('be.visible');
+    cy.get('[data-testid="joint-section"]').should('not.be.visible');
+
+    // Data we entered earlier should still be there.
+    // should('have.value', str) checks the input's current value.
+    cy.get('[data-testid="input-company-name"]').should('have.value', 'Acme Corp');
+  });
+
+});
+c:Tae8e,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { test, expect } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> '@playwright/test'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-02-forms/16-date-pickers-and-dropdowns/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 1: Set a Date via the Native Date Input</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Use fill() to set a date value on an &#x3C;input type="date">.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: set date via native date input'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the display initially shows "None".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'value-native-date'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'None'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // fill(value) on a date input accepts an ISO date string "YYYY-MM-DD".</span></span>
+<span class="line"><span style="color:#6A737D">  // This sets the input's value and triggers the "change" event.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'input-native-date'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'1990-05-15'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the display text updates to the formatted date.</span></span>
+<span class="line"><span style="color:#6A737D">  // The playground formats the date as "Month Day, Year" using toLocaleDateString.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'value-native-date'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'May 15, 1990'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 2: Interact with the Custom Calendar</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Open the calendar, navigate months, and click a specific day.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: interact with custom calendar picker'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click the trigger button to open the calendar popup.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'calendar-trigger'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the calendar popup is visible (it should have the "open" class).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'calendar-popup'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the initial month/year display.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'calendar-month-year'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'April'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'calendar-month-year'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'2026'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click "Next" to go to May 2026.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-next-month'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'calendar-month-year'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'May'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click day 20.</span></span>
+<span class="line"><span style="color:#6A737D">  // Each day has a data-testid like "cal-day-20".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'cal-day-20'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the trigger button now shows the selected date.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'calendar-trigger'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'May'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'calendar-trigger'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'20'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'calendar-trigger'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'2026'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the display text also updated.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'value-calendar-date'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'May 20, 2026'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 3: Select from the Searchable Country Dropdown</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Type a search term to filter, then click an option.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: select from searchable country dropdown'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify initial display.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'value-country'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'None'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Type "India" in the search input to filter the country list.</span></span>
+<span class="line"><span style="color:#6A737D">  // fill() replaces the input content and triggers the "input" event,</span></span>
+<span class="line"><span style="color:#6A737D">  // which causes the dropdown to filter and open.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'input-country-search'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'India'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the dropdown list is open and shows filtered results.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'country-list'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">open</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click the "India" option.</span></span>
+<span class="line"><span style="color:#6A737D">  // The option's testid is derived from the country name in lowercase with</span></span>
+<span class="line"><span style="color:#6A737D">  // spaces replaced by hyphens.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'country-option-india'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the display text shows "India".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'value-country'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'India'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#6A737D">  // Verify the search input now contains "India".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'input-country-search'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveValue</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'India'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 4: Verify Cascading Dropdown Behavior</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Select an industry, verify occupation options populate.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: cascading dropdown populates options'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the occupation dropdown is initially disabled.</span></span>
+<span class="line"><span style="color:#6A737D">  // toBeDisabled() checks the "disabled" attribute on the element.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'select-occupation'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeDisabled</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Select "Technology" industry.</span></span>
+<span class="line"><span style="color:#6A737D">  // selectOption(value) picks the &#x3C;option> with the matching value attribute.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'select-industry'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">selectOption</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'technology'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the occupation dropdown is now enabled.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'select-occupation'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeEnabled</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Select "Software Engineer" from the occupation dropdown.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'select-occupation'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">selectOption</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'software-engineer'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the display text shows the selected occupation.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'value-occupation'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Software Engineer'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Now change the industry to "Healthcare" and verify occupations update.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'select-industry'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">selectOption</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'healthcare'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // The occupation dropdown should reset (no occupation selected yet).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'value-occupation'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'None'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify a healthcare-specific option is available.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'select-occupation'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">selectOption</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'doctor'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'value-occupation'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Doctor'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 5: Validate Date Range on Native Input</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Enter a date outside the valid range and verify the error.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: date outside valid range shows error'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Enter a date in 2020 — outside the max of 2010.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'input-native-date'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'2020-06-15'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the error message is visible.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'error-native-date'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'error-native-date'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'1920'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'error-native-date'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'2010'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // The display should still show "None" since the date is invalid.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'value-native-date'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'None'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 6: Change Calendar Selection</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Select one date, then select a different date.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: change calendar selection updates display'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Select April 10.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'calendar-trigger'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'cal-day-10'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'value-calendar-date'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'April 10, 2026'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Now select a different date — April 25.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'calendar-trigger'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'cal-day-25'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the display updated to the new date.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'value-calendar-date'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'April 25, 2026'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 7: Verify Selected Display Text</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Set multiple values and verify each display element.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 7: verify display text for multiple inputs'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Set native date.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'input-native-date'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'1985-12-25'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'value-native-date'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'December 25, 1985'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Set time.</span></span>
+<span class="line"><span style="color:#6A737D">  // fill() on a time input accepts "HH:MM" format.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'input-time'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'14:30'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'value-time'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'14:30'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Set country.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'input-country-search'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Singapore'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'country-option-singapore'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'value-country'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Singapore'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 8: Multi-Select Tags</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Select multiple document types, verify tags appear, remove one.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 8: multi-select tags selection and removal'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click the document type search input to open the dropdown.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'input-doc-search'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click "Passport" to select it.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'doc-option-passport'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the tag appeared.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'tag-passport'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Select another: "Driver License".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'input-doc-search'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'doc-option-driver-license'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify both tags are visible.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'tag-passport'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'tag-driver-license'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the display text shows both selections.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'value-doc-types'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Passport'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'value-doc-types'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Driver License'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Remove the "Passport" tag by clicking its X button.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'remove-tag-passport'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the Passport tag is gone but Driver License remains.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'tag-passport'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeHidden</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'tag-driver-license'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the display text updated.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'value-doc-types'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Driver License'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>d:T92a6,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-02-forms/16-date-pickers-and-dropdowns/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">describe</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Kata 16: Date Pickers and Dropdowns'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">  beforeEach</span><span style="color:#E1E4E8">(() </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 1: Set a Date via the Native Date Input</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: set date via native date input'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Verify initial display.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="value-native-date"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'None'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // type() on a date input accepts an ISO date string "YYYY-MM-DD".</span></span>
+<span class="line"><span style="color:#6A737D">    // This triggers the "change" event on the input.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-native-date"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'1990-05-15'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the display updates.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="value-native-date"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'May 15, 1990'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 2: Interact with the Custom Calendar</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: interact with custom calendar picker'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Click the trigger to open the calendar popup.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="calendar-trigger"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the popup is visible.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="calendar-popup"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify initial month.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="calendar-month-year"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'April'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'2026'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Navigate to May.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-next-month"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="calendar-month-year"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'May'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Click day 20.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="cal-day-20"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the trigger text updated.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="calendar-trigger"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'May'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'20'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'2026'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="value-calendar-date"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'May 20, 2026'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 3: Select from the Searchable Country Dropdown</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: select from searchable country dropdown'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="value-country"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'None'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Type "India" in the search input.</span></span>
+<span class="line"><span style="color:#6A737D">    // type() simulates keystrokes, which triggers the "input" event,</span></span>
+<span class="line"><span style="color:#6A737D">    // filtering the dropdown list.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-country-search"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'India'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the dropdown is open.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="country-list"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'open'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Click the India option.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="country-option-india"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify selected.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="value-country"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'India'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-country-search"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.value'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'India'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 4: Verify Cascading Dropdown Behavior</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: cascading dropdown populates options'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Verify occupation dropdown is disabled initially.</span></span>
+<span class="line"><span style="color:#6A737D">    // should('be.disabled') checks the "disabled" attribute.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="select-occupation"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.disabled'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Select Technology industry.</span></span>
+<span class="line"><span style="color:#6A737D">    // select(value) picks the &#x3C;option> with the matching value attribute.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="select-industry"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">select</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'technology'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify occupation is now enabled.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="select-occupation"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.enabled'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Select Software Engineer.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="select-occupation"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">select</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'software-engineer'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="value-occupation"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Software Engineer'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Change industry to Healthcare.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="select-industry"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">select</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'healthcare'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Occupation display should reset.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="value-occupation"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'None'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Select a healthcare occupation.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="select-occupation"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">select</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'doctor'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="value-occupation"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Doctor'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 5: Validate Date Range on Native Input</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: date outside valid range shows error'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Enter a date in 2020 — outside the allowed max of 2010.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-native-date"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'2020-06-15'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the error message appears.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="error-native-date"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'1920'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'2010'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Display should still show "None".</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="value-native-date"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'None'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 6: Change Calendar Selection</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: change calendar selection updates display'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Select April 10.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="calendar-trigger"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="cal-day-10"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="value-calendar-date"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'April 10, 2026'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Select a different date — April 25.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="calendar-trigger"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="cal-day-25"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="value-calendar-date"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'April 25, 2026'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 7: Verify Selected Display Text</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 7: verify display text for multiple inputs'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Native date.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-native-date"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'1985-12-25'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="value-native-date"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'December 25, 1985'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Time.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-time"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'14:30'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="value-time"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'14:30'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Country.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-country-search"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Singapore'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="country-option-singapore"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="value-country"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Singapore'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 8: Multi-Select Tags</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 8: multi-select tags selection and removal'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Open the dropdown and select Passport.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-doc-search"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="doc-option-passport"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify tag appeared.</span></span>
+<span class="line"><span style="color:#6A737D">    // should('be.visible') asserts the element is rendered and visible.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="tag-passport"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Select Driver License.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-doc-search"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="doc-option-driver-license"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify both tags.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="tag-passport"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="tag-driver-license"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify display text.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="value-doc-types"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Passport'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Driver License'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Remove Passport tag.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="remove-tag-passport"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Passport tag should be gone, Driver License should remain.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="tag-passport"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.exist'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="tag-driver-license"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Display should only show Driver License.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="value-doc-types"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Driver License'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"kata":{"slug":"16-date-pickers-and-dropdowns","number":16,"title":"Date Pickers and Dropdowns","phaseSlug":"phase-02-forms","phaseNumber":2,"phaseName":"Forms","readmeRaw":"$3","hasPlayground":true,"playwrightFiles":[{"filename":"date-pickers-and-dropdowns.spec.ts","content":"$4"}],"cypressFiles":[{"filename":"date-pickers-and-dropdowns.cy.ts","content":"$5"}]},"prev":{"slug":"15-file-upload","number":15,"title":"File Upload","phaseSlug":"phase-02-forms","phaseNumber":2,"phaseName":"Forms","readmeRaw":"$6","hasPlayground":true,"playwrightFiles":[{"filename":"file-upload.spec.ts","content":"$7"}],"cypressFiles":[{"filename":"file-upload.cy.ts","content":"$8"}]},"next":{"slug":"17-dynamic-forms","number":17,"title":"Dynamic Forms","phaseSlug":"phase-02-forms","phaseNumber":2,"phaseName":"Forms","readmeRaw":"$9","hasPlayground":true,"playwrightFiles":[{"filename":"dynamic-forms.spec.ts","content":"$a"}],"cypressFiles":[{"filename":"dynamic-forms.cy.ts","content":"$b"}]},"playwrightHtml":[{"filename":"date-pickers-and-dropdowns.spec.ts","html":"$c"}],"cypressHtml":[{"filename":"date-pickers-and-dropdowns.cy.ts","html":"$d"}]}],["$Le"],"$Lf"]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"iDtrTKWIN4zzRgDRiiDd2"}
+e:["$","script","script-0",{"src":"/qa-labs/_next/static/chunks/03nvm.8~ftt80.js","async":true}]
+f:["$","$L10",null,{"children":["$","$11",null,{"name":"Next.MetadataOutlet","children":"$@12"}]}]
+12:null

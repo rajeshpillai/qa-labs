@@ -1,0 +1,2366 @@
+1:"$Sreact.fragment"
+2:I[31749,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js","/qa-labs/_next/static/chunks/03nvm.8~ftt80.js"],"KataPageClient"]
+10:I[49583,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js"],"OutletBoundary"]
+11:"$Sreact.suspense"
+3:T1a49,# Kata 09: Scroll and Intersection
+
+## What You Will Learn
+
+- How to test infinite scroll powered by `IntersectionObserver`
+- Verifying lazy-loaded images swap from placeholder to real source
+- Testing "back to top" button visibility and scroll-to-top behaviour
+- Checking that a fixed header changes style (compact mode) on scroll
+- Validating scroll-spy navigation highlights the correct section
+- Asserting whether an element is inside or outside the viewport
+- Playwright: `scrollIntoViewIfNeeded()`, `page.evaluate()`, `waitForFunction()`
+- Cypress: `scrollIntoView()`, `cy.scrollTo()`, `cy.window().its('scrollY')`
+
+## Prerequisites
+
+- Node.js 18+ installed
+- Completed Kata 01-08 or comfortable with selectors, assertions, and waits
+- Basic understanding of the browser scroll model (`scrollY`, `getBoundingClientRect`)
+
+## Concepts Explained
+
+### IntersectionObserver
+
+The `IntersectionObserver` API lets JavaScript react when an element enters or leaves the viewport (or any scrollable ancestor). It is the modern way to implement:
+
+- **Infinite scroll** — load more data when a sentinel element becomes visible
+- **Lazy loading** — swap a placeholder image for the real source on visibility
+- **Scroll-spy** — highlight the nav link whose section is currently visible
+
+```javascript
+// Create an observer that fires when the target is 10% visible
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach((entry) => {
+    if (entry.isIntersecting) {
+      // The element just scrolled into view — do something
+    }
+  });
+}, { threshold: 0.1 });
+
+// Start observing a DOM element
+observer.observe(document.getElementById('sentinel'));
+```
+
+### Scrolling in Tests
+
+| Goal | Playwright | Cypress |
+|------|-----------|---------|
+| Scroll element into view | `locator.scrollIntoViewIfNeeded()` | `cy.get(sel).scrollIntoView()` |
+| Scroll to coordinates | `page.evaluate(() => window.scrollTo(0, 500))` | `cy.scrollTo(0, 500)` |
+| Read scroll position | `page.evaluate(() => window.scrollY)` | `cy.window().its('scrollY')` |
+| Wait for scroll position | `page.waitForFunction(() => window.scrollY === 0)` | `cy.window().its('scrollY').should('equal', 0)` |
+
+### Viewport Checks
+
+To verify whether an element is inside the viewport:
+
+```javascript
+const rect = element.getBoundingClientRect();
+const inViewport = rect.top < window.innerHeight && rect.bottom > 0;
+```
+
+## Playground
+
+Open the playground in your browser. It contains a **fintech transaction feed** with:
+
+1. **Fixed header** — shrinks to compact mode when you scroll past 100px
+2. **Scroll-spy nav** — right-side nav that highlights the current section
+3. **Lazy images** — four cheque image placeholders that load when scrolled into view
+4. **Infinite-scroll feed** — starts with 10 transactions, loads 10 more each time you reach the sentinel
+5. **Back-to-top button** — appears when scrolled past 300px, smooth-scrolls to top on click
+6. **Item count display** — shows how many transactions have been loaded
+
+```bash
+# start the playground server
+npx serve katas -l 8080
+
+# open in browser
+# http://localhost:8080/phase-01-dom-and-browser-apis/09-scroll-and-intersection/playground/
+```
+
+## Exercises
+
+### Exercise 1: Scroll to Bottom and Verify New Items Load
+
+Scroll the "load more" sentinel into view and verify the transaction list grows from 10 to 20 items.
+
+**Playwright hint**: `scrollIntoViewIfNeeded()` on the sentinel, then count `[data-testid^="tx-item-"]`
+**Cypress hint**: `cy.get(sentinel).scrollIntoView()`, then `.should('have.length', 20)`
+
+### Exercise 2: Lazy Image Loads on Scroll
+
+Scroll a lazy image into view and verify its `src` changes from the SVG placeholder to the real URL.
+
+**Playwright hint**: check `toHaveAttribute('data-loaded', 'true')`
+**Cypress hint**: `.should('have.attr', 'data-loaded', 'true')`
+
+### Exercise 3: Back-to-Top Button Appears
+
+Scroll down past 300px and verify the back-to-top button becomes visible.
+
+### Exercise 4: Click Back-to-Top and Verify Scroll Position
+
+Click the button and verify `window.scrollY` returns to 0.
+
+**Playwright hint**: `page.waitForFunction(() => window.scrollY === 0)`
+**Cypress hint**: `cy.window().its('scrollY').should('equal', 0)`
+
+### Exercise 5: Fixed Header Compact Mode
+
+Scroll past 100px and verify the header element gains the `compact` class. Scroll back and verify it is removed.
+
+### Exercise 6: Scroll-Spy Navigation
+
+Scroll to the feed section and verify the "Feed" nav link gains the `active` class while "Overview" loses it.
+
+### Exercise 7: Viewport Check
+
+Assert that the overview section is in the viewport on initial load, and the feed section is not.
+
+### Exercise 8: Loaded Item Count
+
+Trigger two rounds of infinite scroll and verify the displayed count reads "30" and 30 items exist in the DOM.
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/scroll.spec.ts` — every line is commented to explain what it does.
+
+### Cypress Solution
+
+See `cypress/scroll.cy.ts` — every line is commented to explain what it does.
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Using `window.scrollTo` without waiting | Smooth scroll is async — the assertion fires before scroll completes | Use `waitForFunction` (Playwright) or `.should()` retry (Cypress) |
+| Checking `display: none` with `toBeVisible` | Playwright's `toBeHidden` is the correct negative check | Use `toBeHidden()` or `not.toBeVisible()` |
+| Not waiting after `scrollIntoView` | IntersectionObserver callbacks are async | Use assertions with retries or explicit waits |
+| Checking class with string equality | The class attribute may contain multiple classes | Use regex (`/compact/`) or `.should('have.class', 'compact')` |
+
+## Quick Reference
+
+### Playwright Scroll Methods
+
+| Method | Purpose | Example |
+|--------|---------|---------|
+| `scrollIntoViewIfNeeded()` | Scroll element into viewport | `locator.scrollIntoViewIfNeeded()` |
+| `page.evaluate(fn)` | Run JS in browser (e.g., `window.scrollBy`) | `page.evaluate(() => window.scrollBy(0, 500))` |
+| `page.waitForFunction(fn)` | Wait until browser JS predicate is true | `page.waitForFunction(() => scrollY === 0)` |
+| `toHaveClass(/name/)` | Assert class via regex | `expect(el).toHaveClass(/compact/)` |
+
+### Cypress Scroll Methods
+
+| Method | Purpose | Example |
+|--------|---------|---------|
+| `.scrollIntoView()` | Scroll element into viewport | `cy.get(sel).scrollIntoView()` |
+| `cy.scrollTo(x, y)` | Scroll window to coordinates | `cy.scrollTo(0, 500)` |
+| `cy.window().its(prop)` | Read window property | `cy.window().its('scrollY').should('eq', 0)` |
+| `.should('have.class')` | Assert CSS class | `.should('have.class', 'compact')` |
+4:T23d2,import { test, expect } from '@playwright/test';
+
+// The base path to this kata's playground.
+// The web server serves the katas/ directory, so the path starts from there.
+const PLAYGROUND = '/phase-01-dom-and-browser-apis/09-scroll-and-intersection/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Scroll to bottom and verify new items load
+// --------------------------------------------------------------------------
+test('exercise 1: scroll to bottom triggers infinite scroll', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Wait for the initial 10 items to render.
+  // getByTestId finds the very first transaction item to confirm the list loaded.
+  await expect(page.getByTestId('tx-item-0')).toBeVisible();
+
+  // Confirm we start with exactly 10 items.
+  // locator('[data-testid^="tx-item-"]') matches every element whose
+  // data-testid starts with "tx-item-".
+  await expect(page.locator('[data-testid^="tx-item-"]')).toHaveCount(10);
+
+  // scrollIntoViewIfNeeded scrolls the minimum amount so the element
+  // becomes visible in the viewport. This triggers the IntersectionObserver
+  // on the sentinel, which loads 10 more items.
+  await page.getByTestId('load-more-sentinel').scrollIntoViewIfNeeded();
+
+  // Wait for the new items to appear. After one scroll-triggered load
+  // we expect 20 items total (10 initial + 10 loaded).
+  await expect(page.locator('[data-testid^="tx-item-"]')).toHaveCount(20, {
+    timeout: 5000,  // allow extra time for the simulated fetch delay
+  });
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Scroll a lazy image into view and verify src changes
+// --------------------------------------------------------------------------
+test('exercise 2: lazy image loads when scrolled into view', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Before scrolling, the image src should be the inline SVG placeholder.
+  // toHaveAttribute checks the current value of an HTML attribute.
+  const lazyImg = page.getByTestId('lazy-img-1');
+  await expect(lazyImg).toHaveAttribute('src', /data:image\/svg\+xml/);
+
+  // Scroll the image into view so the IntersectionObserver fires.
+  await lazyImg.scrollIntoViewIfNeeded();
+
+  // After the observer fires, data-loaded is set to "true" and src
+  // changes to the real URL from the data-src attribute.
+  await expect(lazyImg).toHaveAttribute('data-loaded', 'true', {
+    timeout: 5000,
+  });
+
+  // Verify the src is now the real image URL (picsum.photos), not the
+  // inline SVG placeholder.
+  await expect(lazyImg).not.toHaveAttribute('src', /data:image\/svg\+xml/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Scroll down and verify "back to top" button appears
+// --------------------------------------------------------------------------
+test('exercise 3: back-to-top button appears on scroll', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // The button exists in the DOM but is hidden (display: none) initially.
+  // toBeHidden asserts the element is not visible (display:none, visibility:hidden,
+  // or not in viewport don't count — Playwright checks computed visibility).
+  const btn = page.getByTestId('back-to-top');
+  await expect(btn).toBeHidden();
+
+  // Use page.evaluate to run JavaScript in the browser context.
+  // window.scrollBy scrolls relative to the current position.
+  await page.evaluate(() => window.scrollBy(0, 400));
+
+  // After scrolling past 300px the button should become visible.
+  // The CSS class "visible" is toggled by the scroll event listener.
+  await expect(btn).toBeVisible();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Click "back to top" and verify scroll position
+// --------------------------------------------------------------------------
+test('exercise 4: clicking back-to-top scrolls to top', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Scroll down first to make the button appear
+  await page.evaluate(() => window.scrollBy(0, 500));
+  const btn = page.getByTestId('back-to-top');
+  await expect(btn).toBeVisible();
+
+  // Click the button. It triggers window.scrollTo({ top: 0, behavior: 'smooth' }).
+  await btn.click();
+
+  // Wait until scrollY is 0. page.waitForFunction runs a predicate in the
+  // browser and resolves when it returns true.
+  await page.waitForFunction(() => window.scrollY === 0, null, {
+    timeout: 5000,
+  });
+
+  // Double-check with an assertion: evaluate returns the current scrollY value.
+  const scrollY = await page.evaluate(() => window.scrollY);
+  expect(scrollY).toBe(0);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Verify fixed header changes class on scroll
+// --------------------------------------------------------------------------
+test('exercise 5: header gains compact class on scroll', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  const header = page.getByTestId('header');
+
+  // Initially the header should NOT have the "compact" class.
+  // toHaveClass with a regex lets us check for the presence of a class.
+  await expect(header).not.toHaveClass(/compact/);
+
+  // Scroll past the 100px threshold that triggers compact mode
+  await page.evaluate(() => window.scrollBy(0, 150));
+
+  // Now the scroll event listener should have added "compact" to the classList.
+  await expect(header).toHaveClass(/compact/);
+
+  // Scroll back to top and verify compact is removed
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expect(header).not.toHaveClass(/compact/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Scroll to a specific section and verify nav highlights
+// --------------------------------------------------------------------------
+test('exercise 6: scroll-spy highlights current section in nav', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Initially the "Overview" nav link should be active (has class "active").
+  await expect(page.getByTestId('nav-overview')).toHaveClass(/active/);
+
+  // Scroll the feed section into view. The IntersectionObserver-based
+  // scroll-spy should update the active nav link.
+  await page.getByTestId('section-feed').scrollIntoViewIfNeeded();
+
+  // Wait for the observer to fire and update the nav.
+  // The "Feed" nav link should now be active.
+  await expect(page.getByTestId('nav-feed')).toHaveClass(/active/, {
+    timeout: 3000,
+  });
+
+  // The "Overview" link should no longer be active.
+  await expect(page.getByTestId('nav-overview')).not.toHaveClass(/active/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Verify element is / isn't in viewport
+// --------------------------------------------------------------------------
+test('exercise 7: check whether element is in viewport', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // page.evaluate runs arbitrary JavaScript in the browser context.
+  // getBoundingClientRect returns the element's position relative to the viewport.
+  // An element is "in the viewport" when its top is less than window.innerHeight
+  // and its bottom is greater than 0.
+  const isInViewport = await page.evaluate(() => {
+    const el = document.querySelector('[data-testid="section-overview"]');
+    if (!el) return false;
+    const rect = el.getBoundingClientRect();
+    return rect.top < window.innerHeight && rect.bottom > 0;
+  });
+  expect(isInViewport).toBe(true);
+
+  // The feed section should NOT be in the viewport initially (it is further down).
+  const feedInViewport = await page.evaluate(() => {
+    const el = document.querySelector('[data-testid="section-feed"]');
+    if (!el) return false;
+    const rect = el.getBoundingClientRect();
+    return rect.top < window.innerHeight && rect.bottom > 0;
+  });
+  expect(feedInViewport).toBe(false);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Scroll and verify total loaded items count
+// --------------------------------------------------------------------------
+test('exercise 8: verify loaded item count after multiple scrolls', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Confirm the initial count display shows 10 items.
+  // #loaded-count is a <span> inside the item-count div.
+  await expect(page.locator('#loaded-count')).toHaveText('10');
+
+  // Scroll the sentinel into view to trigger one load (10 more items).
+  await page.getByTestId('load-more-sentinel').scrollIntoViewIfNeeded();
+  await expect(page.locator('#loaded-count')).toHaveText('20', {
+    timeout: 5000,
+  });
+
+  // Scroll the sentinel again after the new items push it down.
+  // We need a small wait for the DOM to settle, then scroll again.
+  await page.getByTestId('load-more-sentinel').scrollIntoViewIfNeeded();
+  await expect(page.locator('#loaded-count')).toHaveText('30', {
+    timeout: 5000,
+  });
+
+  // Final check: 30 transaction items should exist in the DOM.
+  await expect(page.locator('[data-testid^="tx-item-"]')).toHaveCount(30);
+});
+5:T1f99,// The base path to this kata's playground.
+// Cypress prepends the baseUrl (http://localhost:8080) to this path.
+const PLAYGROUND = '/phase-01-dom-and-browser-apis/09-scroll-and-intersection/playground/';
+
+describe('Kata 09: Scroll and Intersection', () => {
+
+  // beforeEach runs before every test in this describe block.
+  // We visit the playground page so each test starts fresh.
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Scroll to bottom and verify new items load
+  // --------------------------------------------------------------------------
+  it('exercise 1: scroll to bottom triggers infinite scroll', () => {
+    // Confirm we start with 10 transaction items.
+    // [data-testid^="tx-item-"] is a CSS attribute selector that matches any
+    // element whose data-testid starts with "tx-item-".
+    cy.get('[data-testid^="tx-item-"]').should('have.length', 10);
+
+    // scrollIntoView() scrolls the DOM so that the matched element is visible
+    // in the viewport. This triggers the IntersectionObserver on the sentinel.
+    cy.get('[data-testid="load-more-sentinel"]').scrollIntoView();
+
+    // After the observer fires, 10 more items are appended (total 20).
+    // .should automatically retries until the assertion passes or times out.
+    cy.get('[data-testid^="tx-item-"]', { timeout: 5000 })
+      .should('have.length', 20);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Scroll a lazy image into view and verify src changes
+  // --------------------------------------------------------------------------
+  it('exercise 2: lazy image loads when scrolled into view', () => {
+    // Before scrolling, the img src should be the inline SVG placeholder.
+    // .invoke('attr', 'src') retrieves the current src attribute value.
+    cy.get('[data-testid="lazy-img-1"]')
+      .invoke('attr', 'src')
+      .should('match', /data:image\/svg\+xml/);
+
+    // scrollIntoView scrolls the element into the visible area, triggering
+    // the IntersectionObserver that swaps the placeholder for the real image.
+    cy.get('[data-testid="lazy-img-1"]').scrollIntoView();
+
+    // After the observer fires, data-loaded is set to "true".
+    cy.get('[data-testid="lazy-img-1"]', { timeout: 5000 })
+      .should('have.attr', 'data-loaded', 'true');
+
+    // The src should now be the real image URL, not the placeholder.
+    cy.get('[data-testid="lazy-img-1"]')
+      .invoke('attr', 'src')
+      .should('not.match', /data:image\/svg\+xml/);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Scroll down and verify "back to top" button appears
+  // --------------------------------------------------------------------------
+  it('exercise 3: back-to-top button appears on scroll', () => {
+    // The button is initially hidden (display: none via CSS).
+    // 'not.be.visible' checks computed visibility.
+    cy.get('[data-testid="back-to-top"]').should('not.be.visible');
+
+    // cy.scrollTo scrolls the window (or a scrollable container) to
+    // the given x, y coordinates. Here we scroll 400px down from the top.
+    cy.scrollTo(0, 400);
+
+    // After scrolling past 300px, the JS adds class "visible" which sets
+    // display: flex, making the button visible.
+    cy.get('[data-testid="back-to-top"]').should('be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Click "back to top" and verify scroll position
+  // --------------------------------------------------------------------------
+  it('exercise 4: clicking back-to-top scrolls to top', () => {
+    // Scroll down to reveal the button
+    cy.scrollTo(0, 500);
+    cy.get('[data-testid="back-to-top"]').should('be.visible');
+
+    // Click the button, which calls window.scrollTo({ top: 0 })
+    cy.get('[data-testid="back-to-top"]').click();
+
+    // cy.window() yields the browser's window object.
+    // We access its scrollY property to verify we scrolled to the top.
+    // The smooth scroll animation takes time, so we use should() which retries.
+    cy.window().its('scrollY').should('equal', 0);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Verify fixed header changes class on scroll
+  // --------------------------------------------------------------------------
+  it('exercise 5: header gains compact class on scroll', () => {
+    // Initially the header should not have the "compact" class.
+    cy.get('[data-testid="header"]').should('not.have.class', 'compact');
+
+    // Scroll past the 100px threshold
+    cy.scrollTo(0, 150);
+
+    // The scroll listener adds "compact" when scrollY > 100.
+    cy.get('[data-testid="header"]').should('have.class', 'compact');
+
+    // Scroll back to top and verify compact is removed
+    cy.scrollTo(0, 0);
+    cy.get('[data-testid="header"]').should('not.have.class', 'compact');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Scroll to a specific section and verify nav highlights
+  // --------------------------------------------------------------------------
+  it('exercise 6: scroll-spy highlights current section in nav', () => {
+    // Initially "Overview" nav link should be active
+    cy.get('[data-testid="nav-overview"]').should('have.class', 'active');
+
+    // Scroll the feed section into view
+    cy.get('[data-testid="section-feed"]').scrollIntoView();
+
+    // The IntersectionObserver-based scroll-spy updates the active class.
+    // "Feed" should now be active, and "Overview" should not.
+    cy.get('[data-testid="nav-feed"]', { timeout: 3000 })
+      .should('have.class', 'active');
+    cy.get('[data-testid="nav-overview"]')
+      .should('not.have.class', 'active');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Verify element is / isn't in viewport
+  // --------------------------------------------------------------------------
+  it('exercise 7: check whether element is in viewport', () => {
+    // In Cypress we can check if an element is in the viewport by comparing
+    // its bounding rect to the window dimensions.
+    // .then() gives us the jQuery-wrapped element so we can call native DOM methods.
+    cy.get('[data-testid="section-overview"]').then(($el) => {
+      // $el[0] is the raw DOM element. getBoundingClientRect returns its
+      // position relative to the viewport.
+      const rect = $el[0].getBoundingClientRect();
+      // If top < window.innerHeight and bottom > 0, the element is visible.
+      expect(rect.top).to.be.lessThan(window.innerHeight);
+      expect(rect.bottom).to.be.greaterThan(0);
+    });
+
+    // The feed section should NOT be visible initially (it is below the fold).
+    cy.get('[data-testid="section-feed"]').then(($el) => {
+      const rect = $el[0].getBoundingClientRect();
+      // The top of the feed section should be below the viewport bottom.
+      expect(rect.top).to.be.greaterThan(window.innerHeight);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Scroll and verify total loaded items count
+  // --------------------------------------------------------------------------
+  it('exercise 8: verify loaded item count after multiple scrolls', () => {
+    // Confirm the initial count display shows 10
+    cy.get('#loaded-count').should('have.text', '10');
+
+    // Scroll sentinel into view to trigger one load
+    cy.get('[data-testid="load-more-sentinel"]').scrollIntoView();
+    cy.get('#loaded-count', { timeout: 5000 }).should('have.text', '20');
+
+    // Scroll sentinel again after new items push it down
+    cy.get('[data-testid="load-more-sentinel"]').scrollIntoView();
+    cy.get('#loaded-count', { timeout: 5000 }).should('have.text', '30');
+
+    // Final verification: 30 items in the DOM
+    cy.get('[data-testid^="tx-item-"]').should('have.length', 30);
+  });
+});
+6:T2869,# Kata 08: CSS Animations and Transitions
+
+## What You Will Learn
+
+- How to detect and verify CSS animations (e.g., spinner rotation)
+- How to verify CSS transitions (e.g., opacity fade, width change, transform)
+- How to check computed styles during and after transitions
+- How to wait for animations/transitions to complete before asserting
+- How to test card flip animations, slide-in panels, and accordion components
+- How to handle overlays that appear and disappear with CSS transitions
+
+## Prerequisites
+
+- Completed Kata 01-07
+- Basic understanding of CSS transitions and animations
+
+## Concepts Explained
+
+### CSS Transitions vs Animations
+
+```
+CSS TRANSITIONS
+  - Triggered by a property change (e.g., adding a class that changes opacity)
+  - Defined with: transition: property duration timing-function
+  - Run once per trigger, from start value to end value
+  - Example: opacity 0 -> 1 over 0.5s when class "visible" is added
+
+CSS ANIMATIONS
+  - Defined with @keyframes rules
+  - Can run continuously (infinite) or a set number of times
+  - Controlled with: animation: name duration timing-function iteration-count
+  - Example: spinner rotating 360 degrees in a loop
+```
+
+### Playwright: Checking Computed CSS Styles
+
+```typescript
+// PLAYWRIGHT
+// To check CSS properties, use locator.evaluate() to access the browser's
+// window.getComputedStyle() API, which returns the actual rendered values.
+//
+// getComputedStyle(element) returns a CSSStyleDeclaration object with
+// all CSS properties as they are actually rendered (after all CSS rules,
+// transitions, and animations have been applied).
+
+// Check opacity:
+const opacity = await page.getByTestId('fade-element').evaluate(
+  (el) => window.getComputedStyle(el).opacity
+);
+// opacity is a string like "0" or "1"
+
+// Check transform:
+const transform = await page.getByTestId('sidebar-panel').evaluate(
+  (el) => window.getComputedStyle(el).transform
+);
+// transform is a string like "matrix(1, 0, 0, 1, 0, 0)" for translateX(0)
+
+// Check animation-name:
+const animName = await page.getByTestId('spinner').evaluate(
+  (el) => window.getComputedStyle(el).animationName
+);
+// animName is "spin" if the animation is active, "none" if not
+
+// Check a CSS class is present:
+await expect(page.getByTestId('flip-card')).toHaveClass(/flipped/);
+```
+
+### Cypress: Checking Computed CSS Styles
+
+```typescript
+// CYPRESS
+// Use .should('have.css', property, value) to check computed CSS properties.
+// Cypress automatically calls getComputedStyle() under the hood.
+//
+// .should('have.css', property) — asserts the property exists
+// .should('have.css', property, value) — asserts exact value match
+//
+// Note: Computed values may be in different formats than what you set.
+// For example, "translateX(0)" becomes "matrix(1, 0, 0, 1, 0, 0)".
+
+// Check opacity:
+cy.get('[data-testid="fade-element"]').should('have.css', 'opacity', '1');
+
+// Check transform (note: computed value is a matrix string):
+cy.get('[data-testid="sidebar-panel"]')
+  .should('have.css', 'transform', 'matrix(1, 0, 0, 1, 0, 0)');
+
+// Check animation-name:
+cy.get('[data-testid="spinner"]').should('have.css', 'animation-name', 'spin');
+
+// Check a CSS class is present:
+cy.get('[data-testid="flip-card"]').should('have.class', 'flipped');
+```
+
+### Waiting for Transitions to Complete
+
+```typescript
+// PLAYWRIGHT
+// Option 1: Wait for a specific CSS state to be reached.
+// Playwright's expect() auto-retries until the assertion passes or times out.
+await expect(page.getByTestId('fade-element')).toHaveCSS('opacity', '1');
+
+// Option 2: Use page.waitForTimeout() if you need a fixed delay.
+// (Not recommended — prefer assertions that auto-retry.)
+await page.waitForTimeout(600); // wait for 0.5s transition + buffer
+
+// CYPRESS
+// Cypress .should() assertions auto-retry until they pass or timeout.
+// So checking a CSS value will naturally wait for transitions to finish.
+cy.get('[data-testid="fade-element"]').should('have.css', 'opacity', '1');
+
+// You can also use cy.wait() for a fixed delay (not recommended):
+cy.wait(600);
+```
+
+### Playwright: toHaveCSS() Assertion
+
+```typescript
+// PLAYWRIGHT
+// toHaveCSS(property, value) is a built-in assertion that checks the
+// computed style of an element. It auto-retries until the value matches
+// or the timeout expires.
+//
+// Signature:
+//   expect(locator).toHaveCSS(name: string, value: string | RegExp): Promise<void>
+//
+// Parameters:
+//   name  — CSS property name (e.g., 'opacity', 'transform', 'width')
+//   value — expected value as string or regex pattern
+
+await expect(page.getByTestId('progress-fill')).toHaveCSS('width', '200px');
+await expect(page.getByTestId('sidebar-panel')).toHaveCSS('transform', /matrix/);
+await expect(page.getByTestId('fade-element')).toHaveCSS('opacity', '1');
+```
+
+## Playground
+
+The playground is a "Compliance Dashboard" themed as a fintech tool. It contains:
+
+1. **Card Flip** — an applicant card with front (summary) and back (details) faces. Clicking flips the card with a 3D Y-axis rotation transition (0.6s).
+2. **Slide-in Sidebar** — a filter panel that slides in from the right using CSS transform transition (0.4s). Toggle with the "Toggle Filters" button.
+3. **Loading Spinner** — a circular spinner using CSS @keyframes animation that rotates 360 degrees continuously. Toggle with "Start/Stop Loading".
+4. **Fade-in/out Alert** — a notification box that fades in (opacity 0 to 1) and out using a CSS transition (0.5s). Controlled by "Show Alert" and "Hide Alert" buttons.
+5. **Progress Bar** — a bar that transitions its width (0.8s ease) to 25%, 50%, 75%, or 100% when buttons are clicked.
+6. **Accordion** — three collapsible sections with smooth max-height transitions (0.4s). Click a header to toggle open/close.
+7. **Processing Overlay** — a full-screen overlay that fades in (opacity transition), stays for 2 seconds, then automatically fades out.
+
+## Exercises
+
+### Exercise 1: Click Card to Trigger Flip, Verify Back Content Visible
+Click the applicant card to flip it. Verify the card has the "flipped" class and the back face content (risk level, country) is accessible.
+
+### Exercise 2: Open Sidebar, Verify It Slides In
+Click "Toggle Filters" to open the sidebar panel. Verify the sidebar has the "open" class and its CSS transform changes from translateX(100%) to translateX(0).
+
+### Exercise 3: Verify Spinner is Animating
+Click "Start Loading" to activate the spinner. Verify the spinner has the "active" class and its CSS animation-name property is "spin".
+
+### Exercise 4: Trigger Fade-in, Verify Opacity Changes
+Click "Show Alert" to fade in the notification. Verify the element's opacity transitions to 1. Then click "Hide Alert" and verify opacity returns to 0.
+
+### Exercise 5: Verify Progress Bar Width Transition
+Click the 50% button and verify the progress bar's width transitions to 50%. Click 100% and verify it reaches full width.
+
+### Exercise 6: Open/Close Accordion, Verify Height
+Click the first accordion header to open it. Verify the accordion body has the "open" class and its max-height is greater than 0. Click again to close and verify max-height returns to 0.
+
+### Exercise 7: Trigger Processing Overlay, Wait for It to Disappear
+Click "Process Application" to show the overlay. Verify it becomes visible (opacity 1). Wait for it to automatically disappear after 2 seconds (opacity returns to 0).
+
+### Exercise 8: Verify Computed Styles During Transitions
+Click the 75% progress button and immediately read the progress bar's computed width. Then wait for the transition to complete and verify the final width. This demonstrates reading styles mid-transition.
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/css-animations-and-transitions.spec.ts`
+
+### Cypress Solution
+
+See `cypress/css-animations-and-transitions.cy.ts`
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Asserting styles immediately after triggering a transition | The transition hasn't finished yet, so the computed value is still mid-transition | Use toHaveCSS() or should('have.css') which auto-retry until the final value |
+| Checking `element.style.opacity` instead of computed style | Inline style may not be set — the value comes from CSS classes | Always use getComputedStyle() or toHaveCSS() to get the rendered value |
+| Expecting `transform: translateX(0)` as the computed value | Browsers return transform as a matrix string, not the shorthand | Check for `matrix(1, 0, 0, 1, 0, 0)` or use a regex pattern |
+| Testing animation-name when spinner is hidden (display:none) | Hidden elements may not have active animations | Verify the element is visible first, then check animation properties |
+| Using fixed `sleep()` instead of assertion-based waits | Flaky and slow — transitions may be faster or slower depending on system load | Use auto-retrying assertions: toHaveCSS() in Playwright, should('have.css') in Cypress |
+| Forgetting that max-height transition doesn't mean actual height | max-height: 200px doesn't mean the content is 200px tall | Check the 'open' class or use the max-height value as a proxy |
+
+## Quick Reference
+
+### Playwright CSS Assertions
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Check CSS property | `expect(loc).toHaveCSS(prop, val)` | `await expect(el).toHaveCSS('opacity', '1')` |
+| Check CSS with regex | `expect(loc).toHaveCSS(prop, regex)` | `await expect(el).toHaveCSS('transform', /matrix/)` |
+| Get computed style | `locator.evaluate(fn)` | `await el.evaluate(e => getComputedStyle(e).width)` |
+| Check class | `expect(loc).toHaveClass(regex)` | `await expect(el).toHaveClass(/flipped/)` |
+| Check visible | `expect(loc).toBeVisible()` | `await expect(el).toBeVisible()` |
+| Wait for timeout | `page.waitForTimeout(ms)` | `await page.waitForTimeout(500)` |
+
+### Cypress CSS Assertions
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Check CSS property | `.should('have.css', prop, val)` | `cy.get(s).should('have.css', 'opacity', '1')` |
+| Get computed style | `.invoke('css', prop)` | `cy.get(s).invoke('css', 'opacity')` |
+| Check class | `.should('have.class', name)` | `cy.get(s).should('have.class', 'flipped')` |
+| Check visible | `.should('be.visible')` | `cy.get(s).should('be.visible')` |
+| Fixed wait | `cy.wait(ms)` | `cy.wait(500)` |
+7:T3a91,import { test, expect } from '@playwright/test';
+
+// The base URL for our playground page. All tests navigate here first.
+const PLAYGROUND = '/phase-01-dom-and-browser-apis/08-css-animations-and-transitions/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Click Card to Trigger Flip, Verify Back Content Visible
+// --------------------------------------------------------------------------
+// This exercise demonstrates testing a CSS 3D flip animation. The card
+// rotates 180 degrees on the Y axis when clicked, revealing the back face.
+test('exercise 1: click card to flip and verify back content', async ({ page }) => {
+  // Navigate to the playground page.
+  await page.goto(PLAYGROUND);
+
+  // Verify the card starts in the "front" state (not flipped).
+  await expect(page.getByTestId('flip-state')).toHaveText('front');
+
+  // Verify the flip card does NOT have the 'flipped' class initially.
+  // toHaveClass(regex) checks if the element's className attribute matches
+  // the regular expression. The 'not' modifier negates the assertion.
+  await expect(page.getByTestId('flip-card')).not.toHaveClass(/flipped/);
+
+  // Click the card container to trigger the flip animation.
+  // The click handler toggles the 'flipped' class on the .flip-card element,
+  // which triggers a CSS transition: transform 0.6s ease (rotateY 180deg).
+  await page.getByTestId('flip-container').click();
+
+  // Verify the card now has the 'flipped' class.
+  // toHaveClass(regex) auto-retries until the class is present or timeout.
+  await expect(page.getByTestId('flip-card')).toHaveClass(/flipped/);
+
+  // Verify the state text updated to "back".
+  await expect(page.getByTestId('flip-state')).toHaveText('back');
+
+  // Verify the back face content is accessible. Even though the front face
+  // is now hidden (via backface-visibility: hidden), the back face content
+  // is in the DOM and we can read its text.
+  await expect(page.getByTestId('flip-back')).toContainText('Risk Level: High');
+  await expect(page.getByTestId('flip-back')).toContainText('United Kingdom');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Open Sidebar, Verify It Slides In (Check CSS Transform)
+// --------------------------------------------------------------------------
+// This exercise demonstrates checking CSS transform values to verify that
+// a slide-in sidebar has fully transitioned into view.
+test('exercise 2: open sidebar and verify slide-in transform', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify the sidebar starts in the closed state.
+  await expect(page.getByTestId('sidebar-state')).toHaveText('closed');
+
+  // Verify the sidebar panel does NOT have the 'open' class.
+  await expect(page.getByTestId('sidebar-panel')).not.toHaveClass(/open/);
+
+  // Click "Toggle Filters" to slide in the sidebar.
+  await page.getByTestId('btn-toggle-sidebar').click();
+
+  // Verify the sidebar now has the 'open' class.
+  await expect(page.getByTestId('sidebar-panel')).toHaveClass(/open/);
+
+  // Verify the sidebar state updated to "open".
+  await expect(page.getByTestId('sidebar-state')).toHaveText('open');
+
+  // Verify the CSS transform changed. When the sidebar is open, its
+  // transform is translateX(0), which the browser computes as a matrix.
+  // toHaveCSS(property, value) checks the computed style of the element.
+  // It auto-retries, so it waits for the 0.4s transition to complete.
+  //
+  // translateX(0) computes to the identity matrix: matrix(1, 0, 0, 1, 0, 0)
+  // We use 'none' or the matrix — browsers may return either for translateX(0).
+  await expect(page.getByTestId('sidebar-panel')).toHaveCSS(
+    'transform',
+    'matrix(1, 0, 0, 1, 0, 0)'
+  );
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Verify Spinner is Animating (Check animation-name CSS Property)
+// --------------------------------------------------------------------------
+// This exercise demonstrates reading the CSS animation-name property to
+// verify that a CSS @keyframes animation is actively running.
+test('exercise 3: verify spinner animation is active', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify the spinner is initially hidden (display: none via absence of 'active' class).
+  await expect(page.getByTestId('spinner')).not.toBeVisible();
+
+  // Click "Start Loading" to activate the spinner.
+  await page.getByTestId('btn-toggle-spinner').click();
+
+  // Verify the spinner is now visible.
+  // The 'active' class sets display: block, making the spinner visible.
+  await expect(page.getByTestId('spinner')).toBeVisible();
+
+  // Verify the spinner has the 'active' class.
+  await expect(page.getByTestId('spinner')).toHaveClass(/active/);
+
+  // Verify the CSS animation-name is 'spin'. This confirms that the
+  // @keyframes animation defined in CSS is actively running on this element.
+  // locator.evaluate(fn) runs a function in the browser context and returns
+  // the result. We use getComputedStyle() to read the animation-name property.
+  const animationName = await page.getByTestId('spinner').evaluate(
+    (el) => window.getComputedStyle(el).animationName
+  );
+
+  // The animation-name should be 'spin' (defined in the CSS @keyframes rule).
+  expect(animationName).toBe('spin');
+
+  // Verify the status text updated.
+  await expect(page.getByTestId('spinner-status')).toHaveText('Loading...');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Trigger Fade-in, Verify Opacity Changes
+// --------------------------------------------------------------------------
+// This exercise demonstrates verifying CSS opacity transitions. The alert
+// notification fades in (opacity 0 -> 1) and out (opacity 1 -> 0).
+test('exercise 4: fade in and fade out, verify opacity', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify the element starts with opacity 0 (hidden via CSS).
+  // toHaveCSS(property, value) checks the computed style.
+  await expect(page.getByTestId('fade-element')).toHaveCSS('opacity', '0');
+
+  // Click "Show Alert" to trigger the fade-in.
+  // This adds the 'visible' class, which sets opacity: 1 with a 0.5s transition.
+  await page.getByTestId('btn-fade-in').click();
+
+  // Verify the opacity transitions to 1. toHaveCSS() auto-retries, so it
+  // will wait for the 0.5s transition to complete before passing.
+  await expect(page.getByTestId('fade-element')).toHaveCSS('opacity', '1');
+
+  // Verify the opacity display text updated.
+  await expect(page.getByTestId('fade-opacity')).toHaveText('1');
+
+  // Click "Hide Alert" to trigger the fade-out.
+  // This removes the 'visible' class, transitioning opacity back to 0.
+  await page.getByTestId('btn-fade-out').click();
+
+  // Verify the opacity returns to 0.
+  await expect(page.getByTestId('fade-element')).toHaveCSS('opacity', '0');
+  await expect(page.getByTestId('fade-opacity')).toHaveText('0');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Verify Progress Bar Width Transition
+// --------------------------------------------------------------------------
+// This exercise demonstrates checking an element's width after a CSS
+// transition. The progress bar fills to a percentage with a 0.8s transition.
+test('exercise 5: verify progress bar width transitions', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify the progress starts at 0%.
+  await expect(page.getByTestId('progress-value')).toHaveText('0%');
+
+  // Click the 50% button to set progress to 50%.
+  await page.getByTestId('btn-progress-50').click();
+
+  // Verify the progress value text updated immediately.
+  await expect(page.getByTestId('progress-value')).toHaveText('50%');
+
+  // Wait for the width transition to complete, then verify the inline style.
+  // We check the inline style.width because the playground sets it directly.
+  // evaluate() runs in the browser and returns the element's style.width value.
+  await page.waitForTimeout(900); // wait for 0.8s transition + buffer
+  const width50 = await page.getByTestId('progress-fill').evaluate(
+    (el) => el.style.width
+  );
+  expect(width50).toBe('50%');
+
+  // Click the 100% button to fill the bar completely.
+  await page.getByTestId('btn-progress-100').click();
+  await expect(page.getByTestId('progress-value')).toHaveText('100%');
+
+  // Wait and verify the final width.
+  await page.waitForTimeout(900);
+  const width100 = await page.getByTestId('progress-fill').evaluate(
+    (el) => el.style.width
+  );
+  expect(width100).toBe('100%');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Open/Close Accordion, Verify Height
+// --------------------------------------------------------------------------
+// This exercise demonstrates testing accordion components that use CSS
+// max-height transitions for smooth expand/collapse animations.
+test('exercise 6: open and close accordion, verify height transition', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify the first accordion body starts closed (no 'open' class).
+  await expect(page.getByTestId('accordion-body-1')).not.toHaveClass(/open/);
+
+  // Verify the accordion body has max-height: 0px when closed.
+  // toHaveCSS() reads the computed style. max-height: 0 computes to "0px".
+  await expect(page.getByTestId('accordion-body-1')).toHaveCSS('max-height', '0px');
+
+  // Click the first accordion header to open it.
+  await page.getByTestId('accordion-header-1').click();
+
+  // Verify the body now has the 'open' class.
+  await expect(page.getByTestId('accordion-body-1')).toHaveClass(/open/);
+
+  // Verify the arrow rotated (it gets the 'open' class for the rotation).
+  await expect(page.getByTestId('accordion-arrow-1')).toHaveClass(/open/);
+
+  // Verify the max-height is now greater than 0 (the 'open' class sets
+  // max-height: 200px). We read the computed value and check it's not "0px".
+  const maxHeight = await page.getByTestId('accordion-body-1').evaluate(
+    (el) => window.getComputedStyle(el).maxHeight
+  );
+  expect(maxHeight).not.toBe('0px');
+
+  // Click the header again to close the accordion.
+  await page.getByTestId('accordion-header-1').click();
+
+  // Verify the body no longer has the 'open' class.
+  await expect(page.getByTestId('accordion-body-1')).not.toHaveClass(/open/);
+
+  // Verify max-height returns to 0px after the transition.
+  await expect(page.getByTestId('accordion-body-1')).toHaveCSS('max-height', '0px');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Trigger Processing Overlay, Wait for It to Disappear
+// --------------------------------------------------------------------------
+// This exercise demonstrates waiting for a timed animation sequence:
+// the overlay fades in, stays visible for 2 seconds, then fades out.
+test('exercise 7: processing overlay appears and auto-disappears', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify the overlay starts in the idle state.
+  await expect(page.getByTestId('processing-state')).toHaveText('idle');
+
+  // Verify the overlay is not visible (opacity: 0, pointer-events: none).
+  await expect(page.getByTestId('processing-overlay')).toHaveCSS('opacity', '0');
+
+  // Click "Process Application" to trigger the overlay.
+  await page.getByTestId('btn-process').click();
+
+  // Verify the overlay becomes visible (opacity transitions to 1).
+  // toHaveCSS() auto-retries, waiting for the 0.3s fade-in to complete.
+  await expect(page.getByTestId('processing-overlay')).toHaveCSS('opacity', '1');
+
+  // Verify the processing state changed to "processing".
+  await expect(page.getByTestId('processing-state')).toHaveText('processing');
+
+  // Verify the processing box content is visible.
+  await expect(page.getByTestId('processing-box')).toContainText('Please wait');
+
+  // Wait for the overlay to automatically disappear. The playground removes
+  // the 'active' class after 2 seconds, which triggers a 0.3s fade-out.
+  // We increase the assertion timeout to account for the 2s + 0.3s delay.
+  await expect(page.getByTestId('processing-overlay')).toHaveCSS('opacity', '0', {
+    timeout: 5000, // wait up to 5 seconds for the full cycle
+  });
+
+  // Verify the state changed to "complete".
+  await expect(page.getByTestId('processing-state')).toHaveText('complete');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Verify Computed Styles During Transitions
+// --------------------------------------------------------------------------
+// This exercise demonstrates reading CSS computed styles at different points
+// to observe transition behavior. We check the progress bar style before
+// and after the transition completes.
+test('exercise 8: verify computed styles before and after transition', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Click the 75% button to start the progress bar transition.
+  await page.getByTestId('btn-progress-75').click();
+
+  // Immediately read the inline style (set instantly by JavaScript).
+  // The inline style.width is set to "75%" right away, but the computed
+  // (rendered) width transitions over 0.8s.
+  const inlineWidth = await page.getByTestId('progress-fill').evaluate(
+    (el) => el.style.width
+  );
+  // The inline style should be "75%" immediately.
+  expect(inlineWidth).toBe('75%');
+
+  // Read the computed width immediately — it may still be mid-transition.
+  // getComputedStyle().width returns the actual rendered pixel width.
+  const computedWidthDuring = await page.getByTestId('progress-fill').evaluate(
+    (el) => parseFloat(window.getComputedStyle(el).width)
+  );
+  // During the transition, the computed width is being animated from 0
+  // toward the final value. We just verify it's a number.
+  expect(typeof computedWidthDuring).toBe('number');
+
+  // Wait for the 0.8s transition to finish.
+  await page.waitForTimeout(1000);
+
+  // Read the computed width after the transition completes.
+  const computedWidthAfter = await page.getByTestId('progress-fill').evaluate(
+    (el) => parseFloat(window.getComputedStyle(el).width)
+  );
+
+  // After the transition, the computed width should be greater than
+  // the mid-transition value (or equal if we were slow reading the first).
+  expect(computedWidthAfter).toBeGreaterThanOrEqual(computedWidthDuring);
+
+  // Also verify the progress bar's parent (track) width to calculate
+  // expected percentage.
+  const trackWidth = await page.getByTestId('progress-track').evaluate(
+    (el) => parseFloat(window.getComputedStyle(el).width)
+  );
+  const expectedWidth = trackWidth * 0.75;
+
+  // The final computed width should be approximately 75% of the track width.
+  // We allow 2px tolerance for rounding.
+  expect(computedWidthAfter).toBeGreaterThan(expectedWidth - 2);
+  expect(computedWidthAfter).toBeLessThan(expectedWidth + 2);
+});
+8:T36e2,const PLAYGROUND = '/phase-01-dom-and-browser-apis/08-css-animations-and-transitions/playground/';
+
+describe('Kata 08: CSS Animations and Transitions', () => {
+
+  // beforeEach runs before every test in this describe block.
+  // We navigate to the playground page so each test starts fresh.
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Click Card to Trigger Flip, Verify Back Content Visible
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates testing a CSS 3D flip animation by checking
+  // for the "flipped" class and reading back-face content.
+  it('exercise 1: click card to flip and verify back content', () => {
+    // Verify the card starts in the "front" state.
+    // .should('have.text', str) asserts the element's textContent equals str.
+    cy.get('[data-testid="flip-state"]').should('have.text', 'front');
+
+    // Verify the flip card does NOT have the 'flipped' class.
+    // .should('not.have.class', name) checks the element's classList
+    // does not contain the specified class name.
+    cy.get('[data-testid="flip-card"]').should('not.have.class', 'flipped');
+
+    // Click the card container to trigger the flip animation.
+    // The click handler toggles the 'flipped' class, which triggers a CSS
+    // transition: transform 0.6s ease (rotateY 180deg).
+    cy.get('[data-testid="flip-container"]').click();
+
+    // Verify the card now has the 'flipped' class.
+    // .should('have.class', name) auto-retries until the class is present
+    // or the assertion timeout expires.
+    cy.get('[data-testid="flip-card"]').should('have.class', 'flipped');
+
+    // Verify the state text updated to "back".
+    cy.get('[data-testid="flip-state"]').should('have.text', 'back');
+
+    // Verify the back face content is accessible.
+    // .should('contain.text', str) checks if textContent contains the string.
+    cy.get('[data-testid="flip-back"]').should('contain.text', 'Risk Level: High');
+    cy.get('[data-testid="flip-back"]').should('contain.text', 'United Kingdom');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Open Sidebar, Verify It Slides In (Check CSS Transform)
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates checking computed CSS transform values to
+  // verify a slide-in transition completed.
+  it('exercise 2: open sidebar and verify slide-in transform', () => {
+    // Verify the sidebar starts closed.
+    cy.get('[data-testid="sidebar-state"]').should('have.text', 'closed');
+    cy.get('[data-testid="sidebar-panel"]').should('not.have.class', 'open');
+
+    // Click "Toggle Filters" to slide in the sidebar.
+    cy.get('[data-testid="btn-toggle-sidebar"]').click();
+
+    // Verify the sidebar now has the 'open' class.
+    cy.get('[data-testid="sidebar-panel"]').should('have.class', 'open');
+
+    // Verify the state updated.
+    cy.get('[data-testid="sidebar-state"]').should('have.text', 'open');
+
+    // Verify the CSS transform changed to translateX(0).
+    // .should('have.css', property, value) checks the computed style.
+    // Browsers compute translateX(0) as the identity matrix string.
+    // The 0.4s transition must complete before this assertion passes.
+    // Cypress auto-retries .should() assertions, so it waits naturally.
+    cy.get('[data-testid="sidebar-panel"]').should(
+      'have.css',
+      'transform',
+      'matrix(1, 0, 0, 1, 0, 0)'
+    );
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Verify Spinner is Animating (Check animation-name CSS Property)
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates reading the CSS animation-name property to
+  // confirm a @keyframes animation is running.
+  it('exercise 3: verify spinner animation is active', () => {
+    // Verify the spinner is initially hidden.
+    // .should('not.be.visible') asserts the element is not visible (display:none).
+    cy.get('[data-testid="spinner"]').should('not.be.visible');
+
+    // Click "Start Loading" to activate the spinner.
+    cy.get('[data-testid="btn-toggle-spinner"]').click();
+
+    // Verify the spinner is now visible.
+    cy.get('[data-testid="spinner"]').should('be.visible');
+
+    // Verify the spinner has the 'active' class.
+    cy.get('[data-testid="spinner"]').should('have.class', 'active');
+
+    // Verify the CSS animation-name is 'spin'.
+    // .should('have.css', 'animation-name', 'spin') checks the computed
+    // animation-name property. When the @keyframes 'spin' animation is
+    // assigned to the element, this property returns 'spin'.
+    cy.get('[data-testid="spinner"]').should('have.css', 'animation-name', 'spin');
+
+    // Verify the status text updated.
+    cy.get('[data-testid="spinner-status"]').should('have.text', 'Loading...');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Trigger Fade-in, Verify Opacity Changes
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates verifying CSS opacity transitions using
+  // Cypress's have.css assertion.
+  it('exercise 4: fade in and fade out, verify opacity', () => {
+    // Verify the element starts with opacity 0.
+    // .should('have.css', 'opacity', '0') checks the computed opacity.
+    cy.get('[data-testid="fade-element"]').should('have.css', 'opacity', '0');
+
+    // Click "Show Alert" to trigger the fade-in transition.
+    // This adds the 'visible' class, setting opacity: 1 with a 0.5s transition.
+    cy.get('[data-testid="btn-fade-in"]').click();
+
+    // Verify the opacity transitioned to 1.
+    // Cypress auto-retries .should() assertions, so it naturally waits
+    // for the 0.5s transition to complete before this passes.
+    cy.get('[data-testid="fade-element"]').should('have.css', 'opacity', '1');
+
+    // Verify the opacity display updated.
+    cy.get('[data-testid="fade-opacity"]').should('have.text', '1');
+
+    // Click "Hide Alert" to trigger the fade-out transition.
+    cy.get('[data-testid="btn-fade-out"]').click();
+
+    // Verify the opacity returns to 0.
+    cy.get('[data-testid="fade-element"]').should('have.css', 'opacity', '0');
+    cy.get('[data-testid="fade-opacity"]').should('have.text', '0');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Verify Progress Bar Width Transition
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates checking element width after a CSS transition.
+  it('exercise 5: verify progress bar width transitions', () => {
+    // Verify the progress starts at 0%.
+    cy.get('[data-testid="progress-value"]').should('have.text', '0%');
+
+    // Click the 50% button.
+    cy.get('[data-testid="btn-progress-50"]').click();
+
+    // Verify the progress value text updated.
+    cy.get('[data-testid="progress-value"]').should('have.text', '50%');
+
+    // Verify the inline style width was set to 50%.
+    // .invoke('css', property) reads the jQuery-computed CSS property value.
+    // We wait for the transition to complete with a should() chain.
+    // Checking the inline style.width via invoke('attr', 'style') gives us
+    // the value set by JavaScript, not the transitioning computed value.
+    cy.get('[data-testid="progress-fill"]')
+      .should('have.attr', 'style')
+      .and('contain', 'width: 50%');
+
+    // Click the 100% button.
+    cy.get('[data-testid="btn-progress-100"]').click();
+    cy.get('[data-testid="progress-value"]').should('have.text', '100%');
+
+    // Verify the style updated.
+    cy.get('[data-testid="progress-fill"]')
+      .should('have.attr', 'style')
+      .and('contain', 'width: 100%');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Open/Close Accordion, Verify Height
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates testing accordion expand/collapse using
+  // CSS max-height transitions.
+  it('exercise 6: open and close accordion, verify height transition', () => {
+    // Verify the first accordion body starts closed.
+    cy.get('[data-testid="accordion-body-1"]').should('not.have.class', 'open');
+
+    // Verify the max-height is 0px when closed.
+    // .should('have.css', 'max-height', '0px') checks the computed max-height.
+    cy.get('[data-testid="accordion-body-1"]').should('have.css', 'max-height', '0px');
+
+    // Click the first accordion header to open it.
+    cy.get('[data-testid="accordion-header-1"]').click();
+
+    // Verify the body has the 'open' class.
+    cy.get('[data-testid="accordion-body-1"]').should('have.class', 'open');
+
+    // Verify the arrow rotated (has 'open' class).
+    cy.get('[data-testid="accordion-arrow-1"]').should('have.class', 'open');
+
+    // Verify the max-height is greater than 0px.
+    // .invoke('css', 'max-height') returns the computed max-height value.
+    // .then() lets us run custom assertions on the value.
+    cy.get('[data-testid="accordion-body-1"]')
+      .invoke('css', 'max-height')
+      .then((maxHeight) => {
+        // maxHeight is a string like "200px". parseFloat extracts the number.
+        expect(parseFloat(maxHeight as string)).to.be.greaterThan(0);
+      });
+
+    // Click the header again to close the accordion.
+    cy.get('[data-testid="accordion-header-1"]').click();
+
+    // Verify the body no longer has the 'open' class.
+    cy.get('[data-testid="accordion-body-1"]').should('not.have.class', 'open');
+
+    // Verify max-height returns to 0px.
+    cy.get('[data-testid="accordion-body-1"]').should('have.css', 'max-height', '0px');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Trigger Processing Overlay, Wait for It to Disappear
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates waiting for a timed animation sequence.
+  // The overlay fades in, shows for 2 seconds, then automatically fades out.
+  it('exercise 7: processing overlay appears and auto-disappears', () => {
+    // Verify the overlay starts idle.
+    cy.get('[data-testid="processing-state"]').should('have.text', 'idle');
+
+    // Verify the overlay is not visible (opacity 0).
+    cy.get('[data-testid="processing-overlay"]').should('have.css', 'opacity', '0');
+
+    // Click "Process Application" to trigger the overlay.
+    cy.get('[data-testid="btn-process"]').click();
+
+    // Verify the overlay becomes visible (opacity transitions to 1).
+    // Cypress auto-retries, waiting for the 0.3s fade-in transition.
+    cy.get('[data-testid="processing-overlay"]').should('have.css', 'opacity', '1');
+
+    // Verify the state changed to "processing".
+    cy.get('[data-testid="processing-state"]').should('have.text', 'processing');
+
+    // Verify the processing box content.
+    cy.get('[data-testid="processing-box"]').should('contain.text', 'Please wait');
+
+    // Wait for the overlay to automatically disappear (2s delay + 0.3s fade-out).
+    // We increase the Cypress default command timeout for this assertion.
+    // { timeout: 5000 } tells Cypress to retry for up to 5 seconds.
+    cy.get('[data-testid="processing-overlay"]', { timeout: 5000 })
+      .should('have.css', 'opacity', '0');
+
+    // Verify the state changed to "complete".
+    cy.get('[data-testid="processing-state"]').should('have.text', 'complete');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Verify Computed Styles During Transitions
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates reading computed CSS styles at different
+  // points during a transition to observe intermediate values.
+  it('exercise 8: verify computed styles before and after transition', () => {
+    // Click the 75% button to start the progress bar transition.
+    cy.get('[data-testid="btn-progress-75"]').click();
+
+    // Immediately verify the inline style was set (JavaScript sets this instantly).
+    // .should('have.attr', 'style') reads the element's style attribute.
+    // .and('contain', str) chains an additional assertion on the same subject.
+    cy.get('[data-testid="progress-fill"]')
+      .should('have.attr', 'style')
+      .and('contain', 'width: 75%');
+
+    // Read the computed width immediately — it may be mid-transition.
+    // .invoke('css', 'width') calls jQuery's .css('width') on the element,
+    // which returns the computed pixel width as a string (e.g., "300px").
+    cy.get('[data-testid="progress-fill"]')
+      .invoke('css', 'width')
+      .then((widthDuring) => {
+        // Store the mid-transition value. It's a string like "123.45px".
+        const valueDuring = parseFloat(widthDuring as string);
+        // It should be a valid number greater than or equal to 0.
+        expect(valueDuring).to.be.at.least(0);
+      });
+
+    // Wait for the 0.8s transition to complete, then verify the final width.
+    // We use cy.wait() to pause, then re-read the computed width.
+    cy.wait(1000);
+
+    // Read the final computed width and verify it's approximately 75% of
+    // the track width.
+    cy.get('[data-testid="progress-track"]')
+      .invoke('css', 'width')
+      .then((trackWidth) => {
+        const track = parseFloat(trackWidth as string);
+        const expected = track * 0.75;
+
+        // Now read the progress fill's computed width and compare.
+        cy.get('[data-testid="progress-fill"]')
+          .invoke('css', 'width')
+          .then((fillWidth) => {
+            const fill = parseFloat(fillWidth as string);
+            // Allow 2px tolerance for rounding.
+            expect(fill).to.be.closeTo(expected, 2);
+          });
+      });
+  });
+
+});
+9:T1d9c,# Kata 10: Canvas and SVG
+
+## What You Will Learn
+
+- How to simulate mouse drawing on an HTML5 Canvas element
+- Verifying canvas content by inspecting pixel data (`getImageData`)
+- Clicking and hovering SVG elements (heat map cells, bar chart bars)
+- Reading SVG attributes (`data-value`, `height`) to verify chart data
+- Testing tooltip visibility on hover
+- Verifying canvas dimensions via attributes and runtime properties
+- Playwright: `page.mouse.move/down/up`, `page.evaluate()`, `boundingBox()`
+- Cypress: `.trigger('mousedown/mousemove/mouseup')`, `cy.window()`, `.invoke('attr')`
+
+## Prerequisites
+
+- Node.js 18+ installed
+- Completed Kata 01-09 or comfortable with selectors, assertions, and mouse events
+- Basic understanding of HTML5 Canvas and SVG
+
+## Concepts Explained
+
+### HTML5 Canvas
+
+The `<canvas>` element provides a bitmap drawing surface. JavaScript draws on it using the 2D rendering context:
+
+```javascript
+const canvas = document.getElementById('my-canvas');
+const ctx = canvas.getContext('2d');
+
+// Draw a line
+ctx.beginPath();         // start a new path
+ctx.moveTo(10, 10);      // move to starting point
+ctx.lineTo(100, 50);     // draw a line segment
+ctx.stroke();            // render the path
+
+// Clear the canvas
+ctx.clearRect(0, 0, canvas.width, canvas.height);
+```
+
+**Testing challenge**: Canvas content is pixels, not DOM elements. You cannot query individual shapes. Instead, you:
+1. Simulate mouse events to trigger drawing code
+2. Inspect pixel data via `getImageData` to check if the canvas is blank or has content
+
+### SVG (Scalable Vector Graphics)
+
+SVG elements *are* DOM elements, so you can query, click, and read attributes just like HTML elements:
+
+```html
+<rect data-testid="bar-jan" width="30" height="80" data-value="80" fill="#3b82f6" />
+```
+
+```typescript
+// Playwright
+await expect(page.getByTestId('bar-jan')).toHaveAttribute('data-value', '80');
+
+// Cypress
+cy.get('[data-testid="bar-jan"]').should('have.attr', 'data-value', '80');
+```
+
+### Simulating Canvas Drawing in Tests
+
+| Action | Playwright | Cypress |
+|--------|-----------|---------|
+| Move mouse | `page.mouse.move(x, y)` | `.trigger('mousemove', { offsetX, offsetY })` |
+| Press button | `page.mouse.down()` | `.trigger('mousedown', { offsetX, offsetY })` |
+| Release button | `page.mouse.up()` | `.trigger('mouseup')` |
+| Get element position | `locator.boundingBox()` | `$el[0].getBoundingClientRect()` |
+
+### Checking if a Canvas is Blank
+
+```javascript
+function isCanvasBlank(canvas) {
+  const ctx = canvas.getContext('2d');
+  // getImageData returns RGBA values for every pixel
+  const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+  // Check if all alpha values (every 4th byte) are zero
+  for (let i = 3; i < data.length; i += 4) {
+    if (data[i] !== 0) return false;
+  }
+  return true;
+}
+```
+
+## Playground
+
+Open the playground in your browser. It contains a **fintech signature and visualization page** with:
+
+1. **Signature pad** (Canvas) — draw with the mouse, clear with a button, capture to change status
+2. **SVG risk heat map** — 3x4 grid of colored cells, click to select, hover for tooltip
+3. **SVG bar chart** — monthly approval counts with data-value attributes
+4. **Canvas bar chart** — programmatically drawn bars for loan disbursements
+5. **Signature status** — changes from "Unsigned" to "Signed" after capture
+
+```bash
+# start the playground server
+npx serve katas -l 8080
+
+# open in browser
+# http://localhost:8080/phase-01-dom-and-browser-apis/10-canvas-and-svg/playground/
+```
+
+## Exercises
+
+### Exercise 1: Draw on Signature Canvas
+
+Simulate mouse events (mousedown, mousemove, mouseup) on the signature canvas and verify the `hasContent` flag becomes true.
+
+**Playwright hint**: use `page.mouse.move/down/up` with coordinates from `boundingBox()`
+**Cypress hint**: use `.trigger('mousedown', { offsetX, offsetY })` then `mousemove` and `mouseup`
+
+### Exercise 2: Verify Canvas is Not Blank After Drawing
+
+Call `isCanvasBlank()` before and after drawing to verify the canvas goes from blank to non-blank.
+
+### Exercise 3: Clear Signature and Verify Canvas is Blank
+
+Draw, then click Clear, then verify `isCanvasBlank()` returns true and status reverts to "Unsigned".
+
+### Exercise 4: Click SVG Element and Verify Selection
+
+Click a heat map cell and verify it gains the `selected` class. Click another and verify the selection moves.
+
+### Exercise 5: Read SVG Bar Chart Values
+
+Read `data-value` and `height` attributes from bar chart `<rect>` elements and verify they match expected values.
+
+### Exercise 6: Hover Over SVG Element and Verify Tooltip
+
+Hover over a heat map cell and verify the tooltip becomes visible with the correct text.
+
+### Exercise 7: Verify Canvas Dimensions
+
+Check the `width` and `height` attributes of both canvas elements, and verify them via runtime properties.
+
+### Exercise 8: Verify Signature Status After Drawing
+
+Draw on the canvas, click "Capture Signature", and verify the status changes from "Unsigned" to "Signed".
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/canvas-svg.spec.ts` — every line is commented to explain what it does.
+
+### Cypress Solution
+
+See `cypress/canvas-svg.cy.ts` — every line is commented to explain what it does.
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Clicking the canvas without mousedown/mousemove | Canvas drawing requires a sequence of mouse events, not a click | Use mousedown, then mousemove (multiple), then mouseup |
+| Using page coordinates for Cypress `.trigger()` | Cypress trigger uses `offsetX/offsetY` relative to the element | Use offset coordinates, not page coordinates |
+| Trying to query shapes inside a canvas | Canvas is pixels, not DOM — there are no child elements | Use `getImageData` to inspect pixel data |
+| Forgetting that SVG elements are in a different namespace | SVG elements are still DOM elements and support standard selectors | Use `cy.get` / `page.getByTestId` normally |
+| Not hovering before checking the tooltip | The tooltip only appears on mouseover | Use `.hover()` (Playwright) or `.trigger('mouseover')` (Cypress) |
+
+## Quick Reference
+
+### Playwright Canvas / SVG Methods
+
+| Method | Purpose | Example |
+|--------|---------|---------|
+| `page.mouse.move(x, y)` | Move mouse to absolute coordinates | `page.mouse.move(100, 200)` |
+| `page.mouse.down()` | Press left mouse button | `page.mouse.down()` |
+| `page.mouse.up()` | Release left mouse button | `page.mouse.up()` |
+| `locator.boundingBox()` | Get element position and size | `const box = await el.boundingBox()` |
+| `locator.hover()` | Move mouse to element centre | `page.getByTestId('cell').hover()` |
+| `page.evaluate(fn)` | Run JS in the browser | `page.evaluate(() => isCanvasBlank(c))` |
+| `toHaveAttribute(k, v)` | Assert DOM attribute value | `expect(el).toHaveAttribute('height', '120')` |
+
+### Cypress Canvas / SVG Methods
+
+| Method | Purpose | Example |
+|--------|---------|---------|
+| `.trigger(event, opts)` | Dispatch a DOM event | `.trigger('mousedown', { offsetX: 50, offsetY: 100 })` |
+| `cy.window()` | Yield the browser window object | `cy.window().its('hasContent')` |
+| `.should('have.attr')` | Assert element attribute | `.should('have.attr', 'data-value', '80')` |
+| `.should('have.class')` | Assert CSS class presence | `.should('have.class', 'selected')` |
+| `.invoke('attr', name)` | Read an attribute value | `.invoke('attr', 'height').should('equal', '120')` |
+| `.then($el => ...)` | Access raw DOM element | `.then($el => $el[0].width)` |
+a:T25bf,import { test, expect } from '@playwright/test';
+
+// The base path to this kata's playground.
+// The web server serves the katas/ directory, so the path starts from there.
+const PLAYGROUND = '/phase-01-dom-and-browser-apis/10-canvas-and-svg/playground/';
+
+// --------------------------------------------------------------------------
+// Helper: simulate a mouse stroke on a canvas element.
+// Dispatches mousedown, several mousemove events, then mouseup.
+// --------------------------------------------------------------------------
+async function drawOnCanvas(
+  page: import('@playwright/test').Page,
+  testId: string,
+) {
+  const canvas = page.getByTestId(testId);
+
+  // boundingBox returns { x, y, width, height } of the element in page
+  // coordinates. We use these to calculate absolute positions for mouse events.
+  const box = await canvas.boundingBox();
+  if (!box) throw new Error(`Canvas [data-testid="${testId}"] not found`);
+
+  // Start near the centre-left of the canvas
+  const startX = box.x + box.width * 0.2;
+  const startY = box.y + box.height * 0.5;
+
+  // page.mouse.move moves the virtual mouse to absolute coordinates.
+  await page.mouse.move(startX, startY);
+
+  // page.mouse.down presses the left button (triggers mousedown on canvas).
+  await page.mouse.down();
+
+  // Draw a short zigzag stroke across the canvas.
+  // Each move triggers mousemove, which calls ctx.lineTo + ctx.stroke.
+  const steps = 5;
+  for (let i = 1; i <= steps; i++) {
+    await page.mouse.move(
+      startX + i * 30,
+      startY + (i % 2 === 0 ? -20 : 20),
+      { steps: 3 },  // interpolate 3 sub-steps for smoother movement
+    );
+  }
+
+  // page.mouse.up releases the button (triggers mouseup).
+  await page.mouse.up();
+}
+
+// --------------------------------------------------------------------------
+// Exercise 1: Draw on the signature canvas
+// --------------------------------------------------------------------------
+test('exercise 1: draw on signature canvas via mouse events', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Use the helper to simulate a drawing stroke on the signature pad.
+  await drawOnCanvas(page, 'signature-pad');
+
+  // After drawing, the global hasContent flag is true.
+  // page.evaluate runs JavaScript in the browser and returns the result.
+  const hasContent = await page.evaluate(() => (window as any).hasContent);
+  expect(hasContent).toBe(true);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Verify canvas is not blank after drawing
+// --------------------------------------------------------------------------
+test('exercise 2: canvas is not blank after drawing', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Before drawing, the canvas should be blank.
+  // We call the helper function isCanvasBlank exposed on window.
+  const blankBefore = await page.evaluate(() => {
+    const c = document.querySelector('[data-testid="signature-pad"]') as HTMLCanvasElement;
+    return (window as any).isCanvasBlank(c);
+  });
+  expect(blankBefore).toBe(true);
+
+  // Draw a stroke
+  await drawOnCanvas(page, 'signature-pad');
+
+  // After drawing, the canvas should no longer be blank.
+  // isCanvasBlank checks every pixel's alpha channel — if any pixel is
+  // non-transparent, it returns false.
+  const blankAfter = await page.evaluate(() => {
+    const c = document.querySelector('[data-testid="signature-pad"]') as HTMLCanvasElement;
+    return (window as any).isCanvasBlank(c);
+  });
+  expect(blankAfter).toBe(false);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Clear signature and verify canvas is blank
+// --------------------------------------------------------------------------
+test('exercise 3: clear button resets the canvas', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Draw something first
+  await drawOnCanvas(page, 'signature-pad');
+
+  // Click the Clear button. It calls ctx.clearRect to wipe the canvas.
+  await page.getByTestId('clear-signature').click();
+
+  // Verify the canvas is blank again
+  const isBlank = await page.evaluate(() => {
+    const c = document.querySelector('[data-testid="signature-pad"]') as HTMLCanvasElement;
+    return (window as any).isCanvasBlank(c);
+  });
+  expect(isBlank).toBe(true);
+
+  // The signature status should revert to "Unsigned"
+  await expect(page.getByTestId('signature-status')).toHaveText('Unsigned');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Click SVG element and verify selection state
+// --------------------------------------------------------------------------
+test('exercise 4: click heat map cell to select it', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Click the Credit Q3 cell (risk score 91)
+  const cell = page.getByTestId('cell-credit-q3');
+  await cell.click();
+
+  // The click handler adds the "selected" class to the clicked cell.
+  await expect(cell).toHaveClass(/selected/);
+
+  // The "selected-cell" text should update with the cell's data-label.
+  await expect(page.getByTestId('selected-cell')).toHaveText('Credit Q3: 91');
+
+  // Click a different cell and verify the selection moves
+  const cell2 = page.getByTestId('cell-ops-q1');
+  await cell2.click();
+  await expect(cell2).toHaveClass(/selected/);
+  // The first cell should no longer be selected
+  await expect(cell).not.toHaveClass(/selected/);
+  await expect(page.getByTestId('selected-cell')).toHaveText('Ops Q1: 12');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Verify SVG bar chart values (read height attributes)
+// --------------------------------------------------------------------------
+test('exercise 5: read SVG bar chart data-value attributes', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Each bar has a data-value attribute encoding the approval count.
+  // getAttribute retrieves a DOM attribute as a string.
+  const janValue = await page.getByTestId('bar-jan').getAttribute('data-value');
+  expect(janValue).toBe('80');
+
+  const febValue = await page.getByTestId('bar-feb').getAttribute('data-value');
+  expect(febValue).toBe('120');
+
+  // We can also verify the height attribute, which encodes the visual bar size.
+  const febHeight = await page.getByTestId('bar-feb').getAttribute('height');
+  expect(febHeight).toBe('120');
+
+  // Check the tallest bar (May, value 140, height 140)
+  await expect(page.getByTestId('bar-may')).toHaveAttribute('data-value', '140');
+  await expect(page.getByTestId('bar-may')).toHaveAttribute('height', '140');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Hover over SVG element and verify tooltip
+// --------------------------------------------------------------------------
+test('exercise 6: hover over heat map cell shows tooltip', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // The tooltip is hidden by default (no "visible" class).
+  const tooltip = page.getByTestId('heatmap-tooltip');
+  await expect(tooltip).toBeHidden();
+
+  // Hover over the Market Q2 cell. locator.hover() moves the mouse
+  // to the centre of the element, firing mouseover and mousemove.
+  await page.getByTestId('cell-market-q2').hover();
+
+  // The mouseover handler adds class "visible" and sets the text.
+  await expect(tooltip).toBeVisible();
+  await expect(tooltip).toHaveText('Market Q2: 53');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Verify canvas dimensions
+// --------------------------------------------------------------------------
+test('exercise 7: verify canvas dimensions', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Check the signature pad dimensions via HTML attributes.
+  // toHaveAttribute verifies the attribute value as a string.
+  const sigPad = page.getByTestId('signature-pad');
+  await expect(sigPad).toHaveAttribute('width', '400');
+  await expect(sigPad).toHaveAttribute('height', '200');
+
+  // Check the chart canvas dimensions
+  const chartCanvas = page.getByTestId('chart-canvas');
+  await expect(chartCanvas).toHaveAttribute('width', '400');
+  await expect(chartCanvas).toHaveAttribute('height', '220');
+
+  // We can also read the runtime properties via evaluate.
+  // canvas.width and canvas.height return the drawing-surface size in pixels.
+  const dims = await page.evaluate(() => {
+    const c = document.querySelector('[data-testid="signature-pad"]') as HTMLCanvasElement;
+    return { w: c.width, h: c.height };
+  });
+  expect(dims.w).toBe(400);
+  expect(dims.h).toBe(200);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Verify signature status changes after drawing
+// --------------------------------------------------------------------------
+test('exercise 8: capture signature updates status to Signed', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Initially the status should be "Unsigned"
+  const status = page.getByTestId('signature-status');
+  await expect(status).toHaveText('Unsigned');
+  await expect(status).toHaveClass(/status-unsigned/);
+
+  // Draw a signature
+  await drawOnCanvas(page, 'signature-pad');
+
+  // Click "Capture Signature" — this updates the status to "Signed"
+  await page.getByTestId('capture-signature').click();
+
+  // Verify the status text and CSS class changed
+  await expect(status).toHaveText('Signed');
+  await expect(status).toHaveClass(/status-signed/);
+
+  // The capture button text should also change
+  await expect(page.getByTestId('capture-signature')).toHaveText('Signature Captured');
+});
+b:T2456,// The base path to this kata's playground.
+// Cypress prepends the baseUrl (http://localhost:8080) to this path.
+const PLAYGROUND = '/phase-01-dom-and-browser-apis/10-canvas-and-svg/playground/';
+
+// --------------------------------------------------------------------------
+// Helper: simulate a mouse drawing stroke on a canvas element.
+// Uses Cypress's .trigger() to dispatch mousedown, mousemove, mouseup.
+// trigger(event, options) dispatches a synthetic DOM event on the element.
+// --------------------------------------------------------------------------
+function drawOnCanvas(testId: string) {
+  // .trigger('mousedown', { ... }) fires a mousedown event at the given
+  // offsetX/offsetY coordinates relative to the element's top-left corner.
+  cy.get(`[data-testid="${testId}"]`)
+    .trigger('mousedown', { offsetX: 50, offsetY: 100 });
+
+  // Draw a short zigzag by dispatching several mousemove events.
+  // Each mousemove causes the canvas listener to call ctx.lineTo + ctx.stroke.
+  cy.get(`[data-testid="${testId}"]`)
+    .trigger('mousemove', { offsetX: 80,  offsetY: 80  })
+    .trigger('mousemove', { offsetX: 110, offsetY: 120 })
+    .trigger('mousemove', { offsetX: 140, offsetY: 80  })
+    .trigger('mousemove', { offsetX: 170, offsetY: 120 })
+    .trigger('mousemove', { offsetX: 200, offsetY: 100 });
+
+  // Release the mouse button to end the stroke.
+  cy.get(`[data-testid="${testId}"]`)
+    .trigger('mouseup');
+}
+
+describe('Kata 10: Canvas and SVG', () => {
+
+  // beforeEach runs before every test. We visit the playground page
+  // so each test starts with a fresh, unmodified page.
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Draw on the signature canvas
+  // --------------------------------------------------------------------------
+  it('exercise 1: draw on signature canvas via mouse events', () => {
+    // Use the helper to simulate a drawing stroke
+    drawOnCanvas('signature-pad');
+
+    // After drawing, the global hasContent flag should be true.
+    // cy.window() yields the browser's window object.
+    // .its('hasContent') reads the property from the window.
+    cy.window().its('hasContent').should('equal', true);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Verify canvas is not blank after drawing
+  // --------------------------------------------------------------------------
+  it('exercise 2: canvas is not blank after drawing', () => {
+    // Before drawing, confirm the canvas is blank.
+    // cy.window().then(win => ...) gives us the window object so we can
+    // call the isCanvasBlank helper function exposed by the playground.
+    cy.window().then((win: any) => {
+      const c = win.document.querySelector('[data-testid="signature-pad"]');
+      expect(win.isCanvasBlank(c)).to.be.true;
+    });
+
+    // Draw a stroke
+    drawOnCanvas('signature-pad');
+
+    // After drawing, the canvas should NOT be blank.
+    // isCanvasBlank scans every pixel's alpha channel.
+    cy.window().then((win: any) => {
+      const c = win.document.querySelector('[data-testid="signature-pad"]');
+      expect(win.isCanvasBlank(c)).to.be.false;
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Clear signature and verify canvas is blank
+  // --------------------------------------------------------------------------
+  it('exercise 3: clear button resets the canvas', () => {
+    // Draw something first
+    drawOnCanvas('signature-pad');
+
+    // Click the Clear button, which calls ctx.clearRect on the canvas.
+    cy.get('[data-testid="clear-signature"]').click();
+
+    // Verify the canvas is blank again
+    cy.window().then((win: any) => {
+      const c = win.document.querySelector('[data-testid="signature-pad"]');
+      expect(win.isCanvasBlank(c)).to.be.true;
+    });
+
+    // The signature status should revert to "Unsigned"
+    cy.get('[data-testid="signature-status"]').should('have.text', 'Unsigned');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Click SVG element and verify selection state
+  // --------------------------------------------------------------------------
+  it('exercise 4: click heat map cell to select it', () => {
+    // Click the Credit Q3 cell (risk score 91).
+    // SVG elements support .click() just like HTML elements in Cypress.
+    cy.get('[data-testid="cell-credit-q3"]').click();
+
+    // The click handler adds the "selected" class.
+    // .should('have.class', 'selected') checks the element's classList.
+    cy.get('[data-testid="cell-credit-q3"]')
+      .should('have.class', 'selected');
+
+    // The "selected-cell" label should show the cell's data-label text.
+    cy.get('[data-testid="selected-cell"]')
+      .should('have.text', 'Credit Q3: 91');
+
+    // Click a different cell and verify the selection moves
+    cy.get('[data-testid="cell-ops-q1"]').click();
+    cy.get('[data-testid="cell-ops-q1"]')
+      .should('have.class', 'selected');
+
+    // The previously selected cell should lose its "selected" class.
+    cy.get('[data-testid="cell-credit-q3"]')
+      .should('not.have.class', 'selected');
+
+    cy.get('[data-testid="selected-cell"]')
+      .should('have.text', 'Ops Q1: 12');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Verify SVG bar chart values (read height attributes)
+  // --------------------------------------------------------------------------
+  it('exercise 5: read SVG bar chart data-value attributes', () => {
+    // Each SVG <rect> bar has a data-value attribute with the approval count.
+    // .should('have.attr', name, value) asserts an attribute equals a value.
+    cy.get('[data-testid="bar-jan"]')
+      .should('have.attr', 'data-value', '80');
+
+    cy.get('[data-testid="bar-feb"]')
+      .should('have.attr', 'data-value', '120');
+
+    // Verify the height attribute matches the visual bar height.
+    // .invoke('attr', 'height') retrieves the attribute value.
+    cy.get('[data-testid="bar-feb"]')
+      .invoke('attr', 'height')
+      .should('equal', '120');
+
+    // Check the tallest bar (May)
+    cy.get('[data-testid="bar-may"]')
+      .should('have.attr', 'data-value', '140')
+      .and('have.attr', 'height', '140');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Hover over SVG element and verify tooltip
+  // --------------------------------------------------------------------------
+  it('exercise 6: hover over heat map cell shows tooltip', () => {
+    // The tooltip is hidden by default.
+    cy.get('[data-testid="heatmap-tooltip"]').should('not.be.visible');
+
+    // .trigger('mouseover') fires a mouseover event, which shows the tooltip.
+    // We use trigger instead of cy.realHover because trigger works reliably
+    // for synthetic DOM events that the playground listens for.
+    cy.get('[data-testid="cell-market-q2"]').trigger('mouseover');
+
+    // The mouseover handler sets the tooltip text and adds the "visible" class.
+    cy.get('[data-testid="heatmap-tooltip"]')
+      .should('be.visible')
+      .and('have.text', 'Market Q2: 53');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Verify canvas dimensions
+  // --------------------------------------------------------------------------
+  it('exercise 7: verify canvas dimensions', () => {
+    // Check the signature pad dimensions via HTML attributes.
+    cy.get('[data-testid="signature-pad"]')
+      .should('have.attr', 'width', '400')
+      .and('have.attr', 'height', '200');
+
+    // Check the chart canvas dimensions.
+    cy.get('[data-testid="chart-canvas"]')
+      .should('have.attr', 'width', '400')
+      .and('have.attr', 'height', '220');
+
+    // We can also read the runtime properties via the DOM.
+    // .then($el => ...) gives us the jQuery-wrapped element.
+    // $el[0] is the raw HTMLCanvasElement with .width and .height properties.
+    cy.get('[data-testid="signature-pad"]').then(($el) => {
+      const canvas = $el[0] as HTMLCanvasElement;
+      expect(canvas.width).to.equal(400);
+      expect(canvas.height).to.equal(200);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Verify signature status changes after drawing
+  // --------------------------------------------------------------------------
+  it('exercise 8: capture signature updates status to Signed', () => {
+    // Initially the status should be "Unsigned"
+    cy.get('[data-testid="signature-status"]')
+      .should('have.text', 'Unsigned')
+      .and('have.class', 'status-unsigned');
+
+    // Draw a signature
+    drawOnCanvas('signature-pad');
+
+    // Click "Capture Signature" to finalize
+    cy.get('[data-testid="capture-signature"]').click();
+
+    // Verify the status changed to "Signed"
+    cy.get('[data-testid="signature-status"]')
+      .should('have.text', 'Signed')
+      .and('have.class', 'status-signed');
+
+    // The capture button text should also update
+    cy.get('[data-testid="capture-signature"]')
+      .should('have.text', 'Signature Captured');
+  });
+});
+c:T9694,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { test, expect } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> '@playwright/test'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// The base path to this kata's playground.</span></span>
+<span class="line"><span style="color:#6A737D">// The web server serves the katas/ directory, so the path starts from there.</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-01-dom-and-browser-apis/09-scroll-and-intersection/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 1: Scroll to bottom and verify new items load</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: scroll to bottom triggers infinite scroll'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Wait for the initial 10 items to render.</span></span>
+<span class="line"><span style="color:#6A737D">  // getByTestId finds the very first transaction item to confirm the list loaded.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'tx-item-0'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Confirm we start with exactly 10 items.</span></span>
+<span class="line"><span style="color:#6A737D">  // locator('[data-testid^="tx-item-"]') matches every element whose</span></span>
+<span class="line"><span style="color:#6A737D">  // data-testid starts with "tx-item-".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">locator</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid^="tx-item-"]'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveCount</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">10</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // scrollIntoViewIfNeeded scrolls the minimum amount so the element</span></span>
+<span class="line"><span style="color:#6A737D">  // becomes visible in the viewport. This triggers the IntersectionObserver</span></span>
+<span class="line"><span style="color:#6A737D">  // on the sentinel, which loads 10 more items.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'load-more-sentinel'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">scrollIntoViewIfNeeded</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Wait for the new items to appear. After one scroll-triggered load</span></span>
+<span class="line"><span style="color:#6A737D">  // we expect 20 items total (10 initial + 10 loaded).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">locator</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid^="tx-item-"]'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveCount</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">20</span><span style="color:#E1E4E8">, {</span></span>
+<span class="line"><span style="color:#E1E4E8">    timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8">,  </span><span style="color:#6A737D">// allow extra time for the simulated fetch delay</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 2: Scroll a lazy image into view and verify src changes</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: lazy image loads when scrolled into view'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Before scrolling, the image src should be the inline SVG placeholder.</span></span>
+<span class="line"><span style="color:#6A737D">  // toHaveAttribute checks the current value of an HTML attribute.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> lazyImg</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'lazy-img-1'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(lazyImg).</span><span style="color:#B392F0">toHaveAttribute</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'src'</span><span style="color:#E1E4E8">,</span><span style="color:#9ECBFF"> /</span><span style="color:#DBEDFF">data:image</span><span style="color:#85E89D;font-weight:bold">\/</span><span style="color:#DBEDFF">svg</span><span style="color:#85E89D;font-weight:bold">\+</span><span style="color:#DBEDFF">xml</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Scroll the image into view so the IntersectionObserver fires.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> lazyImg.</span><span style="color:#B392F0">scrollIntoViewIfNeeded</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // After the observer fires, data-loaded is set to "true" and src</span></span>
+<span class="line"><span style="color:#6A737D">  // changes to the real URL from the data-src attribute.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(lazyImg).</span><span style="color:#B392F0">toHaveAttribute</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'data-loaded'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'true'</span><span style="color:#E1E4E8">, {</span></span>
+<span class="line"><span style="color:#E1E4E8">    timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the src is now the real image URL (picsum.photos), not the</span></span>
+<span class="line"><span style="color:#6A737D">  // inline SVG placeholder.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(lazyImg).not.</span><span style="color:#B392F0">toHaveAttribute</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'src'</span><span style="color:#E1E4E8">,</span><span style="color:#9ECBFF"> /</span><span style="color:#DBEDFF">data:image</span><span style="color:#85E89D;font-weight:bold">\/</span><span style="color:#DBEDFF">svg</span><span style="color:#85E89D;font-weight:bold">\+</span><span style="color:#DBEDFF">xml</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 3: Scroll down and verify "back to top" button appears</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: back-to-top button appears on scroll'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // The button exists in the DOM but is hidden (display: none) initially.</span></span>
+<span class="line"><span style="color:#6A737D">  // toBeHidden asserts the element is not visible (display:none, visibility:hidden,</span></span>
+<span class="line"><span style="color:#6A737D">  // or not in viewport don't count — Playwright checks computed visibility).</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> btn</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'back-to-top'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(btn).</span><span style="color:#B392F0">toBeHidden</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Use page.evaluate to run JavaScript in the browser context.</span></span>
+<span class="line"><span style="color:#6A737D">  // window.scrollBy scrolls relative to the current position.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">evaluate</span><span style="color:#E1E4E8">(() </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> window.</span><span style="color:#B392F0">scrollBy</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">400</span><span style="color:#E1E4E8">));</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // After scrolling past 300px the button should become visible.</span></span>
+<span class="line"><span style="color:#6A737D">  // The CSS class "visible" is toggled by the scroll event listener.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(btn).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 4: Click "back to top" and verify scroll position</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: clicking back-to-top scrolls to top'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Scroll down first to make the button appear</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">evaluate</span><span style="color:#E1E4E8">(() </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> window.</span><span style="color:#B392F0">scrollBy</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">500</span><span style="color:#E1E4E8">));</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> btn</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'back-to-top'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(btn).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click the button. It triggers window.scrollTo({ top: 0, behavior: 'smooth' }).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> btn.</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Wait until scrollY is 0. page.waitForFunction runs a predicate in the</span></span>
+<span class="line"><span style="color:#6A737D">  // browser and resolves when it returns true.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">waitForFunction</span><span style="color:#E1E4E8">(() </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> window.scrollY </span><span style="color:#F97583">===</span><span style="color:#79B8FF"> 0</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">null</span><span style="color:#E1E4E8">, {</span></span>
+<span class="line"><span style="color:#E1E4E8">    timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Double-check with an assertion: evaluate returns the current scrollY value.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> scrollY</span><span style="color:#F97583"> =</span><span style="color:#F97583"> await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">evaluate</span><span style="color:#E1E4E8">(() </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> window.scrollY);</span></span>
+<span class="line"><span style="color:#B392F0">  expect</span><span style="color:#E1E4E8">(scrollY).</span><span style="color:#B392F0">toBe</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 5: Verify fixed header changes class on scroll</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: header gains compact class on scroll'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> header</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'header'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Initially the header should NOT have the "compact" class.</span></span>
+<span class="line"><span style="color:#6A737D">  // toHaveClass with a regex lets us check for the presence of a class.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(header).not.</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">compact</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Scroll past the 100px threshold that triggers compact mode</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">evaluate</span><span style="color:#E1E4E8">(() </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> window.</span><span style="color:#B392F0">scrollBy</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">150</span><span style="color:#E1E4E8">));</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Now the scroll event listener should have added "compact" to the classList.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(header).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">compact</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Scroll back to top and verify compact is removed</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">evaluate</span><span style="color:#E1E4E8">(() </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> window.</span><span style="color:#B392F0">scrollTo</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">));</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(header).not.</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">compact</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 6: Scroll to a specific section and verify nav highlights</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: scroll-spy highlights current section in nav'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Initially the "Overview" nav link should be active (has class "active").</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'nav-overview'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">active</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Scroll the feed section into view. The IntersectionObserver-based</span></span>
+<span class="line"><span style="color:#6A737D">  // scroll-spy should update the active nav link.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'section-feed'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">scrollIntoViewIfNeeded</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Wait for the observer to fire and update the nav.</span></span>
+<span class="line"><span style="color:#6A737D">  // The "Feed" nav link should now be active.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'nav-feed'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">active</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">, {</span></span>
+<span class="line"><span style="color:#E1E4E8">    timeout: </span><span style="color:#79B8FF">3000</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // The "Overview" link should no longer be active.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'nav-overview'</span><span style="color:#E1E4E8">)).not.</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">active</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 7: Verify element is / isn't in viewport</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 7: check whether element is in viewport'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // page.evaluate runs arbitrary JavaScript in the browser context.</span></span>
+<span class="line"><span style="color:#6A737D">  // getBoundingClientRect returns the element's position relative to the viewport.</span></span>
+<span class="line"><span style="color:#6A737D">  // An element is "in the viewport" when its top is less than window.innerHeight</span></span>
+<span class="line"><span style="color:#6A737D">  // and its bottom is greater than 0.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> isInViewport</span><span style="color:#F97583"> =</span><span style="color:#F97583"> await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">evaluate</span><span style="color:#E1E4E8">(() </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">    const</span><span style="color:#79B8FF"> el</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> document.</span><span style="color:#B392F0">querySelector</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="section-overview"]'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">    if</span><span style="color:#E1E4E8"> (</span><span style="color:#F97583">!</span><span style="color:#E1E4E8">el) </span><span style="color:#F97583">return</span><span style="color:#79B8FF"> false</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">    const</span><span style="color:#79B8FF"> rect</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> el.</span><span style="color:#B392F0">getBoundingClientRect</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">    return</span><span style="color:#E1E4E8"> rect.top </span><span style="color:#F97583">&#x3C;</span><span style="color:#E1E4E8"> window.innerHeight </span><span style="color:#F97583">&#x26;&#x26;</span><span style="color:#E1E4E8"> rect.bottom </span><span style="color:#F97583">></span><span style="color:#79B8FF"> 0</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"><span style="color:#B392F0">  expect</span><span style="color:#E1E4E8">(isInViewport).</span><span style="color:#B392F0">toBe</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">true</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // The feed section should NOT be in the viewport initially (it is further down).</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> feedInViewport</span><span style="color:#F97583"> =</span><span style="color:#F97583"> await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">evaluate</span><span style="color:#E1E4E8">(() </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">    const</span><span style="color:#79B8FF"> el</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> document.</span><span style="color:#B392F0">querySelector</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="section-feed"]'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">    if</span><span style="color:#E1E4E8"> (</span><span style="color:#F97583">!</span><span style="color:#E1E4E8">el) </span><span style="color:#F97583">return</span><span style="color:#79B8FF"> false</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">    const</span><span style="color:#79B8FF"> rect</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> el.</span><span style="color:#B392F0">getBoundingClientRect</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">    return</span><span style="color:#E1E4E8"> rect.top </span><span style="color:#F97583">&#x3C;</span><span style="color:#E1E4E8"> window.innerHeight </span><span style="color:#F97583">&#x26;&#x26;</span><span style="color:#E1E4E8"> rect.bottom </span><span style="color:#F97583">></span><span style="color:#79B8FF"> 0</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"><span style="color:#B392F0">  expect</span><span style="color:#E1E4E8">(feedInViewport).</span><span style="color:#B392F0">toBe</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">false</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 8: Scroll and verify total loaded items count</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 8: verify loaded item count after multiple scrolls'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Confirm the initial count display shows 10 items.</span></span>
+<span class="line"><span style="color:#6A737D">  // #loaded-count is a &#x3C;span> inside the item-count div.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">locator</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'#loaded-count'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'10'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Scroll the sentinel into view to trigger one load (10 more items).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'load-more-sentinel'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">scrollIntoViewIfNeeded</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">locator</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'#loaded-count'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'20'</span><span style="color:#E1E4E8">, {</span></span>
+<span class="line"><span style="color:#E1E4E8">    timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Scroll the sentinel again after the new items push it down.</span></span>
+<span class="line"><span style="color:#6A737D">  // We need a small wait for the DOM to settle, then scroll again.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'load-more-sentinel'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">scrollIntoViewIfNeeded</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">locator</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'#loaded-count'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'30'</span><span style="color:#E1E4E8">, {</span></span>
+<span class="line"><span style="color:#E1E4E8">    timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Final check: 30 transaction items should exist in the DOM.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">locator</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid^="tx-item-"]'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveCount</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">30</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>d:T78fb,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#6A737D">// The base path to this kata's playground.</span></span>
+<span class="line"><span style="color:#6A737D">// Cypress prepends the baseUrl (http://localhost:8080) to this path.</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-01-dom-and-browser-apis/09-scroll-and-intersection/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">describe</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Kata 09: Scroll and Intersection'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // beforeEach runs before every test in this describe block.</span></span>
+<span class="line"><span style="color:#6A737D">  // We visit the playground page so each test starts fresh.</span></span>
+<span class="line"><span style="color:#B392F0">  beforeEach</span><span style="color:#E1E4E8">(() </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 1: Scroll to bottom and verify new items load</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: scroll to bottom triggers infinite scroll'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Confirm we start with 10 transaction items.</span></span>
+<span class="line"><span style="color:#6A737D">    // [data-testid^="tx-item-"] is a CSS attribute selector that matches any</span></span>
+<span class="line"><span style="color:#6A737D">    // element whose data-testid starts with "tx-item-".</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid^="tx-item-"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.length'</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">10</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // scrollIntoView() scrolls the DOM so that the matched element is visible</span></span>
+<span class="line"><span style="color:#6A737D">    // in the viewport. This triggers the IntersectionObserver on the sentinel.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="load-more-sentinel"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">scrollIntoView</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // After the observer fires, 10 more items are appended (total 20).</span></span>
+<span class="line"><span style="color:#6A737D">    // .should automatically retries until the assertion passes or times out.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid^="tx-item-"]'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8"> })</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.length'</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">20</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 2: Scroll a lazy image into view and verify src changes</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: lazy image loads when scrolled into view'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Before scrolling, the img src should be the inline SVG placeholder.</span></span>
+<span class="line"><span style="color:#6A737D">    // .invoke('attr', 'src') retrieves the current src attribute value.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="lazy-img-1"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">invoke</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'attr'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'src'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'match'</span><span style="color:#E1E4E8">,</span><span style="color:#9ECBFF"> /</span><span style="color:#DBEDFF">data:image</span><span style="color:#85E89D;font-weight:bold">\/</span><span style="color:#DBEDFF">svg</span><span style="color:#85E89D;font-weight:bold">\+</span><span style="color:#DBEDFF">xml</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // scrollIntoView scrolls the element into the visible area, triggering</span></span>
+<span class="line"><span style="color:#6A737D">    // the IntersectionObserver that swaps the placeholder for the real image.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="lazy-img-1"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">scrollIntoView</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // After the observer fires, data-loaded is set to "true".</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="lazy-img-1"]'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8"> })</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.attr'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'data-loaded'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'true'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // The src should now be the real image URL, not the placeholder.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="lazy-img-1"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">invoke</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'attr'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'src'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.match'</span><span style="color:#E1E4E8">,</span><span style="color:#9ECBFF"> /</span><span style="color:#DBEDFF">data:image</span><span style="color:#85E89D;font-weight:bold">\/</span><span style="color:#DBEDFF">svg</span><span style="color:#85E89D;font-weight:bold">\+</span><span style="color:#DBEDFF">xml</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 3: Scroll down and verify "back to top" button appears</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: back-to-top button appears on scroll'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // The button is initially hidden (display: none via CSS).</span></span>
+<span class="line"><span style="color:#6A737D">    // 'not.be.visible' checks computed visibility.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="back-to-top"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // cy.scrollTo scrolls the window (or a scrollable container) to</span></span>
+<span class="line"><span style="color:#6A737D">    // the given x, y coordinates. Here we scroll 400px down from the top.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">scrollTo</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">400</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // After scrolling past 300px, the JS adds class "visible" which sets</span></span>
+<span class="line"><span style="color:#6A737D">    // display: flex, making the button visible.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="back-to-top"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 4: Click "back to top" and verify scroll position</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: clicking back-to-top scrolls to top'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Scroll down to reveal the button</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">scrollTo</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">500</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="back-to-top"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Click the button, which calls window.scrollTo({ top: 0 })</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="back-to-top"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // cy.window() yields the browser's window object.</span></span>
+<span class="line"><span style="color:#6A737D">    // We access its scrollY property to verify we scrolled to the top.</span></span>
+<span class="line"><span style="color:#6A737D">    // The smooth scroll animation takes time, so we use should() which retries.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">window</span><span style="color:#E1E4E8">().</span><span style="color:#B392F0">its</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'scrollY'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'equal'</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 5: Verify fixed header changes class on scroll</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: header gains compact class on scroll'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Initially the header should not have the "compact" class.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="header"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'compact'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Scroll past the 100px threshold</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">scrollTo</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">150</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // The scroll listener adds "compact" when scrollY > 100.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="header"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'compact'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Scroll back to top and verify compact is removed</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">scrollTo</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="header"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'compact'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 6: Scroll to a specific section and verify nav highlights</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: scroll-spy highlights current section in nav'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Initially "Overview" nav link should be active</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="nav-overview"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'active'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Scroll the feed section into view</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="section-feed"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">scrollIntoView</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // The IntersectionObserver-based scroll-spy updates the active class.</span></span>
+<span class="line"><span style="color:#6A737D">    // "Feed" should now be active, and "Overview" should not.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="nav-feed"]'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">3000</span><span style="color:#E1E4E8"> })</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'active'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="nav-overview"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'active'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 7: Verify element is / isn't in viewport</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 7: check whether element is in viewport'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // In Cypress we can check if an element is in the viewport by comparing</span></span>
+<span class="line"><span style="color:#6A737D">    // its bounding rect to the window dimensions.</span></span>
+<span class="line"><span style="color:#6A737D">    // .then() gives us the jQuery-wrapped element so we can call native DOM methods.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="section-overview"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">then</span><span style="color:#E1E4E8">((</span><span style="color:#FFAB70">$el</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">      // $el[0] is the raw DOM element. getBoundingClientRect returns its</span></span>
+<span class="line"><span style="color:#6A737D">      // position relative to the viewport.</span></span>
+<span class="line"><span style="color:#F97583">      const</span><span style="color:#79B8FF"> rect</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> $el[</span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">].</span><span style="color:#B392F0">getBoundingClientRect</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#6A737D">      // If top &#x3C; window.innerHeight and bottom > 0, the element is visible.</span></span>
+<span class="line"><span style="color:#B392F0">      expect</span><span style="color:#E1E4E8">(rect.top).to.be.</span><span style="color:#B392F0">lessThan</span><span style="color:#E1E4E8">(window.innerHeight);</span></span>
+<span class="line"><span style="color:#B392F0">      expect</span><span style="color:#E1E4E8">(rect.bottom).to.be.</span><span style="color:#B392F0">greaterThan</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // The feed section should NOT be visible initially (it is below the fold).</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="section-feed"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">then</span><span style="color:#E1E4E8">((</span><span style="color:#FFAB70">$el</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">      const</span><span style="color:#79B8FF"> rect</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> $el[</span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">].</span><span style="color:#B392F0">getBoundingClientRect</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#6A737D">      // The top of the feed section should be below the viewport bottom.</span></span>
+<span class="line"><span style="color:#B392F0">      expect</span><span style="color:#E1E4E8">(rect.top).to.be.</span><span style="color:#B392F0">greaterThan</span><span style="color:#E1E4E8">(window.innerHeight);</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 8: Scroll and verify total loaded items count</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 8: verify loaded item count after multiple scrolls'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Confirm the initial count display shows 10</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'#loaded-count'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'10'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Scroll sentinel into view to trigger one load</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="load-more-sentinel"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">scrollIntoView</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'#loaded-count'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8"> }).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'20'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Scroll sentinel again after new items push it down</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="load-more-sentinel"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">scrollIntoView</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'#loaded-count'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8"> }).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'30'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Final verification: 30 items in the DOM</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid^="tx-item-"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.length'</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">30</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"kata":{"slug":"09-scroll-and-intersection","number":9,"title":"Scroll and Intersection","phaseSlug":"phase-01-dom-and-browser-apis","phaseNumber":1,"phaseName":"Dom And Browser Apis","readmeRaw":"$3","hasPlayground":true,"playwrightFiles":[{"filename":"scroll.spec.ts","content":"$4"}],"cypressFiles":[{"filename":"scroll.cy.ts","content":"$5"}]},"prev":{"slug":"08-css-animations-and-transitions","number":8,"title":"CSS Animations and Transitions","phaseSlug":"phase-01-dom-and-browser-apis","phaseNumber":1,"phaseName":"Dom And Browser Apis","readmeRaw":"$6","hasPlayground":true,"playwrightFiles":[{"filename":"css-animations-and-transitions.spec.ts","content":"$7"}],"cypressFiles":[{"filename":"css-animations-and-transitions.cy.ts","content":"$8"}]},"next":{"slug":"10-canvas-and-svg","number":10,"title":"Canvas and SVG","phaseSlug":"phase-01-dom-and-browser-apis","phaseNumber":1,"phaseName":"Dom And Browser Apis","readmeRaw":"$9","hasPlayground":true,"playwrightFiles":[{"filename":"canvas-svg.spec.ts","content":"$a"}],"cypressFiles":[{"filename":"canvas-svg.cy.ts","content":"$b"}]},"playwrightHtml":[{"filename":"scroll.spec.ts","html":"$c"}],"cypressHtml":[{"filename":"scroll.cy.ts","html":"$d"}]}],["$Le"],"$Lf"]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"iDtrTKWIN4zzRgDRiiDd2"}
+e:["$","script","script-0",{"src":"/qa-labs/_next/static/chunks/03nvm.8~ftt80.js","async":true}]
+f:["$","$L10",null,{"children":["$","$11",null,{"name":"Next.MetadataOutlet","children":"$@12"}]}]
+12:null

@@ -1,0 +1,2408 @@
+1:"$Sreact.fragment"
+2:I[31749,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js","/qa-labs/_next/static/chunks/03nvm.8~ftt80.js"],"KataPageClient"]
+10:I[49583,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js"],"OutletBoundary"]
+11:"$Sreact.suspense"
+3:T1b37,# Kata 11: DOM Mutations
+
+## What You Will Learn
+
+- How to test dynamically inserted DOM elements (elements that appear after page load)
+- How to verify elements are removed from the DOM
+- How to detect text content changes on existing elements
+- How to verify CSS class changes and attribute mutations
+- How to handle auto-updating UI (timers, live feeds, counters)
+- Why Playwright's auto-retry assertions and Cypress's `.should()` are ideal for mutation testing
+
+## Prerequisites
+
+- Completed Phase 00 katas (especially Kata 03: Waits and Timing)
+- Basic understanding of how the DOM works (elements, attributes, text nodes)
+
+## Concepts Explained
+
+### What Are DOM Mutations?
+
+A DOM mutation is any change to the page's structure after initial load:
+
+- **Insertion**: A new element is added (e.g., a notification appears)
+- **Removal**: An element is deleted (e.g., dismissing a notification)
+- **Text change**: An element's text content updates (e.g., a live price ticker)
+- **Attribute change**: An element's attribute changes (e.g., `data-priority="normal"` becomes `data-priority="high"`)
+- **Class change**: An element gains or loses a CSS class (e.g., `.read` is added)
+
+### Why DOM Mutations Matter for QA
+
+Modern web apps are dynamic. Content loads asynchronously, notifications pop in, prices update in real time, and elements appear/disappear based on user actions. Your tests must handle all of this without flaking.
+
+### Testing Strategy
+
+```typescript
+// PLAYWRIGHT — auto-retry assertions handle mutations naturally
+
+// Wait for an element to appear (insertion)
+await expect(page.getByTestId('notification-item')).toHaveCount(3);
+
+// Wait for text to change (text mutation)
+await expect(page.getByTestId('live-price')).not.toHaveText('22,450.00');
+
+// Wait for an element to disappear (removal)
+await expect(page.getByTestId('notification-item')).toHaveCount(0);
+
+// Verify class changes (attribute mutation)
+await expect(page.getByTestId('notification-item').first()).toHaveClass(/read/);
+
+// Verify attribute changes
+await expect(page.getByTestId('status-message')).toHaveAttribute('data-priority', 'high');
+```
+
+```typescript
+// CYPRESS — .should() retries automatically
+
+// Wait for element to appear
+cy.get('[data-testid="notification-item"]').should('have.length', 3);
+
+// Wait for text to change
+cy.get('[data-testid="live-price"]').should('not.have.text', '22,450.00');
+
+// Wait for element to disappear
+cy.get('[data-testid="notification-item"]').should('have.length', 0);
+
+// Verify class changes
+cy.get('[data-testid="notification-item"]').first().should('have.class', 'read');
+
+// Verify attribute changes
+cy.get('[data-testid="status-message"]').should('have.attr', 'data-priority', 'high');
+```
+
+### Key Insight: Auto-Retry Is Your Friend
+
+Both Playwright and Cypress re-check assertions automatically until they pass (or timeout). This means you do NOT need to use `MutationObserver` or polling loops in your tests. Just assert the expected state and the framework handles the waiting.
+
+## Playground
+
+The playground simulates a fintech notification center:
+
+1. **Live Notification Feed** — new notifications auto-appear every 3 seconds
+2. **Unread Counter** — updates automatically when notifications arrive or are dismissed
+3. **Unread Badge** — shows/hides based on whether there are unread notifications
+4. **Mark All Read** — changes styling of all notifications (adds `.read` class)
+5. **Dismiss Button** — removes individual notifications from the DOM
+6. **Live Price Ticker** — text content changes every 2 seconds
+7. **Dynamic Status Area** — elements can be added, removed, and modified on demand
+8. **Attribute Toggle** — `data-priority` attribute toggles between "normal" and "high"
+
+## Exercises
+
+### Exercise 1: Wait for New Notification (DOM Insertion)
+Wait for the first notification to appear in the feed. The feed auto-adds notifications every 3 seconds, so you need to wait for at least one to arrive.
+
+### Exercise 2: Verify Notification Count Increments
+Wait for multiple notifications to accumulate and verify the unread counter matches.
+
+### Exercise 3: Dismiss a Notification (DOM Removal)
+Wait for a notification to appear, dismiss it, and verify it is removed from the DOM.
+
+### Exercise 4: Mark All as Read (CSS Class Change)
+Wait for notifications to appear, click "Mark All Read", and verify every notification gains the `.read` class (which changes its styling).
+
+### Exercise 5: Wait for Price Text to Change (Text Mutation)
+Capture the initial price text, then wait for it to change (it updates every 2 seconds).
+
+### Exercise 6: Verify Badge Visibility Based on Count
+Verify the unread badge is visible when there are unread notifications, then mark all as read and verify the badge hides.
+
+### Exercise 7: Wait for Multiple Notifications to Accumulate
+Wait until at least 3 notifications have appeared in the feed.
+
+### Exercise 8: Verify Element Attribute Changes Dynamically
+Click the "Toggle Priority" button and verify the `data-priority` attribute changes from `"normal"` to `"high"`.
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/dom-mutations.spec.ts`
+
+### Cypress Solution
+
+See `cypress/dom-mutations.cy.ts`
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Using `page.waitForTimeout(3000)` to wait for notification | Brittle — timing varies | Use `expect().toHaveCount()` with auto-retry |
+| Checking count immediately after dismiss | DOM removal may not be instant | Use `expect().toHaveCount(n - 1)` which auto-retries |
+| Checking exact price value | Price is random, changes every 2s | Assert it changed from initial value with `not.toHaveText()` |
+| Not waiting for element before dismissing | Notification may not exist yet | Wait for it with `.toBeVisible()` first |
+| Asserting `.read` class before clicking button | Class hasn't been added yet | Click "Mark All Read" first, then assert |
+
+## Quick Reference
+
+### Playwright DOM Mutation Assertions
+
+| Assertion | Use case |
+|-----------|----------|
+| `toHaveCount(n)` | Wait for exactly N matching elements |
+| `toHaveText(text)` | Wait for element text to match |
+| `not.toHaveText(text)` | Wait for element text to change from a known value |
+| `toHaveClass(/pattern/)` | Wait for element to have a CSS class |
+| `toHaveAttribute(name, value)` | Wait for attribute to have a specific value |
+| `toBeVisible()` / `toBeHidden()` | Wait for element to show/hide |
+
+### Cypress DOM Mutation Assertions
+
+| Assertion | Use case |
+|-----------|----------|
+| `should('have.length', n)` | Wait for exactly N matching elements |
+| `should('have.text', text)` | Wait for element text to match |
+| `should('not.have.text', text)` | Wait for text to change |
+| `should('have.class', cls)` | Wait for CSS class to be added |
+| `should('have.attr', name, value)` | Wait for attribute value |
+| `should('be.visible')` / `should('not.be.visible')` | Wait for show/hide |
+4:T2378,import { test, expect } from '@playwright/test';
+
+// Path to the playground HTML served by the dev server.
+// The path is relative to the web server root (the project root).
+const PLAYGROUND = '/phase-01-dom-and-browser-apis/11-dom-mutations/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Wait for New Notification (DOM Insertion)
+//
+// The feed auto-adds a notification every 3 seconds via setInterval.
+// We use toHaveCount() which auto-retries until the expected number of
+// elements exist in the DOM.
+// --------------------------------------------------------------------------
+test('exercise 1: wait for a new notification to appear', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Initially the feed is empty (no notifications yet).
+  // We wait for at least one notification to be inserted into the DOM.
+  // toHaveCount() retries automatically — no sleep needed.
+  // A notification appears after 3s, well within the default 5s timeout.
+  await expect(
+    page.getByTestId('notification-item')
+  ).toHaveCount(1, { timeout: 5000 });
+
+  // Verify the notification has visible text content.
+  await expect(
+    page.getByTestId('notification-text').first()
+  ).toBeVisible();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Verify Notification Count Increments
+//
+// Wait for a notification to arrive, then read the unread counter.
+// The counter is updated by JavaScript each time a notification is added.
+// --------------------------------------------------------------------------
+test('exercise 2: verify unread count increments with new notifications', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Wait for the first notification to arrive (DOM insertion).
+  await expect(
+    page.getByTestId('notification-item')
+  ).toHaveCount(1, { timeout: 5000 });
+
+  // The unread-count text should now be "1".
+  // toHaveText() auto-retries until the text matches.
+  await expect(
+    page.getByTestId('unread-count')
+  ).toHaveText('1');
+
+  // Wait for a second notification (another 3 seconds).
+  await expect(
+    page.getByTestId('notification-item')
+  ).toHaveCount(2, { timeout: 5000 });
+
+  // The unread-count text should now be "2".
+  await expect(
+    page.getByTestId('unread-count')
+  ).toHaveText('2');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Dismiss a Notification (DOM Removal)
+//
+// Wait for a notification to appear, click its dismiss button,
+// then verify the notification element is removed from the DOM.
+// --------------------------------------------------------------------------
+test('exercise 3: dismiss a notification and verify removal', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Wait for the first notification to appear.
+  await expect(
+    page.getByTestId('notification-item')
+  ).toHaveCount(1, { timeout: 5000 });
+
+  // Pause the feed so no new notifications arrive while we test.
+  await page.getByTestId('btn-pause-feed').click();
+
+  // Click the dismiss button on the first (and only) notification.
+  // The dismiss button removes the parent notification from the DOM.
+  await page.getByTestId('btn-dismiss').first().click();
+
+  // Verify the notification is gone — count should be 0.
+  // toHaveCount(0) retries until no matching elements remain.
+  await expect(
+    page.getByTestId('notification-item')
+  ).toHaveCount(0);
+
+  // The unread count should also be 0 after dismissal.
+  await expect(
+    page.getByTestId('unread-count')
+  ).toHaveText('0');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Mark All as Read (CSS Class Change)
+//
+// When you click "Mark All Read", each notification element gains the
+// CSS class "read". We verify this class change using toHaveClass().
+// --------------------------------------------------------------------------
+test('exercise 4: mark all as read and verify class change', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Wait for the first notification.
+  await expect(
+    page.getByTestId('notification-item')
+  ).toHaveCount(1, { timeout: 5000 });
+
+  // Pause the feed so the count stays stable.
+  await page.getByTestId('btn-pause-feed').click();
+
+  // Verify the notification does NOT have the "read" class yet.
+  // toHaveClass checks the element's className attribute.
+  const firstNotification = page.getByTestId('notification-item').first();
+  await expect(firstNotification).not.toHaveClass(/read/);
+
+  // Click "Mark All Read".
+  await page.getByTestId('btn-mark-all-read').click();
+
+  // Verify the notification now has the "read" class.
+  // The CSS class changes the background, border, and text color.
+  await expect(firstNotification).toHaveClass(/read/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Wait for Price Text to Change (Text Mutation)
+//
+// The live price updates every 2 seconds. We capture the initial value,
+// then use not.toHaveText() to wait until it changes.
+// --------------------------------------------------------------------------
+test('exercise 5: wait for live price text to change', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Read the initial price text.
+  const initialPrice = await page.getByTestId('live-price').textContent();
+
+  // not.toHaveText() auto-retries until the text is different from the
+  // initial value. The price updates every 2s, so it should change
+  // well within the default 5s timeout.
+  await expect(
+    page.getByTestId('live-price')
+  ).not.toHaveText(initialPrice!, { timeout: 5000 });
+
+  // Also verify the timestamp updates (proving the feed is live).
+  await expect(
+    page.getByTestId('price-timestamp')
+  ).not.toHaveText('--:--:--');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Verify Badge Visibility Based on Count
+//
+// The unread badge is visible when unreadCount > 0 and hidden when 0.
+// We verify the show/hide behavior using toBeVisible/toBeHidden.
+// --------------------------------------------------------------------------
+test('exercise 6: badge shows when unread, hides when all read', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Wait for a notification to arrive.
+  await expect(
+    page.getByTestId('notification-item')
+  ).toHaveCount(1, { timeout: 5000 });
+
+  // Badge should be visible (there are unread notifications).
+  await expect(
+    page.getByTestId('unread-badge')
+  ).toBeVisible();
+
+  // Pause the feed and mark all as read.
+  await page.getByTestId('btn-pause-feed').click();
+  await page.getByTestId('btn-mark-all-read').click();
+
+  // Badge should now be hidden (CSS class "hidden" is added,
+  // which sets display: none).
+  await expect(
+    page.getByTestId('unread-badge')
+  ).toBeHidden();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Wait for Multiple Notifications to Accumulate
+//
+// Notifications arrive every 3 seconds. We wait for at least 3 to appear.
+// This requires a longer timeout since 3 notifications = ~9 seconds.
+// --------------------------------------------------------------------------
+test('exercise 7: wait for at least 3 notifications', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // toHaveCount(3) retries until exactly 3 notification-item elements
+  // exist. With a 3s interval, this takes ~9s, so we set timeout to 15s.
+  await expect(
+    page.getByTestId('notification-item')
+  ).toHaveCount(3, { timeout: 15000 });
+
+  // Verify the total count display matches.
+  await expect(
+    page.getByTestId('total-count')
+  ).toHaveText('3');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Verify Element Attribute Changes Dynamically
+//
+// The "Toggle Priority" button changes data-priority from "normal"
+// to "high" on the status message. We verify this with toHaveAttribute().
+// --------------------------------------------------------------------------
+test('exercise 8: verify attribute changes on toggle', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify initial attribute value.
+  // toHaveAttribute(name, value) checks a specific attribute on the element.
+  await expect(
+    page.getByTestId('status-message')
+  ).toHaveAttribute('data-priority', 'normal');
+
+  // Click the "Toggle Priority" button.
+  await page.getByTestId('btn-change-attr').click();
+
+  // Verify the attribute changed to "high".
+  await expect(
+    page.getByTestId('status-message')
+  ).toHaveAttribute('data-priority', 'high');
+
+  // Also verify the text content changed as a result.
+  await expect(
+    page.getByTestId('status-message')
+  ).toHaveText('System status: High priority — maintenance scheduled');
+
+  // Toggle back and verify it reverts.
+  await page.getByTestId('btn-change-attr').click();
+  await expect(
+    page.getByTestId('status-message')
+  ).toHaveAttribute('data-priority', 'normal');
+});
+5:T212c,// Path to the playground HTML served by the dev server.
+const PLAYGROUND = '/phase-01-dom-and-browser-apis/11-dom-mutations/playground/';
+
+describe('Kata 11: DOM Mutations', () => {
+
+  beforeEach(() => {
+    // Visit the playground before each test.
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Wait for New Notification (DOM Insertion)
+  //
+  // The feed auto-adds a notification every 3 seconds via setInterval.
+  // cy.get() + .should('have.length', n) retries automatically until
+  // the expected number of elements exist in the DOM.
+  // --------------------------------------------------------------------------
+  it('exercise 1: wait for a new notification to appear', () => {
+    // Wait for at least 1 notification to be inserted.
+    // { timeout: 5000 } gives Cypress up to 5 seconds to retry.
+    // The notification arrives after 3s, so this passes comfortably.
+    cy.get('[data-testid="notification-item"]', { timeout: 5000 })
+      .should('have.length', 1);
+
+    // Verify the notification contains visible text.
+    cy.get('[data-testid="notification-text"]').first()
+      .should('be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Verify Notification Count Increments
+  //
+  // Wait for notifications and verify the counter text updates.
+  // .should('have.text', '1') retries until the text matches.
+  // --------------------------------------------------------------------------
+  it('exercise 2: verify unread count increments with new notifications', () => {
+    // Wait for the first notification.
+    cy.get('[data-testid="notification-item"]', { timeout: 5000 })
+      .should('have.length', 1);
+
+    // Unread count should be "1".
+    cy.get('[data-testid="unread-count"]')
+      .should('have.text', '1');
+
+    // Wait for the second notification.
+    cy.get('[data-testid="notification-item"]', { timeout: 5000 })
+      .should('have.length', 2);
+
+    // Unread count should be "2".
+    cy.get('[data-testid="unread-count"]')
+      .should('have.text', '2');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Dismiss a Notification (DOM Removal)
+  //
+  // Wait for a notification, click dismiss, and verify it's gone.
+  // .should('have.length', 0) retries until no elements remain.
+  // --------------------------------------------------------------------------
+  it('exercise 3: dismiss a notification and verify removal', () => {
+    // Wait for the first notification.
+    cy.get('[data-testid="notification-item"]', { timeout: 5000 })
+      .should('have.length', 1);
+
+    // Pause the feed so no new notifications arrive.
+    cy.get('[data-testid="btn-pause-feed"]').click();
+
+    // Click the dismiss button on the first notification.
+    // The dismiss button removes the notification element from the DOM.
+    cy.get('[data-testid="btn-dismiss"]').first().click();
+
+    // Verify the notification is removed — count is now 0.
+    cy.get('[data-testid="notification-item"]')
+      .should('have.length', 0);
+
+    // Unread count should also be 0.
+    cy.get('[data-testid="unread-count"]')
+      .should('have.text', '0');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Mark All as Read (CSS Class Change)
+  //
+  // "Mark All Read" adds the CSS class "read" to every notification.
+  // .should('have.class', 'read') retries until the class is present.
+  // --------------------------------------------------------------------------
+  it('exercise 4: mark all as read and verify class change', () => {
+    // Wait for the first notification.
+    cy.get('[data-testid="notification-item"]', { timeout: 5000 })
+      .should('have.length', 1);
+
+    // Pause the feed.
+    cy.get('[data-testid="btn-pause-feed"]').click();
+
+    // Verify the notification does NOT have the "read" class yet.
+    cy.get('[data-testid="notification-item"]').first()
+      .should('not.have.class', 'read');
+
+    // Click "Mark All Read".
+    cy.get('[data-testid="btn-mark-all-read"]').click();
+
+    // Verify the notification now has the "read" class.
+    // This class changes background, border, and text color via CSS.
+    cy.get('[data-testid="notification-item"]').first()
+      .should('have.class', 'read');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Wait for Price Text to Change (Text Mutation)
+  //
+  // The live price updates every 2 seconds. We capture the initial text,
+  // then use .should('not.have.text', initial) to wait for it to change.
+  // --------------------------------------------------------------------------
+  it('exercise 5: wait for live price text to change', () => {
+    // Read the initial price text using .invoke('text').
+    // .then() gives us the text value to use in the next assertion.
+    cy.get('[data-testid="live-price"]')
+      .invoke('text')
+      .then((initialPrice) => {
+        // .should('not.have.text', initialPrice) retries until the
+        // element's text is different from the initial value.
+        // Price updates every 2s, so this passes within 5s.
+        cy.get('[data-testid="live-price"]', { timeout: 5000 })
+          .should('not.have.text', initialPrice);
+      });
+
+    // Also verify the timestamp has been set.
+    cy.get('[data-testid="price-timestamp"]')
+      .should('not.have.text', '--:--:--');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Verify Badge Visibility Based on Count
+  //
+  // Badge is visible when unread > 0, hidden when unread = 0.
+  // The badge uses display:none (via CSS class "hidden") to hide.
+  // --------------------------------------------------------------------------
+  it('exercise 6: badge shows when unread, hides when all read', () => {
+    // Wait for a notification so there's something to mark as read.
+    cy.get('[data-testid="notification-item"]', { timeout: 5000 })
+      .should('have.length', 1);
+
+    // Badge should be visible (unread count > 0).
+    cy.get('[data-testid="unread-badge"]')
+      .should('be.visible');
+
+    // Pause the feed and mark all as read.
+    cy.get('[data-testid="btn-pause-feed"]').click();
+    cy.get('[data-testid="btn-mark-all-read"]').click();
+
+    // Badge should now be hidden (CSS class "hidden" sets display:none).
+    cy.get('[data-testid="unread-badge"]')
+      .should('not.be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Wait for Multiple Notifications to Accumulate
+  //
+  // Notifications arrive every 3 seconds. We wait for 3 to appear.
+  // With a 3s interval, 3 notifications take ~9s, so we use a 15s timeout.
+  // --------------------------------------------------------------------------
+  it('exercise 7: wait for at least 3 notifications', () => {
+    // .should('have.length', 3) retries until exactly 3 elements match.
+    cy.get('[data-testid="notification-item"]', { timeout: 15000 })
+      .should('have.length', 3);
+
+    // Verify the total count display matches.
+    cy.get('[data-testid="total-count"]')
+      .should('have.text', '3');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Verify Element Attribute Changes Dynamically
+  //
+  // "Toggle Priority" changes data-priority from "normal" to "high".
+  // .should('have.attr', name, value) retries until the attribute matches.
+  // --------------------------------------------------------------------------
+  it('exercise 8: verify attribute changes on toggle', () => {
+    // Verify initial attribute value.
+    cy.get('[data-testid="status-message"]')
+      .should('have.attr', 'data-priority', 'normal');
+
+    // Click "Toggle Priority".
+    cy.get('[data-testid="btn-change-attr"]').click();
+
+    // Verify the attribute changed to "high".
+    cy.get('[data-testid="status-message"]')
+      .should('have.attr', 'data-priority', 'high');
+
+    // Verify the text content also changed.
+    cy.get('[data-testid="status-message"]')
+      .should('have.text', 'System status: High priority — maintenance scheduled');
+
+    // Toggle back and verify it reverts.
+    cy.get('[data-testid="btn-change-attr"]').click();
+    cy.get('[data-testid="status-message"]')
+      .should('have.attr', 'data-priority', 'normal');
+  });
+
+});
+6:T1d9c,# Kata 10: Canvas and SVG
+
+## What You Will Learn
+
+- How to simulate mouse drawing on an HTML5 Canvas element
+- Verifying canvas content by inspecting pixel data (`getImageData`)
+- Clicking and hovering SVG elements (heat map cells, bar chart bars)
+- Reading SVG attributes (`data-value`, `height`) to verify chart data
+- Testing tooltip visibility on hover
+- Verifying canvas dimensions via attributes and runtime properties
+- Playwright: `page.mouse.move/down/up`, `page.evaluate()`, `boundingBox()`
+- Cypress: `.trigger('mousedown/mousemove/mouseup')`, `cy.window()`, `.invoke('attr')`
+
+## Prerequisites
+
+- Node.js 18+ installed
+- Completed Kata 01-09 or comfortable with selectors, assertions, and mouse events
+- Basic understanding of HTML5 Canvas and SVG
+
+## Concepts Explained
+
+### HTML5 Canvas
+
+The `<canvas>` element provides a bitmap drawing surface. JavaScript draws on it using the 2D rendering context:
+
+```javascript
+const canvas = document.getElementById('my-canvas');
+const ctx = canvas.getContext('2d');
+
+// Draw a line
+ctx.beginPath();         // start a new path
+ctx.moveTo(10, 10);      // move to starting point
+ctx.lineTo(100, 50);     // draw a line segment
+ctx.stroke();            // render the path
+
+// Clear the canvas
+ctx.clearRect(0, 0, canvas.width, canvas.height);
+```
+
+**Testing challenge**: Canvas content is pixels, not DOM elements. You cannot query individual shapes. Instead, you:
+1. Simulate mouse events to trigger drawing code
+2. Inspect pixel data via `getImageData` to check if the canvas is blank or has content
+
+### SVG (Scalable Vector Graphics)
+
+SVG elements *are* DOM elements, so you can query, click, and read attributes just like HTML elements:
+
+```html
+<rect data-testid="bar-jan" width="30" height="80" data-value="80" fill="#3b82f6" />
+```
+
+```typescript
+// Playwright
+await expect(page.getByTestId('bar-jan')).toHaveAttribute('data-value', '80');
+
+// Cypress
+cy.get('[data-testid="bar-jan"]').should('have.attr', 'data-value', '80');
+```
+
+### Simulating Canvas Drawing in Tests
+
+| Action | Playwright | Cypress |
+|--------|-----------|---------|
+| Move mouse | `page.mouse.move(x, y)` | `.trigger('mousemove', { offsetX, offsetY })` |
+| Press button | `page.mouse.down()` | `.trigger('mousedown', { offsetX, offsetY })` |
+| Release button | `page.mouse.up()` | `.trigger('mouseup')` |
+| Get element position | `locator.boundingBox()` | `$el[0].getBoundingClientRect()` |
+
+### Checking if a Canvas is Blank
+
+```javascript
+function isCanvasBlank(canvas) {
+  const ctx = canvas.getContext('2d');
+  // getImageData returns RGBA values for every pixel
+  const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+  // Check if all alpha values (every 4th byte) are zero
+  for (let i = 3; i < data.length; i += 4) {
+    if (data[i] !== 0) return false;
+  }
+  return true;
+}
+```
+
+## Playground
+
+Open the playground in your browser. It contains a **fintech signature and visualization page** with:
+
+1. **Signature pad** (Canvas) — draw with the mouse, clear with a button, capture to change status
+2. **SVG risk heat map** — 3x4 grid of colored cells, click to select, hover for tooltip
+3. **SVG bar chart** — monthly approval counts with data-value attributes
+4. **Canvas bar chart** — programmatically drawn bars for loan disbursements
+5. **Signature status** — changes from "Unsigned" to "Signed" after capture
+
+```bash
+# start the playground server
+npx serve katas -l 8080
+
+# open in browser
+# http://localhost:8080/phase-01-dom-and-browser-apis/10-canvas-and-svg/playground/
+```
+
+## Exercises
+
+### Exercise 1: Draw on Signature Canvas
+
+Simulate mouse events (mousedown, mousemove, mouseup) on the signature canvas and verify the `hasContent` flag becomes true.
+
+**Playwright hint**: use `page.mouse.move/down/up` with coordinates from `boundingBox()`
+**Cypress hint**: use `.trigger('mousedown', { offsetX, offsetY })` then `mousemove` and `mouseup`
+
+### Exercise 2: Verify Canvas is Not Blank After Drawing
+
+Call `isCanvasBlank()` before and after drawing to verify the canvas goes from blank to non-blank.
+
+### Exercise 3: Clear Signature and Verify Canvas is Blank
+
+Draw, then click Clear, then verify `isCanvasBlank()` returns true and status reverts to "Unsigned".
+
+### Exercise 4: Click SVG Element and Verify Selection
+
+Click a heat map cell and verify it gains the `selected` class. Click another and verify the selection moves.
+
+### Exercise 5: Read SVG Bar Chart Values
+
+Read `data-value` and `height` attributes from bar chart `<rect>` elements and verify they match expected values.
+
+### Exercise 6: Hover Over SVG Element and Verify Tooltip
+
+Hover over a heat map cell and verify the tooltip becomes visible with the correct text.
+
+### Exercise 7: Verify Canvas Dimensions
+
+Check the `width` and `height` attributes of both canvas elements, and verify them via runtime properties.
+
+### Exercise 8: Verify Signature Status After Drawing
+
+Draw on the canvas, click "Capture Signature", and verify the status changes from "Unsigned" to "Signed".
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/canvas-svg.spec.ts` — every line is commented to explain what it does.
+
+### Cypress Solution
+
+See `cypress/canvas-svg.cy.ts` — every line is commented to explain what it does.
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Clicking the canvas without mousedown/mousemove | Canvas drawing requires a sequence of mouse events, not a click | Use mousedown, then mousemove (multiple), then mouseup |
+| Using page coordinates for Cypress `.trigger()` | Cypress trigger uses `offsetX/offsetY` relative to the element | Use offset coordinates, not page coordinates |
+| Trying to query shapes inside a canvas | Canvas is pixels, not DOM — there are no child elements | Use `getImageData` to inspect pixel data |
+| Forgetting that SVG elements are in a different namespace | SVG elements are still DOM elements and support standard selectors | Use `cy.get` / `page.getByTestId` normally |
+| Not hovering before checking the tooltip | The tooltip only appears on mouseover | Use `.hover()` (Playwright) or `.trigger('mouseover')` (Cypress) |
+
+## Quick Reference
+
+### Playwright Canvas / SVG Methods
+
+| Method | Purpose | Example |
+|--------|---------|---------|
+| `page.mouse.move(x, y)` | Move mouse to absolute coordinates | `page.mouse.move(100, 200)` |
+| `page.mouse.down()` | Press left mouse button | `page.mouse.down()` |
+| `page.mouse.up()` | Release left mouse button | `page.mouse.up()` |
+| `locator.boundingBox()` | Get element position and size | `const box = await el.boundingBox()` |
+| `locator.hover()` | Move mouse to element centre | `page.getByTestId('cell').hover()` |
+| `page.evaluate(fn)` | Run JS in the browser | `page.evaluate(() => isCanvasBlank(c))` |
+| `toHaveAttribute(k, v)` | Assert DOM attribute value | `expect(el).toHaveAttribute('height', '120')` |
+
+### Cypress Canvas / SVG Methods
+
+| Method | Purpose | Example |
+|--------|---------|---------|
+| `.trigger(event, opts)` | Dispatch a DOM event | `.trigger('mousedown', { offsetX: 50, offsetY: 100 })` |
+| `cy.window()` | Yield the browser window object | `cy.window().its('hasContent')` |
+| `.should('have.attr')` | Assert element attribute | `.should('have.attr', 'data-value', '80')` |
+| `.should('have.class')` | Assert CSS class presence | `.should('have.class', 'selected')` |
+| `.invoke('attr', name)` | Read an attribute value | `.invoke('attr', 'height').should('equal', '120')` |
+| `.then($el => ...)` | Access raw DOM element | `.then($el => $el[0].width)` |
+7:T25bf,import { test, expect } from '@playwright/test';
+
+// The base path to this kata's playground.
+// The web server serves the katas/ directory, so the path starts from there.
+const PLAYGROUND = '/phase-01-dom-and-browser-apis/10-canvas-and-svg/playground/';
+
+// --------------------------------------------------------------------------
+// Helper: simulate a mouse stroke on a canvas element.
+// Dispatches mousedown, several mousemove events, then mouseup.
+// --------------------------------------------------------------------------
+async function drawOnCanvas(
+  page: import('@playwright/test').Page,
+  testId: string,
+) {
+  const canvas = page.getByTestId(testId);
+
+  // boundingBox returns { x, y, width, height } of the element in page
+  // coordinates. We use these to calculate absolute positions for mouse events.
+  const box = await canvas.boundingBox();
+  if (!box) throw new Error(`Canvas [data-testid="${testId}"] not found`);
+
+  // Start near the centre-left of the canvas
+  const startX = box.x + box.width * 0.2;
+  const startY = box.y + box.height * 0.5;
+
+  // page.mouse.move moves the virtual mouse to absolute coordinates.
+  await page.mouse.move(startX, startY);
+
+  // page.mouse.down presses the left button (triggers mousedown on canvas).
+  await page.mouse.down();
+
+  // Draw a short zigzag stroke across the canvas.
+  // Each move triggers mousemove, which calls ctx.lineTo + ctx.stroke.
+  const steps = 5;
+  for (let i = 1; i <= steps; i++) {
+    await page.mouse.move(
+      startX + i * 30,
+      startY + (i % 2 === 0 ? -20 : 20),
+      { steps: 3 },  // interpolate 3 sub-steps for smoother movement
+    );
+  }
+
+  // page.mouse.up releases the button (triggers mouseup).
+  await page.mouse.up();
+}
+
+// --------------------------------------------------------------------------
+// Exercise 1: Draw on the signature canvas
+// --------------------------------------------------------------------------
+test('exercise 1: draw on signature canvas via mouse events', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Use the helper to simulate a drawing stroke on the signature pad.
+  await drawOnCanvas(page, 'signature-pad');
+
+  // After drawing, the global hasContent flag is true.
+  // page.evaluate runs JavaScript in the browser and returns the result.
+  const hasContent = await page.evaluate(() => (window as any).hasContent);
+  expect(hasContent).toBe(true);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Verify canvas is not blank after drawing
+// --------------------------------------------------------------------------
+test('exercise 2: canvas is not blank after drawing', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Before drawing, the canvas should be blank.
+  // We call the helper function isCanvasBlank exposed on window.
+  const blankBefore = await page.evaluate(() => {
+    const c = document.querySelector('[data-testid="signature-pad"]') as HTMLCanvasElement;
+    return (window as any).isCanvasBlank(c);
+  });
+  expect(blankBefore).toBe(true);
+
+  // Draw a stroke
+  await drawOnCanvas(page, 'signature-pad');
+
+  // After drawing, the canvas should no longer be blank.
+  // isCanvasBlank checks every pixel's alpha channel — if any pixel is
+  // non-transparent, it returns false.
+  const blankAfter = await page.evaluate(() => {
+    const c = document.querySelector('[data-testid="signature-pad"]') as HTMLCanvasElement;
+    return (window as any).isCanvasBlank(c);
+  });
+  expect(blankAfter).toBe(false);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Clear signature and verify canvas is blank
+// --------------------------------------------------------------------------
+test('exercise 3: clear button resets the canvas', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Draw something first
+  await drawOnCanvas(page, 'signature-pad');
+
+  // Click the Clear button. It calls ctx.clearRect to wipe the canvas.
+  await page.getByTestId('clear-signature').click();
+
+  // Verify the canvas is blank again
+  const isBlank = await page.evaluate(() => {
+    const c = document.querySelector('[data-testid="signature-pad"]') as HTMLCanvasElement;
+    return (window as any).isCanvasBlank(c);
+  });
+  expect(isBlank).toBe(true);
+
+  // The signature status should revert to "Unsigned"
+  await expect(page.getByTestId('signature-status')).toHaveText('Unsigned');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Click SVG element and verify selection state
+// --------------------------------------------------------------------------
+test('exercise 4: click heat map cell to select it', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Click the Credit Q3 cell (risk score 91)
+  const cell = page.getByTestId('cell-credit-q3');
+  await cell.click();
+
+  // The click handler adds the "selected" class to the clicked cell.
+  await expect(cell).toHaveClass(/selected/);
+
+  // The "selected-cell" text should update with the cell's data-label.
+  await expect(page.getByTestId('selected-cell')).toHaveText('Credit Q3: 91');
+
+  // Click a different cell and verify the selection moves
+  const cell2 = page.getByTestId('cell-ops-q1');
+  await cell2.click();
+  await expect(cell2).toHaveClass(/selected/);
+  // The first cell should no longer be selected
+  await expect(cell).not.toHaveClass(/selected/);
+  await expect(page.getByTestId('selected-cell')).toHaveText('Ops Q1: 12');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Verify SVG bar chart values (read height attributes)
+// --------------------------------------------------------------------------
+test('exercise 5: read SVG bar chart data-value attributes', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Each bar has a data-value attribute encoding the approval count.
+  // getAttribute retrieves a DOM attribute as a string.
+  const janValue = await page.getByTestId('bar-jan').getAttribute('data-value');
+  expect(janValue).toBe('80');
+
+  const febValue = await page.getByTestId('bar-feb').getAttribute('data-value');
+  expect(febValue).toBe('120');
+
+  // We can also verify the height attribute, which encodes the visual bar size.
+  const febHeight = await page.getByTestId('bar-feb').getAttribute('height');
+  expect(febHeight).toBe('120');
+
+  // Check the tallest bar (May, value 140, height 140)
+  await expect(page.getByTestId('bar-may')).toHaveAttribute('data-value', '140');
+  await expect(page.getByTestId('bar-may')).toHaveAttribute('height', '140');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Hover over SVG element and verify tooltip
+// --------------------------------------------------------------------------
+test('exercise 6: hover over heat map cell shows tooltip', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // The tooltip is hidden by default (no "visible" class).
+  const tooltip = page.getByTestId('heatmap-tooltip');
+  await expect(tooltip).toBeHidden();
+
+  // Hover over the Market Q2 cell. locator.hover() moves the mouse
+  // to the centre of the element, firing mouseover and mousemove.
+  await page.getByTestId('cell-market-q2').hover();
+
+  // The mouseover handler adds class "visible" and sets the text.
+  await expect(tooltip).toBeVisible();
+  await expect(tooltip).toHaveText('Market Q2: 53');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Verify canvas dimensions
+// --------------------------------------------------------------------------
+test('exercise 7: verify canvas dimensions', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Check the signature pad dimensions via HTML attributes.
+  // toHaveAttribute verifies the attribute value as a string.
+  const sigPad = page.getByTestId('signature-pad');
+  await expect(sigPad).toHaveAttribute('width', '400');
+  await expect(sigPad).toHaveAttribute('height', '200');
+
+  // Check the chart canvas dimensions
+  const chartCanvas = page.getByTestId('chart-canvas');
+  await expect(chartCanvas).toHaveAttribute('width', '400');
+  await expect(chartCanvas).toHaveAttribute('height', '220');
+
+  // We can also read the runtime properties via evaluate.
+  // canvas.width and canvas.height return the drawing-surface size in pixels.
+  const dims = await page.evaluate(() => {
+    const c = document.querySelector('[data-testid="signature-pad"]') as HTMLCanvasElement;
+    return { w: c.width, h: c.height };
+  });
+  expect(dims.w).toBe(400);
+  expect(dims.h).toBe(200);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Verify signature status changes after drawing
+// --------------------------------------------------------------------------
+test('exercise 8: capture signature updates status to Signed', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Initially the status should be "Unsigned"
+  const status = page.getByTestId('signature-status');
+  await expect(status).toHaveText('Unsigned');
+  await expect(status).toHaveClass(/status-unsigned/);
+
+  // Draw a signature
+  await drawOnCanvas(page, 'signature-pad');
+
+  // Click "Capture Signature" — this updates the status to "Signed"
+  await page.getByTestId('capture-signature').click();
+
+  // Verify the status text and CSS class changed
+  await expect(status).toHaveText('Signed');
+  await expect(status).toHaveClass(/status-signed/);
+
+  // The capture button text should also change
+  await expect(page.getByTestId('capture-signature')).toHaveText('Signature Captured');
+});
+8:T2456,// The base path to this kata's playground.
+// Cypress prepends the baseUrl (http://localhost:8080) to this path.
+const PLAYGROUND = '/phase-01-dom-and-browser-apis/10-canvas-and-svg/playground/';
+
+// --------------------------------------------------------------------------
+// Helper: simulate a mouse drawing stroke on a canvas element.
+// Uses Cypress's .trigger() to dispatch mousedown, mousemove, mouseup.
+// trigger(event, options) dispatches a synthetic DOM event on the element.
+// --------------------------------------------------------------------------
+function drawOnCanvas(testId: string) {
+  // .trigger('mousedown', { ... }) fires a mousedown event at the given
+  // offsetX/offsetY coordinates relative to the element's top-left corner.
+  cy.get(`[data-testid="${testId}"]`)
+    .trigger('mousedown', { offsetX: 50, offsetY: 100 });
+
+  // Draw a short zigzag by dispatching several mousemove events.
+  // Each mousemove causes the canvas listener to call ctx.lineTo + ctx.stroke.
+  cy.get(`[data-testid="${testId}"]`)
+    .trigger('mousemove', { offsetX: 80,  offsetY: 80  })
+    .trigger('mousemove', { offsetX: 110, offsetY: 120 })
+    .trigger('mousemove', { offsetX: 140, offsetY: 80  })
+    .trigger('mousemove', { offsetX: 170, offsetY: 120 })
+    .trigger('mousemove', { offsetX: 200, offsetY: 100 });
+
+  // Release the mouse button to end the stroke.
+  cy.get(`[data-testid="${testId}"]`)
+    .trigger('mouseup');
+}
+
+describe('Kata 10: Canvas and SVG', () => {
+
+  // beforeEach runs before every test. We visit the playground page
+  // so each test starts with a fresh, unmodified page.
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Draw on the signature canvas
+  // --------------------------------------------------------------------------
+  it('exercise 1: draw on signature canvas via mouse events', () => {
+    // Use the helper to simulate a drawing stroke
+    drawOnCanvas('signature-pad');
+
+    // After drawing, the global hasContent flag should be true.
+    // cy.window() yields the browser's window object.
+    // .its('hasContent') reads the property from the window.
+    cy.window().its('hasContent').should('equal', true);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Verify canvas is not blank after drawing
+  // --------------------------------------------------------------------------
+  it('exercise 2: canvas is not blank after drawing', () => {
+    // Before drawing, confirm the canvas is blank.
+    // cy.window().then(win => ...) gives us the window object so we can
+    // call the isCanvasBlank helper function exposed by the playground.
+    cy.window().then((win: any) => {
+      const c = win.document.querySelector('[data-testid="signature-pad"]');
+      expect(win.isCanvasBlank(c)).to.be.true;
+    });
+
+    // Draw a stroke
+    drawOnCanvas('signature-pad');
+
+    // After drawing, the canvas should NOT be blank.
+    // isCanvasBlank scans every pixel's alpha channel.
+    cy.window().then((win: any) => {
+      const c = win.document.querySelector('[data-testid="signature-pad"]');
+      expect(win.isCanvasBlank(c)).to.be.false;
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Clear signature and verify canvas is blank
+  // --------------------------------------------------------------------------
+  it('exercise 3: clear button resets the canvas', () => {
+    // Draw something first
+    drawOnCanvas('signature-pad');
+
+    // Click the Clear button, which calls ctx.clearRect on the canvas.
+    cy.get('[data-testid="clear-signature"]').click();
+
+    // Verify the canvas is blank again
+    cy.window().then((win: any) => {
+      const c = win.document.querySelector('[data-testid="signature-pad"]');
+      expect(win.isCanvasBlank(c)).to.be.true;
+    });
+
+    // The signature status should revert to "Unsigned"
+    cy.get('[data-testid="signature-status"]').should('have.text', 'Unsigned');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Click SVG element and verify selection state
+  // --------------------------------------------------------------------------
+  it('exercise 4: click heat map cell to select it', () => {
+    // Click the Credit Q3 cell (risk score 91).
+    // SVG elements support .click() just like HTML elements in Cypress.
+    cy.get('[data-testid="cell-credit-q3"]').click();
+
+    // The click handler adds the "selected" class.
+    // .should('have.class', 'selected') checks the element's classList.
+    cy.get('[data-testid="cell-credit-q3"]')
+      .should('have.class', 'selected');
+
+    // The "selected-cell" label should show the cell's data-label text.
+    cy.get('[data-testid="selected-cell"]')
+      .should('have.text', 'Credit Q3: 91');
+
+    // Click a different cell and verify the selection moves
+    cy.get('[data-testid="cell-ops-q1"]').click();
+    cy.get('[data-testid="cell-ops-q1"]')
+      .should('have.class', 'selected');
+
+    // The previously selected cell should lose its "selected" class.
+    cy.get('[data-testid="cell-credit-q3"]')
+      .should('not.have.class', 'selected');
+
+    cy.get('[data-testid="selected-cell"]')
+      .should('have.text', 'Ops Q1: 12');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Verify SVG bar chart values (read height attributes)
+  // --------------------------------------------------------------------------
+  it('exercise 5: read SVG bar chart data-value attributes', () => {
+    // Each SVG <rect> bar has a data-value attribute with the approval count.
+    // .should('have.attr', name, value) asserts an attribute equals a value.
+    cy.get('[data-testid="bar-jan"]')
+      .should('have.attr', 'data-value', '80');
+
+    cy.get('[data-testid="bar-feb"]')
+      .should('have.attr', 'data-value', '120');
+
+    // Verify the height attribute matches the visual bar height.
+    // .invoke('attr', 'height') retrieves the attribute value.
+    cy.get('[data-testid="bar-feb"]')
+      .invoke('attr', 'height')
+      .should('equal', '120');
+
+    // Check the tallest bar (May)
+    cy.get('[data-testid="bar-may"]')
+      .should('have.attr', 'data-value', '140')
+      .and('have.attr', 'height', '140');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Hover over SVG element and verify tooltip
+  // --------------------------------------------------------------------------
+  it('exercise 6: hover over heat map cell shows tooltip', () => {
+    // The tooltip is hidden by default.
+    cy.get('[data-testid="heatmap-tooltip"]').should('not.be.visible');
+
+    // .trigger('mouseover') fires a mouseover event, which shows the tooltip.
+    // We use trigger instead of cy.realHover because trigger works reliably
+    // for synthetic DOM events that the playground listens for.
+    cy.get('[data-testid="cell-market-q2"]').trigger('mouseover');
+
+    // The mouseover handler sets the tooltip text and adds the "visible" class.
+    cy.get('[data-testid="heatmap-tooltip"]')
+      .should('be.visible')
+      .and('have.text', 'Market Q2: 53');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Verify canvas dimensions
+  // --------------------------------------------------------------------------
+  it('exercise 7: verify canvas dimensions', () => {
+    // Check the signature pad dimensions via HTML attributes.
+    cy.get('[data-testid="signature-pad"]')
+      .should('have.attr', 'width', '400')
+      .and('have.attr', 'height', '200');
+
+    // Check the chart canvas dimensions.
+    cy.get('[data-testid="chart-canvas"]')
+      .should('have.attr', 'width', '400')
+      .and('have.attr', 'height', '220');
+
+    // We can also read the runtime properties via the DOM.
+    // .then($el => ...) gives us the jQuery-wrapped element.
+    // $el[0] is the raw HTMLCanvasElement with .width and .height properties.
+    cy.get('[data-testid="signature-pad"]').then(($el) => {
+      const canvas = $el[0] as HTMLCanvasElement;
+      expect(canvas.width).to.equal(400);
+      expect(canvas.height).to.equal(200);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Verify signature status changes after drawing
+  // --------------------------------------------------------------------------
+  it('exercise 8: capture signature updates status to Signed', () => {
+    // Initially the status should be "Unsigned"
+    cy.get('[data-testid="signature-status"]')
+      .should('have.text', 'Unsigned')
+      .and('have.class', 'status-unsigned');
+
+    // Draw a signature
+    drawOnCanvas('signature-pad');
+
+    // Click "Capture Signature" to finalize
+    cy.get('[data-testid="capture-signature"]').click();
+
+    // Verify the status changed to "Signed"
+    cy.get('[data-testid="signature-status"]')
+      .should('have.text', 'Signed')
+      .and('have.class', 'status-signed');
+
+    // The capture button text should also update
+    cy.get('[data-testid="capture-signature"]')
+      .should('have.text', 'Signature Captured');
+  });
+});
+9:T1d90,# Kata 12: Web APIs
+
+## What You Will Learn
+
+- How to test clipboard operations (copy/paste) with browser automation
+- How to mock the Geolocation API and verify displayed coordinates
+- How to handle native browser dialogs (alert, confirm, prompt) in tests
+- How to grant/deny permissions (camera, microphone) in test contexts
+- How to verify file downloads in test automation
+- How to read/write localStorage from tests
+- The differences between Playwright and Cypress approaches to each API
+
+## Prerequisites
+
+- Completed Phase 00 katas
+- Completed Kata 11 (DOM Mutations)
+
+## Concepts Explained
+
+### Clipboard API
+
+The Clipboard API (`navigator.clipboard`) lets web pages read from and write to the system clipboard. In tests, you verify clipboard content using `page.evaluate()` (Playwright) or `cy.window()` (Cypress).
+
+```typescript
+// PLAYWRIGHT — read clipboard content after a copy action
+const clipboardText = await page.evaluate(() => navigator.clipboard.readText());
+expect(clipboardText).toBe('1234-5678-9012-3456');
+
+// CYPRESS — clipboard testing via window
+cy.window().then((win) => {
+  win.navigator.clipboard.readText().then((text) => {
+    expect(text).to.eq('1234-5678-9012-3456');
+  });
+});
+```
+
+### Geolocation API
+
+The Geolocation API (`navigator.geolocation`) returns the user's position. In tests, you mock it to return predictable coordinates.
+
+```typescript
+// PLAYWRIGHT — grant permission and set geolocation before navigating
+await context.grantPermissions(['geolocation']);
+await context.setGeolocation({ latitude: 28.6139, longitude: 77.2090 });
+
+// CYPRESS — stub geolocation in the browser window
+cy.visit(url, {
+  onBeforeLoad(win) {
+    cy.stub(win.navigator.geolocation, 'getCurrentPosition')
+      .callsFake((cb) => cb({ coords: { latitude: 28.6139, longitude: 77.2090 } }));
+  },
+});
+```
+
+### Browser Dialogs (alert, confirm, prompt)
+
+Native browser dialogs block JavaScript execution. Test frameworks handle them differently:
+
+```typescript
+// PLAYWRIGHT — listen for dialog events BEFORE triggering them
+page.on('dialog', async (dialog) => {
+  // dialog.type() is 'alert', 'confirm', or 'prompt'
+  // dialog.message() is the dialog text
+  await dialog.accept();  // or dialog.dismiss()
+});
+
+// CYPRESS — stub window methods
+cy.on('window:alert', (text) => {
+  expect(text).to.contain('Payment');
+});
+cy.on('window:confirm', () => true);  // return true = accept, false = dismiss
+```
+
+### Permissions API
+
+The Permissions API controls access to device features like camera and microphone:
+
+```typescript
+// PLAYWRIGHT — grant permissions via browser context
+await context.grantPermissions(['camera']);
+
+// CYPRESS — permissions must be handled differently (no built-in API)
+// Typically you stub the getUserMedia call
+```
+
+### File Downloads
+
+Verifying downloads requires intercepting the browser's download mechanism:
+
+```typescript
+// PLAYWRIGHT — wait for the download event
+const downloadPromise = page.waitForEvent('download');
+await page.getByTestId('btn-download').click();
+const download = await downloadPromise;
+expect(download.suggestedFilename()).toBe('statement.csv');
+
+// CYPRESS — verify the download link attributes
+cy.get('[data-testid="btn-download"]').click();
+// Verify the download status message
+```
+
+### Web Storage (localStorage)
+
+localStorage persists key-value pairs in the browser:
+
+```typescript
+// PLAYWRIGHT — read/write localStorage via evaluate
+await page.evaluate(() => localStorage.setItem('theme', 'dark'));
+const value = await page.evaluate(() => localStorage.getItem('theme'));
+
+// CYPRESS — access localStorage via cy.window()
+cy.window().then((win) => {
+  win.localStorage.setItem('theme', 'dark');
+  expect(win.localStorage.getItem('theme')).to.eq('dark');
+});
+```
+
+## Playground
+
+The playground demonstrates six browser APIs:
+
+1. **Clipboard** — "Copy Account Number" button + paste target input
+2. **Geolocation** — "Detect Location" button showing latitude/longitude
+3. **Browser Dialogs** — alert, confirm, and prompt buttons with result display
+4. **Permissions** — camera access request with granted/denied status
+5. **Web Storage** — save/load/clear data in localStorage
+6. **File Download** — generates and downloads a CSV statement file
+
+## Exercises
+
+### Exercise 1: Copy to Clipboard and Verify
+Click "Copy Account Number" and verify the clipboard contains the account number.
+
+### Exercise 2: Mock Geolocation and Verify Coordinates
+Mock the geolocation API to return Delhi coordinates (28.6139, 77.2090), click "Detect Location", and verify the displayed lat/lng.
+
+### Exercise 3: Handle Alert Dialog
+Set up a dialog handler, click "Show Alert", and verify the alert message text and that the result shows "Alert was dismissed."
+
+### Exercise 4: Handle Confirm Dialog (Accept and Dismiss)
+Test both accepting and dismissing the confirm dialog. Verify the result text changes accordingly ("Transfer confirmed." vs "Transfer cancelled.").
+
+### Exercise 5: Handle Prompt Dialog with Input
+Set up a prompt handler that enters a custom amount, click "Show Prompt", and verify the result displays the entered amount.
+
+### Exercise 6: Grant/Deny Camera Permission
+Grant camera permission in the test context, click "Request Camera Access", and verify the status shows "Granted". Then test the denied case.
+
+### Exercise 7: Verify File Download
+Click "Download Statement (CSV)", verify the download is triggered, and check the suggested filename.
+
+### Exercise 8: Read/Write localStorage
+Write a key-value pair to localStorage, reload the page, read it back, and verify the value persists.
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/web-apis.spec.ts`
+
+### Cypress Solution
+
+See `cypress/web-apis.cy.ts`
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Not setting up dialog handler before triggering | Dialog blocks JS, handler must be registered first | Call `page.on('dialog')` before `.click()` |
+| Reading clipboard without granting permission | Browser may deny clipboard access | Use `context.grantPermissions(['clipboard-read'])` in Playwright |
+| Not mocking geolocation before page load | The page calls geolocation on button click | Mock it before or during page visit |
+| Forgetting to await dialog.accept() | Dialog stays open, blocking the page | Always `await dialog.accept()` or `dialog.dismiss()` |
+| Using cy.wait(ms) for download verification | Downloads may take varying time | Use status messages or file existence checks |
+
+## Quick Reference
+
+### Playwright Web API Methods
+
+| API | Method | Example |
+|-----|--------|---------|
+| Clipboard | `page.evaluate(() => navigator.clipboard.readText())` | Read clipboard content |
+| Geolocation | `context.setGeolocation({ latitude, longitude })` | Mock location |
+| Permissions | `context.grantPermissions(['camera'])` | Grant device access |
+| Dialogs | `page.on('dialog', handler)` | Handle alert/confirm/prompt |
+| Download | `page.waitForEvent('download')` | Intercept file download |
+| Storage | `page.evaluate(() => localStorage.getItem(key))` | Read localStorage |
+
+### Cypress Web API Methods
+
+| API | Method | Example |
+|-----|--------|---------|
+| Clipboard | `cy.window().its('navigator.clipboard')` | Access clipboard |
+| Geolocation | `cy.stub(win.navigator.geolocation, ...)` | Mock location |
+| Dialogs | `cy.on('window:alert', handler)` | Handle alert |
+| Confirm | `cy.on('window:confirm', () => true/false)` | Accept/dismiss |
+| Storage | `cy.window().then(win => win.localStorage)` | Access localStorage |
+a:T2eec,import { test, expect } from '@playwright/test';
+
+// Path to the playground HTML served by the dev server.
+const PLAYGROUND = '/phase-01-dom-and-browser-apis/12-web-apis/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Copy to Clipboard and Verify
+//
+// We grant clipboard permissions, click the copy button, then read
+// the clipboard content using page.evaluate() to call the browser's
+// Clipboard API.
+// --------------------------------------------------------------------------
+test('exercise 1: copy account number to clipboard', async ({ page, context }) => {
+  // Grant clipboard-read and clipboard-write permissions so the page
+  // can access the clipboard without a user gesture prompt.
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+
+  await page.goto(PLAYGROUND);
+
+  // Click the "Copy Account Number" button.
+  await page.getByTestId('btn-copy-account').click();
+
+  // Verify the status message shows "Copied to clipboard!".
+  await expect(page.getByTestId('copy-status')).toHaveText('Copied to clipboard!');
+
+  // Read the clipboard content using page.evaluate().
+  // navigator.clipboard.readText() is an async browser API that returns
+  // the current clipboard text.
+  const clipboardText = await page.evaluate(() => navigator.clipboard.readText());
+
+  // Verify the clipboard contains the expected account number.
+  expect(clipboardText).toBe('1234-5678-9012-3456');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Mock Geolocation and Verify Coordinates
+//
+// We set a fake geolocation on the browser context BEFORE navigating.
+// When the page calls navigator.geolocation.getCurrentPosition(),
+// it receives our mocked coordinates instead of real GPS data.
+// --------------------------------------------------------------------------
+test('exercise 2: mock geolocation and verify displayed coordinates', async ({ page, context }) => {
+  // Grant geolocation permission so the page doesn't show a prompt.
+  await context.grantPermissions(['geolocation']);
+
+  // Set the fake geolocation — these are coordinates for New Delhi, India.
+  await context.setGeolocation({ latitude: 28.6139, longitude: 77.2090 });
+
+  await page.goto(PLAYGROUND);
+
+  // Click "Detect Location".
+  await page.getByTestId('btn-detect-location').click();
+
+  // Verify the displayed latitude and longitude match our mocked values.
+  // toFixed(4) in the playground formats them as "28.6139" and "77.2090".
+  await expect(page.getByTestId('location-lat')).toHaveText('28.6139');
+  await expect(page.getByTestId('location-lng')).toHaveText('77.2090');
+
+  // Verify the result box shows a success message.
+  await expect(page.getByTestId('location-result')).toContainText('Location detected');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Handle Alert Dialog
+//
+// page.on('dialog') registers a listener that fires whenever the page
+// triggers alert(), confirm(), or prompt(). We MUST register the
+// listener BEFORE clicking the button, because the dialog blocks JS.
+// --------------------------------------------------------------------------
+test('exercise 3: handle alert dialog and verify message', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Variable to capture the alert message text.
+  let alertMessage = '';
+
+  // Register the dialog handler BEFORE triggering the alert.
+  // dialog.type() tells us which kind of dialog it is ('alert', 'confirm', 'prompt').
+  // dialog.message() returns the text shown in the dialog.
+  // dialog.accept() dismisses the dialog (same as clicking OK).
+  page.on('dialog', async (dialog) => {
+    alertMessage = dialog.message();
+    await dialog.accept();
+  });
+
+  // Click the button that triggers alert().
+  await page.getByTestId('btn-trigger-alert').click();
+
+  // Verify the alert had the expected message.
+  expect(alertMessage).toBe('Payment of Rs 5,000 has been processed successfully!');
+
+  // Verify the page updated after the dialog was dismissed.
+  await expect(page.getByTestId('dialog-result')).toHaveText('Alert was dismissed.');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Handle Confirm Dialog (Accept and Dismiss)
+//
+// confirm() returns true when accepted (OK) and false when dismissed
+// (Cancel). We test both cases to verify the page reacts correctly.
+// --------------------------------------------------------------------------
+test('exercise 4a: accept confirm dialog', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Accept the confirm dialog by calling dialog.accept().
+  page.on('dialog', async (dialog) => {
+    expect(dialog.type()).toBe('confirm');
+    expect(dialog.message()).toContain('Rs 50,000');
+    await dialog.accept();   // User clicks "OK"
+  });
+
+  await page.getByTestId('btn-trigger-confirm').click();
+
+  // When confirm returns true, the page shows "Transfer confirmed."
+  await expect(page.getByTestId('dialog-result')).toHaveText('Transfer confirmed.');
+});
+
+test('exercise 4b: dismiss confirm dialog', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Dismiss the confirm dialog by calling dialog.dismiss().
+  page.on('dialog', async (dialog) => {
+    await dialog.dismiss();  // User clicks "Cancel"
+  });
+
+  await page.getByTestId('btn-trigger-confirm').click();
+
+  // When confirm returns false, the page shows "Transfer cancelled."
+  await expect(page.getByTestId('dialog-result')).toHaveText('Transfer cancelled.');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Handle Prompt Dialog with Input
+//
+// prompt() shows a text input. We use dialog.accept(text) to enter
+// a value, simulating the user typing into the prompt and clicking OK.
+// --------------------------------------------------------------------------
+test('exercise 5: handle prompt dialog and enter text', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Register the dialog handler. For prompt dialogs, accept() takes
+  // an optional string argument — the text to enter in the prompt input.
+  page.on('dialog', async (dialog) => {
+    expect(dialog.type()).toBe('prompt');
+    // dialog.defaultValue() returns the pre-filled text (if any).
+    expect(dialog.defaultValue()).toBe('1000');
+    // Accept with a custom value.
+    await dialog.accept('25000');
+  });
+
+  await page.getByTestId('btn-trigger-prompt').click();
+
+  // Verify the page displays the entered amount.
+  await expect(
+    page.getByTestId('dialog-result')
+  ).toHaveText('Transfer amount set to Rs 25000');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Grant Camera Permission and Verify
+//
+// context.grantPermissions() pre-grants browser permissions so the
+// getUserMedia() call succeeds without showing a prompt. We verify
+// the UI status changes from "Not requested" to "Granted".
+// --------------------------------------------------------------------------
+test('exercise 6a: grant camera permission and verify UI', async ({ page, context }) => {
+  // Grant camera permission BEFORE navigating. This satisfies the browser
+  // permission model so no prompt appears.
+  await context.grantPermissions(['camera']);
+
+  // Headless Chromium does not have a real camera device, so even after
+  // granting permission, navigator.mediaDevices.getUserMedia({ video: true })
+  // would fail with NotFoundError. We stub getUserMedia to return a
+  // minimal fake MediaStream so the success branch runs. addInitScript
+  // injects this BEFORE any page script executes.
+  //
+  // The function body runs in the browser page context, where TypeScript
+  // types do not apply. We cast getUserMedia via `any` to avoid a type
+  // error while still overriding the method at runtime.
+  await page.addInitScript(() => {
+    const fakeStream = { getTracks: () => [{ stop: () => {} }] };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (navigator.mediaDevices as any).getUserMedia = async () => fakeStream;
+  });
+
+  await page.goto(PLAYGROUND);
+
+  // Click "Request Camera Access".
+  await page.getByTestId('btn-request-camera').click();
+
+  // Verify the status changed to "Granted".
+  await expect(page.getByTestId('permission-status')).toHaveText('Granted');
+  await expect(page.getByTestId('permission-result')).toContainText('Camera access granted');
+});
+
+test('exercise 6b: deny camera permission and verify UI', async ({ page, context }) => {
+  // Clear all permissions — this means getUserMedia() will be denied.
+  await context.clearPermissions();
+
+  await page.goto(PLAYGROUND);
+
+  await page.getByTestId('btn-request-camera').click();
+
+  // When permission is denied, the status shows "Denied".
+  await expect(page.getByTestId('permission-status')).toHaveText('Denied');
+  await expect(page.getByTestId('permission-result')).toContainText('Camera access denied');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Verify File Download
+//
+// page.waitForEvent('download') returns a Download object when the
+// browser initiates a file download. We can check the suggested
+// filename and even read the downloaded file's content.
+// --------------------------------------------------------------------------
+test('exercise 7: verify CSV download triggers', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Start waiting for the download event BEFORE clicking the button.
+  // This is similar to how we handle dialogs — register the listener first.
+  const downloadPromise = page.waitForEvent('download');
+
+  // Click the download button.
+  await page.getByTestId('btn-download-statement').click();
+
+  // Await the download object.
+  const download = await downloadPromise;
+
+  // Verify the suggested filename.
+  // suggestedFilename() returns the value of the <a download="..."> attribute.
+  expect(download.suggestedFilename()).toBe('statement-april-2026.csv');
+
+  // Optionally, read the downloaded file's content to verify it.
+  // download.path() returns the path to the temporary file on disk.
+  const path = await download.path();
+  expect(path).toBeTruthy();
+
+  // Verify the download status message on the page.
+  await expect(
+    page.getByTestId('download-status')
+  ).toContainText('Download started');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Read/Write localStorage
+//
+// page.evaluate() runs JavaScript in the browser context, giving us
+// direct access to localStorage. We write a value, verify it persists,
+// and confirm the UI reflects the stored data.
+// --------------------------------------------------------------------------
+test('exercise 8: read and write localStorage', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Write a value to localStorage via page.evaluate().
+  // This runs in the browser context, same as typing in the DevTools console.
+  await page.evaluate(() => {
+    localStorage.setItem('preferred_currency', 'INR');
+  });
+
+  // Read it back and verify.
+  const value = await page.evaluate(() => localStorage.getItem('preferred_currency'));
+  expect(value).toBe('INR');
+
+  // Now use the UI to save a value.
+  await page.getByTestId('storage-key').fill('theme');
+  await page.getByTestId('storage-value').fill('dark');
+  await page.getByTestId('btn-storage-save').click();
+
+  // Verify the UI shows the saved confirmation.
+  await expect(
+    page.getByTestId('storage-result')
+  ).toHaveText('Saved: "theme" = "dark"');
+
+  // Verify it was actually stored in localStorage.
+  const storedTheme = await page.evaluate(() => localStorage.getItem('theme'));
+  expect(storedTheme).toBe('dark');
+
+  // Use the "Load" button to read it back via the UI.
+  await page.getByTestId('btn-storage-load').click();
+  await expect(
+    page.getByTestId('storage-result')
+  ).toHaveText('Loaded: "theme" = "dark"');
+});
+b:T2932,// Path to the playground HTML served by the dev server.
+const PLAYGROUND = '/phase-01-dom-and-browser-apis/12-web-apis/playground/';
+
+describe('Kata 12: Web APIs', () => {
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Copy to Clipboard and Verify
+  //
+  // We stub navigator.clipboard.writeText to capture what was copied.
+  // Direct clipboard access in Cypress is tricky due to browser security,
+  // so we use a stub to intercept the call instead.
+  // --------------------------------------------------------------------------
+  it('exercise 1: copy account number to clipboard', () => {
+    cy.visit(PLAYGROUND, {
+      // onBeforeLoad runs before the page's JavaScript executes.
+      // We use it to set up stubs on the window object.
+      onBeforeLoad(win) {
+        // Stub writeText so we can verify what was copied.
+        // callsFake makes the stub behave like a real function.
+        cy.stub(win.navigator.clipboard, 'writeText')
+          .as('clipboardWrite')           // alias for later assertions
+          .resolves();                    // make it resolve (async success)
+      },
+    });
+
+    // Click the copy button.
+    cy.get('[data-testid="btn-copy-account"]').click();
+
+    // Verify the status text updates.
+    cy.get('[data-testid="copy-status"]')
+      .should('have.text', 'Copied to clipboard!');
+
+    // Verify our stub was called with the account number.
+    // @clipboardWrite is the alias we set above.
+    cy.get('@clipboardWrite')
+      .should('have.been.calledWith', '1234-5678-9012-3456');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Mock Geolocation and Verify Coordinates
+  //
+  // We stub navigator.geolocation.getCurrentPosition to call the success
+  // callback with our fake coordinates. This avoids needing real GPS.
+  // --------------------------------------------------------------------------
+  it('exercise 2: mock geolocation and verify displayed coordinates', () => {
+    cy.visit(PLAYGROUND, {
+      onBeforeLoad(win) {
+        // Stub getCurrentPosition to immediately call the success callback
+        // with our fake coordinates for New Delhi.
+        cy.stub(win.navigator.geolocation, 'getCurrentPosition')
+          .callsFake((successCallback) => {
+            successCallback({
+              coords: {
+                latitude: 28.6139,
+                longitude: 77.2090,
+                accuracy: 10,
+              },
+            });
+          });
+      },
+    });
+
+    // Click "Detect Location".
+    cy.get('[data-testid="btn-detect-location"]').click();
+
+    // Verify the displayed coordinates match our mocked values.
+    cy.get('[data-testid="location-lat"]')
+      .should('have.text', '28.6139');
+
+    cy.get('[data-testid="location-lng"]')
+      .should('have.text', '77.2090');
+
+    // Verify the result box shows success.
+    cy.get('[data-testid="location-result"]')
+      .should('contain.text', 'Location detected');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Handle Alert Dialog
+  //
+  // Cypress auto-accepts alerts by default. To verify the alert message,
+  // we use cy.on('window:alert') which receives the alert text.
+  // --------------------------------------------------------------------------
+  it('exercise 3: handle alert dialog and verify message', () => {
+    cy.visit(PLAYGROUND);
+
+    // Set up a stub for the alert. cy.on('window:alert') fires whenever
+    // the page calls alert(). We wrap it in a stub so we can assert on it.
+    const alertStub = cy.stub().as('alertHandler');
+    cy.on('window:alert', alertStub);
+
+    // Click the button that triggers alert().
+    cy.get('[data-testid="btn-trigger-alert"]').click();
+
+    // Verify the stub was called with the expected message.
+    cy.get('@alertHandler')
+      .should('have.been.calledWith', 'Payment of Rs 5,000 has been processed successfully!');
+
+    // Verify the page updated after the alert was dismissed.
+    cy.get('[data-testid="dialog-result"]')
+      .should('have.text', 'Alert was dismissed.');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4a: Accept Confirm Dialog
+  //
+  // cy.on('window:confirm') receives the confirm message. Return true
+  // to accept (OK) or false to dismiss (Cancel).
+  // --------------------------------------------------------------------------
+  it('exercise 4a: accept confirm dialog', () => {
+    cy.visit(PLAYGROUND);
+
+    // Return true from the confirm handler to simulate clicking "OK".
+    // This makes confirm() return true in the page's JavaScript.
+    cy.on('window:confirm', (text) => {
+      expect(text).to.contain('Rs 50,000');
+      return true;   // Accept the dialog
+    });
+
+    cy.get('[data-testid="btn-trigger-confirm"]').click();
+
+    // When confirmed, the page shows "Transfer confirmed."
+    cy.get('[data-testid="dialog-result"]')
+      .should('have.text', 'Transfer confirmed.');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4b: Dismiss Confirm Dialog
+  // --------------------------------------------------------------------------
+  it('exercise 4b: dismiss confirm dialog', () => {
+    cy.visit(PLAYGROUND);
+
+    // Return false from the confirm handler to simulate clicking "Cancel".
+    cy.on('window:confirm', () => false);
+
+    cy.get('[data-testid="btn-trigger-confirm"]').click();
+
+    // When cancelled, the page shows "Transfer cancelled."
+    cy.get('[data-testid="dialog-result"]')
+      .should('have.text', 'Transfer cancelled.');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Handle Prompt Dialog with Input
+  //
+  // Cypress does not have built-in prompt handling like Playwright.
+  // We stub window.prompt to return a custom value.
+  // --------------------------------------------------------------------------
+  it('exercise 5: handle prompt dialog and enter text', () => {
+    cy.visit(PLAYGROUND);
+
+    // Stub window.prompt to return a specific value.
+    // This replaces the native prompt() so no dialog appears.
+    cy.window().then((win) => {
+      cy.stub(win, 'prompt').returns('25000');
+    });
+
+    cy.get('[data-testid="btn-trigger-prompt"]').click();
+
+    // Verify the page displays the entered amount.
+    cy.get('[data-testid="dialog-result"]')
+      .should('have.text', 'Transfer amount set to Rs 25000');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Grant/Deny Camera Permission
+  //
+  // Cypress cannot directly grant browser permissions like Playwright.
+  // We stub navigator.mediaDevices.getUserMedia to simulate grant/deny.
+  // --------------------------------------------------------------------------
+  it('exercise 6a: simulate camera permission granted', () => {
+    cy.visit(PLAYGROUND, {
+      onBeforeLoad(win) {
+        // Stub getUserMedia to resolve with a fake MediaStream.
+        // We create a minimal mock with a getTracks() method that
+        // returns an array with a stoppable track.
+        cy.stub(win.navigator.mediaDevices, 'getUserMedia')
+          .resolves({
+            getTracks: () => [{ stop: () => {} }],
+          } as unknown as MediaStream);
+      },
+    });
+
+    cy.get('[data-testid="btn-request-camera"]').click();
+
+    // Verify the status shows "Granted".
+    cy.get('[data-testid="permission-status"]')
+      .should('have.text', 'Granted');
+
+    cy.get('[data-testid="permission-result"]')
+      .should('contain.text', 'Camera access granted');
+  });
+
+  it('exercise 6b: simulate camera permission denied', () => {
+    cy.visit(PLAYGROUND, {
+      onBeforeLoad(win) {
+        // Stub getUserMedia to reject with an error (permission denied).
+        cy.stub(win.navigator.mediaDevices, 'getUserMedia')
+          .rejects(new DOMException('Permission denied', 'NotAllowedError'));
+      },
+    });
+
+    cy.get('[data-testid="btn-request-camera"]').click();
+
+    // Verify the status shows "Denied".
+    cy.get('[data-testid="permission-status"]')
+      .should('have.text', 'Denied');
+
+    cy.get('[data-testid="permission-result"]')
+      .should('contain.text', 'Camera access denied');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Verify File Download
+  //
+  // Cypress does not have a built-in download event like Playwright.
+  // We verify the download was triggered by checking the status message
+  // and the download link attributes.
+  // --------------------------------------------------------------------------
+  it('exercise 7: verify download is triggered', () => {
+    cy.visit(PLAYGROUND);
+
+    // Click the download button.
+    cy.get('[data-testid="btn-download-statement"]').click();
+
+    // Verify the download status message.
+    cy.get('[data-testid="download-status"]')
+      .should('contain.text', 'Download started')
+      .and('contain.text', 'statement-april-2026.csv');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Read/Write localStorage
+  //
+  // cy.window() gives access to the browser's window object, which
+  // includes localStorage. We can read/write directly.
+  // --------------------------------------------------------------------------
+  it('exercise 8: read and write localStorage', () => {
+    cy.visit(PLAYGROUND);
+
+    // Write a value to localStorage via cy.window().
+    cy.window().then((win) => {
+      win.localStorage.setItem('preferred_currency', 'INR');
+    });
+
+    // Read it back and verify.
+    cy.window().then((win) => {
+      expect(win.localStorage.getItem('preferred_currency')).to.eq('INR');
+    });
+
+    // Use the UI to save a key-value pair.
+    cy.get('[data-testid="storage-key"]').type('theme');
+    cy.get('[data-testid="storage-value"]').type('dark');
+    cy.get('[data-testid="btn-storage-save"]').click();
+
+    // Verify the UI shows confirmation.
+    cy.get('[data-testid="storage-result"]')
+      .should('have.text', 'Saved: "theme" = "dark"');
+
+    // Verify it was actually stored in localStorage.
+    cy.window().then((win) => {
+      expect(win.localStorage.getItem('theme')).to.eq('dark');
+    });
+
+    // Use the "Load" button to read it back via the UI.
+    cy.get('[data-testid="btn-storage-load"]').click();
+    cy.get('[data-testid="storage-result"]')
+      .should('have.text', 'Loaded: "theme" = "dark"');
+  });
+
+});
+c:T92b8,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { test, expect } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> '@playwright/test'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// Path to the playground HTML served by the dev server.</span></span>
+<span class="line"><span style="color:#6A737D">// The path is relative to the web server root (the project root).</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-01-dom-and-browser-apis/11-dom-mutations/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 1: Wait for New Notification (DOM Insertion)</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// The feed auto-adds a notification every 3 seconds via setInterval.</span></span>
+<span class="line"><span style="color:#6A737D">// We use toHaveCount() which auto-retries until the expected number of</span></span>
+<span class="line"><span style="color:#6A737D">// elements exist in the DOM.</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: wait for a new notification to appear'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Initially the feed is empty (no notifications yet).</span></span>
+<span class="line"><span style="color:#6A737D">  // We wait for at least one notification to be inserted into the DOM.</span></span>
+<span class="line"><span style="color:#6A737D">  // toHaveCount() retries automatically — no sleep needed.</span></span>
+<span class="line"><span style="color:#6A737D">  // A notification appears after 3s, well within the default 5s timeout.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'notification-item'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">  ).</span><span style="color:#B392F0">toHaveCount</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">1</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the notification has visible text content.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'notification-text'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">first</span><span style="color:#E1E4E8">()</span></span>
+<span class="line"><span style="color:#E1E4E8">  ).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 2: Verify Notification Count Increments</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// Wait for a notification to arrive, then read the unread counter.</span></span>
+<span class="line"><span style="color:#6A737D">// The counter is updated by JavaScript each time a notification is added.</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: verify unread count increments with new notifications'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Wait for the first notification to arrive (DOM insertion).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'notification-item'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">  ).</span><span style="color:#B392F0">toHaveCount</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">1</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // The unread-count text should now be "1".</span></span>
+<span class="line"><span style="color:#6A737D">  // toHaveText() auto-retries until the text matches.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'unread-count'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">  ).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'1'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Wait for a second notification (another 3 seconds).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'notification-item'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">  ).</span><span style="color:#B392F0">toHaveCount</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">2</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // The unread-count text should now be "2".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'unread-count'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">  ).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'2'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 3: Dismiss a Notification (DOM Removal)</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// Wait for a notification to appear, click its dismiss button,</span></span>
+<span class="line"><span style="color:#6A737D">// then verify the notification element is removed from the DOM.</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: dismiss a notification and verify removal'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Wait for the first notification to appear.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'notification-item'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">  ).</span><span style="color:#B392F0">toHaveCount</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">1</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Pause the feed so no new notifications arrive while we test.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-pause-feed'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click the dismiss button on the first (and only) notification.</span></span>
+<span class="line"><span style="color:#6A737D">  // The dismiss button removes the parent notification from the DOM.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-dismiss'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">first</span><span style="color:#E1E4E8">().</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the notification is gone — count should be 0.</span></span>
+<span class="line"><span style="color:#6A737D">  // toHaveCount(0) retries until no matching elements remain.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'notification-item'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">  ).</span><span style="color:#B392F0">toHaveCount</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // The unread count should also be 0 after dismissal.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'unread-count'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">  ).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'0'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 4: Mark All as Read (CSS Class Change)</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// When you click "Mark All Read", each notification element gains the</span></span>
+<span class="line"><span style="color:#6A737D">// CSS class "read". We verify this class change using toHaveClass().</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: mark all as read and verify class change'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Wait for the first notification.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'notification-item'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">  ).</span><span style="color:#B392F0">toHaveCount</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">1</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Pause the feed so the count stays stable.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-pause-feed'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the notification does NOT have the "read" class yet.</span></span>
+<span class="line"><span style="color:#6A737D">  // toHaveClass checks the element's className attribute.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> firstNotification</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'notification-item'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">first</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(firstNotification).not.</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">read</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click "Mark All Read".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-mark-all-read'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the notification now has the "read" class.</span></span>
+<span class="line"><span style="color:#6A737D">  // The CSS class changes the background, border, and text color.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(firstNotification).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">read</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 5: Wait for Price Text to Change (Text Mutation)</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// The live price updates every 2 seconds. We capture the initial value,</span></span>
+<span class="line"><span style="color:#6A737D">// then use not.toHaveText() to wait until it changes.</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: wait for live price text to change'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Read the initial price text.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> initialPrice</span><span style="color:#F97583"> =</span><span style="color:#F97583"> await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'live-price'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">textContent</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // not.toHaveText() auto-retries until the text is different from the</span></span>
+<span class="line"><span style="color:#6A737D">  // initial value. The price updates every 2s, so it should change</span></span>
+<span class="line"><span style="color:#6A737D">  // well within the default 5s timeout.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'live-price'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">  ).not.</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(initialPrice</span><span style="color:#F97583">!</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Also verify the timestamp updates (proving the feed is live).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'price-timestamp'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">  ).not.</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'--:--:--'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 6: Verify Badge Visibility Based on Count</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// The unread badge is visible when unreadCount > 0 and hidden when 0.</span></span>
+<span class="line"><span style="color:#6A737D">// We verify the show/hide behavior using toBeVisible/toBeHidden.</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: badge shows when unread, hides when all read'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Wait for a notification to arrive.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'notification-item'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">  ).</span><span style="color:#B392F0">toHaveCount</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">1</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Badge should be visible (there are unread notifications).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'unread-badge'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">  ).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Pause the feed and mark all as read.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-pause-feed'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-mark-all-read'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Badge should now be hidden (CSS class "hidden" is added,</span></span>
+<span class="line"><span style="color:#6A737D">  // which sets display: none).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'unread-badge'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">  ).</span><span style="color:#B392F0">toBeHidden</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 7: Wait for Multiple Notifications to Accumulate</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// Notifications arrive every 3 seconds. We wait for at least 3 to appear.</span></span>
+<span class="line"><span style="color:#6A737D">// This requires a longer timeout since 3 notifications = ~9 seconds.</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 7: wait for at least 3 notifications'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // toHaveCount(3) retries until exactly 3 notification-item elements</span></span>
+<span class="line"><span style="color:#6A737D">  // exist. With a 3s interval, this takes ~9s, so we set timeout to 15s.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'notification-item'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">  ).</span><span style="color:#B392F0">toHaveCount</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">3</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">15000</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the total count display matches.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'total-count'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">  ).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'3'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 8: Verify Element Attribute Changes Dynamically</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// The "Toggle Priority" button changes data-priority from "normal"</span></span>
+<span class="line"><span style="color:#6A737D">// to "high" on the status message. We verify this with toHaveAttribute().</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 8: verify attribute changes on toggle'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify initial attribute value.</span></span>
+<span class="line"><span style="color:#6A737D">  // toHaveAttribute(name, value) checks a specific attribute on the element.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'status-message'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">  ).</span><span style="color:#B392F0">toHaveAttribute</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'data-priority'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'normal'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click the "Toggle Priority" button.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-change-attr'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the attribute changed to "high".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'status-message'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">  ).</span><span style="color:#B392F0">toHaveAttribute</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'data-priority'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'high'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Also verify the text content changed as a result.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'status-message'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">  ).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'System status: High priority — maintenance scheduled'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Toggle back and verify it reverts.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-change-attr'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'status-message'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">  ).</span><span style="color:#B392F0">toHaveAttribute</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'data-priority'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'normal'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>d:T7f92,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#6A737D">// Path to the playground HTML served by the dev server.</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-01-dom-and-browser-apis/11-dom-mutations/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">describe</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Kata 11: DOM Mutations'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">  beforeEach</span><span style="color:#E1E4E8">(() </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Visit the playground before each test.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 1: Wait for New Notification (DOM Insertion)</span></span>
+<span class="line"><span style="color:#6A737D">  //</span></span>
+<span class="line"><span style="color:#6A737D">  // The feed auto-adds a notification every 3 seconds via setInterval.</span></span>
+<span class="line"><span style="color:#6A737D">  // cy.get() + .should('have.length', n) retries automatically until</span></span>
+<span class="line"><span style="color:#6A737D">  // the expected number of elements exist in the DOM.</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: wait for a new notification to appear'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Wait for at least 1 notification to be inserted.</span></span>
+<span class="line"><span style="color:#6A737D">    // { timeout: 5000 } gives Cypress up to 5 seconds to retry.</span></span>
+<span class="line"><span style="color:#6A737D">    // The notification arrives after 3s, so this passes comfortably.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="notification-item"]'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8"> })</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.length'</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">1</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the notification contains visible text.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="notification-text"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">first</span><span style="color:#E1E4E8">()</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 2: Verify Notification Count Increments</span></span>
+<span class="line"><span style="color:#6A737D">  //</span></span>
+<span class="line"><span style="color:#6A737D">  // Wait for notifications and verify the counter text updates.</span></span>
+<span class="line"><span style="color:#6A737D">  // .should('have.text', '1') retries until the text matches.</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: verify unread count increments with new notifications'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Wait for the first notification.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="notification-item"]'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8"> })</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.length'</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">1</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Unread count should be "1".</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="unread-count"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'1'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Wait for the second notification.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="notification-item"]'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8"> })</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.length'</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">2</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Unread count should be "2".</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="unread-count"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'2'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 3: Dismiss a Notification (DOM Removal)</span></span>
+<span class="line"><span style="color:#6A737D">  //</span></span>
+<span class="line"><span style="color:#6A737D">  // Wait for a notification, click dismiss, and verify it's gone.</span></span>
+<span class="line"><span style="color:#6A737D">  // .should('have.length', 0) retries until no elements remain.</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: dismiss a notification and verify removal'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Wait for the first notification.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="notification-item"]'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8"> })</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.length'</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">1</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Pause the feed so no new notifications arrive.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-pause-feed"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Click the dismiss button on the first notification.</span></span>
+<span class="line"><span style="color:#6A737D">    // The dismiss button removes the notification element from the DOM.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-dismiss"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">first</span><span style="color:#E1E4E8">().</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the notification is removed — count is now 0.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="notification-item"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.length'</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Unread count should also be 0.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="unread-count"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'0'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 4: Mark All as Read (CSS Class Change)</span></span>
+<span class="line"><span style="color:#6A737D">  //</span></span>
+<span class="line"><span style="color:#6A737D">  // "Mark All Read" adds the CSS class "read" to every notification.</span></span>
+<span class="line"><span style="color:#6A737D">  // .should('have.class', 'read') retries until the class is present.</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: mark all as read and verify class change'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Wait for the first notification.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="notification-item"]'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8"> })</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.length'</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">1</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Pause the feed.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-pause-feed"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the notification does NOT have the "read" class yet.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="notification-item"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">first</span><span style="color:#E1E4E8">()</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'read'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Click "Mark All Read".</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-mark-all-read"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the notification now has the "read" class.</span></span>
+<span class="line"><span style="color:#6A737D">    // This class changes background, border, and text color via CSS.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="notification-item"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">first</span><span style="color:#E1E4E8">()</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'read'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 5: Wait for Price Text to Change (Text Mutation)</span></span>
+<span class="line"><span style="color:#6A737D">  //</span></span>
+<span class="line"><span style="color:#6A737D">  // The live price updates every 2 seconds. We capture the initial text,</span></span>
+<span class="line"><span style="color:#6A737D">  // then use .should('not.have.text', initial) to wait for it to change.</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: wait for live price text to change'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Read the initial price text using .invoke('text').</span></span>
+<span class="line"><span style="color:#6A737D">    // .then() gives us the text value to use in the next assertion.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="live-price"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">invoke</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'text'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">then</span><span style="color:#E1E4E8">((</span><span style="color:#FFAB70">initialPrice</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">        // .should('not.have.text', initialPrice) retries until the</span></span>
+<span class="line"><span style="color:#6A737D">        // element's text is different from the initial value.</span></span>
+<span class="line"><span style="color:#6A737D">        // Price updates every 2s, so this passes within 5s.</span></span>
+<span class="line"><span style="color:#E1E4E8">        cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="live-price"]'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8"> })</span></span>
+<span class="line"><span style="color:#E1E4E8">          .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.have.text'</span><span style="color:#E1E4E8">, initialPrice);</span></span>
+<span class="line"><span style="color:#E1E4E8">      });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Also verify the timestamp has been set.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="price-timestamp"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'--:--:--'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 6: Verify Badge Visibility Based on Count</span></span>
+<span class="line"><span style="color:#6A737D">  //</span></span>
+<span class="line"><span style="color:#6A737D">  // Badge is visible when unread > 0, hidden when unread = 0.</span></span>
+<span class="line"><span style="color:#6A737D">  // The badge uses display:none (via CSS class "hidden") to hide.</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: badge shows when unread, hides when all read'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Wait for a notification so there's something to mark as read.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="notification-item"]'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8"> })</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.length'</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">1</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Badge should be visible (unread count > 0).</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="unread-badge"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Pause the feed and mark all as read.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-pause-feed"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-mark-all-read"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Badge should now be hidden (CSS class "hidden" sets display:none).</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="unread-badge"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 7: Wait for Multiple Notifications to Accumulate</span></span>
+<span class="line"><span style="color:#6A737D">  //</span></span>
+<span class="line"><span style="color:#6A737D">  // Notifications arrive every 3 seconds. We wait for 3 to appear.</span></span>
+<span class="line"><span style="color:#6A737D">  // With a 3s interval, 3 notifications take ~9s, so we use a 15s timeout.</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 7: wait for at least 3 notifications'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // .should('have.length', 3) retries until exactly 3 elements match.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="notification-item"]'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">15000</span><span style="color:#E1E4E8"> })</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.length'</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">3</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the total count display matches.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="total-count"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'3'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 8: Verify Element Attribute Changes Dynamically</span></span>
+<span class="line"><span style="color:#6A737D">  //</span></span>
+<span class="line"><span style="color:#6A737D">  // "Toggle Priority" changes data-priority from "normal" to "high".</span></span>
+<span class="line"><span style="color:#6A737D">  // .should('have.attr', name, value) retries until the attribute matches.</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 8: verify attribute changes on toggle'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Verify initial attribute value.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="status-message"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.attr'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'data-priority'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'normal'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Click "Toggle Priority".</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-change-attr"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the attribute changed to "high".</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="status-message"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.attr'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'data-priority'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'high'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the text content also changed.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="status-message"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'System status: High priority — maintenance scheduled'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Toggle back and verify it reverts.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-change-attr"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="status-message"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.attr'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'data-priority'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'normal'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"kata":{"slug":"11-dom-mutations","number":11,"title":"DOM Mutations","phaseSlug":"phase-01-dom-and-browser-apis","phaseNumber":1,"phaseName":"Dom And Browser Apis","readmeRaw":"$3","hasPlayground":true,"playwrightFiles":[{"filename":"dom-mutations.spec.ts","content":"$4"}],"cypressFiles":[{"filename":"dom-mutations.cy.ts","content":"$5"}]},"prev":{"slug":"10-canvas-and-svg","number":10,"title":"Canvas and SVG","phaseSlug":"phase-01-dom-and-browser-apis","phaseNumber":1,"phaseName":"Dom And Browser Apis","readmeRaw":"$6","hasPlayground":true,"playwrightFiles":[{"filename":"canvas-svg.spec.ts","content":"$7"}],"cypressFiles":[{"filename":"canvas-svg.cy.ts","content":"$8"}]},"next":{"slug":"12-web-apis","number":12,"title":"Web APIs","phaseSlug":"phase-01-dom-and-browser-apis","phaseNumber":1,"phaseName":"Dom And Browser Apis","readmeRaw":"$9","hasPlayground":true,"playwrightFiles":[{"filename":"web-apis.spec.ts","content":"$a"}],"cypressFiles":[{"filename":"web-apis.cy.ts","content":"$b"}]},"playwrightHtml":[{"filename":"dom-mutations.spec.ts","html":"$c"}],"cypressHtml":[{"filename":"dom-mutations.cy.ts","html":"$d"}]}],["$Le"],"$Lf"]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"iDtrTKWIN4zzRgDRiiDd2"}
+e:["$","script","script-0",{"src":"/qa-labs/_next/static/chunks/03nvm.8~ftt80.js","async":true}]
+f:["$","$L10",null,{"children":["$","$11",null,{"name":"Next.MetadataOutlet","children":"$@12"}]}]
+12:null

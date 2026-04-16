@@ -1,0 +1,2135 @@
+1:"$Sreact.fragment"
+2:I[31749,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js","/qa-labs/_next/static/chunks/03nvm.8~ftt80.js"],"KataPageClient"]
+10:I[49583,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js"],"OutletBoundary"]
+11:"$Sreact.suspense"
+3:T1a16,# Kata 30: Risk Assessment
+
+## What You Will Learn
+
+- How to test data tables with computed values
+- How to verify recalculation when input values change
+- How to test threshold-based conditional logic (auto-approve, manual review, auto-reject)
+- How to verify color-coded risk indicators match their values
+- How to test override/edit workflows on computed data
+- How to verify export functionality
+- How to assert on precise numeric computations (weighted scores)
+
+## Prerequisites
+
+- Completed Katas 1-29
+- Understanding of form inputs and value assertions
+- Familiarity with table element testing
+
+## Concepts Explained
+
+### Risk Scorecard Pattern
+
+```
+A risk scorecard assigns scores to multiple risk factors, each with
+a weight. The total risk score determines the recommended action:
+
+  Factor           Score (0-100)   Weight   Weighted
+  Identity             15          0.25      3.75
+  Credit               20          0.20      4.00
+  Employment           10          0.20      2.00
+  Address               5          0.15      0.75
+  Sanctions             0          0.20      0.00
+                                   ----     -----
+  Total                            1.00     10.50
+
+Thresholds:
+  < 30  => Auto-Approve (low risk)
+  30-70 => Manual Review (medium risk)
+  > 70  => Auto-Reject (high risk)
+
+Testing must verify:
+  - Weighted scores are calculated correctly
+  - Total is the sum of all weighted scores
+  - Action changes when the total crosses a threshold
+  - Color coding matches the risk level
+```
+
+### Testing Computed Values
+
+```
+When a user changes a score input, the weighted score, total, risk
+level, and action all recalculate. Tests should:
+
+1. Read the initial computed values and verify them
+2. Change an input value
+3. Verify the weighted score recalculates
+4. Verify the total recalculates
+5. If the total crossed a threshold, verify the action changed
+
+Playwright:
+  await page.getByTestId('score-identity').fill('80');
+  // Trigger recalculation (the 'change' event fires on fill).
+  await expect(page.getByTestId('weighted-identity')).toHaveText('20.00');
+
+Cypress:
+  cy.get('[data-testid="score-identity"]').clear().type('80');
+  // Trigger change event to recalculate.
+  cy.get('[data-testid="score-identity"]').blur();
+  cy.get('[data-testid="weighted-identity"]').should('have.text', '20.00');
+```
+
+## Playground
+
+The playground is a risk scorecard dashboard with:
+
+1. **Risk Table** — five risk factors (Identity, Credit, Employment, Address, Sanctions) each with an editable score (0-100), weight, computed weighted score, and color-coded risk level
+2. **Total Row** — sum of all weighted scores with overall risk level
+3. **Risk Thresholds** — reference section showing the three threshold ranges
+4. **Action Card** — shows the recommended action (Auto-Approve, Manual Review, Auto-Reject) based on the total score, with color-coded background
+5. **Reset Button** — resets all scores to their default values
+6. **Export Button** — generates a JSON report of the current assessment
+
+Default scores: Identity=15, Credit=20, Employment=10, Address=5, Sanctions=0 (total=10.50, Auto-Approve).
+
+## Exercises
+
+### Exercise 1: Verify Risk Table Data
+Verify all five risk factors are displayed with correct default scores, weights, and weighted scores.
+
+### Exercise 2: Verify Computed Total
+Verify the total weighted score matches the sum of individual weighted scores. Verify the total risk level is "Low".
+
+### Exercise 3: Change a Score and Verify Recalculation
+Change the Identity score from 15 to 80. Verify the weighted score updates to 20.00 and the total recalculates.
+
+### Exercise 4: Verify Auto-Approve Threshold
+With default scores (total < 30), verify the action card shows "Auto-Approve" with the green styling.
+
+### Exercise 5: Verify Manual Review Threshold
+Set scores so the total falls between 30 and 70. Verify the action card changes to "Manual Review" with amber styling.
+
+### Exercise 6: Verify Auto-Reject Threshold
+Set scores so the total exceeds 70. Verify the action card changes to "Auto-Reject" with red styling.
+
+### Exercise 7: Override Score and Verify Action Changes
+Start with auto-approve, change scores to trigger manual review, then change again to trigger auto-reject. Verify the action updates each time.
+
+### Exercise 8: Verify Color Coding Matches Risk Level
+Set different scores for each factor and verify the risk level text ("Low", "Medium", "High") and CSS class match the score value.
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/risk-assessment.spec.ts`
+
+### Cypress Solution
+
+See `cypress/risk-assessment.cy.ts`
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Not triggering recalculation after changing a score | The `onchange` event fires when the input loses focus or on Playwright's `fill()` | Use `fill()` (Playwright) or `clear().type().blur()` (Cypress) |
+| Checking floating point values with exact equality | Floating point arithmetic can produce tiny rounding differences | Use `toFixed(2)` in assertions or check the displayed text |
+| Forgetting the threshold boundaries | 30 is manual review (not auto-approve), 70 is manual review (not auto-reject) | Thresholds: < 30 approve, 30-70 review, > 70 reject |
+| Not resetting between tests | Score changes from one test persist if not navigating fresh | Use `page.goto()` or `cy.visit()` in each test |
+
+## Quick Reference
+
+### Playwright Risk Table Testing
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Change score | `fill()` | `await page.getByTestId('score-identity').fill('50')` |
+| Verify weighted | `toHaveText()` | `await expect(el).toHaveText('12.50')` |
+| Verify total | `toHaveText()` | `await expect(total).toHaveText('35.00')` |
+| Verify CSS class | `toHaveClass()` | `await expect(el).toHaveClass(/risk-medium/)` |
+| Verify action | `toHaveText()` | `await expect(title).toHaveText('Manual Review')` |
+| Check input value | `toHaveValue()` | `await expect(input).toHaveValue('50')` |
+
+### Cypress Risk Table Testing
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Change score | `.clear().type().blur()` | `cy.get(input).clear().type('50').blur()` |
+| Verify weighted | `.should('have.text')` | `cy.get(el).should('have.text', '12.50')` |
+| Verify total | `.should('have.text')` | `cy.get(total).should('have.text', '35.00')` |
+| Verify CSS class | `.should('have.class')` | `cy.get(el).should('have.class', 'risk-medium')` |
+| Verify action | `.should('have.text')` | `cy.get(title).should('have.text', 'Manual Review')` |
+| Check input value | `.should('have.value')` | `cy.get(input).should('have.value', '50')` |
+4:T263f,import { test, expect } from '@playwright/test';
+
+// The base URL for our playground page.
+const PLAYGROUND = '/phase-05-fintech-domain/30-risk-assessment/playground/';
+
+// ─── Helper: setScore ────────────────────────────────────────────────
+// Changes a risk factor's score input and triggers recalculation.
+// locator.fill(value) clears the input, types the new value, and
+// dispatches a 'change' event which triggers recalculate().
+async function setScore(page: any, factorId: string, score: string) {
+  const input = page.getByTestId(`score-${factorId}`);
+  await input.fill(score);
+  // Dispatch a change event explicitly to ensure recalculation triggers.
+  // dispatchEvent(new Event('change')) fires the onchange handler.
+  await input.dispatchEvent('change');
+}
+
+// --------------------------------------------------------------------------
+// Exercise 1: Verify Risk Table Data
+// --------------------------------------------------------------------------
+// Verify all five risk factors with default scores, weights, and weighted scores.
+test('exercise 1: verify risk table data', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify the table is visible.
+  await expect(page.getByTestId('risk-table')).toBeVisible();
+
+  // Verify default score values.
+  // toHaveValue(value) checks the input element's current value.
+  await expect(page.getByTestId('score-identity')).toHaveValue('15');
+  await expect(page.getByTestId('score-credit')).toHaveValue('20');
+  await expect(page.getByTestId('score-employment')).toHaveValue('10');
+  await expect(page.getByTestId('score-address')).toHaveValue('5');
+  await expect(page.getByTestId('score-sanctions')).toHaveValue('0');
+
+  // Verify weights.
+  await expect(page.getByTestId('weight-identity')).toHaveText('0.25');
+  await expect(page.getByTestId('weight-credit')).toHaveText('0.20');
+  await expect(page.getByTestId('weight-employment')).toHaveText('0.20');
+  await expect(page.getByTestId('weight-address')).toHaveText('0.15');
+  await expect(page.getByTestId('weight-sanctions')).toHaveText('0.20');
+
+  // Verify weighted scores (score * weight).
+  await expect(page.getByTestId('weighted-identity')).toHaveText('3.75');
+  await expect(page.getByTestId('weighted-credit')).toHaveText('4.00');
+  await expect(page.getByTestId('weighted-employment')).toHaveText('2.00');
+  await expect(page.getByTestId('weighted-address')).toHaveText('0.75');
+  await expect(page.getByTestId('weighted-sanctions')).toHaveText('0.00');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Verify Computed Total
+// --------------------------------------------------------------------------
+// Verify the total weighted score and overall risk level.
+test('exercise 2: verify computed total', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Total = 3.75 + 4.00 + 2.00 + 0.75 + 0.00 = 10.50.
+  await expect(page.getByTestId('total-score')).toHaveText('10.50');
+
+  // Total 10.50 is below 30, so risk level is "Low".
+  await expect(page.getByTestId('total-level')).toHaveText('Low');
+
+  // Verify the total level has the low-risk CSS class.
+  await expect(page.getByTestId('total-level')).toHaveClass(/risk-low/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Change a Score and Verify Recalculation
+// --------------------------------------------------------------------------
+// Change Identity from 15 to 80, verify weighted and total update.
+test('exercise 3: change a score and verify recalculation', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Change Identity score to 80.
+  await setScore(page, 'identity', '80');
+
+  // Weighted should be 80 * 0.25 = 20.00.
+  await expect(page.getByTestId('weighted-identity')).toHaveText('20.00');
+
+  // New total = 20.00 + 4.00 + 2.00 + 0.75 + 0.00 = 26.75.
+  await expect(page.getByTestId('total-score')).toHaveText('26.75');
+
+  // Identity score 80 is "High" risk.
+  await expect(page.getByTestId('level-identity')).toHaveText('High');
+  await expect(page.getByTestId('level-identity')).toHaveClass(/risk-high/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Verify Auto-Approve Threshold
+// --------------------------------------------------------------------------
+// Default scores give total < 30, so action should be "Auto-Approve".
+test('exercise 4: verify auto-approve threshold', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Default total is 10.50 (< 30), so action is Auto-Approve.
+  await expect(page.getByTestId('action-title')).toHaveText('Auto-Approve');
+  await expect(page.getByTestId('action-description')).toContainText('automatically approved');
+
+  // Verify the action card has the green styling.
+  await expect(page.getByTestId('action-card')).toHaveClass(/result-auto-approve/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Verify Manual Review Threshold
+// --------------------------------------------------------------------------
+// Set scores to push total between 30 and 70.
+test('exercise 5: verify manual review threshold', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Set Identity to 80 and Credit to 80.
+  // Total = (80*0.25) + (80*0.20) + (10*0.20) + (5*0.15) + (0*0.20)
+  //       = 20 + 16 + 2 + 0.75 + 0 = 38.75 (between 30 and 70).
+  await setScore(page, 'identity', '80');
+  await setScore(page, 'credit', '80');
+
+  await expect(page.getByTestId('total-score')).toHaveText('38.75');
+
+  // Action should be "Manual Review".
+  await expect(page.getByTestId('action-title')).toHaveText('Manual Review');
+  await expect(page.getByTestId('action-description')).toContainText('manual review');
+
+  // Verify amber styling.
+  await expect(page.getByTestId('action-card')).toHaveClass(/result-manual-review/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Verify Auto-Reject Threshold
+// --------------------------------------------------------------------------
+// Set scores to push total above 70.
+test('exercise 6: verify auto-reject threshold', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Set all scores to 90.
+  // Total = (90*0.25) + (90*0.20) + (90*0.20) + (90*0.15) + (90*0.20)
+  //       = 22.5 + 18 + 18 + 13.5 + 18 = 90.00 (> 70).
+  for (const id of ['identity', 'credit', 'employment', 'address', 'sanctions']) {
+    await setScore(page, id, '90');
+  }
+
+  await expect(page.getByTestId('total-score')).toHaveText('90.00');
+
+  // Action should be "Auto-Reject".
+  await expect(page.getByTestId('action-title')).toHaveText('Auto-Reject');
+  await expect(page.getByTestId('action-description')).toContainText('automatically rejected');
+
+  // Verify red styling.
+  await expect(page.getByTestId('action-card')).toHaveClass(/result-auto-reject/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Override Score and Verify Action Changes
+// --------------------------------------------------------------------------
+// Transition through all three thresholds by changing scores.
+test('exercise 7: override score and verify action changes', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Start: Auto-Approve (default total 10.50).
+  await expect(page.getByTestId('action-title')).toHaveText('Auto-Approve');
+
+  // Move to Manual Review range.
+  await setScore(page, 'identity', '80');
+  await setScore(page, 'credit', '80');
+  // Total = 20 + 16 + 2 + 0.75 + 0 = 38.75.
+  await expect(page.getByTestId('action-title')).toHaveText('Manual Review');
+
+  // Move to Auto-Reject range.
+  await setScore(page, 'employment', '100');
+  await setScore(page, 'address', '100');
+  await setScore(page, 'sanctions', '100');
+  // Total = 20 + 16 + 20 + 15 + 20 = 91.
+  await expect(page.getByTestId('action-title')).toHaveText('Auto-Reject');
+
+  // Move back to Auto-Approve by resetting.
+  await page.getByTestId('btn-reset').click();
+  await expect(page.getByTestId('action-title')).toHaveText('Auto-Approve');
+  await expect(page.getByTestId('total-score')).toHaveText('10.50');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Verify Color Coding Matches Risk Level
+// --------------------------------------------------------------------------
+// Set different scores and verify the color classes match the risk levels.
+test('exercise 8: verify color coding matches risk level', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Set Identity to 10 (Low), Credit to 50 (Medium), Sanctions to 80 (High).
+  await setScore(page, 'identity', '10');
+  await setScore(page, 'credit', '50');
+  await setScore(page, 'sanctions', '80');
+
+  // Identity: 10 => Low, should have risk-low class.
+  await expect(page.getByTestId('level-identity')).toHaveText('Low');
+  await expect(page.getByTestId('level-identity')).toHaveClass(/risk-low/);
+
+  // Credit: 50 => Medium, should have risk-medium class.
+  await expect(page.getByTestId('level-credit')).toHaveText('Medium');
+  await expect(page.getByTestId('level-credit')).toHaveClass(/risk-medium/);
+
+  // Sanctions: 80 => High, should have risk-high class.
+  await expect(page.getByTestId('level-sanctions')).toHaveText('High');
+  await expect(page.getByTestId('level-sanctions')).toHaveClass(/risk-high/);
+
+  // Verify the export button works.
+  await page.getByTestId('btn-export').click();
+  await expect(page.getByTestId('export-section')).toBeVisible();
+  // The exported JSON should contain the action.
+  await expect(page.getByTestId('export-content')).toContainText('"action"');
+});
+5:T1eb9,const PLAYGROUND = '/phase-05-fintech-domain/30-risk-assessment/playground/';
+
+// ─── Helper: setScore ────────────────────────────────────────────────
+// Changes a risk factor's score and triggers recalculation.
+// .clear() removes existing text, .type() enters the new value.
+// .trigger('change') fires the onchange handler to recalculate.
+function setScore(factorId: string, score: string) {
+  cy.get(`[data-testid="score-${factorId}"]`).clear().type(score).trigger('change');
+}
+
+describe('Kata 30: Risk Assessment', () => {
+
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Verify Risk Table Data
+  // --------------------------------------------------------------------------
+  it('exercise 1: verify risk table data', () => {
+    // Verify the table is visible.
+    cy.get('[data-testid="risk-table"]').should('be.visible');
+
+    // Verify default score values.
+    // .should('have.value', val) checks an input's value.
+    cy.get('[data-testid="score-identity"]').should('have.value', '15');
+    cy.get('[data-testid="score-credit"]').should('have.value', '20');
+    cy.get('[data-testid="score-employment"]').should('have.value', '10');
+    cy.get('[data-testid="score-address"]').should('have.value', '5');
+    cy.get('[data-testid="score-sanctions"]').should('have.value', '0');
+
+    // Verify weights.
+    cy.get('[data-testid="weight-identity"]').should('have.text', '0.25');
+    cy.get('[data-testid="weight-credit"]').should('have.text', '0.20');
+    cy.get('[data-testid="weight-employment"]').should('have.text', '0.20');
+    cy.get('[data-testid="weight-address"]').should('have.text', '0.15');
+    cy.get('[data-testid="weight-sanctions"]').should('have.text', '0.20');
+
+    // Verify weighted scores.
+    cy.get('[data-testid="weighted-identity"]').should('have.text', '3.75');
+    cy.get('[data-testid="weighted-credit"]').should('have.text', '4.00');
+    cy.get('[data-testid="weighted-employment"]').should('have.text', '2.00');
+    cy.get('[data-testid="weighted-address"]').should('have.text', '0.75');
+    cy.get('[data-testid="weighted-sanctions"]').should('have.text', '0.00');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Verify Computed Total
+  // --------------------------------------------------------------------------
+  it('exercise 2: verify computed total', () => {
+    // Total = 3.75 + 4.00 + 2.00 + 0.75 + 0.00 = 10.50.
+    cy.get('[data-testid="total-score"]').should('have.text', '10.50');
+
+    // Risk level should be "Low" (< 30).
+    cy.get('[data-testid="total-level"]')
+      .should('have.text', 'Low')
+      .and('have.class', 'risk-low');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Change a Score and Verify Recalculation
+  // --------------------------------------------------------------------------
+  it('exercise 3: change a score and verify recalculation', () => {
+    // Change Identity to 80.
+    setScore('identity', '80');
+
+    // Weighted = 80 * 0.25 = 20.00.
+    cy.get('[data-testid="weighted-identity"]').should('have.text', '20.00');
+
+    // New total = 20.00 + 4.00 + 2.00 + 0.75 + 0.00 = 26.75.
+    cy.get('[data-testid="total-score"]').should('have.text', '26.75');
+
+    // Identity level is "High" (80 > 70).
+    cy.get('[data-testid="level-identity"]')
+      .should('have.text', 'High')
+      .and('have.class', 'risk-high');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Verify Auto-Approve Threshold
+  // --------------------------------------------------------------------------
+  it('exercise 4: verify auto-approve threshold', () => {
+    // Default total 10.50 < 30 => Auto-Approve.
+    cy.get('[data-testid="action-title"]').should('have.text', 'Auto-Approve');
+    cy.get('[data-testid="action-description"]')
+      .should('contain.text', 'automatically approved');
+    cy.get('[data-testid="action-card"]').should('have.class', 'result-auto-approve');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Verify Manual Review Threshold
+  // --------------------------------------------------------------------------
+  it('exercise 5: verify manual review threshold', () => {
+    // Set Identity=80, Credit=80 => total=38.75 (30-70 range).
+    setScore('identity', '80');
+    setScore('credit', '80');
+
+    cy.get('[data-testid="total-score"]').should('have.text', '38.75');
+    cy.get('[data-testid="action-title"]').should('have.text', 'Manual Review');
+    cy.get('[data-testid="action-description"]').should('contain.text', 'manual review');
+    cy.get('[data-testid="action-card"]').should('have.class', 'result-manual-review');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Verify Auto-Reject Threshold
+  // --------------------------------------------------------------------------
+  it('exercise 6: verify auto-reject threshold', () => {
+    // Set all scores to 90 => total=90.00 (> 70).
+    ['identity', 'credit', 'employment', 'address', 'sanctions'].forEach(id => {
+      setScore(id, '90');
+    });
+
+    cy.get('[data-testid="total-score"]').should('have.text', '90.00');
+    cy.get('[data-testid="action-title"]').should('have.text', 'Auto-Reject');
+    cy.get('[data-testid="action-description"]').should('contain.text', 'automatically rejected');
+    cy.get('[data-testid="action-card"]').should('have.class', 'result-auto-reject');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Override Score and Verify Action Changes
+  // --------------------------------------------------------------------------
+  it('exercise 7: override score and verify action changes', () => {
+    // Start: Auto-Approve.
+    cy.get('[data-testid="action-title"]').should('have.text', 'Auto-Approve');
+
+    // Move to Manual Review.
+    setScore('identity', '80');
+    setScore('credit', '80');
+    cy.get('[data-testid="action-title"]').should('have.text', 'Manual Review');
+
+    // Move to Auto-Reject.
+    setScore('employment', '100');
+    setScore('address', '100');
+    setScore('sanctions', '100');
+    cy.get('[data-testid="action-title"]').should('have.text', 'Auto-Reject');
+
+    // Reset back to Auto-Approve.
+    cy.get('[data-testid="btn-reset"]').click();
+    cy.get('[data-testid="action-title"]').should('have.text', 'Auto-Approve');
+    cy.get('[data-testid="total-score"]').should('have.text', '10.50');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Verify Color Coding Matches Risk Level
+  // --------------------------------------------------------------------------
+  it('exercise 8: verify color coding matches risk level', () => {
+    // Set Identity=10 (Low), Credit=50 (Medium), Sanctions=80 (High).
+    setScore('identity', '10');
+    setScore('credit', '50');
+    setScore('sanctions', '80');
+
+    // Identity: Low.
+    cy.get('[data-testid="level-identity"]')
+      .should('have.text', 'Low')
+      .and('have.class', 'risk-low');
+
+    // Credit: Medium.
+    cy.get('[data-testid="level-credit"]')
+      .should('have.text', 'Medium')
+      .and('have.class', 'risk-medium');
+
+    // Sanctions: High.
+    cy.get('[data-testid="level-sanctions"]')
+      .should('have.text', 'High')
+      .and('have.class', 'risk-high');
+
+    // Verify export works.
+    cy.get('[data-testid="btn-export"]').click();
+    cy.get('[data-testid="export-section"]').should('be.visible');
+    cy.get('[data-testid="export-content"]').should('contain.text', '"action"');
+  });
+});
+6:T1ab5,# Kata 29: Background Verification
+
+## What You Will Learn
+
+- How to test auto-updating status dashboards (simulating real-time updates)
+- How to wait for specific state changes in a multi-item list
+- How to verify progress bars update correctly as tasks complete
+- How to handle mixed outcomes (some checks pass, some fail)
+- How to verify estimated time countdowns
+- How to test the overall status derivation from individual check results
+- How to use generous timeouts for tests that depend on timed events
+
+## Prerequisites
+
+- Completed Katas 1-28
+- Understanding of `setInterval` and `setTimeout` patterns
+- Familiarity with auto-retry assertions in Playwright and Cypress
+
+## Concepts Explained
+
+### Auto-Updating Dashboards
+
+```
+Background verification dashboards update automatically as each
+check completes. In production, this uses WebSockets or polling.
+Our playground simulates this with setInterval/setTimeout.
+
+The key testing challenge: items update at unpredictable times.
+You must use auto-retrying assertions with generous timeouts
+rather than fixed waits.
+
+Pattern:
+  1. Start the checks
+  2. Wait for specific check statuses to change
+  3. Verify the overall progress and status
+
+Since checks run sequentially with cumulative delays:
+  Criminal:   ~2s
+  Credit:     ~5s (2s + 3s)
+  Employment: ~7s (2s + 3s + 2s)
+  Education:  ~9.5s (+ 2.5s)
+  Reference:  ~11.5s (+ 2s)
+
+Tests should use timeouts of 15-20 seconds for "all complete" assertions.
+```
+
+### Testing Progress Bars
+
+```
+Progress bars show a visual percentage. Test by:
+
+1. CHECKING THE TEXT PERCENTAGE
+   The percentage text (e.g., "60%") is easier to assert than CSS width.
+
+2. CHECKING THE WIDTH STYLE
+   The fill element's style.width property reflects the visual progress.
+   Use toHaveCSS() (Playwright) or .should('have.css') (Cypress).
+
+3. CHECKING AT MILESTONES
+   Verify progress at 0%, after first check (~20%), and at 100%.
+```
+
+### Testing Mixed Outcomes
+
+```
+The education check is configured to "fail" in the simulation.
+This means:
+  - Its status badge shows "Failed" with a red background
+  - The overall status shows "Completed with Issues" instead of
+    "All Checks Passed"
+  - 4 of 5 checks pass, 1 fails
+
+Tests should verify both the individual failure and its effect
+on the overall status.
+```
+
+## Playground
+
+The playground is a background check status tracker with:
+
+1. **Start Button** — triggers all five background checks to run sequentially
+2. **Progress Bar** — fills from 0% to 100% as checks complete, with percentage text
+3. **Estimated Time** — counts down from the total estimated time
+4. **Checks Completed** — shows "X / 5" completed count
+5. **Check List** — five individual checks, each with:
+   - Name (Criminal Record, Credit Score, Employment, Education, Reference)
+   - Detail text (updates with result info when done)
+   - Status badge (Pending -> In Progress -> Complete/Failed)
+6. **Overall Status** — "Not Started", "In Progress", "All Checks Passed", or "Completed with Issues"
+
+Check timing (cumulative delays):
+- Criminal Record: completes at ~2s
+- Credit Score: completes at ~5s
+- Employment: completes at ~7s
+- Education: completes at ~9.5s (FAILS)
+- Reference: completes at ~11.5s
+
+## Exercises
+
+### Exercise 1: Verify Initial Pending States
+Before starting checks, verify all five checks show "Pending" status and the progress is at 0%.
+
+### Exercise 2: Wait for First Check to Complete
+Start the checks and wait for the Criminal Record check to show "Complete". Verify its detail text updates.
+
+### Exercise 3: Verify Progress Bar Updates
+Start the checks. After the first check completes, verify the progress shows "20%". Wait for more checks and verify progress increases.
+
+### Exercise 4: Verify All Checks Complete
+Start the checks and wait for all five checks to finish. Verify the progress shows "100%" and the completed count shows "5 / 5".
+
+### Exercise 5: Handle Failed Check
+Wait for the Education check to complete. Verify its status shows "Failed" and the check item has the failed styling.
+
+### Exercise 6: Verify Estimated Time Updates
+Start the checks and verify the estimated time decreases over time. After all checks complete, verify it shows "0s".
+
+### Exercise 7: Verify Overall Status Changes
+Verify the overall status transitions from "Not Started" to "In Progress" to "Completed with Issues" (because Education fails).
+
+### Exercise 8: Complete Full Background Check Flow
+Start checks, wait for all to complete, verify each individual status, verify the progress bar is at 100%, and verify the overall outcome.
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/background-verification.spec.ts`
+
+### Cypress Solution
+
+See `cypress/background-verification.cy.ts`
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Using short timeouts | Checks take up to ~12s total to complete; default 5s timeout will fail | Use `{ timeout: 15000 }` or higher for "all complete" assertions |
+| Checking intermediate progress at exact moments | Progress updates are asynchronous; timing is approximate | Wait for the text to match rather than checking at a specific moment |
+| Expecting "All Checks Passed" | The education check is designed to fail | Expect "Completed with Issues" as the overall status |
+| Not waiting for "In Progress" state | The brief "In Progress" state may be missed if checked too late | Assert "In Progress" immediately after starting, before any check completes |
+| Testing checks in parallel order | Checks run sequentially with cumulative delays | Wait for each check in order: criminal, credit, employment, education, reference |
+
+## Quick Reference
+
+### Playwright Background Check Testing
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Wait for status | `toHaveText()` | `await expect(el).toHaveText('Complete', { timeout: 5000 })` |
+| Check progress % | `toHaveText()` | `await expect(el).toHaveText('100%', { timeout: 15000 })` |
+| Check CSS class | `toHaveClass()` | `await expect(item).toHaveClass(/completed/)` |
+| Check CSS style | `toHaveCSS()` | `await expect(fill).toHaveCSS('width', ...)` |
+| Long timeout | `{ timeout: N }` | `await expect(el).toHaveText('5 / 5', { timeout: 15000 })` |
+
+### Cypress Background Check Testing
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Wait for status | `.should('have.text')` | `cy.get(el, { timeout: 5000 }).should('have.text', 'Complete')` |
+| Check progress % | `.should('have.text')` | `cy.get(el, { timeout: 15000 }).should('have.text', '100%')` |
+| Check CSS class | `.should('have.class')` | `cy.get(item).should('have.class', 'completed')` |
+| Check CSS style | `.should('have.css')` | `cy.get(fill).should('have.css', 'width', ...)` |
+| Long timeout | `{ timeout: N }` | `cy.get(el, { timeout: 15000 }).should(...)` |
+7:T25ae,import { test, expect } from '@playwright/test';
+
+// The base URL for our playground page.
+const PLAYGROUND = '/phase-05-fintech-domain/29-background-verification/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Verify Initial Pending States
+// --------------------------------------------------------------------------
+// Before starting checks, verify all five checks show "Pending".
+test('exercise 1: verify initial pending states', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify all five check status badges show "Pending".
+  // toHaveText(text) checks the element's textContent matches exactly.
+  const checkIds = ['criminal', 'credit', 'employment', 'education', 'reference'];
+  for (const id of checkIds) {
+    await expect(page.getByTestId(`check-${id}-status`)).toHaveText('Pending');
+  }
+
+  // Verify progress is at 0%.
+  await expect(page.getByTestId('progress-percentage')).toHaveText('0%');
+  await expect(page.getByTestId('checks-completed')).toHaveText('0 / 5');
+
+  // Verify overall status is "Not Started".
+  await expect(page.getByTestId('overall-status')).toHaveText('Not Started');
+
+  // Verify the start button is enabled.
+  await expect(page.getByTestId('btn-start-checks')).toBeEnabled();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Wait for First Check to Complete
+// --------------------------------------------------------------------------
+// Start checks and wait for Criminal Record to show "Complete".
+test('exercise 2: wait for first check to complete', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Start the background checks.
+  await page.getByTestId('btn-start-checks').click();
+
+  // The criminal check should first transition to "In Progress".
+  // toHaveText() retries automatically until the text matches.
+  await expect(page.getByTestId('check-criminal-status')).toHaveText('In Progress', { timeout: 3000 });
+
+  // Then it should complete after ~2 seconds.
+  await expect(page.getByTestId('check-criminal-status')).toHaveText('Complete', { timeout: 5000 });
+
+  // Verify the detail text updated to show the result.
+  await expect(page.getByTestId('check-criminal-detail')).toHaveText('No records found');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Verify Progress Bar Updates
+// --------------------------------------------------------------------------
+// Start checks and verify progress increases as checks complete.
+test('exercise 3: verify progress bar updates', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+  await page.getByTestId('btn-start-checks').click();
+
+  // After the first check (criminal), progress should be 20%.
+  // toHaveText('20%') retries until the text matches.
+  await expect(page.getByTestId('progress-percentage')).toHaveText('20%', { timeout: 5000 });
+
+  // After two checks (criminal + credit), progress should be 40%.
+  await expect(page.getByTestId('progress-percentage')).toHaveText('40%', { timeout: 8000 });
+
+  // Verify the progress bar fill element has a non-zero width.
+  // We don't check the exact CSS value since it may be layout-dependent.
+  // Instead we verify the inline style contains the expected percentage.
+  const fill = page.getByTestId('progress-bar-fill');
+  // getAttribute('style') returns the element's inline style string.
+  const style = await fill.getAttribute('style');
+  expect(style).toContain('40%');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Verify All Checks Complete
+// --------------------------------------------------------------------------
+// Wait for all five checks to finish. Verify 100% and "5 / 5".
+test('exercise 4: verify all checks complete', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+  await page.getByTestId('btn-start-checks').click();
+
+  // Wait for all checks to complete. Total time ~11.5s, so use 15s timeout.
+  // toHaveText('100%') retries until progress reaches 100%.
+  await expect(page.getByTestId('progress-percentage')).toHaveText('100%', { timeout: 15000 });
+
+  // Verify the completed count shows all 5.
+  await expect(page.getByTestId('checks-completed')).toHaveText('5 / 5');
+
+  // Verify each check has a final status (Complete or Failed).
+  await expect(page.getByTestId('check-criminal-status')).toHaveText('Complete');
+  await expect(page.getByTestId('check-credit-status')).toHaveText('Complete');
+  await expect(page.getByTestId('check-employment-status')).toHaveText('Complete');
+  await expect(page.getByTestId('check-education-status')).toHaveText('Failed');
+  await expect(page.getByTestId('check-reference-status')).toHaveText('Complete');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Handle Failed Check
+// --------------------------------------------------------------------------
+// Wait for the Education check to complete and verify it shows "Failed".
+test('exercise 5: handle failed check', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+  await page.getByTestId('btn-start-checks').click();
+
+  // Wait for the education check to show "Failed".
+  // The education check completes at ~9.5s cumulative delay.
+  await expect(page.getByTestId('check-education-status')).toHaveText('Failed', { timeout: 12000 });
+
+  // Verify the check item has the "failed" CSS class.
+  // toHaveClass(/regex/) checks that the element's class matches the pattern.
+  await expect(page.getByTestId('check-education')).toHaveClass(/failed/);
+
+  // Verify the detail text shows the failure reason.
+  await expect(page.getByTestId('check-education-detail')).toHaveText('Could not verify degree');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Verify Estimated Time Updates
+// --------------------------------------------------------------------------
+// Verify the estimated time decreases and reaches "0s" when done.
+test('exercise 6: verify estimated time updates', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Before starting, estimated time should be "--".
+  await expect(page.getByTestId('estimated-time')).toHaveText('--');
+
+  // Start checks.
+  await page.getByTestId('btn-start-checks').click();
+
+  // The estimated time should start at a value > 0.
+  // We verify it's no longer "--".
+  await expect(page.getByTestId('estimated-time')).not.toHaveText('--', { timeout: 2000 });
+
+  // Read the initial estimated time.
+  const initialText = await page.getByTestId('estimated-time').textContent();
+  const initialSeconds = parseInt(initialText!);
+  expect(initialSeconds).toBeGreaterThan(0);
+
+  // Wait for all checks to complete, then verify time is "0s".
+  await expect(page.getByTestId('estimated-time')).toHaveText('0s', { timeout: 15000 });
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Verify Overall Status Changes
+// --------------------------------------------------------------------------
+// Verify the overall status transitions correctly through all phases.
+test('exercise 7: verify overall status changes', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Initial: "Not Started".
+  await expect(page.getByTestId('overall-status')).toHaveText('Not Started');
+  await expect(page.getByTestId('overall-status')).toHaveClass(/overall-pending/);
+
+  // Start checks.
+  await page.getByTestId('btn-start-checks').click();
+
+  // Should transition to "In Progress".
+  await expect(page.getByTestId('overall-status')).toHaveText('In Progress');
+  await expect(page.getByTestId('overall-status')).toHaveClass(/overall-in-progress/);
+
+  // Wait for all checks to complete.
+  // Because education fails, the final status should be "Completed with Issues".
+  await expect(page.getByTestId('overall-status')).toHaveText('Completed with Issues', { timeout: 15000 });
+  await expect(page.getByTestId('overall-status')).toHaveClass(/overall-failed/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Complete Full Background Check Flow
+// --------------------------------------------------------------------------
+// Start checks, wait for all to complete, verify everything.
+test('exercise 8: complete full background check flow', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+  await page.getByTestId('btn-start-checks').click();
+
+  // Wait for all checks to complete.
+  await expect(page.getByTestId('progress-percentage')).toHaveText('100%', { timeout: 15000 });
+
+  // Verify individual check results.
+  const expectedResults = [
+    { id: 'criminal', status: 'Complete', detail: 'No records found' },
+    { id: 'credit', status: 'Complete', detail: 'Score: 750 (Good)' },
+    { id: 'employment', status: 'Complete', detail: 'Verified: 3 employers' },
+    { id: 'education', status: 'Failed', detail: 'Could not verify degree' },
+    { id: 'reference', status: 'Complete', detail: '2 of 2 references confirmed' }
+  ];
+
+  for (const check of expectedResults) {
+    await expect(page.getByTestId(`check-${check.id}-status`)).toHaveText(check.status);
+    await expect(page.getByTestId(`check-${check.id}-detail`)).toHaveText(check.detail);
+  }
+
+  // Verify progress bar is full.
+  await expect(page.getByTestId('checks-completed')).toHaveText('5 / 5');
+
+  // Verify estimated time is 0.
+  await expect(page.getByTestId('estimated-time')).toHaveText('0s');
+
+  // Verify overall status reflects the failure.
+  await expect(page.getByTestId('overall-status')).toHaveText('Completed with Issues');
+});
+8:T21a6,const PLAYGROUND = '/phase-05-fintech-domain/29-background-verification/playground/';
+
+describe('Kata 29: Background Verification', () => {
+
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Verify Initial Pending States
+  // --------------------------------------------------------------------------
+  // Before starting checks, verify all five checks show "Pending".
+  it('exercise 1: verify initial pending states', () => {
+    // Verify all five checks show "Pending".
+    // .should('have.text', text) checks the element's text content.
+    const checkIds = ['criminal', 'credit', 'employment', 'education', 'reference'];
+    checkIds.forEach(id => {
+      cy.get(`[data-testid="check-${id}-status"]`).should('have.text', 'Pending');
+    });
+
+    // Verify progress is at 0%.
+    cy.get('[data-testid="progress-percentage"]').should('have.text', '0%');
+    cy.get('[data-testid="checks-completed"]').should('have.text', '0 / 5');
+
+    // Verify overall status.
+    cy.get('[data-testid="overall-status"]').should('have.text', 'Not Started');
+
+    // Verify start button is enabled.
+    cy.get('[data-testid="btn-start-checks"]').should('not.be.disabled');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Wait for First Check to Complete
+  // --------------------------------------------------------------------------
+  // Start checks and wait for Criminal Record to complete.
+  it('exercise 2: wait for first check to complete', () => {
+    cy.get('[data-testid="btn-start-checks"]').click();
+
+    // Should first transition to "In Progress".
+    // .should() retries automatically until the assertion passes.
+    cy.get('[data-testid="check-criminal-status"]', { timeout: 3000 })
+      .should('have.text', 'In Progress');
+
+    // Then complete after ~2 seconds.
+    cy.get('[data-testid="check-criminal-status"]', { timeout: 5000 })
+      .should('have.text', 'Complete');
+
+    // Verify detail text updated.
+    cy.get('[data-testid="check-criminal-detail"]')
+      .should('have.text', 'No records found');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Verify Progress Bar Updates
+  // --------------------------------------------------------------------------
+  // Verify progress increases as checks complete.
+  it('exercise 3: verify progress bar updates', () => {
+    cy.get('[data-testid="btn-start-checks"]').click();
+
+    // After first check: 20%.
+    cy.get('[data-testid="progress-percentage"]', { timeout: 5000 })
+      .should('have.text', '20%');
+
+    // After two checks: 40%.
+    cy.get('[data-testid="progress-percentage"]', { timeout: 8000 })
+      .should('have.text', '40%');
+
+    // Verify progress bar fill has non-zero width via inline style.
+    // .should('have.attr', 'style') checks the element's style attribute.
+    cy.get('[data-testid="progress-bar-fill"]')
+      .should('have.attr', 'style')
+      .and('contain', '40%');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Verify All Checks Complete
+  // --------------------------------------------------------------------------
+  // Wait for all five checks to finish.
+  it('exercise 4: verify all checks complete', () => {
+    cy.get('[data-testid="btn-start-checks"]').click();
+
+    // Wait for 100% progress. Total ~11.5s, so use 15s timeout.
+    // { timeout: 15000 } gives Cypress up to 15 seconds to retry.
+    cy.get('[data-testid="progress-percentage"]', { timeout: 15000 })
+      .should('have.text', '100%');
+
+    // Verify completed count.
+    cy.get('[data-testid="checks-completed"]').should('have.text', '5 / 5');
+
+    // Verify each check's final status.
+    cy.get('[data-testid="check-criminal-status"]').should('have.text', 'Complete');
+    cy.get('[data-testid="check-credit-status"]').should('have.text', 'Complete');
+    cy.get('[data-testid="check-employment-status"]').should('have.text', 'Complete');
+    cy.get('[data-testid="check-education-status"]').should('have.text', 'Failed');
+    cy.get('[data-testid="check-reference-status"]').should('have.text', 'Complete');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Handle Failed Check
+  // --------------------------------------------------------------------------
+  // Verify the Education check fails with the correct status and styling.
+  it('exercise 5: handle failed check', () => {
+    cy.get('[data-testid="btn-start-checks"]').click();
+
+    // Wait for education to fail (~9.5s cumulative).
+    cy.get('[data-testid="check-education-status"]', { timeout: 12000 })
+      .should('have.text', 'Failed');
+
+    // Verify the check item has the "failed" CSS class.
+    // .should('have.class', name) checks for a specific CSS class.
+    cy.get('[data-testid="check-education"]').should('have.class', 'failed');
+
+    // Verify failure detail text.
+    cy.get('[data-testid="check-education-detail"]')
+      .should('have.text', 'Could not verify degree');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Verify Estimated Time Updates
+  // --------------------------------------------------------------------------
+  // Verify the estimated time decreases and reaches "0s".
+  it('exercise 6: verify estimated time updates', () => {
+    // Before starting: "--".
+    cy.get('[data-testid="estimated-time"]').should('have.text', '--');
+
+    // Start checks.
+    cy.get('[data-testid="btn-start-checks"]').click();
+
+    // Should no longer be "--".
+    cy.get('[data-testid="estimated-time"]', { timeout: 2000 })
+      .should('not.have.text', '--');
+
+    // Read initial value and verify it's > 0.
+    cy.get('[data-testid="estimated-time"]').invoke('text').then((text) => {
+      const seconds = parseInt(text);
+      expect(seconds).to.be.greaterThan(0);
+    });
+
+    // Wait for all checks, then verify "0s".
+    cy.get('[data-testid="estimated-time"]', { timeout: 15000 })
+      .should('have.text', '0s');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Verify Overall Status Changes
+  // --------------------------------------------------------------------------
+  // Verify status transitions through all phases.
+  it('exercise 7: verify overall status changes', () => {
+    // Initial: "Not Started".
+    cy.get('[data-testid="overall-status"]')
+      .should('have.text', 'Not Started')
+      .and('have.class', 'overall-pending');
+
+    // Start checks.
+    cy.get('[data-testid="btn-start-checks"]').click();
+
+    // "In Progress".
+    cy.get('[data-testid="overall-status"]')
+      .should('have.text', 'In Progress')
+      .and('have.class', 'overall-in-progress');
+
+    // Final: "Completed with Issues" (because education fails).
+    cy.get('[data-testid="overall-status"]', { timeout: 15000 })
+      .should('have.text', 'Completed with Issues')
+      .and('have.class', 'overall-failed');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Complete Full Background Check Flow
+  // --------------------------------------------------------------------------
+  // Start, wait for all, verify everything.
+  it('exercise 8: complete full background check flow', () => {
+    cy.get('[data-testid="btn-start-checks"]').click();
+
+    // Wait for 100%.
+    cy.get('[data-testid="progress-percentage"]', { timeout: 15000 })
+      .should('have.text', '100%');
+
+    // Verify each check result.
+    const expected = [
+      { id: 'criminal', status: 'Complete', detail: 'No records found' },
+      { id: 'credit', status: 'Complete', detail: 'Score: 750 (Good)' },
+      { id: 'employment', status: 'Complete', detail: 'Verified: 3 employers' },
+      { id: 'education', status: 'Failed', detail: 'Could not verify degree' },
+      { id: 'reference', status: 'Complete', detail: '2 of 2 references confirmed' }
+    ];
+
+    expected.forEach(check => {
+      cy.get(`[data-testid="check-${check.id}-status"]`).should('have.text', check.status);
+      cy.get(`[data-testid="check-${check.id}-detail"]`).should('have.text', check.detail);
+    });
+
+    // Verify progress.
+    cy.get('[data-testid="checks-completed"]').should('have.text', '5 / 5');
+    cy.get('[data-testid="estimated-time"]').should('have.text', '0s');
+
+    // Verify overall status.
+    cy.get('[data-testid="overall-status"]').should('have.text', 'Completed with Issues');
+  });
+});
+9:T1f83,# Kata 31: Approval & Rejection Flows
+
+## What You Will Learn
+
+- How to test admin review panels with approve/reject/escalate workflows
+- How to interact with confirmation dialogs (modal overlays)
+- How to verify required fields in rejection forms
+- How to test status changes after admin actions
+- How to verify action history logs
+- How to test bulk selection and bulk actions
+- How to test list filtering by status
+- How to verify UI state after multiple sequential actions
+
+## Prerequisites
+
+- Completed Katas 1-30
+- Understanding of dialog/modal interaction testing
+- Familiarity with checkbox-based selection patterns
+
+## Concepts Explained
+
+### Admin Review Panel Pattern
+
+```
+In fintech, admin review panels allow compliance officers or analysts
+to review, approve, reject, or escalate pending applications.
+
+Common features:
+  - List of applications with status badges
+  - Action buttons per application (Approve, Reject, Escalate)
+  - Confirmation dialogs before actions take effect
+  - Rejection requires a reason (mandatory field)
+  - Action history/audit log
+  - Bulk actions (select multiple, approve all)
+  - Filter by status
+
+Testing must verify:
+  - Status changes correctly after each action
+  - Confirmation dialogs appear and work correctly
+  - Rejection is blocked without a reason
+  - History log records every action
+  - Bulk actions affect all selected items
+  - Filters show the correct subset
+```
+
+### Testing Modal Dialogs
+
+```
+Modal dialogs overlay the page and require user interaction before
+returning to the main content.
+
+Playwright:
+  // Click Approve to open the dialog.
+  await page.getByTestId('btn-approve-APP-001').click();
+  // Verify the dialog is visible.
+  await expect(page.getByTestId('approve-dialog')).toBeVisible();
+  // Click the confirm button inside the dialog.
+  await page.getByTestId('approve-dialog-confirm').click();
+  // Verify the dialog closes.
+  await expect(page.getByTestId('approve-dialog')).toBeHidden();
+
+Cypress:
+  cy.get('[data-testid="btn-approve-APP-001"]').click();
+  cy.get('[data-testid="approve-dialog"]').should('be.visible');
+  cy.get('[data-testid="approve-dialog-confirm"]').click();
+  cy.get('[data-testid="approve-dialog"]').should('not.be.visible');
+```
+
+### Testing Bulk Actions
+
+```
+Bulk actions require:
+  1. Select individual checkboxes (or "Select All")
+  2. Verify the selected count updates
+  3. Click the bulk action button
+  4. Verify all selected items changed status
+
+Playwright:
+  await page.getByTestId('select-all').check();
+  await expect(page.getByTestId('selected-count')).toContainText('5 selected');
+  await page.getByTestId('btn-bulk-approve').click();
+
+Cypress:
+  cy.get('[data-testid="select-all"]').check();
+  cy.get('[data-testid="selected-count"]').should('contain.text', '5 selected');
+  cy.get('[data-testid="btn-bulk-approve"]').click();
+```
+
+## Playground
+
+The playground is an admin review panel with:
+
+1. **Filter Bar** — dropdown to filter applications by status (All, Pending, Approved, Rejected, Escalated) with a count of visible/total applications
+2. **Bulk Actions Bar** — "Select All" checkbox, selected count, and "Approve Selected" button (disabled until at least one is selected)
+3. **Application List** — five applications (APP-001 through APP-005) each with:
+   - Checkbox for bulk selection (disabled for non-pending apps)
+   - Name, ID, email, risk score
+   - Status badge (Pending, Approved, Rejected, Escalated)
+   - Action buttons (Approve, Reject, Escalate) — only shown for pending apps
+4. **Approval Dialog** — confirmation dialog with Cancel/Approve buttons
+5. **Rejection Dialog** — dialog with required reason textarea, validation error, Cancel/Reject buttons
+6. **Escalation Dialog** — dialog with optional notes textarea, Cancel/Escalate buttons
+7. **Action History** — chronological log of all actions taken, showing action type, applicant name/ID, and reason if applicable
+
+## Exercises
+
+### Exercise 1: Approve Application and Verify Status Change
+Click "Approve" on APP-001. Verify the confirmation dialog appears. Click "Approve" in the dialog. Verify the status badge changes to "Approved" and the action buttons disappear.
+
+### Exercise 2: Reject With Reason
+Click "Reject" on APP-002. Verify the rejection dialog appears. Type a reason and click "Reject". Verify the status changes to "Rejected".
+
+### Exercise 3: Escalate Application
+Click "Escalate" on APP-003. Add notes in the escalation dialog and confirm. Verify the status changes to "Escalated".
+
+### Exercise 4: Verify Action History
+Approve one application and reject another. Verify the action history shows both entries with the correct details.
+
+### Exercise 5: Bulk Select and Approve
+Select all pending applications using the "Select All" checkbox. Click "Approve Selected". Verify all selected applications change to "Approved".
+
+### Exercise 6: Verify Confirmation Dialog
+Click "Approve" on APP-001. Verify the dialog text mentions the applicant name. Click "Cancel". Verify the dialog closes and the status is still "Pending".
+
+### Exercise 7: Verify Rejection Requires Reason
+Click "Reject" on APP-002. Click "Reject" without entering a reason. Verify the error message appears. Then enter a reason and verify it succeeds.
+
+### Exercise 8: Filter by Status
+Approve one application, reject another. Filter by "Pending" and verify only pending apps show. Filter by "Approved" and verify only approved apps show. Filter by "All" and verify all apps show.
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/approval-rejection-flows.spec.ts`
+
+### Cypress Solution
+
+See `cypress/approval-rejection-flows.cy.ts`
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Clicking action buttons on non-pending apps | Action buttons are only rendered for pending applications | Verify the app is pending before trying to click Approve/Reject |
+| Forgetting to confirm in the dialog | Clicking "Approve" opens a dialog; the actual approval happens on confirm | Click the dialog's confirm button after opening the dialog |
+| Not clearing the reject reason from a previous test | The textarea may retain values from a prior dialog opening | Each `openRejectDialog()` call resets the textarea, but tests should navigate fresh |
+| Asserting on checkboxes after status change | Approved/rejected apps have disabled checkboxes | After changing status, the checkbox for that app is disabled |
+| Not waiting for re-render after bulk approve | `bulkApprove()` triggers `renderApplications()` which rebuilds the DOM | Wait for the status badges to update before asserting |
+
+## Quick Reference
+
+### Playwright Dialog Testing
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Open dialog | `locator.click()` | `await page.getByTestId('btn-approve-APP-001').click()` |
+| Verify dialog visible | `toBeVisible()` | `await expect(dialog).toBeVisible()` |
+| Type in textarea | `locator.fill()` | `await textarea.fill('Reason text')` |
+| Confirm action | `locator.click()` | `await page.getByTestId('approve-dialog-confirm').click()` |
+| Cancel action | `locator.click()` | `await page.getByTestId('approve-dialog-cancel').click()` |
+| Check dialog hidden | `toBeHidden()` | `await expect(dialog).toBeHidden()` |
+| Check checkbox | `locator.check()` | `await page.getByTestId('select-all').check()` |
+
+### Cypress Dialog Testing
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Open dialog | `cy.get().click()` | `cy.get('[data-testid="btn-approve-APP-001"]').click()` |
+| Verify dialog visible | `.should('be.visible')` | `cy.get(dialog).should('be.visible')` |
+| Type in textarea | `.type()` | `cy.get(textarea).type('Reason text')` |
+| Confirm action | `.click()` | `cy.get('[data-testid="approve-dialog-confirm"]').click()` |
+| Cancel action | `.click()` | `cy.get('[data-testid="approve-dialog-cancel"]').click()` |
+| Check dialog hidden | `.should('not.be.visible')` | `cy.get(dialog).should('not.be.visible')` |
+| Check checkbox | `.check()` | `cy.get('[data-testid="select-all"]').check()` |
+a:T2b23,import { test, expect } from '@playwright/test';
+
+// The base URL for our playground page.
+const PLAYGROUND = '/phase-05-fintech-domain/31-approval-rejection-flows/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Approve Application and Verify Status Change
+// --------------------------------------------------------------------------
+// Click Approve on APP-001, confirm in dialog, verify status changes.
+test('exercise 1: approve application and verify status change', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify APP-001 is initially pending.
+  await expect(page.getByTestId('status-APP-001')).toHaveText('Pending');
+
+  // Click the Approve button for APP-001.
+  await page.getByTestId('btn-approve-APP-001').click();
+
+  // Verify the approval confirmation dialog appears.
+  // toBeVisible() checks the dialog overlay is displayed.
+  await expect(page.getByTestId('approve-dialog')).toBeVisible();
+
+  // Verify the dialog mentions the applicant name.
+  await expect(page.getByTestId('approve-dialog-text')).toContainText('Alice Johnson');
+
+  // Click the "Approve" button in the dialog to confirm.
+  await page.getByTestId('approve-dialog-confirm').click();
+
+  // Verify the dialog closes.
+  await expect(page.getByTestId('approve-dialog')).toBeHidden();
+
+  // Verify the status badge changed to "Approved".
+  await expect(page.getByTestId('status-APP-001')).toHaveText('Approved');
+
+  // Verify the app card has the approved border styling.
+  await expect(page.getByTestId('app-card-APP-001')).toHaveClass(/status-approved/);
+
+  // Verify the action buttons are gone (only shown for pending apps).
+  await expect(page.getByTestId('btn-approve-APP-001')).toHaveCount(0);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Reject With Reason
+// --------------------------------------------------------------------------
+// Reject APP-002 with a reason, verify status changes.
+test('exercise 2: reject with reason', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Click Reject for APP-002.
+  await page.getByTestId('btn-reject-APP-002').click();
+
+  // Verify the rejection dialog appears.
+  await expect(page.getByTestId('reject-dialog')).toBeVisible();
+
+  // Type a rejection reason.
+  // locator.fill(value) clears the textarea and types the new value.
+  await page.getByTestId('reject-reason').fill('Insufficient documentation provided');
+
+  // Click Reject in the dialog.
+  await page.getByTestId('reject-dialog-confirm').click();
+
+  // Verify the dialog closes.
+  await expect(page.getByTestId('reject-dialog')).toBeHidden();
+
+  // Verify the status changed to "Rejected".
+  await expect(page.getByTestId('status-APP-002')).toHaveText('Rejected');
+  await expect(page.getByTestId('app-card-APP-002')).toHaveClass(/status-rejected/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Escalate Application
+// --------------------------------------------------------------------------
+// Escalate APP-003 with notes, verify status changes.
+test('exercise 3: escalate application', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Click Escalate for APP-003.
+  await page.getByTestId('btn-escalate-APP-003').click();
+
+  // Verify the escalation dialog appears.
+  await expect(page.getByTestId('escalate-dialog')).toBeVisible();
+
+  // Add escalation notes.
+  await page.getByTestId('escalate-notes').fill('High risk score requires senior review');
+
+  // Confirm escalation.
+  await page.getByTestId('escalate-dialog-confirm').click();
+
+  // Verify the dialog closes and status changed.
+  await expect(page.getByTestId('escalate-dialog')).toBeHidden();
+  await expect(page.getByTestId('status-APP-003')).toHaveText('Escalated');
+  await expect(page.getByTestId('app-card-APP-003')).toHaveClass(/status-escalated/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Verify Action History
+// --------------------------------------------------------------------------
+// Approve one app, reject another, then verify the history log.
+test('exercise 4: verify action history', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Approve APP-001.
+  await page.getByTestId('btn-approve-APP-001').click();
+  await page.getByTestId('approve-dialog-confirm').click();
+
+  // Reject APP-002.
+  await page.getByTestId('btn-reject-APP-002').click();
+  await page.getByTestId('reject-reason').fill('Failed identity check');
+  await page.getByTestId('reject-dialog-confirm').click();
+
+  // Verify the history list has 2 entries.
+  // locator.count() returns the number of matching elements.
+  const historyItems = page.locator('[data-testid^="history-item-"]');
+  await expect(historyItems).toHaveCount(2);
+
+  // Verify the history contains the approval (newest first).
+  // The second entry (index 1) is the first action (approval).
+  const historyList = page.getByTestId('history-list');
+  await expect(historyList).toContainText('Approved');
+  await expect(historyList).toContainText('Alice Johnson');
+  await expect(historyList).toContainText('Rejected');
+  await expect(historyList).toContainText('Bob Williams');
+  await expect(historyList).toContainText('Failed identity check');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Bulk Select and Approve
+// --------------------------------------------------------------------------
+// Select all pending apps, bulk approve, verify all change status.
+test('exercise 5: bulk select and approve', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Click "Select All" checkbox.
+  // locator.check() checks a checkbox element.
+  await page.getByTestId('select-all').check();
+
+  // Verify the selected count shows all 5 (all are pending initially).
+  await expect(page.getByTestId('selected-count')).toHaveText('5 selected');
+
+  // Verify the bulk approve button is enabled.
+  await expect(page.getByTestId('btn-bulk-approve')).toBeEnabled();
+
+  // Click "Approve Selected".
+  await page.getByTestId('btn-bulk-approve').click();
+
+  // Verify all applications changed to "Approved".
+  for (const id of ['APP-001', 'APP-002', 'APP-003', 'APP-004', 'APP-005']) {
+    await expect(page.getByTestId(`status-${id}`)).toHaveText('Approved');
+  }
+
+  // Verify the history has 5 bulk approval entries.
+  const historyList = page.getByTestId('history-list');
+  await expect(historyList).toContainText('Approved (Bulk)');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Verify Confirmation Dialog
+// --------------------------------------------------------------------------
+// Open the approve dialog, verify content, then cancel and verify no change.
+test('exercise 6: verify confirmation dialog', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Click Approve for APP-001.
+  await page.getByTestId('btn-approve-APP-001').click();
+
+  // Verify dialog is visible and mentions the applicant.
+  await expect(page.getByTestId('approve-dialog')).toBeVisible();
+  await expect(page.getByTestId('approve-dialog-text')).toContainText('Alice Johnson');
+  await expect(page.getByTestId('approve-dialog-text')).toContainText('APP-001');
+
+  // Click Cancel.
+  await page.getByTestId('approve-dialog-cancel').click();
+
+  // Verify dialog closes.
+  await expect(page.getByTestId('approve-dialog')).toBeHidden();
+
+  // Verify the status is still "Pending" (action was canceled).
+  await expect(page.getByTestId('status-APP-001')).toHaveText('Pending');
+
+  // Verify the approve button is still available.
+  await expect(page.getByTestId('btn-approve-APP-001')).toBeVisible();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Verify Rejection Requires Reason
+// --------------------------------------------------------------------------
+// Try to reject without a reason, verify error, then add reason and succeed.
+test('exercise 7: verify rejection requires reason', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Open the rejection dialog for APP-002.
+  await page.getByTestId('btn-reject-APP-002').click();
+  await expect(page.getByTestId('reject-dialog')).toBeVisible();
+
+  // Click Reject without entering a reason.
+  await page.getByTestId('reject-dialog-confirm').click();
+
+  // Verify the error message appears.
+  await expect(page.getByTestId('reject-error')).toBeVisible();
+  await expect(page.getByTestId('reject-error')).toHaveText('Rejection reason is required');
+
+  // Verify the dialog is still open (rejection was blocked).
+  await expect(page.getByTestId('reject-dialog')).toBeVisible();
+
+  // Now enter a reason and try again.
+  await page.getByTestId('reject-reason').fill('Documents are forged');
+  await page.getByTestId('reject-dialog-confirm').click();
+
+  // Verify the dialog closes and status changed.
+  await expect(page.getByTestId('reject-dialog')).toBeHidden();
+  await expect(page.getByTestId('status-APP-002')).toHaveText('Rejected');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Filter by Status
+// --------------------------------------------------------------------------
+// Approve and reject apps, then filter and verify the correct subset shows.
+test('exercise 8: filter by status', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Approve APP-001.
+  await page.getByTestId('btn-approve-APP-001').click();
+  await page.getByTestId('approve-dialog-confirm').click();
+
+  // Reject APP-002.
+  await page.getByTestId('btn-reject-APP-002').click();
+  await page.getByTestId('reject-reason').fill('Duplicate application');
+  await page.getByTestId('reject-dialog-confirm').click();
+
+  // Filter by "Pending" — should show 3 apps.
+  // locator.selectOption(value) selects the option with the matching value.
+  await page.getByTestId('filter-status').selectOption('pending');
+  await expect(page.getByTestId('filter-count')).toHaveText('Showing 3 of 5');
+  // Verify APP-001 (approved) is not in the list.
+  await expect(page.getByTestId('app-card-APP-001')).toHaveCount(0);
+  // Verify APP-003 (pending) is in the list.
+  await expect(page.getByTestId('app-card-APP-003')).toBeVisible();
+
+  // Filter by "Approved" — should show 1 app.
+  await page.getByTestId('filter-status').selectOption('approved');
+  await expect(page.getByTestId('filter-count')).toHaveText('Showing 1 of 5');
+  await expect(page.getByTestId('app-card-APP-001')).toBeVisible();
+
+  // Filter by "Rejected" — should show 1 app.
+  await page.getByTestId('filter-status').selectOption('rejected');
+  await expect(page.getByTestId('filter-count')).toHaveText('Showing 1 of 5');
+  await expect(page.getByTestId('app-card-APP-002')).toBeVisible();
+
+  // Filter by "All" — should show all 5.
+  await page.getByTestId('filter-status').selectOption('all');
+  await expect(page.getByTestId('filter-count')).toHaveText('Showing 5 of 5');
+});
+b:T253d,const PLAYGROUND = '/phase-05-fintech-domain/31-approval-rejection-flows/playground/';
+
+describe('Kata 31: Approval & Rejection Flows', () => {
+
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Approve Application and Verify Status Change
+  // --------------------------------------------------------------------------
+  it('exercise 1: approve application and verify status change', () => {
+    // Verify initial pending status.
+    cy.get('[data-testid="status-APP-001"]').should('have.text', 'Pending');
+
+    // Click Approve for APP-001.
+    cy.get('[data-testid="btn-approve-APP-001"]').click();
+
+    // Verify the approval dialog is visible.
+    // .should('be.visible') checks the element is displayed.
+    cy.get('[data-testid="approve-dialog"]').should('be.visible');
+
+    // Verify dialog text mentions the applicant.
+    cy.get('[data-testid="approve-dialog-text"]').should('contain.text', 'Alice Johnson');
+
+    // Confirm approval.
+    cy.get('[data-testid="approve-dialog-confirm"]').click();
+
+    // Verify dialog closes.
+    cy.get('[data-testid="approve-dialog"]').should('not.be.visible');
+
+    // Verify status changed to "Approved".
+    cy.get('[data-testid="status-APP-001"]').should('have.text', 'Approved');
+    cy.get('[data-testid="app-card-APP-001"]').should('have.class', 'status-approved');
+
+    // Verify action buttons are gone.
+    cy.get('[data-testid="btn-approve-APP-001"]').should('not.exist');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Reject With Reason
+  // --------------------------------------------------------------------------
+  it('exercise 2: reject with reason', () => {
+    // Click Reject for APP-002.
+    cy.get('[data-testid="btn-reject-APP-002"]').click();
+
+    // Verify the dialog appears.
+    cy.get('[data-testid="reject-dialog"]').should('be.visible');
+
+    // Type a rejection reason.
+    // cy.get().type() types text into the textarea.
+    cy.get('[data-testid="reject-reason"]').type('Insufficient documentation provided');
+
+    // Confirm rejection.
+    cy.get('[data-testid="reject-dialog-confirm"]').click();
+
+    // Verify dialog closes and status changed.
+    cy.get('[data-testid="reject-dialog"]').should('not.be.visible');
+    cy.get('[data-testid="status-APP-002"]').should('have.text', 'Rejected');
+    cy.get('[data-testid="app-card-APP-002"]').should('have.class', 'status-rejected');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Escalate Application
+  // --------------------------------------------------------------------------
+  it('exercise 3: escalate application', () => {
+    // Click Escalate for APP-003.
+    cy.get('[data-testid="btn-escalate-APP-003"]').click();
+
+    // Verify dialog appears.
+    cy.get('[data-testid="escalate-dialog"]').should('be.visible');
+
+    // Add notes.
+    cy.get('[data-testid="escalate-notes"]').type('High risk score requires senior review');
+
+    // Confirm.
+    cy.get('[data-testid="escalate-dialog-confirm"]').click();
+
+    // Verify dialog closes and status changed.
+    cy.get('[data-testid="escalate-dialog"]').should('not.be.visible');
+    cy.get('[data-testid="status-APP-003"]').should('have.text', 'Escalated');
+    cy.get('[data-testid="app-card-APP-003"]').should('have.class', 'status-escalated');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Verify Action History
+  // --------------------------------------------------------------------------
+  it('exercise 4: verify action history', () => {
+    // Approve APP-001.
+    cy.get('[data-testid="btn-approve-APP-001"]').click();
+    cy.get('[data-testid="approve-dialog-confirm"]').click();
+
+    // Reject APP-002.
+    cy.get('[data-testid="btn-reject-APP-002"]').click();
+    cy.get('[data-testid="reject-reason"]').type('Failed identity check');
+    cy.get('[data-testid="reject-dialog-confirm"]').click();
+
+    // Verify the history list has 2 entries.
+    // .should('have.length', n) checks the number of matched elements.
+    cy.get('[data-testid^="history-item-"]').should('have.length', 2);
+
+    // Verify history content.
+    cy.get('[data-testid="history-list"]').should('contain.text', 'Approved');
+    cy.get('[data-testid="history-list"]').should('contain.text', 'Alice Johnson');
+    cy.get('[data-testid="history-list"]').should('contain.text', 'Rejected');
+    cy.get('[data-testid="history-list"]').should('contain.text', 'Bob Williams');
+    cy.get('[data-testid="history-list"]').should('contain.text', 'Failed identity check');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Bulk Select and Approve
+  // --------------------------------------------------------------------------
+  it('exercise 5: bulk select and approve', () => {
+    // Click "Select All".
+    // .check() checks a checkbox element.
+    cy.get('[data-testid="select-all"]').check();
+
+    // Verify selected count.
+    cy.get('[data-testid="selected-count"]').should('have.text', '5 selected');
+
+    // Verify bulk approve is enabled.
+    cy.get('[data-testid="btn-bulk-approve"]').should('not.be.disabled');
+
+    // Bulk approve.
+    cy.get('[data-testid="btn-bulk-approve"]').click();
+
+    // Verify all apps are approved.
+    ['APP-001', 'APP-002', 'APP-003', 'APP-004', 'APP-005'].forEach(id => {
+      cy.get(`[data-testid="status-${id}"]`).should('have.text', 'Approved');
+    });
+
+    // Verify history has bulk entries.
+    cy.get('[data-testid="history-list"]').should('contain.text', 'Approved (Bulk)');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Verify Confirmation Dialog
+  // --------------------------------------------------------------------------
+  it('exercise 6: verify confirmation dialog', () => {
+    // Open dialog.
+    cy.get('[data-testid="btn-approve-APP-001"]').click();
+
+    // Verify dialog content.
+    cy.get('[data-testid="approve-dialog"]').should('be.visible');
+    cy.get('[data-testid="approve-dialog-text"]')
+      .should('contain.text', 'Alice Johnson')
+      .and('contain.text', 'APP-001');
+
+    // Cancel.
+    cy.get('[data-testid="approve-dialog-cancel"]').click();
+
+    // Verify dialog closes and status unchanged.
+    cy.get('[data-testid="approve-dialog"]').should('not.be.visible');
+    cy.get('[data-testid="status-APP-001"]').should('have.text', 'Pending');
+    cy.get('[data-testid="btn-approve-APP-001"]').should('be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Verify Rejection Requires Reason
+  // --------------------------------------------------------------------------
+  it('exercise 7: verify rejection requires reason', () => {
+    // Open rejection dialog.
+    cy.get('[data-testid="btn-reject-APP-002"]').click();
+    cy.get('[data-testid="reject-dialog"]').should('be.visible');
+
+    // Try to reject without a reason.
+    cy.get('[data-testid="reject-dialog-confirm"]').click();
+
+    // Verify error message appears.
+    cy.get('[data-testid="reject-error"]')
+      .should('be.visible')
+      .and('have.text', 'Rejection reason is required');
+
+    // Verify dialog is still open.
+    cy.get('[data-testid="reject-dialog"]').should('be.visible');
+
+    // Now enter a reason and submit.
+    cy.get('[data-testid="reject-reason"]').type('Documents are forged');
+    cy.get('[data-testid="reject-dialog-confirm"]').click();
+
+    // Verify success.
+    cy.get('[data-testid="reject-dialog"]').should('not.be.visible');
+    cy.get('[data-testid="status-APP-002"]').should('have.text', 'Rejected');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Filter by Status
+  // --------------------------------------------------------------------------
+  it('exercise 8: filter by status', () => {
+    // Approve APP-001.
+    cy.get('[data-testid="btn-approve-APP-001"]').click();
+    cy.get('[data-testid="approve-dialog-confirm"]').click();
+
+    // Reject APP-002.
+    cy.get('[data-testid="btn-reject-APP-002"]').click();
+    cy.get('[data-testid="reject-reason"]').type('Duplicate application');
+    cy.get('[data-testid="reject-dialog-confirm"]').click();
+
+    // Filter by "Pending" — should show 3 apps.
+    // .select(value) selects the option with the matching value attribute.
+    cy.get('[data-testid="filter-status"]').select('pending');
+    cy.get('[data-testid="filter-count"]').should('have.text', 'Showing 3 of 5');
+    cy.get('[data-testid="app-card-APP-001"]').should('not.exist');
+    cy.get('[data-testid="app-card-APP-003"]').should('be.visible');
+
+    // Filter by "Approved" — should show 1.
+    cy.get('[data-testid="filter-status"]').select('approved');
+    cy.get('[data-testid="filter-count"]').should('have.text', 'Showing 1 of 5');
+    cy.get('[data-testid="app-card-APP-001"]').should('be.visible');
+
+    // Filter by "Rejected" — should show 1.
+    cy.get('[data-testid="filter-status"]').select('rejected');
+    cy.get('[data-testid="filter-count"]').should('have.text', 'Showing 1 of 5');
+    cy.get('[data-testid="app-card-APP-002"]').should('be.visible');
+
+    // Filter by "All" — should show 5.
+    cy.get('[data-testid="filter-status"]').select('all');
+    cy.get('[data-testid="filter-count"]').should('have.text', 'Showing 5 of 5');
+  });
+});
+c:Tb75d,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { test, expect } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> '@playwright/test'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// The base URL for our playground page.</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-05-fintech-domain/30-risk-assessment/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// ─── Helper: setScore ────────────────────────────────────────────────</span></span>
+<span class="line"><span style="color:#6A737D">// Changes a risk factor's score input and triggers recalculation.</span></span>
+<span class="line"><span style="color:#6A737D">// locator.fill(value) clears the input, types the new value, and</span></span>
+<span class="line"><span style="color:#6A737D">// dispatches a 'change' event which triggers recalculate().</span></span>
+<span class="line"><span style="color:#F97583">async</span><span style="color:#F97583"> function</span><span style="color:#B392F0"> setScore</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">page</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> any</span><span style="color:#E1E4E8">, </span><span style="color:#FFAB70">factorId</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> string</span><span style="color:#E1E4E8">, </span><span style="color:#FFAB70">score</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> string</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> input</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`score-${</span><span style="color:#E1E4E8">factorId</span><span style="color:#9ECBFF">}`</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> input.</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(score);</span></span>
+<span class="line"><span style="color:#6A737D">  // Dispatch a change event explicitly to ensure recalculation triggers.</span></span>
+<span class="line"><span style="color:#6A737D">  // dispatchEvent(new Event('change')) fires the onchange handler.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> input.</span><span style="color:#B392F0">dispatchEvent</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'change'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 1: Verify Risk Table Data</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Verify all five risk factors with default scores, weights, and weighted scores.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: verify risk table data'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the table is visible.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'risk-table'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify default score values.</span></span>
+<span class="line"><span style="color:#6A737D">  // toHaveValue(value) checks the input element's current value.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'score-identity'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveValue</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'15'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'score-credit'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveValue</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'20'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'score-employment'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveValue</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'10'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'score-address'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveValue</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'5'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'score-sanctions'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveValue</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'0'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify weights.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'weight-identity'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'0.25'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'weight-credit'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'0.20'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'weight-employment'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'0.20'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'weight-address'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'0.15'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'weight-sanctions'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'0.20'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify weighted scores (score * weight).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'weighted-identity'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'3.75'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'weighted-credit'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'4.00'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'weighted-employment'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'2.00'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'weighted-address'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'0.75'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'weighted-sanctions'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'0.00'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 2: Verify Computed Total</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Verify the total weighted score and overall risk level.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: verify computed total'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Total = 3.75 + 4.00 + 2.00 + 0.75 + 0.00 = 10.50.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'total-score'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'10.50'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Total 10.50 is below 30, so risk level is "Low".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'total-level'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Low'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the total level has the low-risk CSS class.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'total-level'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">risk-low</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 3: Change a Score and Verify Recalculation</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Change Identity from 15 to 80, verify weighted and total update.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: change a score and verify recalculation'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Change Identity score to 80.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> setScore</span><span style="color:#E1E4E8">(page, </span><span style="color:#9ECBFF">'identity'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'80'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Weighted should be 80 * 0.25 = 20.00.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'weighted-identity'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'20.00'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // New total = 20.00 + 4.00 + 2.00 + 0.75 + 0.00 = 26.75.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'total-score'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'26.75'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Identity score 80 is "High" risk.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'level-identity'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'High'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'level-identity'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">risk-high</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 4: Verify Auto-Approve Threshold</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Default scores give total &#x3C; 30, so action should be "Auto-Approve".</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: verify auto-approve threshold'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Default total is 10.50 (&#x3C; 30), so action is Auto-Approve.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'action-title'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Auto-Approve'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'action-description'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'automatically approved'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the action card has the green styling.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'action-card'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">result-auto-approve</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 5: Verify Manual Review Threshold</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Set scores to push total between 30 and 70.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: verify manual review threshold'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Set Identity to 80 and Credit to 80.</span></span>
+<span class="line"><span style="color:#6A737D">  // Total = (80*0.25) + (80*0.20) + (10*0.20) + (5*0.15) + (0*0.20)</span></span>
+<span class="line"><span style="color:#6A737D">  //       = 20 + 16 + 2 + 0.75 + 0 = 38.75 (between 30 and 70).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> setScore</span><span style="color:#E1E4E8">(page, </span><span style="color:#9ECBFF">'identity'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'80'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> setScore</span><span style="color:#E1E4E8">(page, </span><span style="color:#9ECBFF">'credit'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'80'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'total-score'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'38.75'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Action should be "Manual Review".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'action-title'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Manual Review'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'action-description'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'manual review'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify amber styling.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'action-card'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">result-manual-review</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 6: Verify Auto-Reject Threshold</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Set scores to push total above 70.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: verify auto-reject threshold'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Set all scores to 90.</span></span>
+<span class="line"><span style="color:#6A737D">  // Total = (90*0.25) + (90*0.20) + (90*0.20) + (90*0.15) + (90*0.20)</span></span>
+<span class="line"><span style="color:#6A737D">  //       = 22.5 + 18 + 18 + 13.5 + 18 = 90.00 (> 70).</span></span>
+<span class="line"><span style="color:#F97583">  for</span><span style="color:#E1E4E8"> (</span><span style="color:#F97583">const</span><span style="color:#79B8FF"> id</span><span style="color:#F97583"> of</span><span style="color:#E1E4E8"> [</span><span style="color:#9ECBFF">'identity'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'credit'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'employment'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'address'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'sanctions'</span><span style="color:#E1E4E8">]) {</span></span>
+<span class="line"><span style="color:#F97583">    await</span><span style="color:#B392F0"> setScore</span><span style="color:#E1E4E8">(page, id, </span><span style="color:#9ECBFF">'90'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'total-score'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'90.00'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Action should be "Auto-Reject".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'action-title'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Auto-Reject'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'action-description'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'automatically rejected'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify red styling.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'action-card'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">result-auto-reject</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 7: Override Score and Verify Action Changes</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Transition through all three thresholds by changing scores.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 7: override score and verify action changes'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Start: Auto-Approve (default total 10.50).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'action-title'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Auto-Approve'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Move to Manual Review range.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> setScore</span><span style="color:#E1E4E8">(page, </span><span style="color:#9ECBFF">'identity'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'80'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> setScore</span><span style="color:#E1E4E8">(page, </span><span style="color:#9ECBFF">'credit'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'80'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#6A737D">  // Total = 20 + 16 + 2 + 0.75 + 0 = 38.75.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'action-title'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Manual Review'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Move to Auto-Reject range.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> setScore</span><span style="color:#E1E4E8">(page, </span><span style="color:#9ECBFF">'employment'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'100'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> setScore</span><span style="color:#E1E4E8">(page, </span><span style="color:#9ECBFF">'address'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'100'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> setScore</span><span style="color:#E1E4E8">(page, </span><span style="color:#9ECBFF">'sanctions'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'100'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#6A737D">  // Total = 20 + 16 + 20 + 15 + 20 = 91.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'action-title'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Auto-Reject'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Move back to Auto-Approve by resetting.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-reset'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'action-title'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Auto-Approve'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'total-score'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'10.50'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 8: Verify Color Coding Matches Risk Level</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Set different scores and verify the color classes match the risk levels.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 8: verify color coding matches risk level'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Set Identity to 10 (Low), Credit to 50 (Medium), Sanctions to 80 (High).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> setScore</span><span style="color:#E1E4E8">(page, </span><span style="color:#9ECBFF">'identity'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'10'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> setScore</span><span style="color:#E1E4E8">(page, </span><span style="color:#9ECBFF">'credit'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'50'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> setScore</span><span style="color:#E1E4E8">(page, </span><span style="color:#9ECBFF">'sanctions'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'80'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Identity: 10 => Low, should have risk-low class.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'level-identity'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Low'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'level-identity'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">risk-low</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Credit: 50 => Medium, should have risk-medium class.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'level-credit'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Medium'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'level-credit'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">risk-medium</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Sanctions: 80 => High, should have risk-high class.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'level-sanctions'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'High'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'level-sanctions'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">risk-high</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the export button works.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-export'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'export-section'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#6A737D">  // The exported JSON should contain the action.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'export-content'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'"action"'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>d:T981f,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-05-fintech-domain/30-risk-assessment/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// ─── Helper: setScore ────────────────────────────────────────────────</span></span>
+<span class="line"><span style="color:#6A737D">// Changes a risk factor's score and triggers recalculation.</span></span>
+<span class="line"><span style="color:#6A737D">// .clear() removes existing text, .type() enters the new value.</span></span>
+<span class="line"><span style="color:#6A737D">// .trigger('change') fires the onchange handler to recalculate.</span></span>
+<span class="line"><span style="color:#F97583">function</span><span style="color:#B392F0"> setScore</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">factorId</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> string</span><span style="color:#E1E4E8">, </span><span style="color:#FFAB70">score</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> string</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#E1E4E8">  cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`[data-testid="score-${</span><span style="color:#E1E4E8">factorId</span><span style="color:#9ECBFF">}"]`</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">clear</span><span style="color:#E1E4E8">().</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(score).</span><span style="color:#B392F0">trigger</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'change'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">describe</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Kata 30: Risk Assessment'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">  beforeEach</span><span style="color:#E1E4E8">(() </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 1: Verify Risk Table Data</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: verify risk table data'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Verify the table is visible.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="risk-table"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify default score values.</span></span>
+<span class="line"><span style="color:#6A737D">    // .should('have.value', val) checks an input's value.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="score-identity"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.value'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'15'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="score-credit"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.value'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'20'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="score-employment"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.value'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'10'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="score-address"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.value'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'5'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="score-sanctions"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.value'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'0'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify weights.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="weight-identity"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'0.25'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="weight-credit"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'0.20'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="weight-employment"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'0.20'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="weight-address"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'0.15'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="weight-sanctions"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'0.20'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify weighted scores.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="weighted-identity"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'3.75'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="weighted-credit"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'4.00'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="weighted-employment"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'2.00'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="weighted-address"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'0.75'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="weighted-sanctions"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'0.00'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 2: Verify Computed Total</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: verify computed total'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Total = 3.75 + 4.00 + 2.00 + 0.75 + 0.00 = 10.50.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="total-score"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'10.50'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Risk level should be "Low" (&#x3C; 30).</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="total-level"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Low'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'risk-low'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 3: Change a Score and Verify Recalculation</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: change a score and verify recalculation'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Change Identity to 80.</span></span>
+<span class="line"><span style="color:#B392F0">    setScore</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'identity'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'80'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Weighted = 80 * 0.25 = 20.00.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="weighted-identity"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'20.00'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // New total = 20.00 + 4.00 + 2.00 + 0.75 + 0.00 = 26.75.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="total-score"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'26.75'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Identity level is "High" (80 > 70).</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="level-identity"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'High'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'risk-high'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 4: Verify Auto-Approve Threshold</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: verify auto-approve threshold'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Default total 10.50 &#x3C; 30 => Auto-Approve.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="action-title"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Auto-Approve'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="action-description"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'automatically approved'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="action-card"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'result-auto-approve'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 5: Verify Manual Review Threshold</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: verify manual review threshold'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Set Identity=80, Credit=80 => total=38.75 (30-70 range).</span></span>
+<span class="line"><span style="color:#B392F0">    setScore</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'identity'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'80'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#B392F0">    setScore</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'credit'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'80'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="total-score"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'38.75'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="action-title"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Manual Review'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="action-description"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'manual review'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="action-card"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'result-manual-review'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 6: Verify Auto-Reject Threshold</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: verify auto-reject threshold'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Set all scores to 90 => total=90.00 (> 70).</span></span>
+<span class="line"><span style="color:#E1E4E8">    [</span><span style="color:#9ECBFF">'identity'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'credit'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'employment'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'address'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'sanctions'</span><span style="color:#E1E4E8">].</span><span style="color:#B392F0">forEach</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">id</span><span style="color:#F97583"> =></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#B392F0">      setScore</span><span style="color:#E1E4E8">(id, </span><span style="color:#9ECBFF">'90'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="total-score"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'90.00'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="action-title"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Auto-Reject'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="action-description"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'automatically rejected'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="action-card"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'result-auto-reject'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 7: Override Score and Verify Action Changes</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 7: override score and verify action changes'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Start: Auto-Approve.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="action-title"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Auto-Approve'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Move to Manual Review.</span></span>
+<span class="line"><span style="color:#B392F0">    setScore</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'identity'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'80'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#B392F0">    setScore</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'credit'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'80'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="action-title"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Manual Review'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Move to Auto-Reject.</span></span>
+<span class="line"><span style="color:#B392F0">    setScore</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'employment'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'100'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#B392F0">    setScore</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'address'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'100'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#B392F0">    setScore</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'sanctions'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'100'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="action-title"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Auto-Reject'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Reset back to Auto-Approve.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-reset"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="action-title"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Auto-Approve'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="total-score"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'10.50'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 8: Verify Color Coding Matches Risk Level</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 8: verify color coding matches risk level'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Set Identity=10 (Low), Credit=50 (Medium), Sanctions=80 (High).</span></span>
+<span class="line"><span style="color:#B392F0">    setScore</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'identity'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'10'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#B392F0">    setScore</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'credit'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'50'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#B392F0">    setScore</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'sanctions'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'80'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Identity: Low.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="level-identity"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Low'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'risk-low'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Credit: Medium.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="level-credit"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Medium'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'risk-medium'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Sanctions: High.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="level-sanctions"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'High'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'risk-high'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify export works.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-export"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="export-section"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="export-content"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'"action"'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"kata":{"slug":"30-risk-assessment","number":30,"title":"Risk Assessment","phaseSlug":"phase-05-fintech-domain","phaseNumber":5,"phaseName":"Fintech Domain","readmeRaw":"$3","hasPlayground":true,"playwrightFiles":[{"filename":"risk-assessment.spec.ts","content":"$4"}],"cypressFiles":[{"filename":"risk-assessment.cy.ts","content":"$5"}]},"prev":{"slug":"29-background-verification","number":29,"title":"Background Verification","phaseSlug":"phase-05-fintech-domain","phaseNumber":5,"phaseName":"Fintech Domain","readmeRaw":"$6","hasPlayground":true,"playwrightFiles":[{"filename":"background-verification.spec.ts","content":"$7"}],"cypressFiles":[{"filename":"background-verification.cy.ts","content":"$8"}]},"next":{"slug":"31-approval-rejection-flows","number":31,"title":"Approval & Rejection Flows","phaseSlug":"phase-05-fintech-domain","phaseNumber":5,"phaseName":"Fintech Domain","readmeRaw":"$9","hasPlayground":true,"playwrightFiles":[{"filename":"approval-rejection-flows.spec.ts","content":"$a"}],"cypressFiles":[{"filename":"approval-rejection-flows.cy.ts","content":"$b"}]},"playwrightHtml":[{"filename":"risk-assessment.spec.ts","html":"$c"}],"cypressHtml":[{"filename":"risk-assessment.cy.ts","html":"$d"}]}],["$Le"],"$Lf"]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"iDtrTKWIN4zzRgDRiiDd2"}
+e:["$","script","script-0",{"src":"/qa-labs/_next/static/chunks/03nvm.8~ftt80.js","async":true}]
+f:["$","$L10",null,{"children":["$","$11",null,{"name":"Next.MetadataOutlet","children":"$@12"}]}]
+12:null

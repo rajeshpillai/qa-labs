@@ -1,0 +1,1793 @@
+1:"$Sreact.fragment"
+2:I[31749,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js","/qa-labs/_next/static/chunks/03nvm.8~ftt80.js"],"KataPageClient"]
+d:I[49583,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js"],"OutletBoundary"]
+e:"$Sreact.suspense"
+3:T2937,# Kata 01: Selectors and Locators
+
+## What You Will Learn
+
+- How to find elements on a web page using different selector strategies
+- CSS selectors: by ID, class, attribute, and tag
+- `data-testid` attributes: why they exist and when to use them
+- Playwright locators: `getByRole`, `getByText`, `getByTestId`, `getByLabel`, `getByPlaceholder`
+- Cypress selectors: `cy.get`, `cy.contains`, `cy.find`
+- Which selector strategy to choose and why it matters for test stability
+
+## Prerequisites
+
+- Node.js 18+ installed
+- Basic HTML knowledge (tags, attributes, ids, classes)
+- A code editor (VS Code recommended)
+
+## Concepts Explained
+
+### What is a selector?
+
+A **selector** is a pattern that tells your test framework which element on the page you want to interact with. Think of it like giving directions to find something — the more precise and stable your directions, the less likely they are to break when the page changes.
+
+### Selector Strategies (Best to Worst)
+
+| Priority | Strategy | Example | Stability |
+|----------|----------|---------|-----------|
+| 1 | `data-testid` | `[data-testid="btn-submit"]` | Best — dedicated test attribute, never changes accidentally |
+| 2 | Role-based | `getByRole('button', { name: 'Submit' })` | Great — based on accessibility, rarely changes |
+| 3 | Label/Placeholder | `getByLabel('Email')` | Good — tied to user-visible text |
+| 4 | Text content | `getByText('Submit Application')` | OK — can break if copy changes |
+| 5 | CSS selector | `.btn-primary` | Fragile — styling classes change often |
+| 6 | XPath | `//div[@class="card"]/button` | Worst — breaks on any DOM restructure |
+
+### Playwright Locators (Latest API)
+
+Playwright provides **built-in locator methods** that auto-wait for elements. Here's each one:
+
+```typescript
+// getByTestId — finds element by data-testid attribute
+// Use: when you've added data-testid to your HTML specifically for testing
+// Signature: page.getByTestId(testId: string)
+page.getByTestId('btn-submit')  // finds <button data-testid="btn-submit">
+
+// getByRole — finds element by ARIA role
+// Use: best for buttons, links, headings, textboxes — mirrors how screen readers see the page
+// Signature: page.getByRole(role, options?)
+// Common roles: 'button', 'link', 'heading', 'textbox', 'checkbox', 'radio', 'combobox', 'table', 'row', 'cell'
+page.getByRole('button', { name: 'Submit Application' })
+page.getByRole('heading', { level: 1 })
+page.getByRole('link', { name: 'Dashboard' })
+
+// getByLabel — finds form element by its <label> text
+// Use: for form inputs that have associated labels
+// Signature: page.getByLabel(text: string | RegExp, options?)
+page.getByLabel('Full Name')
+page.getByLabel('Email Address')
+
+// getByPlaceholder — finds input by placeholder text
+// Use: when inputs don't have labels but have placeholders
+// Signature: page.getByPlaceholder(text: string | RegExp, options?)
+page.getByPlaceholder('Enter your full name')
+
+// getByText — finds element by its visible text content
+// Use: for any element that contains specific text
+// Signature: page.getByText(text: string | RegExp, options?)
+page.getByText('Identity Verification')
+page.getByText(/risk score/i)  // case-insensitive with regex
+
+// locator — finds element by CSS selector (escape hatch)
+// Use: when none of the above work, or for complex selectors
+// Signature: page.locator(selector: string)
+page.locator('[data-testid="btn-submit"]')
+page.locator('#full-name')
+page.locator('.btn-primary')
+
+// Chaining — narrow down within a parent element
+page.getByTestId('applicant-card-1').getByText('John Doe')
+page.locator('.card').first()
+page.locator('.card').nth(2)  // 0-indexed, so this is the third card
+```
+
+### Cypress Selectors (Latest API)
+
+Cypress uses **jQuery-style chaining** with built-in retry-ability:
+
+```typescript
+// cy.get — finds element(s) by CSS selector
+// Use: the primary way to find elements in Cypress
+// Signature: cy.get(selector: string, options?)
+cy.get('[data-testid="btn-submit"]')
+cy.get('#full-name')
+cy.get('.btn-primary')
+cy.get('input[type="email"]')
+
+// cy.contains — finds element containing text
+// Use: to find elements by their visible text
+// Signature: cy.contains(text: string | RegExp)
+// Signature: cy.contains(selector: string, text: string | RegExp)
+cy.contains('Submit Application')           // any element with this text
+cy.contains('button', 'Submit Application') // specifically a button
+cy.contains(/risk score/i)                  // regex for case-insensitive
+
+// cy.find — finds descendant elements within a parent (must be chained)
+// Use: to narrow down search within a parent element
+// Signature: .find(selector: string)
+cy.get('[data-testid="applicant-card-1"]').find('strong')
+
+// .first(), .last(), .eq(index) — select from multiple matches
+cy.get('.card').first()
+cy.get('.card').last()
+cy.get('.card').eq(1)   // 0-indexed, so second card
+
+// .within — scope all commands inside a parent
+cy.get('[data-testid="applicant-card-1"]').within(() => {
+  cy.contains('John Doe')
+  cy.contains('Approved')
+})
+```
+
+### Best Practices
+
+1. **Always prefer `data-testid`** — they're stable, explicit, and won't break when styling changes
+2. **Use role-based locators** (Playwright) or `cy.contains` with a selector (Cypress) for semantically meaningful elements
+3. **Never use auto-generated classes** like `.css-1a2b3c` — they change on every build
+4. **Avoid index-based selectors** like `.nth(3)` when possible — they break when items are reordered
+5. **Be as specific as needed, but no more** — `getByTestId('btn-submit')` is better than `locator('form > div:last-child > button.btn-primary:first-of-type')`
+
+### Anti-Patterns to Avoid
+
+```typescript
+// BAD: Brittle CSS path
+page.locator('body > div:nth-child(2) > div > form > button')
+
+// BAD: Styling class that could change
+page.locator('.btn-primary')
+
+// BAD: XPath that breaks on DOM restructure
+page.locator('//form/div[3]/button')
+
+// GOOD: Stable test ID
+page.getByTestId('btn-submit')
+
+// GOOD: Semantic role
+page.getByRole('button', { name: 'Submit Application' })
+```
+
+## Playground
+
+Open the playground in your browser. It contains a **KYC Portal** page with:
+
+1. **Personal Details Form** — text inputs, email, select dropdowns, checkboxes, radio buttons, textarea
+2. **Applicant Cards** — nested elements with names, emails, status badges, risk scores
+3. **Applications Table** — rows with IDs, names, statuses, action buttons
+4. **Quick Actions** — buttons (some enabled, some disabled), a checklist
+5. **Search** — a search input that filters results dynamically
+6. **Element States** — a toggle panel (hidden/visible), a click counter
+
+```bash
+# start the playground server
+npx serve katas -l 8080
+
+# open in browser
+# http://localhost:8080/phase-00-foundations/01-selectors-and-locators/playground/
+```
+
+## Exercises
+
+### Exercise 1: Find by Test ID
+
+Locate the submit button using `data-testid` and verify its text says "Submit Application".
+
+**Playwright hint**: `page.getByTestId('btn-submit')`
+**Cypress hint**: `cy.get('[data-testid="btn-submit"]')`
+
+### Exercise 2: Find by Role
+
+Find the "Dashboard" navigation link using role-based locators.
+
+**Playwright hint**: `page.getByRole('link', { name: 'Dashboard' })`
+**Cypress hint**: `cy.contains('a', 'Dashboard')`
+
+### Exercise 3: Find by Label and Placeholder
+
+Locate the "Full Name" input using its label, then locate the phone input by its placeholder text.
+
+### Exercise 4: Find Within a Parent
+
+Inside the first applicant card (`applicant-card-1`), find the name, email, and status badge.
+
+### Exercise 5: Work With a Table
+
+Find the second row of the applications table and verify it contains "Jane Smith" and "Pending".
+
+### Exercise 6: Select From Multiple Elements
+
+Find all applicant cards (there are 3), and verify the last one belongs to "Raj Kumar".
+
+### Exercise 7: Text Matching
+
+Find all elements that contain the word "Verification" (there are multiple in the checklist).
+
+### Exercise 8: Toggle Visibility
+
+Click the "Show Details Panel" button, then verify the hidden panel becomes visible and contains the expected text.
+
+### Exercise 9: Interact With Search
+
+Type "John" into the search box and verify a search result appears with "KYC-001".
+
+### Exercise 10: Disabled Button
+
+Verify the "Reject Selected" button exists but is disabled.
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/selectors.spec.ts` — every line is commented to explain what it does.
+
+### Cypress Solution
+
+See `cypress/selectors.cy.ts` — every line is commented to explain what it does.
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Using `.btn-primary` to find the submit button | Multiple buttons have this class | Use `data-testid` or role with name |
+| Forgetting `await` in Playwright | Playwright locators return Promises | Always `await` assertions and actions |
+| Using `cy.get()` with text content | `cy.get` only accepts CSS selectors | Use `cy.contains()` for text matching |
+| Hardcoding element indices | Breaks when list order changes | Use `data-testid` or text content to find specific items |
+| Not waiting for dynamic content | Search results appear after typing | Cypress auto-retries; Playwright auto-waits with locators |
+
+## Quick Reference
+
+### Playwright Locator Methods
+
+| Method | Finds by | Example |
+|--------|----------|---------|
+| `getByTestId(id)` | `data-testid` attribute | `getByTestId('btn-submit')` |
+| `getByRole(role, opts)` | ARIA role + accessible name | `getByRole('button', { name: 'Submit' })` |
+| `getByLabel(text)` | Associated `<label>` | `getByLabel('Email Address')` |
+| `getByPlaceholder(text)` | `placeholder` attribute | `getByPlaceholder('Enter your full name')` |
+| `getByText(text)` | Visible text content | `getByText('Approved')` |
+| `locator(css)` | CSS selector | `locator('[data-testid="x"]')` |
+
+### Cypress Selector Methods
+
+| Method | Finds by | Example |
+|--------|----------|---------|
+| `cy.get(selector)` | CSS selector | `cy.get('[data-testid="btn-submit"]')` |
+| `cy.contains(text)` | Text content | `cy.contains('Submit Application')` |
+| `cy.contains(sel, text)` | Selector + text | `cy.contains('button', 'Submit')` |
+| `.find(selector)` | Descendant (chained) | `.find('[data-testid="name"]')` |
+| `.within(() => {})` | Scope commands | `.within(() => { cy.contains('...') })` |
+| `.first()` / `.last()` | Position | `cy.get('.card').first()` |
+| `.eq(index)` | Index (0-based) | `cy.get('.card').eq(1)` |
+4:T22db,import { test, expect } from '@playwright/test';
+
+// The base path to this kata's playground.
+// The web server serves the katas/ directory, so the path starts from there.
+const PLAYGROUND = '/phase-00-foundations/01-selectors-and-locators/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Find by Test ID
+// --------------------------------------------------------------------------
+test('exercise 1: find submit button by data-testid', async ({ page }) => {
+  // Navigate to the playground page
+  await page.goto(PLAYGROUND);
+
+  // getByTestId finds an element by its data-testid attribute.
+  // This is the most stable selector strategy because data-testid is
+  // specifically added for testing and won't change due to styling updates.
+  const submitBtn = page.getByTestId('btn-submit');
+
+  // toHaveText checks that the element's text content matches.
+  // Playwright auto-waits for the element to appear before checking.
+  await expect(submitBtn).toHaveText('Submit Application');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Find by Role
+// --------------------------------------------------------------------------
+test('exercise 2: find navigation link by role', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // getByRole finds elements by their ARIA role.
+  // 'link' matches <a> elements. The { name } option matches the
+  // accessible name (the text content of the link).
+  const dashboardLink = page.getByRole('link', { name: 'Dashboard' });
+
+  // toBeVisible checks that the element is rendered and not hidden.
+  await expect(dashboardLink).toBeVisible();
+
+  // We can also find headings by their level.
+  // This finds <h1> elements (role 'heading' with level 1).
+  const mainHeading = page.getByRole('heading', { level: 1 });
+  await expect(mainHeading).toHaveText('KYC Portal - Selectors Practice');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Find by Label and Placeholder
+// --------------------------------------------------------------------------
+test('exercise 3: find inputs by label and placeholder', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // getByLabel finds a form control by its associated <label> text.
+  // The label must be linked to the input via the "for" attribute
+  // matching the input's "id", or by wrapping the input.
+  const nameInput = page.getByLabel('Full Name');
+  await expect(nameInput).toBeVisible();
+
+  // getByPlaceholder finds an element by its placeholder attribute.
+  // Useful when an input has no label but does have a placeholder.
+  const phoneInput = page.getByPlaceholder('+1 (555) 000-0000');
+  await expect(phoneInput).toBeVisible();
+
+  // We can also fill the input to verify it's interactive.
+  // fill() clears the field first, then types the text.
+  await nameInput.fill('Test User');
+  await expect(nameInput).toHaveValue('Test User');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Find Within a Parent
+// --------------------------------------------------------------------------
+test('exercise 4: find elements within a parent card', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // First, locate the parent card by its data-testid.
+  const card = page.getByTestId('applicant-card-1');
+
+  // Then chain locators to find elements within that card.
+  // This is like saying: "inside applicant-card-1, find the element
+  // with data-testid applicant-name-1".
+  const name = card.getByTestId('applicant-name-1');
+  await expect(name).toHaveText('John Doe');
+
+  const email = card.getByTestId('applicant-email-1');
+  await expect(email).toHaveText('john.doe@example.com');
+
+  const status = card.getByTestId('applicant-status-1');
+  await expect(status).toHaveText('Approved');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Work With a Table
+// --------------------------------------------------------------------------
+test('exercise 5: find table row and verify contents', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Locate the second table row by its data-testid.
+  const row2 = page.getByTestId('table-row-2');
+
+  // Inside the row, verify specific cell contents.
+  await expect(row2.getByTestId('cell-name-2')).toHaveText('Jane Smith');
+
+  // getByText finds any element within the row that contains "Pending".
+  await expect(row2.getByText('Pending')).toBeVisible();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Select From Multiple Elements
+// --------------------------------------------------------------------------
+test('exercise 6: find last applicant card', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // locator with a CSS attribute selector finds all matching elements.
+  // The selector [data-testid^="applicant-card-"] uses the "starts with"
+  // operator (^=) to match all elements whose data-testid starts with
+  // "applicant-card-".
+  const cards = page.locator('[data-testid^="applicant-card-"]');
+
+  // count() returns the number of matching elements.
+  await expect(cards).toHaveCount(3);
+
+  // last() returns the last matching element.
+  const lastCard = cards.last();
+  await expect(lastCard.getByTestId('applicant-name-3')).toHaveText('Raj Kumar');
+
+  // nth(index) selects by 0-based index. nth(0) is the first element.
+  const firstCard = cards.nth(0);
+  await expect(firstCard.getByTestId('applicant-name-1')).toHaveText('John Doe');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Text Matching
+// --------------------------------------------------------------------------
+test('exercise 7: find elements by text content', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // getByText with a string finds elements containing that exact text.
+  await expect(page.getByText('Identity Verification')).toBeVisible();
+
+  // getByText with a regex allows partial or case-insensitive matching.
+  // The /i flag makes it case-insensitive.
+  const verificationItems = page.getByTestId('checklist').locator('li');
+  await expect(verificationItems).toHaveCount(5);
+
+  // Verify specific list items exist by their text.
+  await expect(page.getByText('Sanctions Screening')).toBeVisible();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Toggle Visibility
+// --------------------------------------------------------------------------
+test('exercise 8: toggle panel visibility', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  const panel = page.getByTestId('details-panel');
+  const toggleBtn = page.getByTestId('btn-toggle-panel');
+
+  // toBeHidden checks that the element is not visible.
+  // The panel starts hidden (has class "hidden" with display: none).
+  await expect(panel).toBeHidden();
+
+  // Click the toggle button to show the panel.
+  // click() auto-waits for the button to be visible and enabled.
+  await toggleBtn.click();
+
+  // Now the panel should be visible.
+  await expect(panel).toBeVisible();
+
+  // Verify the panel content.
+  await expect(page.getByTestId('panel-content')).toContainText('KYC-001');
+
+  // Click again to hide.
+  await toggleBtn.click();
+  await expect(panel).toBeHidden();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 9: Interact With Search
+// --------------------------------------------------------------------------
+test('exercise 9: search and verify results', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  const searchInput = page.getByTestId('input-search');
+
+  // fill() replaces any existing text with the new value.
+  await searchInput.fill('John');
+
+  // After typing, search results appear dynamically.
+  // Playwright auto-waits for the element to appear.
+  const results = page.getByTestId('search-result-item');
+  await expect(results).toHaveCount(1);
+
+  // Verify the result contains the expected text.
+  await expect(results.first()).toContainText('KYC-001');
+  await expect(results.first()).toContainText('John Doe');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 10: Disabled Button
+// --------------------------------------------------------------------------
+test('exercise 10: verify button is disabled', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  const rejectBtn = page.getByTestId('btn-reject-selected');
+
+  // toBeVisible checks the element is rendered (even if disabled).
+  await expect(rejectBtn).toBeVisible();
+
+  // toBeDisabled checks the HTML disabled attribute.
+  await expect(rejectBtn).toBeDisabled();
+
+  // Compare with an enabled button.
+  const newAppBtn = page.getByTestId('btn-new-application');
+  await expect(newAppBtn).toBeEnabled();
+});
+5:T2090,// The base path to this kata's playground.
+// Cypress prepends the baseUrl (http://localhost:8080) to this path.
+const PLAYGROUND = '/phase-00-foundations/01-selectors-and-locators/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Find by Test ID
+// --------------------------------------------------------------------------
+describe('Kata 01: Selectors and Locators', () => {
+
+  // beforeEach runs before every test in this describe block.
+  // We visit the playground page so each test starts fresh.
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  it('exercise 1: find submit button by data-testid', () => {
+    // cy.get accepts a CSS selector. For data-testid, use the attribute selector.
+    // [data-testid="btn-submit"] matches <button data-testid="btn-submit">.
+    cy.get('[data-testid="btn-submit"]')
+      // .should is a Cypress assertion. It automatically retries until
+      // the assertion passes or the timeout (default 4s) expires.
+      .should('have.text', 'Submit Application');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Find by Role
+  // --------------------------------------------------------------------------
+  it('exercise 2: find navigation link by text', () => {
+    // cy.contains(selector, text) finds an element matching the CSS selector
+    // that also contains the specified text. This is similar to Playwright's
+    // getByRole('link', { name: 'Dashboard' }).
+    cy.contains('a', 'Dashboard')
+      .should('be.visible');
+
+    // Find the main heading by tag and verify its text.
+    cy.get('h1')
+      .should('have.text', 'KYC Portal - Selectors Practice');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Find by Label and Placeholder
+  // --------------------------------------------------------------------------
+  it('exercise 3: find inputs by label and placeholder', () => {
+    // Cypress doesn't have a built-in getByLabel, but we can use the
+    // label's "for" attribute to find the associated input.
+    // Step 1: Find the label containing "Full Name"
+    // Step 2: Get its "for" attribute
+    // Step 3: Use that to find the input by ID
+    cy.contains('label', 'Full Name')
+      .invoke('attr', 'for')    // gets the "for" attribute value
+      .then((forAttr) => {
+        cy.get(`#${forAttr}`)   // finds input by the ID referenced in "for"
+          .should('be.visible');
+      });
+
+    // Alternatively, find by placeholder directly.
+    // The attribute selector [placeholder="..."] matches the placeholder text.
+    cy.get('[placeholder="+1 (555) 000-0000"]')
+      .should('be.visible');
+
+    // Type into the name field and verify the value.
+    // cy.type() simulates keystrokes one character at a time.
+    // Unlike Playwright's fill(), it does NOT clear the field first.
+    // Use .clear() before .type() if you need to replace existing text.
+    cy.get('[data-testid="input-full-name"]')
+      .clear()
+      .type('Test User')
+      .should('have.value', 'Test User');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Find Within a Parent
+  // --------------------------------------------------------------------------
+  it('exercise 4: find elements within a parent card', () => {
+    // .within() scopes all subsequent cy commands to the parent element.
+    // This is equivalent to Playwright's chained locators.
+    cy.get('[data-testid="applicant-card-1"]').within(() => {
+      // All cy.get and cy.contains calls here only search within the card.
+      cy.get('[data-testid="applicant-name-1"]')
+        .should('have.text', 'John Doe');
+
+      cy.get('[data-testid="applicant-email-1"]')
+        .should('have.text', 'john.doe@example.com');
+
+      cy.get('[data-testid="applicant-status-1"]')
+        .should('have.text', 'Approved');
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Work With a Table
+  // --------------------------------------------------------------------------
+  it('exercise 5: find table row and verify contents', () => {
+    // .find() searches for descendant elements within the subject.
+    // Unlike cy.get(), it must be chained from a parent element.
+    cy.get('[data-testid="table-row-2"]').within(() => {
+      cy.get('[data-testid="cell-name-2"]')
+        .should('have.text', 'Jane Smith');
+
+      cy.contains('Pending')
+        .should('be.visible');
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Select From Multiple Elements
+  // --------------------------------------------------------------------------
+  it('exercise 6: find last applicant card', () => {
+    // Attribute selector with ^= (starts with) matches all cards.
+    cy.get('[data-testid^="applicant-card-"]')
+      // .should('have.length', N) verifies the number of matched elements.
+      .should('have.length', 3);
+
+    // .last() returns the last element in the set.
+    cy.get('[data-testid^="applicant-card-"]')
+      .last()
+      .find('[data-testid="applicant-name-3"]')
+      .should('have.text', 'Raj Kumar');
+
+    // .eq(index) returns the element at the specified 0-based index.
+    // .eq(0) is the first element.
+    cy.get('[data-testid^="applicant-card-"]')
+      .eq(0)
+      .find('[data-testid="applicant-name-1"]')
+      .should('have.text', 'John Doe');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Text Matching
+  // --------------------------------------------------------------------------
+  it('exercise 7: find elements by text content', () => {
+    // cy.contains finds the first element matching the text.
+    cy.contains('Identity Verification')
+      .should('be.visible');
+
+    // Count all list items in the checklist.
+    cy.get('[data-testid="checklist"] li')
+      .should('have.length', 5);
+
+    // Verify a specific item exists.
+    cy.contains('Sanctions Screening')
+      .should('be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Toggle Visibility
+  // --------------------------------------------------------------------------
+  it('exercise 8: toggle panel visibility', () => {
+    // The panel starts hidden. In Cypress, "not.be.visible" checks that
+    // the element exists in the DOM but is not visible (display: none, etc.).
+    cy.get('[data-testid="details-panel"]')
+      .should('not.be.visible');
+
+    // Click the toggle button to show the panel.
+    cy.get('[data-testid="btn-toggle-panel"]').click();
+
+    // Now the panel should be visible.
+    cy.get('[data-testid="details-panel"]')
+      .should('be.visible');
+
+    // Verify panel content.
+    cy.get('[data-testid="panel-content"]')
+      .should('contain.text', 'KYC-001');
+
+    // Click again to hide.
+    cy.get('[data-testid="btn-toggle-panel"]').click();
+
+    cy.get('[data-testid="details-panel"]')
+      .should('not.be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 9: Interact With Search
+  // --------------------------------------------------------------------------
+  it('exercise 9: search and verify results', () => {
+    // Type into the search box. Cypress auto-retries assertions,
+    // so it will wait for the search results to appear.
+    cy.get('[data-testid="input-search"]')
+      .type('John');
+
+    // Verify search results appear.
+    cy.get('[data-testid="search-result-item"]')
+      .should('have.length', 1)
+      .first()
+      .should('contain.text', 'KYC-001')
+      .and('contain.text', 'John Doe');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 10: Disabled Button
+  // --------------------------------------------------------------------------
+  it('exercise 10: verify button is disabled', () => {
+    // 'be.disabled' checks the HTML disabled attribute.
+    cy.get('[data-testid="btn-reject-selected"]')
+      .should('be.visible')
+      .and('be.disabled');
+
+    // Compare with an enabled button.
+    cy.get('[data-testid="btn-new-application"]')
+      .should('be.enabled');
+  });
+
+});
+6:T2cc1,# Kata 02: Assertions
+
+## What You Will Learn
+
+- What assertions are and why they matter in testing
+- Playwright assertions: `expect` with `toBe`, `toHaveText`, `toContainText`, `toBeVisible`, `toBeHidden`, `toHaveAttribute`, `toHaveCSS`, `toHaveCount`, `toHaveValue`
+- Cypress assertions: `should` with `have.text`, `contain.text`, `be.visible`, `have.attr`, `have.css`, `have.length`, `have.value`
+- Soft assertions (Playwright) vs hard assertions
+- Negative assertions: asserting something is NOT true
+- Auto-retry behavior: how both frameworks handle timing
+
+## Prerequisites
+
+- Completed Kata 01 (Selectors and Locators)
+- Understanding of how to find elements on a page
+
+## Concepts Explained
+
+### What is an assertion?
+
+An **assertion** is a statement that checks whether something on the page matches your expectation. If the check fails, the test fails. Assertions are the "verify" part of any test — without them, you're just clicking around without proving anything works.
+
+```
+Find element → Do something → ASSERT the result
+```
+
+### How Auto-Retry Works
+
+Both Playwright and Cypress **automatically retry** assertions for a configurable timeout (default 5s in Playwright, 4s in Cypress). This means:
+
+- You type `await expect(element).toHaveText('Hello')` in Playwright
+- If the text isn't "Hello" yet (maybe it's loading), Playwright keeps checking
+- If it becomes "Hello" within 5 seconds, the test passes
+- If 5 seconds pass and it's still not "Hello", the test fails
+
+This is why you almost never need `sleep()` or `wait()` in modern test frameworks.
+
+### Playwright Assertions
+
+```typescript
+import { test, expect } from '@playwright/test';
+
+// --- TEXT ASSERTIONS ---
+
+// toHaveText — checks exact text content (trims whitespace)
+// Signature: expect(locator).toHaveText(expected: string | RegExp | string[])
+await expect(element).toHaveText('Submit Application');
+await expect(element).toHaveText(/submit/i);  // regex, case-insensitive
+
+// toContainText — checks that text CONTAINS the expected string
+// Use when you don't need an exact match
+await expect(element).toContainText('Submit');
+
+// --- VISIBILITY ASSERTIONS ---
+
+// toBeVisible — element is rendered and not hidden
+await expect(element).toBeVisible();
+
+// toBeHidden — element is not visible (display:none, hidden attr, etc.)
+await expect(element).toBeHidden();
+
+// --- VALUE ASSERTIONS ---
+
+// toHaveValue — checks the value of an input, select, or textarea
+await expect(input).toHaveValue('john@example.com');
+
+// --- COUNT ASSERTIONS ---
+
+// toHaveCount — checks the number of matching elements
+await expect(page.locator('.card')).toHaveCount(3);
+
+// --- ATTRIBUTE ASSERTIONS ---
+
+// toHaveAttribute — checks an HTML attribute's value
+await expect(element).toHaveAttribute('data-status', 'active');
+await expect(element).toHaveAttribute('href', /terms/);
+
+// --- CSS ASSERTIONS ---
+
+// toHaveCSS — checks a computed CSS property
+await expect(element).toHaveCSS('background-color', 'rgb(59, 130, 246)');
+await expect(element).toHaveCSS('font-weight', '700');
+
+// --- STATE ASSERTIONS ---
+
+// toBeEnabled / toBeDisabled — checks disabled attribute
+await expect(button).toBeEnabled();
+await expect(button).toBeDisabled();
+
+// toBeChecked — checks if checkbox/radio is checked
+await expect(checkbox).toBeChecked();
+await expect(checkbox).not.toBeChecked();
+
+// --- NEGATIVE ASSERTIONS ---
+
+// .not inverts any assertion
+await expect(element).not.toBeVisible();
+await expect(element).not.toHaveText('Error');
+
+// --- SOFT ASSERTIONS ---
+// Soft assertions don't stop the test on failure — they collect all failures
+// and report them at the end. Useful when checking multiple things at once.
+await expect.soft(element1).toHaveText('A');
+await expect.soft(element2).toHaveText('B');
+await expect.soft(element3).toHaveText('C');
+// If element2 fails, the test continues and checks element3 too
+```
+
+### Cypress Assertions
+
+```typescript
+// Cypress uses .should() which auto-retries until the assertion passes
+// or the timeout expires. You can chain multiple assertions with .and().
+
+// --- TEXT ASSERTIONS ---
+
+// 'have.text' — exact text content match
+cy.get('[data-testid="title"]').should('have.text', 'Dashboard');
+
+// 'contain.text' — partial text match (like toContainText)
+cy.get('[data-testid="title"]').should('contain.text', 'Dash');
+
+// 'include.text' — alias for contain.text
+cy.get('[data-testid="title"]').should('include.text', 'Dash');
+
+// 'match' — regex match on text
+cy.get('[data-testid="title"]').invoke('text').should('match', /dashboard/i);
+
+// --- VISIBILITY ASSERTIONS ---
+
+// 'be.visible' — element is visible on screen
+cy.get('[data-testid="panel"]').should('be.visible');
+
+// 'not.be.visible' — element exists in DOM but is hidden
+cy.get('[data-testid="panel"]').should('not.be.visible');
+
+// 'exist' / 'not.exist' — element is/isn't in the DOM at all
+cy.get('[data-testid="panel"]').should('exist');
+cy.get('[data-testid="deleted"]').should('not.exist');
+
+// --- VALUE ASSERTIONS ---
+
+// 'have.value' — checks input value
+cy.get('input').should('have.value', 'john@example.com');
+
+// --- COUNT ASSERTIONS ---
+
+// 'have.length' — checks number of matched elements
+cy.get('.card').should('have.length', 3);
+
+// --- ATTRIBUTE ASSERTIONS ---
+
+// 'have.attr' — checks an HTML attribute
+cy.get('a').should('have.attr', 'href', 'https://example.com');
+cy.get('input').should('have.attr', 'readonly');
+
+// --- CSS ASSERTIONS ---
+
+// 'have.css' — checks computed CSS property
+cy.get('[data-testid="box"]').should('have.css', 'background-color', 'rgb(59, 130, 246)');
+
+// --- STATE ASSERTIONS ---
+
+// 'be.disabled' / 'be.enabled'
+cy.get('button').should('be.disabled');
+cy.get('button').should('not.be.disabled');
+
+// 'be.checked'
+cy.get('input[type="checkbox"]').should('be.checked');
+
+// --- CHAINING ASSERTIONS ---
+// .and() chains multiple assertions on the same element
+cy.get('[data-testid="btn"]')
+  .should('be.visible')
+  .and('be.enabled')
+  .and('have.text', 'Submit');
+
+// --- CLASS ASSERTIONS ---
+
+// 'have.class' — checks if element has a CSS class
+cy.get('[data-testid="badge"]').should('have.class', 'status-active');
+```
+
+### Key Differences Between Playwright and Cypress
+
+| Feature | Playwright | Cypress |
+|---------|-----------|---------|
+| Syntax | `await expect(locator).toHaveText()` | `cy.get().should('have.text')` |
+| Retry | Auto-retries all `expect` assertions | Auto-retries all `.should()` chains |
+| Soft assertions | Yes (`expect.soft`) | No built-in equivalent |
+| Negation | `.not.toBeVisible()` | `.should('not.be.visible')` |
+| Async | Always `await` | No `await` needed (auto-queued) |
+
+## Playground
+
+The playground shows a **KYC Dashboard** with:
+
+1. **Stats cards** — numbers for total, approved, rejected, pending applications
+2. **Progress bars** — verification progress with percentages and colors
+3. **System alerts** — success, warning, error messages
+4. **Dynamic content** — counter with +1/-1/reset, dynamic alert creation
+5. **Application table** — rows with names, risk levels, statuses, tags
+6. **Element attributes** — inputs with readonly, disabled, required attributes
+7. **CSS & styles** — colored box, text styles (uppercase, bold, italic, strikethrough)
+8. **Empty/loading states** — empty list message, items with statuses
+
+## Exercises
+
+### Exercise 1: Text Assertions
+Verify that the "Total Applications" stat card shows "1,247" and the label says "Total Applications".
+
+### Exercise 2: Visibility
+Verify all three system alerts (success, warning, error) are visible.
+
+### Exercise 3: Count
+Verify the application table has exactly 3 data rows.
+
+### Exercise 4: Attribute Assertions
+Verify the readonly input has the `readonly` attribute and contains "KYC-2024-0001". Verify the disabled input has the `disabled` attribute.
+
+### Exercise 5: CSS Assertions
+Verify the colored box has `background-color: rgb(59, 130, 246)`. Click the "Change Color" button and verify it changes to `rgb(239, 68, 68)`.
+
+### Exercise 6: Counter Interactions
+Click +1 three times, verify counter shows 3. Click -1 once, verify it shows 2. Click Reset, verify it shows 0.
+
+### Exercise 7: Dynamic Content
+Click "Add Alert" twice, verify 2 dynamic alerts appear. Click "Clear Alerts", verify they are removed.
+
+### Exercise 8: Negative Assertions
+Verify the empty-list section does NOT contain any item cards. Verify the items list is NOT empty.
+
+### Exercise 9: Data Attributes
+Verify the data-attributes element has `data-status="active"`, `data-priority="high"`, and `data-count="42"`.
+
+### Exercise 10: Multiple Assertions on One Element
+Verify the link has `href` containing "terms", has `target="_blank"`, and is visible.
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/assertions.spec.ts`
+
+### Cypress Solution
+
+See `cypress/assertions.cy.ts`
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Using `toBe` instead of `toHaveText` | `toBe` compares primitive values, not element text | Use `toHaveText` for element text content |
+| Forgetting `await` on Playwright assertions | The assertion runs but errors are uncaught | Always `await expect(...)` |
+| Checking exact CSS color with hex | Browsers compute colors to `rgb()` | Use `rgb(r, g, b)` format |
+| Asserting `.should('have.text', 'foo')` when text has whitespace | `have.text` does exact match including whitespace | Use `contain.text` or trim the text |
+| Using `not.exist` when you mean `not.be.visible` | `not.exist` means NOT in the DOM at all | `not.be.visible` means in DOM but hidden |
+
+## Quick Reference
+
+### Playwright expect Methods
+
+| Assertion | Checks | Example |
+|-----------|--------|---------|
+| `toHaveText(text)` | Exact text (trimmed) | `toHaveText('Hello')` |
+| `toContainText(text)` | Text contains substring | `toContainText('Hell')` |
+| `toBeVisible()` | Element is visible | |
+| `toBeHidden()` | Element is hidden | |
+| `toHaveValue(val)` | Input/select value | `toHaveValue('42')` |
+| `toHaveCount(n)` | Number of elements | `toHaveCount(3)` |
+| `toHaveAttribute(name, val?)` | HTML attribute | `toHaveAttribute('disabled')` |
+| `toHaveCSS(prop, val)` | Computed CSS | `toHaveCSS('color', 'rgb(0,0,0)')` |
+| `toBeEnabled()` | Not disabled | |
+| `toBeDisabled()` | Has disabled attribute | |
+| `toBeChecked()` | Checkbox/radio checked | |
+| `.not.` | Negates any assertion | `not.toBeVisible()` |
+| `expect.soft()` | Non-blocking assertion | Continues on failure |
+
+### Cypress should Assertions
+
+| Assertion | Checks | Example |
+|-----------|--------|---------|
+| `'have.text'` | Exact text | `.should('have.text', 'x')` |
+| `'contain.text'` | Text contains | `.should('contain.text', 'x')` |
+| `'be.visible'` | Visible | `.should('be.visible')` |
+| `'not.be.visible'` | Hidden | `.should('not.be.visible')` |
+| `'exist'` | In DOM | `.should('exist')` |
+| `'not.exist'` | Not in DOM | `.should('not.exist')` |
+| `'have.value'` | Input value | `.should('have.value', 'x')` |
+| `'have.length'` | Element count | `.should('have.length', 3)` |
+| `'have.attr'` | HTML attribute | `.should('have.attr', 'href')` |
+| `'have.css'` | Computed CSS | `.should('have.css', 'color')` |
+| `'be.disabled'` | Disabled | `.should('be.disabled')` |
+| `'be.checked'` | Checked | `.should('be.checked')` |
+| `'have.class'` | CSS class | `.should('have.class', 'active')` |
+| `.and()` | Chain assertions | `.should('x').and('y')` |
+7:T239e,import { test, expect } from '@playwright/test';
+
+const PLAYGROUND = '/phase-00-foundations/02-assertions/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Text Assertions
+// --------------------------------------------------------------------------
+test('exercise 1: verify stat card text content', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // toHaveText checks the exact text content of an element.
+  // The element's text is trimmed (leading/trailing whitespace removed).
+  await expect(page.getByTestId('stat-total-value')).toHaveText('1,247');
+
+  // toContainText checks that the text INCLUDES the expected substring.
+  // Useful when you don't want to match the full text.
+  await expect(page.getByTestId('stat-total')).toContainText('Total Applications');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Visibility Assertions
+// --------------------------------------------------------------------------
+test('exercise 2: verify alerts are visible', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // toBeVisible asserts that the element is rendered and not hidden.
+  // An element is "visible" when it has non-zero dimensions and is not
+  // hidden by CSS (display:none, visibility:hidden, opacity:0).
+  await expect(page.getByTestId('alert-success')).toBeVisible();
+  await expect(page.getByTestId('alert-warning')).toBeVisible();
+  await expect(page.getByTestId('alert-error')).toBeVisible();
+
+  // Verify the content of each alert using toContainText.
+  await expect(page.getByTestId('alert-success')).toContainText('12 applications processed');
+  await expect(page.getByTestId('alert-warning')).toContainText('manual review');
+  await expect(page.getByTestId('alert-error')).toContainText('experiencing delays');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Count Assertions
+// --------------------------------------------------------------------------
+test('exercise 3: verify table row count', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // toHaveCount checks the number of elements matching the locator.
+  // We select all <tr> elements inside the table body.
+  const rows = page.getByTestId('app-table').locator('tbody tr');
+  await expect(rows).toHaveCount(3);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Attribute Assertions
+// --------------------------------------------------------------------------
+test('exercise 4: verify input attributes', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // toHaveAttribute(name, value?) checks an HTML attribute.
+  // With just the name, it checks the attribute exists (regardless of value).
+  const readonlyInput = page.getByTestId('input-readonly');
+  await expect(readonlyInput).toHaveAttribute('readonly', '');
+  await expect(readonlyInput).toHaveValue('KYC-2024-0001');
+
+  // toBeDisabled is a shorthand for checking the disabled attribute.
+  const disabledInput = page.getByTestId('input-disabled');
+  await expect(disabledInput).toBeDisabled();
+  await expect(disabledInput).toHaveValue('Cannot edit');
+
+  // Check the required attribute exists.
+  const requiredInput = page.getByTestId('input-required');
+  await expect(requiredInput).toHaveAttribute('required', '');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: CSS Assertions
+// --------------------------------------------------------------------------
+test('exercise 5: verify and change CSS styles', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  const box = page.getByTestId('colored-box');
+
+  // toHaveCSS checks a computed CSS property value.
+  // IMPORTANT: browsers compute colors as rgb(), not hex.
+  // So even if the CSS says "#3b82f6", the computed value is "rgb(59, 130, 246)".
+  await expect(box).toHaveCSS('background-color', 'rgb(59, 130, 246)');
+  await expect(box).toHaveCSS('border-radius', '8px');
+
+  // Click the button to change the color.
+  await page.getByTestId('btn-change-color').click();
+
+  // Now verify the new color.
+  await expect(box).toHaveCSS('background-color', 'rgb(239, 68, 68)');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Counter Interactions
+// --------------------------------------------------------------------------
+test('exercise 6: counter increment, decrement, and reset', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  const counter = page.getByTestId('counter-value');
+
+  // Initial state should be 0.
+  await expect(counter).toHaveText('0');
+
+  // Click +1 three times.
+  await page.getByTestId('btn-increment').click();
+  await page.getByTestId('btn-increment').click();
+  await page.getByTestId('btn-increment').click();
+  await expect(counter).toHaveText('3');
+
+  // Click -1 once.
+  await page.getByTestId('btn-decrement').click();
+  await expect(counter).toHaveText('2');
+
+  // Reset.
+  await page.getByTestId('btn-reset-counter').click();
+  await expect(counter).toHaveText('0');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Dynamic Content
+// --------------------------------------------------------------------------
+test('exercise 7: add and clear dynamic alerts', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  const alertsContainer = page.getByTestId('dynamic-alerts');
+
+  // Initially no dynamic alerts.
+  await expect(alertsContainer.locator('.alert')).toHaveCount(0);
+
+  // Click "Add Alert" twice.
+  await page.getByTestId('btn-add-alert').click();
+  await page.getByTestId('btn-add-alert').click();
+
+  // Verify 2 alerts appear.
+  await expect(alertsContainer.locator('.alert')).toHaveCount(2);
+
+  // Verify the first dynamic alert has the expected text.
+  await expect(page.getByTestId('dynamic-alert-1')).toContainText('Alert #1');
+
+  // Clear all alerts.
+  await page.getByTestId('btn-clear-alerts').click();
+  await expect(alertsContainer.locator('.alert')).toHaveCount(0);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Negative Assertions
+// --------------------------------------------------------------------------
+test('exercise 8: negative assertions', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // .not inverts any assertion.
+  // The empty list should NOT contain any list items.
+  const emptyList = page.getByTestId('empty-list');
+  await expect(emptyList.locator('.list-item')).toHaveCount(0);
+  await expect(page.getByTestId('empty-message')).toHaveText('No pending verifications.');
+
+  // The items list should NOT be empty — it has 3 items.
+  const itemsList = page.getByTestId('items-list');
+  await expect(itemsList.locator('.list-item')).not.toHaveCount(0);
+  await expect(itemsList.locator('.list-item')).toHaveCount(3);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 9: Data Attributes
+// --------------------------------------------------------------------------
+test('exercise 9: verify custom data attributes', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  const el = page.getByTestId('data-attributes');
+
+  // toHaveAttribute checks any HTML attribute, including custom data-* attrs.
+  await expect(el).toHaveAttribute('data-status', 'active');
+  await expect(el).toHaveAttribute('data-priority', 'high');
+  await expect(el).toHaveAttribute('data-count', '42');
+  await expect(el).toHaveAttribute('data-user-role', 'admin');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 10: Multiple Assertions on One Element
+// --------------------------------------------------------------------------
+test('exercise 10: multiple assertions on a link', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  const link = page.getByTestId('link-terms');
+
+  // You can chain multiple await expect() calls on the same locator.
+  // Each assertion auto-waits independently.
+  await expect(link).toBeVisible();
+  await expect(link).toHaveAttribute('href', 'https://example.com/terms');
+  await expect(link).toHaveAttribute('target', '_blank');
+  await expect(link).toHaveText('Terms of Service');
+});
+
+// --------------------------------------------------------------------------
+// Bonus: Soft Assertions
+// --------------------------------------------------------------------------
+test('bonus: soft assertions collect all failures', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // expect.soft() does NOT stop the test on failure.
+  // All soft assertion failures are collected and reported at the end.
+  // This is useful when you want to check many things in one test.
+  await expect.soft(page.getByTestId('stat-total-value')).toHaveText('1,247');
+  await expect.soft(page.getByTestId('stat-approved-value')).toHaveText('892');
+  await expect.soft(page.getByTestId('stat-rejected-value')).toHaveText('156');
+  await expect.soft(page.getByTestId('stat-pending-value')).toHaveText('199');
+});
+8:T1f4c,const PLAYGROUND = '/phase-00-foundations/02-assertions/playground/';
+
+describe('Kata 02: Assertions', () => {
+
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Text Assertions
+  // --------------------------------------------------------------------------
+  it('exercise 1: verify stat card text content', () => {
+    // 'have.text' checks the exact text content of the element.
+    // Whitespace is preserved, so make sure it matches exactly.
+    cy.get('[data-testid="stat-total-value"]')
+      .should('have.text', '1,247');
+
+    // 'contain.text' checks that the text INCLUDES the expected substring.
+    // More forgiving than 'have.text'.
+    cy.get('[data-testid="stat-total"]')
+      .should('contain.text', 'Total Applications');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Visibility Assertions
+  // --------------------------------------------------------------------------
+  it('exercise 2: verify alerts are visible', () => {
+    // 'be.visible' checks the element is rendered and visible on screen.
+    cy.get('[data-testid="alert-success"]').should('be.visible');
+    cy.get('[data-testid="alert-warning"]').should('be.visible');
+    cy.get('[data-testid="alert-error"]').should('be.visible');
+
+    // .and() chains multiple assertions on the same subject.
+    // The subject (the element) is passed through the chain.
+    cy.get('[data-testid="alert-success"]')
+      .should('be.visible')
+      .and('contain.text', '12 applications processed');
+
+    cy.get('[data-testid="alert-warning"]')
+      .should('contain.text', 'manual review');
+
+    cy.get('[data-testid="alert-error"]')
+      .should('contain.text', 'experiencing delays');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Count Assertions
+  // --------------------------------------------------------------------------
+  it('exercise 3: verify table row count', () => {
+    // 'have.length' checks the number of matched elements.
+    // This is Cypress's equivalent of Playwright's toHaveCount.
+    cy.get('[data-testid="app-table"] tbody tr')
+      .should('have.length', 3);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Attribute Assertions
+  // --------------------------------------------------------------------------
+  it('exercise 4: verify input attributes', () => {
+    // 'have.attr' checks an HTML attribute. With two arguments,
+    // it checks the attribute exists AND has the specified value.
+    // With one argument, it just checks the attribute exists.
+    cy.get('[data-testid="input-readonly"]')
+      .should('have.attr', 'readonly')
+      .and('have.value', 'KYC-2024-0001');
+
+    // 'be.disabled' is a shorthand for checking the disabled attribute.
+    cy.get('[data-testid="input-disabled"]')
+      .should('be.disabled')
+      .and('have.value', 'Cannot edit');
+
+    // Check the required attribute.
+    cy.get('[data-testid="input-required"]')
+      .should('have.attr', 'required');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: CSS Assertions
+  // --------------------------------------------------------------------------
+  it('exercise 5: verify and change CSS styles', () => {
+    // 'have.css' checks a computed CSS property.
+    // IMPORTANT: browsers compute colors as rgb(), not hex.
+    cy.get('[data-testid="colored-box"]')
+      .should('have.css', 'background-color', 'rgb(59, 130, 246)')
+      .and('have.css', 'border-radius', '8px');
+
+    // Click the button to change the color.
+    cy.get('[data-testid="btn-change-color"]').click();
+
+    // Verify the new color. Cypress auto-retries .should() assertions,
+    // so it will wait for the color to change before passing.
+    cy.get('[data-testid="colored-box"]')
+      .should('have.css', 'background-color', 'rgb(239, 68, 68)');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Counter Interactions
+  // --------------------------------------------------------------------------
+  it('exercise 6: counter increment, decrement, and reset', () => {
+    // Verify initial state.
+    cy.get('[data-testid="counter-value"]').should('have.text', '0');
+
+    // Click +1 three times.
+    cy.get('[data-testid="btn-increment"]').click();
+    cy.get('[data-testid="btn-increment"]').click();
+    cy.get('[data-testid="btn-increment"]').click();
+    cy.get('[data-testid="counter-value"]').should('have.text', '3');
+
+    // Click -1 once.
+    cy.get('[data-testid="btn-decrement"]').click();
+    cy.get('[data-testid="counter-value"]').should('have.text', '2');
+
+    // Reset.
+    cy.get('[data-testid="btn-reset-counter"]').click();
+    cy.get('[data-testid="counter-value"]').should('have.text', '0');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Dynamic Content
+  // --------------------------------------------------------------------------
+  it('exercise 7: add and clear dynamic alerts', () => {
+    // Initially no dynamic alerts.
+    cy.get('[data-testid="dynamic-alerts"] .alert')
+      .should('have.length', 0);
+
+    // Click "Add Alert" twice.
+    cy.get('[data-testid="btn-add-alert"]').click();
+    cy.get('[data-testid="btn-add-alert"]').click();
+
+    // Verify 2 alerts appear.
+    cy.get('[data-testid="dynamic-alerts"] .alert')
+      .should('have.length', 2);
+
+    // Verify the first alert text.
+    cy.get('[data-testid="dynamic-alert-1"]')
+      .should('contain.text', 'Alert #1');
+
+    // Clear all alerts.
+    cy.get('[data-testid="btn-clear-alerts"]').click();
+    cy.get('[data-testid="dynamic-alerts"] .alert')
+      .should('have.length', 0);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Negative Assertions
+  // --------------------------------------------------------------------------
+  it('exercise 8: negative assertions', () => {
+    // 'not.exist' means the element is NOT in the DOM.
+    // 'not.be.visible' means the element IS in the DOM but hidden.
+    // Here the empty list has no .list-item children at all.
+    cy.get('[data-testid="empty-list"] .list-item')
+      .should('not.exist');
+
+    cy.get('[data-testid="empty-message"]')
+      .should('have.text', 'No pending verifications.');
+
+    // The items list should have items (NOT be empty).
+    cy.get('[data-testid="items-list"] .list-item')
+      .should('have.length.greaterThan', 0);
+
+    cy.get('[data-testid="items-list"] .list-item')
+      .should('have.length', 3);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 9: Data Attributes
+  // --------------------------------------------------------------------------
+  it('exercise 9: verify custom data attributes', () => {
+    // 'have.attr' can check any HTML attribute including data-* attributes.
+    // Pass the attribute name and expected value as two arguments.
+    cy.get('[data-testid="data-attributes"]')
+      .should('have.attr', 'data-status', 'active')
+      .and('have.attr', 'data-priority', 'high')
+      .and('have.attr', 'data-count', '42')
+      .and('have.attr', 'data-user-role', 'admin');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 10: Multiple Assertions on One Element
+  // --------------------------------------------------------------------------
+  it('exercise 10: multiple assertions on a link', () => {
+    // Chain multiple assertions with .should() and .and().
+    // Each .and() receives the same subject element.
+    cy.get('[data-testid="link-terms"]')
+      .should('be.visible')
+      .and('have.attr', 'href', 'https://example.com/terms')
+      .and('have.attr', 'target', '_blank')
+      .and('have.text', 'Terms of Service');
+  });
+
+});
+9:T9166,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { test, expect } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> '@playwright/test'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// The base path to this kata's playground.</span></span>
+<span class="line"><span style="color:#6A737D">// The web server serves the katas/ directory, so the path starts from there.</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-00-foundations/01-selectors-and-locators/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 1: Find by Test ID</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: find submit button by data-testid'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">  // Navigate to the playground page</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // getByTestId finds an element by its data-testid attribute.</span></span>
+<span class="line"><span style="color:#6A737D">  // This is the most stable selector strategy because data-testid is</span></span>
+<span class="line"><span style="color:#6A737D">  // specifically added for testing and won't change due to styling updates.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> submitBtn</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-submit'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // toHaveText checks that the element's text content matches.</span></span>
+<span class="line"><span style="color:#6A737D">  // Playwright auto-waits for the element to appear before checking.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(submitBtn).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Submit Application'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 2: Find by Role</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: find navigation link by role'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // getByRole finds elements by their ARIA role.</span></span>
+<span class="line"><span style="color:#6A737D">  // 'link' matches &#x3C;a> elements. The { name } option matches the</span></span>
+<span class="line"><span style="color:#6A737D">  // accessible name (the text content of the link).</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> dashboardLink</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByRole</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'link'</span><span style="color:#E1E4E8">, { name: </span><span style="color:#9ECBFF">'Dashboard'</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // toBeVisible checks that the element is rendered and not hidden.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(dashboardLink).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // We can also find headings by their level.</span></span>
+<span class="line"><span style="color:#6A737D">  // This finds &#x3C;h1> elements (role 'heading' with level 1).</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> mainHeading</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByRole</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'heading'</span><span style="color:#E1E4E8">, { level: </span><span style="color:#79B8FF">1</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(mainHeading).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'KYC Portal - Selectors Practice'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 3: Find by Label and Placeholder</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: find inputs by label and placeholder'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // getByLabel finds a form control by its associated &#x3C;label> text.</span></span>
+<span class="line"><span style="color:#6A737D">  // The label must be linked to the input via the "for" attribute</span></span>
+<span class="line"><span style="color:#6A737D">  // matching the input's "id", or by wrapping the input.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> nameInput</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByLabel</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Full Name'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(nameInput).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // getByPlaceholder finds an element by its placeholder attribute.</span></span>
+<span class="line"><span style="color:#6A737D">  // Useful when an input has no label but does have a placeholder.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> phoneInput</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByPlaceholder</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'+1 (555) 000-0000'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(phoneInput).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // We can also fill the input to verify it's interactive.</span></span>
+<span class="line"><span style="color:#6A737D">  // fill() clears the field first, then types the text.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> nameInput.</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Test User'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(nameInput).</span><span style="color:#B392F0">toHaveValue</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Test User'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 4: Find Within a Parent</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: find elements within a parent card'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // First, locate the parent card by its data-testid.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> card</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'applicant-card-1'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Then chain locators to find elements within that card.</span></span>
+<span class="line"><span style="color:#6A737D">  // This is like saying: "inside applicant-card-1, find the element</span></span>
+<span class="line"><span style="color:#6A737D">  // with data-testid applicant-name-1".</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> name</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> card.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'applicant-name-1'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(name).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'John Doe'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> email</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> card.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'applicant-email-1'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(email).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'john.doe@example.com'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> status</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> card.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'applicant-status-1'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(status).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Approved'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 5: Work With a Table</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: find table row and verify contents'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Locate the second table row by its data-testid.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> row2</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'table-row-2'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Inside the row, verify specific cell contents.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(row2.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'cell-name-2'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Jane Smith'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // getByText finds any element within the row that contains "Pending".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(row2.</span><span style="color:#B392F0">getByText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Pending'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 6: Select From Multiple Elements</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: find last applicant card'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // locator with a CSS attribute selector finds all matching elements.</span></span>
+<span class="line"><span style="color:#6A737D">  // The selector [data-testid^="applicant-card-"] uses the "starts with"</span></span>
+<span class="line"><span style="color:#6A737D">  // operator (^=) to match all elements whose data-testid starts with</span></span>
+<span class="line"><span style="color:#6A737D">  // "applicant-card-".</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> cards</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">locator</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid^="applicant-card-"]'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // count() returns the number of matching elements.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(cards).</span><span style="color:#B392F0">toHaveCount</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">3</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // last() returns the last matching element.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> lastCard</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> cards.</span><span style="color:#B392F0">last</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(lastCard.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'applicant-name-3'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Raj Kumar'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // nth(index) selects by 0-based index. nth(0) is the first element.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> firstCard</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> cards.</span><span style="color:#B392F0">nth</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(firstCard.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'applicant-name-1'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'John Doe'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 7: Text Matching</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 7: find elements by text content'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // getByText with a string finds elements containing that exact text.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Identity Verification'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // getByText with a regex allows partial or case-insensitive matching.</span></span>
+<span class="line"><span style="color:#6A737D">  // The /i flag makes it case-insensitive.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> verificationItems</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'checklist'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">locator</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'li'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(verificationItems).</span><span style="color:#B392F0">toHaveCount</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">5</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify specific list items exist by their text.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Sanctions Screening'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 8: Toggle Visibility</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 8: toggle panel visibility'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> panel</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'details-panel'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> toggleBtn</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-toggle-panel'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // toBeHidden checks that the element is not visible.</span></span>
+<span class="line"><span style="color:#6A737D">  // The panel starts hidden (has class "hidden" with display: none).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(panel).</span><span style="color:#B392F0">toBeHidden</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click the toggle button to show the panel.</span></span>
+<span class="line"><span style="color:#6A737D">  // click() auto-waits for the button to be visible and enabled.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> toggleBtn.</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Now the panel should be visible.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(panel).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the panel content.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'panel-content'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'KYC-001'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click again to hide.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> toggleBtn.</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(panel).</span><span style="color:#B392F0">toBeHidden</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 9: Interact With Search</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 9: search and verify results'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> searchInput</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'input-search'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // fill() replaces any existing text with the new value.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> searchInput.</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'John'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // After typing, search results appear dynamically.</span></span>
+<span class="line"><span style="color:#6A737D">  // Playwright auto-waits for the element to appear.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> results</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'search-result-item'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(results).</span><span style="color:#B392F0">toHaveCount</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">1</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the result contains the expected text.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(results.</span><span style="color:#B392F0">first</span><span style="color:#E1E4E8">()).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'KYC-001'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(results.</span><span style="color:#B392F0">first</span><span style="color:#E1E4E8">()).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'John Doe'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 10: Disabled Button</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 10: verify button is disabled'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> rejectBtn</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-reject-selected'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // toBeVisible checks the element is rendered (even if disabled).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(rejectBtn).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // toBeDisabled checks the HTML disabled attribute.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(rejectBtn).</span><span style="color:#B392F0">toBeDisabled</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Compare with an enabled button.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> newAppBtn</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-new-application'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(newAppBtn).</span><span style="color:#B392F0">toBeEnabled</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>a:T819c,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#6A737D">// The base path to this kata's playground.</span></span>
+<span class="line"><span style="color:#6A737D">// Cypress prepends the baseUrl (http://localhost:8080) to this path.</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-00-foundations/01-selectors-and-locators/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 1: Find by Test ID</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">describe</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Kata 01: Selectors and Locators'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // beforeEach runs before every test in this describe block.</span></span>
+<span class="line"><span style="color:#6A737D">  // We visit the playground page so each test starts fresh.</span></span>
+<span class="line"><span style="color:#B392F0">  beforeEach</span><span style="color:#E1E4E8">(() </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: find submit button by data-testid'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // cy.get accepts a CSS selector. For data-testid, use the attribute selector.</span></span>
+<span class="line"><span style="color:#6A737D">    // [data-testid="btn-submit"] matches &#x3C;button data-testid="btn-submit">.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-submit"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#6A737D">      // .should is a Cypress assertion. It automatically retries until</span></span>
+<span class="line"><span style="color:#6A737D">      // the assertion passes or the timeout (default 4s) expires.</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Submit Application'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 2: Find by Role</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: find navigation link by text'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // cy.contains(selector, text) finds an element matching the CSS selector</span></span>
+<span class="line"><span style="color:#6A737D">    // that also contains the specified text. This is similar to Playwright's</span></span>
+<span class="line"><span style="color:#6A737D">    // getByRole('link', { name: 'Dashboard' }).</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">contains</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'a'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Dashboard'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Find the main heading by tag and verify its text.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'h1'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'KYC Portal - Selectors Practice'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 3: Find by Label and Placeholder</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: find inputs by label and placeholder'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Cypress doesn't have a built-in getByLabel, but we can use the</span></span>
+<span class="line"><span style="color:#6A737D">    // label's "for" attribute to find the associated input.</span></span>
+<span class="line"><span style="color:#6A737D">    // Step 1: Find the label containing "Full Name"</span></span>
+<span class="line"><span style="color:#6A737D">    // Step 2: Get its "for" attribute</span></span>
+<span class="line"><span style="color:#6A737D">    // Step 3: Use that to find the input by ID</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">contains</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'label'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Full Name'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">invoke</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'attr'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'for'</span><span style="color:#E1E4E8">)    </span><span style="color:#6A737D">// gets the "for" attribute value</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">then</span><span style="color:#E1E4E8">((</span><span style="color:#FFAB70">forAttr</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">        cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`#${</span><span style="color:#E1E4E8">forAttr</span><span style="color:#9ECBFF">}`</span><span style="color:#E1E4E8">)   </span><span style="color:#6A737D">// finds input by the ID referenced in "for"</span></span>
+<span class="line"><span style="color:#E1E4E8">          .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">      });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Alternatively, find by placeholder directly.</span></span>
+<span class="line"><span style="color:#6A737D">    // The attribute selector [placeholder="..."] matches the placeholder text.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[placeholder="+1 (555) 000-0000"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Type into the name field and verify the value.</span></span>
+<span class="line"><span style="color:#6A737D">    // cy.type() simulates keystrokes one character at a time.</span></span>
+<span class="line"><span style="color:#6A737D">    // Unlike Playwright's fill(), it does NOT clear the field first.</span></span>
+<span class="line"><span style="color:#6A737D">    // Use .clear() before .type() if you need to replace existing text.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-full-name"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">clear</span><span style="color:#E1E4E8">()</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Test User'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.value'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Test User'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 4: Find Within a Parent</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: find elements within a parent card'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // .within() scopes all subsequent cy commands to the parent element.</span></span>
+<span class="line"><span style="color:#6A737D">    // This is equivalent to Playwright's chained locators.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="applicant-card-1"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">within</span><span style="color:#E1E4E8">(() </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">      // All cy.get and cy.contains calls here only search within the card.</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="applicant-name-1"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">        .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'John Doe'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="applicant-email-1"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">        .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'john.doe@example.com'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="applicant-status-1"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">        .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Approved'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 5: Work With a Table</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: find table row and verify contents'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // .find() searches for descendant elements within the subject.</span></span>
+<span class="line"><span style="color:#6A737D">    // Unlike cy.get(), it must be chained from a parent element.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="table-row-2"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">within</span><span style="color:#E1E4E8">(() </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="cell-name-2"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">        .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Jane Smith'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">contains</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Pending'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">        .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 6: Select From Multiple Elements</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: find last applicant card'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Attribute selector with ^= (starts with) matches all cards.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid^="applicant-card-"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#6A737D">      // .should('have.length', N) verifies the number of matched elements.</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.length'</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">3</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // .last() returns the last element in the set.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid^="applicant-card-"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">last</span><span style="color:#E1E4E8">()</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">find</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="applicant-name-3"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Raj Kumar'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // .eq(index) returns the element at the specified 0-based index.</span></span>
+<span class="line"><span style="color:#6A737D">    // .eq(0) is the first element.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid^="applicant-card-"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">eq</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">find</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="applicant-name-1"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'John Doe'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 7: Text Matching</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 7: find elements by text content'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // cy.contains finds the first element matching the text.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">contains</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Identity Verification'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Count all list items in the checklist.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="checklist"] li'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.length'</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">5</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify a specific item exists.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">contains</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Sanctions Screening'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 8: Toggle Visibility</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 8: toggle panel visibility'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // The panel starts hidden. In Cypress, "not.be.visible" checks that</span></span>
+<span class="line"><span style="color:#6A737D">    // the element exists in the DOM but is not visible (display: none, etc.).</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="details-panel"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Click the toggle button to show the panel.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-toggle-panel"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Now the panel should be visible.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="details-panel"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify panel content.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="panel-content"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'KYC-001'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Click again to hide.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-toggle-panel"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="details-panel"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 9: Interact With Search</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 9: search and verify results'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Type into the search box. Cypress auto-retries assertions,</span></span>
+<span class="line"><span style="color:#6A737D">    // so it will wait for the search results to appear.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-search"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'John'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify search results appear.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="search-result-item"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.length'</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">1</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">first</span><span style="color:#E1E4E8">()</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'KYC-001'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'John Doe'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 10: Disabled Button</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 10: verify button is disabled'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // 'be.disabled' checks the HTML disabled attribute.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-reject-selected"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.disabled'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Compare with an enabled button.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-new-application"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.enabled'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"kata":{"slug":"01-selectors-and-locators","number":1,"title":"Selectors and Locators","phaseSlug":"phase-00-foundations","phaseNumber":0,"phaseName":"Foundations","readmeRaw":"$3","hasPlayground":true,"playwrightFiles":[{"filename":"selectors.spec.ts","content":"$4"}],"cypressFiles":[{"filename":"selectors.cy.ts","content":"$5"}]},"prev":null,"next":{"slug":"02-assertions","number":2,"title":"Assertions","phaseSlug":"phase-00-foundations","phaseNumber":0,"phaseName":"Foundations","readmeRaw":"$6","hasPlayground":true,"playwrightFiles":[{"filename":"assertions.spec.ts","content":"$7"}],"cypressFiles":[{"filename":"assertions.cy.ts","content":"$8"}]},"playwrightHtml":[{"filename":"selectors.spec.ts","html":"$9"}],"cypressHtml":[{"filename":"selectors.cy.ts","html":"$a"}]}],["$Lb"],"$Lc"]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"iDtrTKWIN4zzRgDRiiDd2"}
+b:["$","script","script-0",{"src":"/qa-labs/_next/static/chunks/03nvm.8~ftt80.js","async":true}]
+c:["$","$Ld",null,{"children":["$","$e",null,{"name":"Next.MetadataOutlet","children":"$@f"}]}]
+f:null

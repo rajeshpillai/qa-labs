@@ -1,0 +1,2218 @@
+1:"$Sreact.fragment"
+2:I[31749,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js","/qa-labs/_next/static/chunks/03nvm.8~ftt80.js"],"KataPageClient"]
+10:I[49583,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js"],"OutletBoundary"]
+11:"$Sreact.suspense"
+3:T18d0,# Kata 14: Multi-Step Forms
+
+## What You Will Learn
+
+- How to navigate forward and backward through a multi-step wizard
+- How to verify progress indicators update as you move between steps
+- How to validate each step before advancing
+- How to verify a review page displays all previously entered data
+- How to complete a full end-to-end wizard flow
+
+## Prerequisites
+
+- Completed Kata 13 (Form Validation)
+- Understanding of form interactions (fill, select, click)
+
+## Concepts Explained
+
+### Navigating Between Steps
+
+```typescript
+// PLAYWRIGHT
+// Click the "Next" button on step 1 to go to step 2.
+// The wizard hides step 1 and shows step 2 by toggling CSS classes.
+await page.getByTestId('btn-next-1').click();
+
+// Click "Back" on step 2 to return to step 1.
+await page.getByTestId('btn-back-2').click();
+
+// CYPRESS
+cy.get('[data-testid="btn-next-1"]').click();
+cy.get('[data-testid="btn-back-2"]').click();
+```
+
+### Checking Which Step Is Active
+
+```typescript
+// PLAYWRIGHT
+// Each step has a data-testid like "step-1", "step-2", etc.
+// The active step has the CSS class "active" which sets display:block.
+// Hidden steps have display:none, so toBeVisible() fails for them.
+await expect(page.getByTestId('step-2')).toBeVisible();
+await expect(page.getByTestId('step-1')).toBeHidden();
+
+// CYPRESS
+cy.get('[data-testid="step-2"]').should('be.visible');
+cy.get('[data-testid="step-1"]').should('not.be.visible');
+```
+
+### Checking Progress Indicator State
+
+```typescript
+// PLAYWRIGHT
+// Each indicator has classes: "active" (current step, blue),
+// "completed" (previous steps, green), or neither (future steps, grey).
+await expect(page.getByTestId('indicator-1')).toHaveClass(/completed/);
+await expect(page.getByTestId('indicator-2')).toHaveClass(/active/);
+
+// CYPRESS
+cy.get('[data-testid="indicator-1"]').should('have.class', 'completed');
+cy.get('[data-testid="indicator-2"]').should('have.class', 'active');
+```
+
+### Verifying Review Page Data
+
+```typescript
+// PLAYWRIGHT
+// The review page shows each field value in a span with a testid
+// like "review-fullName", "review-email", etc.
+await expect(page.getByTestId('review-fullName')).toHaveText('Aisha Patel');
+
+// CYPRESS
+cy.get('[data-testid="review-fullName"]').should('have.text', 'Aisha Patel');
+```
+
+## Playground
+
+The playground is a 4-step KYC wizard. It contains:
+
+1. **Step 1: Personal Information** — Full Name, Email, Phone (all required).
+2. **Step 2: Address Details** — Street Address, City, Country dropdown, Postal Code (all required).
+3. **Step 3: Employment Information** — Employment Status dropdown, Employer Name, Income Range dropdown (all required).
+4. **Step 4: Review & Submit** — Displays all entered data in read-only format with a Submit button.
+5. **Progress Bar** — Four numbered circles at the top. The current step is blue ("active"), completed steps are green ("completed"), future steps are grey.
+6. **Back/Next Buttons** — Step 1 has only "Next". Steps 2-3 have "Back" and "Next". Step 4 has "Back" and "Submit".
+7. **Per-step Validation** — Clicking "Next" validates the current step's required fields. If any are empty, error messages appear and the wizard does not advance.
+
+## Exercises
+
+### Exercise 1: Navigate Forward Through Steps
+Fill step 1 with valid data and click Next. Verify step 2 is visible and step 1 is hidden.
+
+### Exercise 2: Navigate Back to Previous Step
+From step 2, click Back. Verify step 1 is visible again and your previously entered data is still there.
+
+### Exercise 3: Verify Progress Indicator Updates
+Navigate from step 1 to step 2. Verify indicator 1 shows "completed" (green) and indicator 2 shows "active" (blue).
+
+### Exercise 4: Validate Step 1 Prevents Advancing When Empty
+Click Next on step 1 without filling fields. Verify error messages appear and you remain on step 1.
+
+### Exercise 5: Complete the Full 4-Step Flow
+Fill all steps with valid data and navigate to the review page. Verify you reach step 4.
+
+### Exercise 6: Verify Review Page Shows All Entered Data
+Complete all steps and verify the review page displays the exact values you entered for each field.
+
+### Exercise 7: Submit from the Review Page
+Complete all steps, reach the review page, and click "Submit Application". Verify the success message appears.
+
+### Exercise 8: Step Validation Prevents Advancing (Step 2)
+Navigate to step 2 and click Next without filling address fields. Verify errors appear and you stay on step 2.
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/multi-step-forms.spec.ts`
+
+### Cypress Solution
+
+See `cypress/multi-step-forms.cy.ts`
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Forgetting to fill the current step before clicking Next | Validation blocks advancement if required fields are empty | Fill all required fields in the current step first |
+| Checking for step visibility before the transition completes | The DOM may not have updated yet | Playwright and Cypress auto-wait, but ensure you click the button first |
+| Verifying review data before reaching step 4 | Review data is populated only when step 4 becomes active | Navigate to step 4 first, then check review values |
+| Using the wrong indicator testid | indicator-1 through indicator-4 correspond to steps 1-4 | Match the indicator number to the step number |
+| Not checking that Back preserves data | Navigating back should keep previously entered values | After going back, verify input values are still populated |
+
+## Quick Reference
+
+### Wizard Navigation
+
+| Action | Playwright | Cypress |
+|--------|-----------|---------|
+| Go to next step | `await page.getByTestId('btn-next-N').click()` | `cy.get('[data-testid="btn-next-N"]').click()` |
+| Go to previous step | `await page.getByTestId('btn-back-N').click()` | `cy.get('[data-testid="btn-back-N"]').click()` |
+| Verify step visible | `await expect(page.getByTestId('step-N')).toBeVisible()` | `cy.get('[data-testid="step-N"]').should('be.visible')` |
+| Verify indicator active | `await expect(ind).toHaveClass(/active/)` | `cy.get(ind).should('have.class', 'active')` |
+| Verify indicator done | `await expect(ind).toHaveClass(/completed/)` | `cy.get(ind).should('have.class', 'completed')` |
+| Submit application | `await page.getByTestId('btn-submit').click()` | `cy.get('[data-testid="btn-submit"]').click()` |
+4:T29fc,import { test, expect } from '@playwright/test';
+
+// The base URL for our playground page.
+const PLAYGROUND = '/phase-02-forms/14-multi-step-forms/playground/';
+
+// --------------------------------------------------------------------------
+// Helper: Fill step 1 (Personal Info) with valid data.
+// --------------------------------------------------------------------------
+async function fillStep1(page: import('@playwright/test').Page) {
+  await page.getByTestId('input-full-name').fill('Aisha Patel');
+  await page.getByTestId('input-email').fill('aisha@example.com');
+  await page.getByTestId('input-phone').fill('+1-555-123-4567');
+}
+
+// --------------------------------------------------------------------------
+// Helper: Fill step 2 (Address) with valid data.
+// --------------------------------------------------------------------------
+async function fillStep2(page: import('@playwright/test').Page) {
+  await page.getByTestId('input-street').fill('42 Baker Street');
+  await page.getByTestId('input-city').fill('London');
+  // selectOption(value) picks the <option> whose value attribute matches.
+  await page.getByTestId('input-country').selectOption('GB');
+  await page.getByTestId('input-postal').fill('W1U 6PL');
+}
+
+// --------------------------------------------------------------------------
+// Helper: Fill step 3 (Employment) with valid data.
+// --------------------------------------------------------------------------
+async function fillStep3(page: import('@playwright/test').Page) {
+  await page.getByTestId('input-employment-status').selectOption('employed');
+  await page.getByTestId('input-employer').fill('Acme Corp');
+  await page.getByTestId('input-income').selectOption('50k-100k');
+}
+
+// --------------------------------------------------------------------------
+// Helper: Navigate from step 1 to step 4 (review) filling all fields.
+// --------------------------------------------------------------------------
+async function completeAllSteps(page: import('@playwright/test').Page) {
+  // Step 1
+  await fillStep1(page);
+  await page.getByTestId('btn-next-1').click();
+
+  // Step 2
+  await fillStep2(page);
+  await page.getByTestId('btn-next-2').click();
+
+  // Step 3
+  await fillStep3(page);
+  await page.getByTestId('btn-next-3').click();
+}
+
+// --------------------------------------------------------------------------
+// Exercise 1: Navigate Forward Through Steps
+// --------------------------------------------------------------------------
+// Fill step 1 and click Next. Verify step 2 is visible and step 1 is hidden.
+test('exercise 1: navigate forward from step 1 to step 2', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify step 1 is initially visible.
+  await expect(page.getByTestId('step-1')).toBeVisible();
+
+  // Fill step 1 with valid data.
+  await fillStep1(page);
+
+  // Click Next to advance to step 2.
+  // click() triggers the button's click handler which validates and navigates.
+  await page.getByTestId('btn-next-1').click();
+
+  // Verify step 2 is now visible and step 1 is hidden.
+  // toBeVisible() checks the element has display:block (the "active" class).
+  await expect(page.getByTestId('step-2')).toBeVisible();
+  // toBeHidden() checks the element has display:none.
+  await expect(page.getByTestId('step-1')).toBeHidden();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Navigate Back to Previous Step
+// --------------------------------------------------------------------------
+// From step 2, click Back. Verify step 1 is visible and data persists.
+test('exercise 2: navigate back from step 2 to step 1', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Fill step 1 and advance.
+  await fillStep1(page);
+  await page.getByTestId('btn-next-1').click();
+  await expect(page.getByTestId('step-2')).toBeVisible();
+
+  // Click Back to return to step 1.
+  await page.getByTestId('btn-back-2').click();
+
+  // Verify step 1 is visible again.
+  await expect(page.getByTestId('step-1')).toBeVisible();
+  await expect(page.getByTestId('step-2')).toBeHidden();
+
+  // Verify the data we entered is still in the fields.
+  // toHaveValue(value) checks the input's current value attribute.
+  await expect(page.getByTestId('input-full-name')).toHaveValue('Aisha Patel');
+  await expect(page.getByTestId('input-email')).toHaveValue('aisha@example.com');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Verify Progress Indicator Updates
+// --------------------------------------------------------------------------
+// Navigate to step 2 and verify indicator states.
+test('exercise 3: progress indicator updates on navigation', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Initially, indicator 1 should be "active" and others should not.
+  await expect(page.getByTestId('indicator-1')).toHaveClass(/active/);
+  await expect(page.getByTestId('indicator-2')).not.toHaveClass(/active/);
+
+  // Navigate to step 2.
+  await fillStep1(page);
+  await page.getByTestId('btn-next-1').click();
+
+  // Indicator 1 should now be "completed" (green) and indicator 2 "active" (blue).
+  await expect(page.getByTestId('indicator-1')).toHaveClass(/completed/);
+  await expect(page.getByTestId('indicator-2')).toHaveClass(/active/);
+  // Indicator 3 and 4 should have neither class.
+  await expect(page.getByTestId('indicator-3')).not.toHaveClass(/active/);
+  await expect(page.getByTestId('indicator-3')).not.toHaveClass(/completed/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Step 1 Validation Prevents Advancing
+// --------------------------------------------------------------------------
+// Click Next on step 1 without filling any fields.
+test('exercise 4: step 1 validation prevents advancing when empty', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Click Next without filling anything.
+  await page.getByTestId('btn-next-1').click();
+
+  // Verify we are still on step 1 (it remains visible).
+  await expect(page.getByTestId('step-1')).toBeVisible();
+  await expect(page.getByTestId('step-2')).toBeHidden();
+
+  // Verify error messages appear for empty fields.
+  await expect(page.getByTestId('error-full-name')).toBeVisible();
+  await expect(page.getByTestId('error-email')).toBeVisible();
+  await expect(page.getByTestId('error-phone')).toBeVisible();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Complete the Full 4-Step Flow
+// --------------------------------------------------------------------------
+// Fill all steps and navigate to the review page.
+test('exercise 5: complete full 4-step flow', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Use our helper to fill and navigate all steps.
+  await completeAllSteps(page);
+
+  // Verify we reached step 4 (the review page).
+  await expect(page.getByTestId('step-4')).toBeVisible();
+  await expect(page.getByTestId('step-3')).toBeHidden();
+
+  // All four indicators should show completed or active.
+  await expect(page.getByTestId('indicator-4')).toHaveClass(/active/);
+  await expect(page.getByTestId('indicator-1')).toHaveClass(/completed/);
+  await expect(page.getByTestId('indicator-2')).toHaveClass(/completed/);
+  await expect(page.getByTestId('indicator-3')).toHaveClass(/completed/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Verify Review Page Shows All Entered Data
+// --------------------------------------------------------------------------
+// Check that the review page displays the exact values from each step.
+test('exercise 6: review page displays all entered data', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  await completeAllSteps(page);
+
+  // Verify step 4 is visible.
+  await expect(page.getByTestId('step-4')).toBeVisible();
+
+  // Verify personal info.
+  // toHaveText(str) checks the element's textContent exactly matches.
+  await expect(page.getByTestId('review-fullName')).toHaveText('Aisha Patel');
+  await expect(page.getByTestId('review-email')).toHaveText('aisha@example.com');
+  await expect(page.getByTestId('review-phone')).toHaveText('+1-555-123-4567');
+
+  // Verify address info.
+  await expect(page.getByTestId('review-street')).toHaveText('42 Baker Street');
+  await expect(page.getByTestId('review-city')).toHaveText('London');
+  // The review shows the option text ("United Kingdom"), not the value ("GB").
+  await expect(page.getByTestId('review-country')).toHaveText('United Kingdom');
+  await expect(page.getByTestId('review-postal')).toHaveText('W1U 6PL');
+
+  // Verify employment info.
+  await expect(page.getByTestId('review-employmentStatus')).toHaveText('Employed');
+  await expect(page.getByTestId('review-employer')).toHaveText('Acme Corp');
+  await expect(page.getByTestId('review-income')).toHaveText('$50,000 - $100,000');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Submit from the Review Page
+// --------------------------------------------------------------------------
+// Complete all steps and click Submit. Verify the success message.
+test('exercise 7: submit application from review page', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  await completeAllSteps(page);
+
+  // Click the Submit button on the review page.
+  await page.getByTestId('btn-submit').click();
+
+  // Verify the success message appears.
+  await expect(page.getByTestId('form-status')).toBeVisible();
+  await expect(page.getByTestId('form-status')).toHaveClass(/success/);
+  await expect(page.getByTestId('form-status')).toContainText('submitted successfully');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Step 2 Validation Prevents Advancing
+// --------------------------------------------------------------------------
+// Navigate to step 2, leave fields empty, and click Next.
+test('exercise 8: step 2 validation prevents advancing when empty', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Fill and pass step 1.
+  await fillStep1(page);
+  await page.getByTestId('btn-next-1').click();
+
+  // Now on step 2 — click Next without filling anything.
+  await page.getByTestId('btn-next-2').click();
+
+  // Verify we remain on step 2.
+  await expect(page.getByTestId('step-2')).toBeVisible();
+  await expect(page.getByTestId('step-3')).toBeHidden();
+
+  // Verify error messages appear for step 2 fields.
+  await expect(page.getByTestId('error-street')).toBeVisible();
+  await expect(page.getByTestId('error-city')).toBeVisible();
+  await expect(page.getByTestId('error-country')).toBeVisible();
+  await expect(page.getByTestId('error-postal')).toBeVisible();
+});
+5:T241f,const PLAYGROUND = '/phase-02-forms/14-multi-step-forms/playground/';
+
+describe('Kata 14: Multi-Step Forms', () => {
+
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Helper: Fill step 1 (Personal Info) with valid data.
+  // --------------------------------------------------------------------------
+  function fillStep1() {
+    cy.get('[data-testid="input-full-name"]').clear().type('Aisha Patel');
+    cy.get('[data-testid="input-email"]').clear().type('aisha@example.com');
+    cy.get('[data-testid="input-phone"]').clear().type('+1-555-123-4567');
+  }
+
+  // --------------------------------------------------------------------------
+  // Helper: Fill step 2 (Address) with valid data.
+  // --------------------------------------------------------------------------
+  function fillStep2() {
+    cy.get('[data-testid="input-street"]').clear().type('42 Baker Street');
+    cy.get('[data-testid="input-city"]').clear().type('London');
+    // select(value) picks the <option> whose value attribute matches.
+    cy.get('[data-testid="input-country"]').select('GB');
+    cy.get('[data-testid="input-postal"]').clear().type('W1U 6PL');
+  }
+
+  // --------------------------------------------------------------------------
+  // Helper: Fill step 3 (Employment) with valid data.
+  // --------------------------------------------------------------------------
+  function fillStep3() {
+    cy.get('[data-testid="input-employment-status"]').select('employed');
+    cy.get('[data-testid="input-employer"]').clear().type('Acme Corp');
+    cy.get('[data-testid="input-income"]').select('50k-100k');
+  }
+
+  // --------------------------------------------------------------------------
+  // Helper: Fill and navigate all 3 steps to reach the review page.
+  // --------------------------------------------------------------------------
+  function completeAllSteps() {
+    fillStep1();
+    cy.get('[data-testid="btn-next-1"]').click();
+
+    fillStep2();
+    cy.get('[data-testid="btn-next-2"]').click();
+
+    fillStep3();
+    cy.get('[data-testid="btn-next-3"]').click();
+  }
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Navigate Forward Through Steps
+  // --------------------------------------------------------------------------
+  it('exercise 1: navigate forward from step 1 to step 2', () => {
+    // Verify step 1 is initially visible.
+    cy.get('[data-testid="step-1"]').should('be.visible');
+
+    // Fill step 1 and click Next.
+    fillStep1();
+    cy.get('[data-testid="btn-next-1"]').click();
+
+    // Verify step 2 is visible and step 1 is hidden.
+    // should('be.visible') checks the element is rendered (display:block).
+    cy.get('[data-testid="step-2"]').should('be.visible');
+    // should('not.be.visible') checks the element has display:none.
+    cy.get('[data-testid="step-1"]').should('not.be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Navigate Back to Previous Step
+  // --------------------------------------------------------------------------
+  it('exercise 2: navigate back from step 2 to step 1', () => {
+    fillStep1();
+    cy.get('[data-testid="btn-next-1"]').click();
+    cy.get('[data-testid="step-2"]').should('be.visible');
+
+    // Click Back.
+    cy.get('[data-testid="btn-back-2"]').click();
+
+    // Verify step 1 is visible again.
+    cy.get('[data-testid="step-1"]').should('be.visible');
+    cy.get('[data-testid="step-2"]').should('not.be.visible');
+
+    // Verify data is still in the fields.
+    // should('have.value', str) checks the input's current value.
+    cy.get('[data-testid="input-full-name"]').should('have.value', 'Aisha Patel');
+    cy.get('[data-testid="input-email"]').should('have.value', 'aisha@example.com');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Verify Progress Indicator Updates
+  // --------------------------------------------------------------------------
+  it('exercise 3: progress indicator updates on navigation', () => {
+    // Initially, indicator 1 should be active.
+    cy.get('[data-testid="indicator-1"]').should('have.class', 'active');
+    cy.get('[data-testid="indicator-2"]').should('not.have.class', 'active');
+
+    // Navigate to step 2.
+    fillStep1();
+    cy.get('[data-testid="btn-next-1"]').click();
+
+    // Indicator 1 should be "completed", indicator 2 should be "active".
+    // should('have.class', name) checks the element's classList.
+    cy.get('[data-testid="indicator-1"]').should('have.class', 'completed');
+    cy.get('[data-testid="indicator-2"]').should('have.class', 'active');
+
+    // Indicators 3 and 4 should have neither class.
+    cy.get('[data-testid="indicator-3"]')
+      .should('not.have.class', 'active')
+      .and('not.have.class', 'completed');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Step 1 Validation Prevents Advancing
+  // --------------------------------------------------------------------------
+  it('exercise 4: step 1 validation prevents advancing when empty', () => {
+    // Click Next without filling anything.
+    cy.get('[data-testid="btn-next-1"]').click();
+
+    // Still on step 1.
+    cy.get('[data-testid="step-1"]').should('be.visible');
+    cy.get('[data-testid="step-2"]').should('not.be.visible');
+
+    // Errors appear.
+    cy.get('[data-testid="error-full-name"]').should('be.visible');
+    cy.get('[data-testid="error-email"]').should('be.visible');
+    cy.get('[data-testid="error-phone"]').should('be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Complete the Full 4-Step Flow
+  // --------------------------------------------------------------------------
+  it('exercise 5: complete full 4-step flow', () => {
+    completeAllSteps();
+
+    // Verify we reached step 4.
+    cy.get('[data-testid="step-4"]').should('be.visible');
+    cy.get('[data-testid="step-3"]').should('not.be.visible');
+
+    // All indicators updated.
+    cy.get('[data-testid="indicator-4"]').should('have.class', 'active');
+    cy.get('[data-testid="indicator-1"]').should('have.class', 'completed');
+    cy.get('[data-testid="indicator-2"]').should('have.class', 'completed');
+    cy.get('[data-testid="indicator-3"]').should('have.class', 'completed');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Verify Review Page Shows All Entered Data
+  // --------------------------------------------------------------------------
+  it('exercise 6: review page displays all entered data', () => {
+    completeAllSteps();
+
+    cy.get('[data-testid="step-4"]').should('be.visible');
+
+    // Personal info.
+    // should('have.text', str) checks the element's textContent exactly.
+    cy.get('[data-testid="review-fullName"]').should('have.text', 'Aisha Patel');
+    cy.get('[data-testid="review-email"]').should('have.text', 'aisha@example.com');
+    cy.get('[data-testid="review-phone"]').should('have.text', '+1-555-123-4567');
+
+    // Address info.
+    cy.get('[data-testid="review-street"]').should('have.text', '42 Baker Street');
+    cy.get('[data-testid="review-city"]').should('have.text', 'London');
+    cy.get('[data-testid="review-country"]').should('have.text', 'United Kingdom');
+    cy.get('[data-testid="review-postal"]').should('have.text', 'W1U 6PL');
+
+    // Employment info.
+    cy.get('[data-testid="review-employmentStatus"]').should('have.text', 'Employed');
+    cy.get('[data-testid="review-employer"]').should('have.text', 'Acme Corp');
+    cy.get('[data-testid="review-income"]').should('have.text', '$50,000 - $100,000');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Submit from the Review Page
+  // --------------------------------------------------------------------------
+  it('exercise 7: submit application from review page', () => {
+    completeAllSteps();
+
+    cy.get('[data-testid="btn-submit"]').click();
+
+    cy.get('[data-testid="form-status"]')
+      .should('be.visible')
+      .and('have.class', 'success')
+      .and('contain.text', 'submitted successfully');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Step 2 Validation Prevents Advancing
+  // --------------------------------------------------------------------------
+  it('exercise 8: step 2 validation prevents advancing when empty', () => {
+    // Pass step 1.
+    fillStep1();
+    cy.get('[data-testid="btn-next-1"]').click();
+
+    // Click Next on step 2 without filling anything.
+    cy.get('[data-testid="btn-next-2"]').click();
+
+    // Still on step 2.
+    cy.get('[data-testid="step-2"]').should('be.visible');
+    cy.get('[data-testid="step-3"]').should('not.be.visible');
+
+    // Errors appear.
+    cy.get('[data-testid="error-street"]').should('be.visible');
+    cy.get('[data-testid="error-city"]').should('be.visible');
+    cy.get('[data-testid="error-country"]').should('be.visible');
+    cy.get('[data-testid="error-postal"]').should('be.visible');
+  });
+
+});
+6:T1d89,# Kata 13: Form Validation
+
+## What You Will Learn
+
+- How to submit a form and verify inline validation error messages
+- How to fill in form fields with valid and invalid data
+- How to check for specific error message text below each field
+- How to verify error styling (red border) on invalid inputs
+- How to verify a successful submission clears all errors
+
+## Prerequisites
+
+- Completed Katas 01-12
+- Understanding of DOM selectors, assertions, and user interaction commands
+
+## Concepts Explained
+
+### Filling Form Fields
+
+```typescript
+// PLAYWRIGHT
+// fill(value) clears the field and types the new value.
+// It waits for the element to be editable before typing.
+await page.getByTestId('input-email').fill('aisha@example.com');
+
+// CYPRESS
+// clear() removes existing text, then type() types new text.
+// type() simulates real key presses one character at a time.
+cy.get('[data-testid="input-email"]').clear().type('aisha@example.com');
+```
+
+### Submitting a Form
+
+```typescript
+// PLAYWRIGHT
+// click() on the submit button triggers the form's submit event.
+await page.getByTestId('btn-submit').click();
+
+// CYPRESS
+cy.get('[data-testid="btn-submit"]').click();
+```
+
+### Verifying Inline Error Messages
+
+```typescript
+// PLAYWRIGHT
+// toBeVisible() checks the element is rendered and not hidden.
+// The playground uses display:none by default and adds a 'visible'
+// class to show the error message.
+await expect(page.getByTestId('error-email')).toBeVisible();
+await expect(page.getByTestId('error-email')).toHaveText('Please enter a valid email address.');
+
+// CYPRESS
+cy.get('[data-testid="error-email"]').should('be.visible');
+cy.get('[data-testid="error-email"]').should('have.text', 'Please enter a valid email address.');
+```
+
+### Verifying Error Styling (CSS Class)
+
+```typescript
+// PLAYWRIGHT
+// toHaveClass(regex) checks the element's className matches.
+await expect(page.getByTestId('input-email')).toHaveClass(/input-error/);
+
+// CYPRESS
+cy.get('[data-testid="input-email"]').should('have.class', 'input-error');
+```
+
+### Selecting a Dropdown Option
+
+```typescript
+// PLAYWRIGHT
+// selectOption(value) selects the <option> with the matching value attribute.
+await page.getByTestId('input-nationality').selectOption('US');
+
+// CYPRESS
+// select(value) selects the <option> with the matching value.
+cy.get('[data-testid="input-nationality"]').select('US');
+```
+
+## Playground
+
+The playground is a "KYC Personal Details" form with client-side validation. It contains:
+
+1. **Full Name** — required text input, 3-50 characters.
+2. **Email Address** — required, validated against an email regex pattern.
+3. **Phone Number** — required, must be 10-15 digits (may start with +, dashes/spaces allowed).
+4. **Date of Birth** — required date input.
+5. **Nationality** — required dropdown with country options.
+6. **Government ID Number** — required text input, 5-20 characters.
+7. **Submit Button** — triggers client-side validation.
+8. **Status Banner** — shows green "success" or red "error" message after submission.
+9. **Inline Errors** — each field has a hidden error message that appears when validation fails, with a red border on the input.
+
+### Validation Rules
+
+| Field | Rule | Error Message |
+|-------|------|---------------|
+| Full Name | Required, 3-50 chars | "Full name is required (3-50 characters)." |
+| Email | Required, email regex | "Please enter a valid email address." |
+| Phone | Required, 10-15 digits | "Phone must be 10-15 digits (may start with +)." |
+| Date of Birth | Required | "Date of birth is required." |
+| Nationality | Required (non-empty) | "Please select your nationality." |
+| ID Number | Required, 5-20 chars | "ID number must be 5-20 characters." |
+
+## Exercises
+
+### Exercise 1: Submit Empty Form and Verify All Errors Appear
+Click the submit button without filling any fields. Verify that all six error messages are visible.
+
+### Exercise 2: Fill Valid Data and Verify Success Message
+Fill every field with valid data and submit. Verify the success banner appears with the correct text.
+
+### Exercise 3: Enter Invalid Email and Verify Error
+Fill all fields with valid data except email (use "notanemail"). Submit and verify only the email error appears.
+
+### Exercise 4: Enter Invalid Phone and Verify Error
+Fill all fields with valid data except phone (use "123"). Submit and verify only the phone error appears.
+
+### Exercise 5: Enter Name Below Minimum Length
+Fill all fields with valid data except name (use "AB" which is only 2 characters). Submit and verify the name error appears.
+
+### Exercise 6: Verify Exact Error Message Text
+Submit the empty form and verify each error message contains the exact expected text from the validation rules table above.
+
+### Exercise 7: Verify Error Styling (Red Border)
+Submit the empty form and verify that every required input has the "input-error" CSS class, indicating a red border.
+
+### Exercise 8: Successful Submission Clears Errors
+First submit the empty form to trigger errors. Then fill all fields with valid data and submit again. Verify all errors are gone and the success banner is shown.
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/form-validation.spec.ts`
+
+### Cypress Solution
+
+See `cypress/form-validation.cy.ts`
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Using type() without clear() first | If the field already has text, type() appends to it | Always clear() before type() in Cypress; Playwright's fill() auto-clears |
+| Checking error visibility before submitting | Errors are hidden until the form is submitted | Click the submit button first, then check for errors |
+| Forgetting novalidate on the form | Browser's built-in validation popups interfere with custom messages | The playground uses novalidate so only JS validation runs |
+| Not checking both error text and visibility | An element can exist but be hidden (display:none) | Use toBeVisible() / should('be.visible') alongside text checks |
+| Selecting dropdown by display text instead of value | selectOption() and select() expect the value attribute by default | Use the value attribute (e.g. 'US'), not the display text ('United States') |
+
+## Quick Reference
+
+### Playwright Form Interaction
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Fill text input | `locator.fill(value)` | `await input.fill('Aisha Patel')` |
+| Select dropdown | `locator.selectOption(value)` | `await dropdown.selectOption('US')` |
+| Click submit | `locator.click()` | `await btn.click()` |
+| Check visible | `expect(loc).toBeVisible()` | `await expect(error).toBeVisible()` |
+| Check hidden | `expect(loc).toBeHidden()` | `await expect(error).toBeHidden()` |
+| Check text | `expect(loc).toHaveText(str)` | `await expect(error).toHaveText('...')` |
+| Check class | `expect(loc).toHaveClass(regex)` | `await expect(input).toHaveClass(/input-error/)` |
+
+### Cypress Form Interaction
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Fill text input | `.clear().type(value)` | `cy.get(sel).clear().type('Aisha Patel')` |
+| Select dropdown | `.select(value)` | `cy.get(sel).select('US')` |
+| Click submit | `.click()` | `cy.get(sel).click()` |
+| Check visible | `.should('be.visible')` | `cy.get(sel).should('be.visible')` |
+| Check hidden | `.should('not.be.visible')` | `cy.get(sel).should('not.be.visible')` |
+| Check text | `.should('have.text', str)` | `cy.get(sel).should('have.text', '...')` |
+| Check class | `.should('have.class', name)` | `cy.get(sel).should('have.class', 'input-error')` |
+7:T28a8,import { test, expect } from '@playwright/test';
+
+// The base URL for our playground page. All tests navigate here first.
+const PLAYGROUND = '/phase-02-forms/13-form-validation/playground/';
+
+// --------------------------------------------------------------------------
+// Helper: Fill every field with valid data.
+// --------------------------------------------------------------------------
+// This helper fills all six required fields with data that passes validation.
+// Individual tests can then override a single field to test that one rule.
+//
+// Parameters:
+//   page — the Playwright Page object from the test fixture.
+async function fillValidData(page: import('@playwright/test').Page) {
+  // fill(value) clears the input and types the new value in one step.
+  await page.getByTestId('input-full-name').fill('Aisha Patel');
+
+  await page.getByTestId('input-email').fill('aisha@example.com');
+
+  await page.getByTestId('input-phone').fill('+1-555-123-4567');
+
+  // For date inputs, fill() accepts an ISO date string (YYYY-MM-DD).
+  await page.getByTestId('input-dob').fill('1990-05-15');
+
+  // selectOption(value) picks the <option> whose value attribute matches.
+  await page.getByTestId('input-nationality').selectOption('IN');
+
+  await page.getByTestId('input-id-number').fill('A12345678');
+}
+
+// --------------------------------------------------------------------------
+// Exercise 1: Submit Empty Form and Verify All Errors Appear
+// --------------------------------------------------------------------------
+// Clicking submit without filling anything should show all six error messages.
+test('exercise 1: submit empty form and verify all errors appear', async ({ page }) => {
+  // Navigate to the playground.
+  await page.goto(PLAYGROUND);
+
+  // Click the submit button without entering any data.
+  // click() simulates a left-click on the element's center point.
+  await page.getByTestId('btn-submit').click();
+
+  // Verify every error message is now visible.
+  // toBeVisible() checks that the element is rendered and has non-zero size.
+  await expect(page.getByTestId('error-full-name')).toBeVisible();
+  await expect(page.getByTestId('error-email')).toBeVisible();
+  await expect(page.getByTestId('error-phone')).toBeVisible();
+  await expect(page.getByTestId('error-dob')).toBeVisible();
+  await expect(page.getByTestId('error-nationality')).toBeVisible();
+  await expect(page.getByTestId('error-id-number')).toBeVisible();
+
+  // Verify the form-level error banner is also shown.
+  await expect(page.getByTestId('form-status')).toBeVisible();
+  await expect(page.getByTestId('form-status')).toContainText('Please fix the errors');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Fill Valid Data and Verify Success Message
+// --------------------------------------------------------------------------
+// When all fields pass validation, a success banner should appear.
+test('exercise 2: fill valid data and verify success message', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Fill all fields with valid data using our helper.
+  await fillValidData(page);
+
+  // Submit the form.
+  await page.getByTestId('btn-submit').click();
+
+  // Verify the success banner is shown.
+  // toHaveClass(regex) checks the element's className matches the pattern.
+  await expect(page.getByTestId('form-status')).toHaveClass(/success/);
+  await expect(page.getByTestId('form-status')).toContainText('submitted successfully');
+
+  // Verify NO error messages are visible.
+  await expect(page.getByTestId('error-full-name')).toBeHidden();
+  await expect(page.getByTestId('error-email')).toBeHidden();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Enter Invalid Email and Verify Error
+// --------------------------------------------------------------------------
+// An invalid email (missing @ or domain) should trigger the email error only.
+test('exercise 3: invalid email triggers email error', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Fill valid data first, then override email with an invalid value.
+  await fillValidData(page);
+  // fill() replaces the entire input content. "notanemail" has no @ symbol
+  // so it fails the email regex check.
+  await page.getByTestId('input-email').fill('notanemail');
+
+  await page.getByTestId('btn-submit').click();
+
+  // Only the email error should be visible.
+  await expect(page.getByTestId('error-email')).toBeVisible();
+
+  // Other errors should NOT be visible since their fields have valid data.
+  await expect(page.getByTestId('error-full-name')).toBeHidden();
+  await expect(page.getByTestId('error-phone')).toBeHidden();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Enter Invalid Phone and Verify Error
+// --------------------------------------------------------------------------
+// A phone number with too few digits should trigger the phone error only.
+test('exercise 4: invalid phone triggers phone error', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  await fillValidData(page);
+  // "123" is only 3 digits, well below the 10-digit minimum.
+  await page.getByTestId('input-phone').fill('123');
+
+  await page.getByTestId('btn-submit').click();
+
+  // Only the phone error should be visible.
+  await expect(page.getByTestId('error-phone')).toBeVisible();
+
+  // Other errors should remain hidden.
+  await expect(page.getByTestId('error-email')).toBeHidden();
+  await expect(page.getByTestId('error-full-name')).toBeHidden();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Enter Name Below Minimum Length
+// --------------------------------------------------------------------------
+// The name field requires at least 3 characters. "AB" is only 2.
+test('exercise 5: name below minimum length triggers error', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  await fillValidData(page);
+  // "AB" is 2 characters — below the 3-character minimum.
+  await page.getByTestId('input-full-name').fill('AB');
+
+  await page.getByTestId('btn-submit').click();
+
+  // The name error should appear.
+  await expect(page.getByTestId('error-full-name')).toBeVisible();
+
+  // Other fields should still be valid.
+  await expect(page.getByTestId('error-email')).toBeHidden();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Verify Exact Error Message Text
+// --------------------------------------------------------------------------
+// Each error message must contain the exact expected text.
+test('exercise 6: verify exact error message text', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Submit empty form to trigger all errors.
+  await page.getByTestId('btn-submit').click();
+
+  // toHaveText(expected) checks that textContent exactly matches.
+  await expect(page.getByTestId('error-full-name')).toHaveText(
+    'Full name is required (3-50 characters).'
+  );
+  await expect(page.getByTestId('error-email')).toHaveText(
+    'Please enter a valid email address.'
+  );
+  await expect(page.getByTestId('error-phone')).toHaveText(
+    'Phone must be 10-15 digits (may start with +).'
+  );
+  await expect(page.getByTestId('error-dob')).toHaveText(
+    'Date of birth is required.'
+  );
+  await expect(page.getByTestId('error-nationality')).toHaveText(
+    'Please select your nationality.'
+  );
+  await expect(page.getByTestId('error-id-number')).toHaveText(
+    'ID number must be 5-20 characters.'
+  );
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Verify Error Styling (Red Border)
+// --------------------------------------------------------------------------
+// When validation fails, each input should have the "input-error" CSS class
+// which applies a red border.
+test('exercise 7: verify error styling on invalid inputs', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Submit empty form.
+  await page.getByTestId('btn-submit').click();
+
+  // toHaveClass(regex) checks if the element's className contains the pattern.
+  // /input-error/ is a regex that matches if "input-error" appears anywhere
+  // in the class string.
+  await expect(page.getByTestId('input-full-name')).toHaveClass(/input-error/);
+  await expect(page.getByTestId('input-email')).toHaveClass(/input-error/);
+  await expect(page.getByTestId('input-phone')).toHaveClass(/input-error/);
+  await expect(page.getByTestId('input-dob')).toHaveClass(/input-error/);
+  await expect(page.getByTestId('input-nationality')).toHaveClass(/input-error/);
+  await expect(page.getByTestId('input-id-number')).toHaveClass(/input-error/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Successful Submission Clears Errors
+// --------------------------------------------------------------------------
+// First trigger errors by submitting empty, then fill valid data and submit
+// again. All errors should disappear and the success banner should show.
+test('exercise 8: successful submission clears previous errors', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Step 1: Submit the empty form to trigger all error messages.
+  await page.getByTestId('btn-submit').click();
+
+  // Confirm errors are visible.
+  await expect(page.getByTestId('error-full-name')).toBeVisible();
+  await expect(page.getByTestId('form-status')).toHaveClass(/error/);
+
+  // Step 2: Fill all fields with valid data.
+  await fillValidData(page);
+
+  // Step 3: Submit again.
+  await page.getByTestId('btn-submit').click();
+
+  // All error messages should now be hidden.
+  await expect(page.getByTestId('error-full-name')).toBeHidden();
+  await expect(page.getByTestId('error-email')).toBeHidden();
+  await expect(page.getByTestId('error-phone')).toBeHidden();
+  await expect(page.getByTestId('error-dob')).toBeHidden();
+  await expect(page.getByTestId('error-nationality')).toBeHidden();
+  await expect(page.getByTestId('error-id-number')).toBeHidden();
+
+  // All inputs should no longer have the error class.
+  await expect(page.getByTestId('input-full-name')).not.toHaveClass(/input-error/);
+
+  // The success banner should be shown.
+  await expect(page.getByTestId('form-status')).toHaveClass(/success/);
+  await expect(page.getByTestId('form-status')).toContainText('submitted successfully');
+});
+8:T23c0,const PLAYGROUND = '/phase-02-forms/13-form-validation/playground/';
+
+describe('Kata 13: Form Validation', () => {
+
+  // beforeEach runs before every test in this describe block.
+  // We navigate to the playground so each test starts with a fresh page.
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Helper: Fill every field with valid data.
+  // --------------------------------------------------------------------------
+  // Uses Cypress clear() + type() for text fields, select() for dropdowns.
+  // clear() removes existing text so type() starts from an empty field.
+  function fillValidData() {
+    // clear() empties the input, then type() simulates keystrokes.
+    cy.get('[data-testid="input-full-name"]').clear().type('Aisha Patel');
+    cy.get('[data-testid="input-email"]').clear().type('aisha@example.com');
+    cy.get('[data-testid="input-phone"]').clear().type('+1-555-123-4567');
+    // For date inputs in Cypress, type() with an ISO date string works.
+    cy.get('[data-testid="input-dob"]').clear().type('1990-05-15');
+    // select(value) chooses the <option> whose value attribute matches.
+    cy.get('[data-testid="input-nationality"]').select('IN');
+    cy.get('[data-testid="input-id-number"]').clear().type('A12345678');
+  }
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Submit Empty Form and Verify All Errors Appear
+  // --------------------------------------------------------------------------
+  it('exercise 1: submit empty form and verify all errors appear', () => {
+    // Click the submit button without filling any fields.
+    cy.get('[data-testid="btn-submit"]').click();
+
+    // Verify every error message is now visible.
+    // should('be.visible') asserts the element is rendered and visible.
+    cy.get('[data-testid="error-full-name"]').should('be.visible');
+    cy.get('[data-testid="error-email"]').should('be.visible');
+    cy.get('[data-testid="error-phone"]').should('be.visible');
+    cy.get('[data-testid="error-dob"]').should('be.visible');
+    cy.get('[data-testid="error-nationality"]').should('be.visible');
+    cy.get('[data-testid="error-id-number"]').should('be.visible');
+
+    // Verify the form-level error banner is shown.
+    cy.get('[data-testid="form-status"]')
+      .should('be.visible')
+      .and('contain.text', 'Please fix the errors');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Fill Valid Data and Verify Success Message
+  // --------------------------------------------------------------------------
+  it('exercise 2: fill valid data and verify success message', () => {
+    // Fill all fields with valid data.
+    fillValidData();
+
+    // Submit the form.
+    cy.get('[data-testid="btn-submit"]').click();
+
+    // Verify the success banner is shown with correct class and text.
+    // .should('have.class', 'success') checks the element has that CSS class.
+    cy.get('[data-testid="form-status"]')
+      .should('have.class', 'success')
+      .and('contain.text', 'submitted successfully');
+
+    // Verify error messages are hidden.
+    cy.get('[data-testid="error-full-name"]').should('not.be.visible');
+    cy.get('[data-testid="error-email"]').should('not.be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Enter Invalid Email and Verify Error
+  // --------------------------------------------------------------------------
+  it('exercise 3: invalid email triggers email error', () => {
+    fillValidData();
+    // Override email with an invalid value — "notanemail" has no @ symbol.
+    cy.get('[data-testid="input-email"]').clear().type('notanemail');
+
+    cy.get('[data-testid="btn-submit"]').click();
+
+    // Only the email error should be visible.
+    cy.get('[data-testid="error-email"]').should('be.visible');
+
+    // Other errors should be hidden.
+    cy.get('[data-testid="error-full-name"]').should('not.be.visible');
+    cy.get('[data-testid="error-phone"]').should('not.be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Enter Invalid Phone and Verify Error
+  // --------------------------------------------------------------------------
+  it('exercise 4: invalid phone triggers phone error', () => {
+    fillValidData();
+    // "123" is only 3 digits — below the 10-digit minimum.
+    cy.get('[data-testid="input-phone"]').clear().type('123');
+
+    cy.get('[data-testid="btn-submit"]').click();
+
+    // Only the phone error should be visible.
+    cy.get('[data-testid="error-phone"]').should('be.visible');
+    cy.get('[data-testid="error-email"]').should('not.be.visible');
+    cy.get('[data-testid="error-full-name"]').should('not.be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Enter Name Below Minimum Length
+  // --------------------------------------------------------------------------
+  it('exercise 5: name below minimum length triggers error', () => {
+    fillValidData();
+    // "AB" is 2 characters — below the 3-character minimum.
+    cy.get('[data-testid="input-full-name"]').clear().type('AB');
+
+    cy.get('[data-testid="btn-submit"]').click();
+
+    cy.get('[data-testid="error-full-name"]').should('be.visible');
+    cy.get('[data-testid="error-email"]').should('not.be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Verify Exact Error Message Text
+  // --------------------------------------------------------------------------
+  it('exercise 6: verify exact error message text', () => {
+    // Submit empty form to trigger all errors.
+    cy.get('[data-testid="btn-submit"]').click();
+
+    // should('have.text', str) checks textContent exactly matches the string.
+    cy.get('[data-testid="error-full-name"]')
+      .should('have.text', 'Full name is required (3-50 characters).');
+
+    cy.get('[data-testid="error-email"]')
+      .should('have.text', 'Please enter a valid email address.');
+
+    cy.get('[data-testid="error-phone"]')
+      .should('have.text', 'Phone must be 10-15 digits (may start with +).');
+
+    cy.get('[data-testid="error-dob"]')
+      .should('have.text', 'Date of birth is required.');
+
+    cy.get('[data-testid="error-nationality"]')
+      .should('have.text', 'Please select your nationality.');
+
+    cy.get('[data-testid="error-id-number"]')
+      .should('have.text', 'ID number must be 5-20 characters.');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Verify Error Styling (Red Border)
+  // --------------------------------------------------------------------------
+  it('exercise 7: verify error styling on invalid inputs', () => {
+    // Submit empty form.
+    cy.get('[data-testid="btn-submit"]').click();
+
+    // should('have.class', name) checks the element's classList contains name.
+    // The "input-error" class applies a red border via CSS.
+    cy.get('[data-testid="input-full-name"]').should('have.class', 'input-error');
+    cy.get('[data-testid="input-email"]').should('have.class', 'input-error');
+    cy.get('[data-testid="input-phone"]').should('have.class', 'input-error');
+    cy.get('[data-testid="input-dob"]').should('have.class', 'input-error');
+    cy.get('[data-testid="input-nationality"]').should('have.class', 'input-error');
+    cy.get('[data-testid="input-id-number"]').should('have.class', 'input-error');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Successful Submission Clears Errors
+  // --------------------------------------------------------------------------
+  it('exercise 8: successful submission clears previous errors', () => {
+    // Step 1: Submit the empty form to trigger all error messages.
+    cy.get('[data-testid="btn-submit"]').click();
+
+    // Confirm errors are visible.
+    cy.get('[data-testid="error-full-name"]').should('be.visible');
+    cy.get('[data-testid="form-status"]').should('have.class', 'error');
+
+    // Step 2: Fill all fields with valid data.
+    fillValidData();
+
+    // Step 3: Submit again.
+    cy.get('[data-testid="btn-submit"]').click();
+
+    // All error messages should now be hidden.
+    cy.get('[data-testid="error-full-name"]').should('not.be.visible');
+    cy.get('[data-testid="error-email"]').should('not.be.visible');
+    cy.get('[data-testid="error-phone"]').should('not.be.visible');
+    cy.get('[data-testid="error-dob"]').should('not.be.visible');
+    cy.get('[data-testid="error-nationality"]').should('not.be.visible');
+    cy.get('[data-testid="error-id-number"]').should('not.be.visible');
+
+    // Inputs should no longer have the error class.
+    cy.get('[data-testid="input-full-name"]').should('not.have.class', 'input-error');
+
+    // The success banner should be shown.
+    cy.get('[data-testid="form-status"]')
+      .should('have.class', 'success')
+      .and('contain.text', 'submitted successfully');
+  });
+
+});
+9:T1b95,# Kata 15: File Upload
+
+## What You Will Learn
+
+- How to upload files via a file input using test frameworks
+- How to verify uploaded files appear in a file list
+- How to test file type validation (rejecting invalid types)
+- How to simulate drag-and-drop file upload
+- How to verify file previews and remove uploaded files
+- Differences between Playwright's `setInputFiles()` and Cypress's `selectFile()`
+
+## Prerequisites
+
+- Completed Katas 13-14
+- Understanding of form interactions and assertions
+
+## Concepts Explained
+
+### Playwright: setInputFiles()
+
+```typescript
+// PLAYWRIGHT
+// setInputFiles(files) sets the files for an <input type="file"> element.
+// It accepts a file path string, an array of paths, or a file-like object.
+//
+// Signature:
+//   locator.setInputFiles(files: string | string[] | {
+//     name: string, mimeType: string, buffer: Buffer
+//   } | Array<{ name: string, mimeType: string, buffer: Buffer }>)
+//
+// Using a file path (reads from disk):
+await page.getByTestId('file-input').setInputFiles('path/to/document.pdf');
+
+// Using a buffer (creates a virtual file — no disk file needed):
+await page.getByTestId('file-input').setInputFiles({
+  name: 'id-proof.pdf',
+  mimeType: 'application/pdf',
+  buffer: Buffer.from('fake pdf content'),
+});
+
+// Multiple files at once:
+await page.getByTestId('file-input').setInputFiles([
+  { name: 'id.pdf', mimeType: 'application/pdf', buffer: Buffer.from('pdf') },
+  { name: 'photo.jpg', mimeType: 'image/jpeg', buffer: Buffer.from('jpg') },
+]);
+
+// Clear file input:
+await page.getByTestId('file-input').setInputFiles([]);
+```
+
+### Cypress: selectFile()
+
+```typescript
+// CYPRESS
+// selectFile() sets files on an <input type="file"> element.
+// It was added in Cypress 9.3 as a built-in command (no plugin needed).
+//
+// Signature:
+//   .selectFile(file | file[], options?)
+//
+// file can be:
+//   - A string path (relative to cypress project root)
+//   - A Cypress.Buffer with { fileName, mimeType }
+//   - A { contents, fileName, mimeType } object
+//
+// Using a buffer (creates a virtual file):
+cy.get('[data-testid="file-input"]').selectFile({
+  contents: Cypress.Buffer.from('fake pdf content'),
+  fileName: 'id-proof.pdf',
+  mimeType: 'application/pdf',
+});
+
+// Multiple files:
+cy.get('[data-testid="file-input"]').selectFile([
+  { contents: Cypress.Buffer.from('pdf'), fileName: 'id.pdf', mimeType: 'application/pdf' },
+  { contents: Cypress.Buffer.from('jpg'), fileName: 'photo.jpg', mimeType: 'image/jpeg' },
+]);
+
+// Drag-and-drop mode (drops file onto an element instead of setting input):
+cy.get('[data-testid="drop-zone"]').selectFile(
+  { contents: Cypress.Buffer.from('pdf'), fileName: 'doc.pdf', mimeType: 'application/pdf' },
+  { action: 'drag-drop' }
+);
+```
+
+### Verifying Uploaded Files
+
+```typescript
+// PLAYWRIGHT
+// After uploading, the file appears in the list. We check by finding
+// elements that contain the file name.
+const fileList = page.getByTestId('file-items');
+await expect(fileList).toContainText('id-proof.pdf');
+
+// CYPRESS
+cy.get('[data-testid="file-items"]').should('contain.text', 'id-proof.pdf');
+```
+
+## Playground
+
+The playground is a "KYC Document Upload" page. It contains:
+
+1. **Drop Zone** — A dashed-border area that accepts drag-and-drop files. Clicking it opens the browser's file picker dialog.
+2. **Hidden File Input** — An `<input type="file">` element that accepts `.pdf`, `.jpg`, `.png` files. It supports the `multiple` attribute for multi-file selection.
+3. **File Type Validation** — Only `.pdf`, `.jpg`, `.jpeg`, `.png` files are accepted. Invalid files show a red error message.
+4. **File Size Limit** — Files over 5 MB show an error. The display shows each file's size in human-readable format (KB/MB).
+5. **Upload Progress Bar** — A simulated progress bar animates from 0% to 100% when a file is "uploaded".
+6. **Uploaded Files List** — Each uploaded file appears as a card showing its name, size, preview thumbnail (for images), and a "Remove" button.
+7. **File Count** — A counter showing the number of uploaded files.
+8. **Preview Thumbnails** — Image files (`.jpg`, `.png`) show a thumbnail preview. PDF files show a "PDF" label.
+
+## Exercises
+
+### Exercise 1: Upload a File via the File Input
+Use `setInputFiles()` (Playwright) or `selectFile()` (Cypress) to upload a PDF file. Verify the file count updates to 1.
+
+### Exercise 2: Verify Uploaded File Appears in the List
+Upload a file and verify its name appears in the file items list.
+
+### Exercise 3: Upload Wrong File Type and Verify Error
+Upload a `.txt` file and verify the error message appears saying the file type is not allowed.
+
+### Exercise 4: Drag-and-Drop Upload
+Use drag-and-drop to upload a file onto the drop zone. Verify it appears in the file list.
+
+### Exercise 5: Verify File Preview
+Upload an image file (`.jpg` or `.png`) and verify the preview element exists for that file.
+
+### Exercise 6: Remove an Uploaded File
+Upload a file, then click its "Remove" button. Verify the file is removed from the list and the count decreases.
+
+### Exercise 7: Upload Multiple Files
+Upload two files at once and verify both appear in the file list with a count of 2.
+
+### Exercise 8: Verify File Size Display
+Upload a file and verify the size display shows a human-readable value (e.g., "1.0 KB").
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/file-upload.spec.ts`
+
+### Cypress Solution
+
+See `cypress/file-upload.cy.ts`
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Trying to type a file path into the input | File inputs cannot be typed into — they require a special API | Use `setInputFiles()` (Playwright) or `selectFile()` (Cypress) |
+| Forgetting the `mimeType` when creating virtual files | Without a MIME type, the file validation may reject the file | Always provide `mimeType` matching the file extension |
+| Using real file paths that don't exist | The test will fail with a file-not-found error | Use buffer-based virtual files for portability |
+| Not waiting for the upload progress to complete | Assertions run before the file appears in the list | Wait for the file name to appear in the DOM |
+| Targeting the drop zone instead of the input for selectFile | By default, selectFile targets an input element | Use `{ action: 'drag-drop' }` option for drop zone targets |
+
+## Quick Reference
+
+### File Upload Methods
+
+| Action | Playwright | Cypress |
+|--------|-----------|---------|
+| Upload single file | `setInputFiles({ name, mimeType, buffer })` | `selectFile({ contents, fileName, mimeType })` |
+| Upload multiple files | `setInputFiles([file1, file2])` | `selectFile([file1, file2])` |
+| Drag-drop upload | `setInputFiles()` on input + dispatch events | `selectFile(file, { action: 'drag-drop' })` |
+| Clear file input | `setInputFiles([])` | N/A (re-select or reload) |
+| Check file in list | `expect(list).toContainText(name)` | `cy.get(list).should('contain.text', name)` |
+| Check file count | `expect(count).toHaveText('2')` | `cy.get(count).should('have.text', '2')` |
+a:T227b,import { test, expect } from '@playwright/test';
+
+// The base URL for our playground page.
+const PLAYGROUND = '/phase-02-forms/15-file-upload/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Upload a File via the File Input
+// --------------------------------------------------------------------------
+// Use setInputFiles() to upload a virtual PDF file and verify the count.
+test('exercise 1: upload a file via file input', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify the file count starts at 0.
+  await expect(page.getByTestId('file-count')).toHaveText('0');
+
+  // setInputFiles() sets files on an <input type="file"> element.
+  // We create a virtual file using a Buffer — no real file on disk is needed.
+  // Parameters:
+  //   name     — the file name the browser will see
+  //   mimeType — the MIME type (must match an allowed type)
+  //   buffer   — the file content as a Node.js Buffer
+  await page.getByTestId('file-input').setInputFiles({
+    name: 'id-proof.pdf',
+    mimeType: 'application/pdf',
+    buffer: Buffer.from('fake pdf content'),
+  });
+
+  // Wait for the simulated upload to complete and the file to appear.
+  // toHaveText('1') waits until the file count element's text becomes '1'.
+  await expect(page.getByTestId('file-count')).toHaveText('1');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Verify Uploaded File Appears in the List
+// --------------------------------------------------------------------------
+// After uploading, verify the file name is visible in the file items area.
+test('exercise 2: verify uploaded file appears in the list', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  await page.getByTestId('file-input').setInputFiles({
+    name: 'passport-scan.jpg',
+    mimeType: 'image/jpeg',
+    buffer: Buffer.from('fake jpeg content'),
+  });
+
+  // toContainText(substring) checks if the element's textContent contains
+  // the given substring anywhere within it.
+  await expect(page.getByTestId('file-items')).toContainText('passport-scan.jpg');
+
+  // Also verify the "no files" message is hidden.
+  await expect(page.getByTestId('empty-list')).toBeHidden();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Upload Wrong File Type and Verify Error
+// --------------------------------------------------------------------------
+// Uploading a .txt file should trigger a validation error message.
+test('exercise 3: upload wrong file type shows error', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Upload a .txt file — this type is not in the allowed list.
+  await page.getByTestId('file-input').setInputFiles({
+    name: 'notes.txt',
+    mimeType: 'text/plain',
+    buffer: Buffer.from('some text content'),
+  });
+
+  // Verify the error message is visible and contains the file name.
+  await expect(page.getByTestId('upload-error')).toBeVisible();
+  await expect(page.getByTestId('upload-error')).toContainText('notes.txt');
+  await expect(page.getByTestId('upload-error')).toContainText('not allowed');
+
+  // The file should NOT appear in the uploaded list.
+  await expect(page.getByTestId('file-count')).toHaveText('0');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Drag-and-Drop Upload
+// --------------------------------------------------------------------------
+// Simulate a drag-and-drop by using setInputFiles() on the file input.
+// Note: True drag-and-drop file upload from outside the browser cannot be
+// fully simulated in Playwright. We use setInputFiles() which triggers
+// the same code path via the input's change event.
+test('exercise 4: upload file via input (simulating drag-drop path)', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Upload via the file input — this exercises the same handleFiles() logic
+  // that the drop event uses.
+  await page.getByTestId('file-input').setInputFiles({
+    name: 'address-proof.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from('fake png content'),
+  });
+
+  // Verify the file appears in the list.
+  await expect(page.getByTestId('file-items')).toContainText('address-proof.png');
+  await expect(page.getByTestId('file-count')).toHaveText('1');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Verify File Preview
+// --------------------------------------------------------------------------
+// Upload an image file and verify a preview element is rendered.
+test('exercise 5: verify file preview exists for image upload', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  await page.getByTestId('file-input').setInputFiles({
+    name: 'selfie.jpg',
+    mimeType: 'image/jpeg',
+    buffer: Buffer.from('fake jpeg content'),
+  });
+
+  // Wait for the file to appear in the list.
+  await expect(page.getByTestId('file-count')).toHaveText('1');
+
+  // Find the file item in the list. Each file item gets a dynamic testid.
+  // We locate it by checking for the file name text, then look for a
+  // preview element within it.
+  const fileItem = page.locator('.file-item').filter({ hasText: 'selfie.jpg' });
+  await expect(fileItem).toBeVisible();
+
+  // Verify the preview element exists within the file item.
+  // The preview is a <div class="file-preview"> containing an <img>.
+  const preview = fileItem.locator('.file-preview');
+  await expect(preview).toBeVisible();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Remove an Uploaded File
+// --------------------------------------------------------------------------
+// Upload a file, then click Remove. Verify the file disappears.
+test('exercise 6: remove an uploaded file', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Upload a file.
+  await page.getByTestId('file-input').setInputFiles({
+    name: 'old-id.pdf',
+    mimeType: 'application/pdf',
+    buffer: Buffer.from('fake pdf'),
+  });
+
+  // Verify it appeared.
+  await expect(page.getByTestId('file-count')).toHaveText('1');
+
+  // Find the file item and its Remove button.
+  const fileItem = page.locator('.file-item').filter({ hasText: 'old-id.pdf' });
+  const removeBtn = fileItem.locator('.btn-remove');
+
+  // Click the Remove button.
+  await removeBtn.click();
+
+  // Verify the file count is back to 0.
+  await expect(page.getByTestId('file-count')).toHaveText('0');
+
+  // Verify the "no files" message reappears.
+  await expect(page.getByTestId('empty-list')).toBeVisible();
+
+  // Verify the file name is no longer in the list.
+  await expect(page.getByTestId('file-items')).not.toContainText('old-id.pdf');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Upload Multiple Files
+// --------------------------------------------------------------------------
+// Upload two files at once and verify both appear.
+test('exercise 7: upload multiple files at once', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // setInputFiles() accepts an array of file objects to upload multiple
+  // files in a single call.
+  await page.getByTestId('file-input').setInputFiles([
+    {
+      name: 'id-front.jpg',
+      mimeType: 'image/jpeg',
+      buffer: Buffer.from('jpeg front'),
+    },
+    {
+      name: 'id-back.jpg',
+      mimeType: 'image/jpeg',
+      buffer: Buffer.from('jpeg back'),
+    },
+  ]);
+
+  // Wait for both files to finish uploading (progress bar runs sequentially).
+  // The count should reach 2.
+  await expect(page.getByTestId('file-count')).toHaveText('2');
+
+  // Verify both file names appear in the list.
+  await expect(page.getByTestId('file-items')).toContainText('id-front.jpg');
+  await expect(page.getByTestId('file-items')).toContainText('id-back.jpg');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Verify File Size Display
+// --------------------------------------------------------------------------
+// Upload a file and verify the size is shown in a human-readable format.
+test('exercise 8: verify file size display', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Create a file with a known size. Buffer.alloc(1024) creates a 1 KB buffer.
+  await page.getByTestId('file-input').setInputFiles({
+    name: 'sized-doc.pdf',
+    mimeType: 'application/pdf',
+    buffer: Buffer.alloc(1024),
+  });
+
+  // Wait for upload.
+  await expect(page.getByTestId('file-count')).toHaveText('1');
+
+  // Find the file item and check the size display.
+  const fileItem = page.locator('.file-item').filter({ hasText: 'sized-doc.pdf' });
+  const sizeEl = fileItem.locator('.file-size');
+
+  // The size should show "1.0 KB" for a 1024-byte file.
+  await expect(sizeEl).toHaveText('1.0 KB');
+});
+b:T1df2,const PLAYGROUND = '/phase-02-forms/15-file-upload/playground/';
+
+describe('Kata 15: File Upload', () => {
+
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Upload a File via the File Input
+  // --------------------------------------------------------------------------
+  // Use selectFile() to upload a virtual PDF file.
+  it('exercise 1: upload a file via file input', () => {
+    // Verify file count starts at 0.
+    cy.get('[data-testid="file-count"]').should('have.text', '0');
+
+    // selectFile() is a built-in Cypress command (since v9.3) that sets
+    // files on an <input type="file"> element.
+    //
+    // Parameters:
+    //   contents — a Cypress.Buffer holding the file data
+    //   fileName — the name the browser will see for the file
+    //   mimeType — the MIME type (must match an allowed type for validation)
+    cy.get('[data-testid="file-input"]').selectFile({
+      contents: Cypress.Buffer.from('fake pdf content'),
+      fileName: 'id-proof.pdf',
+      mimeType: 'application/pdf',
+    }, { force: true }); // force:true because the input is hidden (display:none)
+
+    // Wait for the simulated upload progress to complete.
+    // The file count should update to 1.
+    cy.get('[data-testid="file-count"]').should('have.text', '1');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Verify Uploaded File Appears in the List
+  // --------------------------------------------------------------------------
+  it('exercise 2: verify uploaded file appears in the list', () => {
+    cy.get('[data-testid="file-input"]').selectFile({
+      contents: Cypress.Buffer.from('fake jpeg content'),
+      fileName: 'passport-scan.jpg',
+      mimeType: 'image/jpeg',
+    }, { force: true });
+
+    // should('contain.text', str) checks if textContent contains the string.
+    cy.get('[data-testid="file-items"]').should('contain.text', 'passport-scan.jpg');
+
+    // The "no files" message should be hidden.
+    cy.get('[data-testid="empty-list"]').should('not.be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Upload Wrong File Type and Verify Error
+  // --------------------------------------------------------------------------
+  it('exercise 3: upload wrong file type shows error', () => {
+    // Upload a .txt file — not in the allowed types list.
+    cy.get('[data-testid="file-input"]').selectFile({
+      contents: Cypress.Buffer.from('some text content'),
+      fileName: 'notes.txt',
+      mimeType: 'text/plain',
+    }, { force: true });
+
+    // Verify the error message is visible.
+    cy.get('[data-testid="upload-error"]')
+      .should('be.visible')
+      .and('contain.text', 'notes.txt')
+      .and('contain.text', 'not allowed');
+
+    // File should NOT be added to the list.
+    cy.get('[data-testid="file-count"]').should('have.text', '0');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Drag-and-Drop Upload
+  // --------------------------------------------------------------------------
+  // Use selectFile() with { action: 'drag-drop' } to drop a file onto
+  // the drop zone element instead of the hidden file input.
+  it('exercise 4: drag-and-drop upload onto drop zone', () => {
+    // selectFile with action: 'drag-drop' simulates dropping a file
+    // onto any element (not just <input type="file">).
+    // This dispatches drop events on the target element.
+    cy.get('[data-testid="drop-zone"]').selectFile({
+      contents: Cypress.Buffer.from('fake png content'),
+      fileName: 'address-proof.png',
+      mimeType: 'image/png',
+    }, { action: 'drag-drop' });
+
+    // Verify the file appears.
+    cy.get('[data-testid="file-items"]').should('contain.text', 'address-proof.png');
+    cy.get('[data-testid="file-count"]').should('have.text', '1');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Verify File Preview
+  // --------------------------------------------------------------------------
+  it('exercise 5: verify file preview exists for image upload', () => {
+    cy.get('[data-testid="file-input"]').selectFile({
+      contents: Cypress.Buffer.from('fake jpeg content'),
+      fileName: 'selfie.jpg',
+      mimeType: 'image/jpeg',
+    }, { force: true });
+
+    // Wait for the file to appear.
+    cy.get('[data-testid="file-count"]').should('have.text', '1');
+
+    // Find the file item containing our file name.
+    // contains() finds an element whose text content includes the string.
+    cy.get('.file-item').contains('selfie.jpg').parents('.file-item')
+      .find('.file-preview')
+      .should('be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Remove an Uploaded File
+  // --------------------------------------------------------------------------
+  it('exercise 6: remove an uploaded file', () => {
+    cy.get('[data-testid="file-input"]').selectFile({
+      contents: Cypress.Buffer.from('fake pdf'),
+      fileName: 'old-id.pdf',
+      mimeType: 'application/pdf',
+    }, { force: true });
+
+    // Verify it appeared.
+    cy.get('[data-testid="file-count"]').should('have.text', '1');
+
+    // Find the Remove button within the file item.
+    // parents('.file-item') traverses up to the file-item ancestor.
+    cy.get('.file-item').contains('old-id.pdf').parents('.file-item')
+      .find('.btn-remove')
+      .click();
+
+    // Verify the file is removed.
+    cy.get('[data-testid="file-count"]').should('have.text', '0');
+    cy.get('[data-testid="empty-list"]').should('be.visible');
+    cy.get('[data-testid="file-items"]').should('not.contain.text', 'old-id.pdf');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Upload Multiple Files
+  // --------------------------------------------------------------------------
+  it('exercise 7: upload multiple files at once', () => {
+    // selectFile() accepts an array of file objects to upload multiple files.
+    cy.get('[data-testid="file-input"]').selectFile([
+      {
+        contents: Cypress.Buffer.from('jpeg front'),
+        fileName: 'id-front.jpg',
+        mimeType: 'image/jpeg',
+      },
+      {
+        contents: Cypress.Buffer.from('jpeg back'),
+        fileName: 'id-back.jpg',
+        mimeType: 'image/jpeg',
+      },
+    ], { force: true });
+
+    // Both files should appear.
+    cy.get('[data-testid="file-count"]').should('have.text', '2');
+    cy.get('[data-testid="file-items"]').should('contain.text', 'id-front.jpg');
+    cy.get('[data-testid="file-items"]').should('contain.text', 'id-back.jpg');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Verify File Size Display
+  // --------------------------------------------------------------------------
+  it('exercise 8: verify file size display', () => {
+    // Create a file with a known size: 1024 bytes = 1.0 KB.
+    // Cypress.Buffer.alloc(size) creates a buffer of the given byte length.
+    cy.get('[data-testid="file-input"]').selectFile({
+      contents: Cypress.Buffer.alloc(1024),
+      fileName: 'sized-doc.pdf',
+      mimeType: 'application/pdf',
+    }, { force: true });
+
+    cy.get('[data-testid="file-count"]').should('have.text', '1');
+
+    // Find the file size element within the file item.
+    cy.get('.file-item').contains('sized-doc.pdf').parents('.file-item')
+      .find('.file-size')
+      .should('have.text', '1.0 KB');
+  });
+
+});
+c:Tc7c5,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { test, expect } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> '@playwright/test'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// The base URL for our playground page.</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-02-forms/14-multi-step-forms/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Helper: Fill step 1 (Personal Info) with valid data.</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#F97583">async</span><span style="color:#F97583"> function</span><span style="color:#B392F0"> fillStep1</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">page</span><span style="color:#F97583">:</span><span style="color:#F97583"> import</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'@playwright/test'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">Page</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'input-full-name'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Aisha Patel'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'input-email'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'aisha@example.com'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'input-phone'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'+1-555-123-4567'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Helper: Fill step 2 (Address) with valid data.</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#F97583">async</span><span style="color:#F97583"> function</span><span style="color:#B392F0"> fillStep2</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">page</span><span style="color:#F97583">:</span><span style="color:#F97583"> import</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'@playwright/test'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">Page</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'input-street'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'42 Baker Street'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'input-city'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'London'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#6A737D">  // selectOption(value) picks the &#x3C;option> whose value attribute matches.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'input-country'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">selectOption</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'GB'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'input-postal'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'W1U 6PL'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Helper: Fill step 3 (Employment) with valid data.</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#F97583">async</span><span style="color:#F97583"> function</span><span style="color:#B392F0"> fillStep3</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">page</span><span style="color:#F97583">:</span><span style="color:#F97583"> import</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'@playwright/test'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">Page</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'input-employment-status'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">selectOption</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'employed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'input-employer'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Acme Corp'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'input-income'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">selectOption</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'50k-100k'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Helper: Navigate from step 1 to step 4 (review) filling all fields.</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#F97583">async</span><span style="color:#F97583"> function</span><span style="color:#B392F0"> completeAllSteps</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">page</span><span style="color:#F97583">:</span><span style="color:#F97583"> import</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'@playwright/test'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">Page</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#6A737D">  // Step 1</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> fillStep1</span><span style="color:#E1E4E8">(page);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-next-1'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Step 2</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> fillStep2</span><span style="color:#E1E4E8">(page);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-next-2'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Step 3</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> fillStep3</span><span style="color:#E1E4E8">(page);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-next-3'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 1: Navigate Forward Through Steps</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Fill step 1 and click Next. Verify step 2 is visible and step 1 is hidden.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: navigate forward from step 1 to step 2'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify step 1 is initially visible.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'step-1'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Fill step 1 with valid data.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> fillStep1</span><span style="color:#E1E4E8">(page);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click Next to advance to step 2.</span></span>
+<span class="line"><span style="color:#6A737D">  // click() triggers the button's click handler which validates and navigates.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-next-1'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify step 2 is now visible and step 1 is hidden.</span></span>
+<span class="line"><span style="color:#6A737D">  // toBeVisible() checks the element has display:block (the "active" class).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'step-2'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#6A737D">  // toBeHidden() checks the element has display:none.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'step-1'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeHidden</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 2: Navigate Back to Previous Step</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// From step 2, click Back. Verify step 1 is visible and data persists.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: navigate back from step 2 to step 1'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Fill step 1 and advance.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> fillStep1</span><span style="color:#E1E4E8">(page);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-next-1'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'step-2'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click Back to return to step 1.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-back-2'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify step 1 is visible again.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'step-1'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'step-2'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeHidden</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the data we entered is still in the fields.</span></span>
+<span class="line"><span style="color:#6A737D">  // toHaveValue(value) checks the input's current value attribute.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'input-full-name'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveValue</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Aisha Patel'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'input-email'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveValue</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'aisha@example.com'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 3: Verify Progress Indicator Updates</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Navigate to step 2 and verify indicator states.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: progress indicator updates on navigation'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Initially, indicator 1 should be "active" and others should not.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'indicator-1'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">active</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'indicator-2'</span><span style="color:#E1E4E8">)).not.</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">active</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Navigate to step 2.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> fillStep1</span><span style="color:#E1E4E8">(page);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-next-1'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Indicator 1 should now be "completed" (green) and indicator 2 "active" (blue).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'indicator-1'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">completed</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'indicator-2'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">active</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#6A737D">  // Indicator 3 and 4 should have neither class.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'indicator-3'</span><span style="color:#E1E4E8">)).not.</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">active</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'indicator-3'</span><span style="color:#E1E4E8">)).not.</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">completed</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 4: Step 1 Validation Prevents Advancing</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Click Next on step 1 without filling any fields.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: step 1 validation prevents advancing when empty'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click Next without filling anything.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-next-1'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify we are still on step 1 (it remains visible).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'step-1'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'step-2'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeHidden</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify error messages appear for empty fields.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'error-full-name'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'error-email'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'error-phone'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 5: Complete the Full 4-Step Flow</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Fill all steps and navigate to the review page.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: complete full 4-step flow'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Use our helper to fill and navigate all steps.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> completeAllSteps</span><span style="color:#E1E4E8">(page);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify we reached step 4 (the review page).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'step-4'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'step-3'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeHidden</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // All four indicators should show completed or active.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'indicator-4'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">active</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'indicator-1'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">completed</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'indicator-2'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">completed</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'indicator-3'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">completed</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 6: Verify Review Page Shows All Entered Data</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Check that the review page displays the exact values from each step.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: review page displays all entered data'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> completeAllSteps</span><span style="color:#E1E4E8">(page);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify step 4 is visible.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'step-4'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify personal info.</span></span>
+<span class="line"><span style="color:#6A737D">  // toHaveText(str) checks the element's textContent exactly matches.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'review-fullName'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Aisha Patel'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'review-email'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'aisha@example.com'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'review-phone'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'+1-555-123-4567'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify address info.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'review-street'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'42 Baker Street'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'review-city'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'London'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#6A737D">  // The review shows the option text ("United Kingdom"), not the value ("GB").</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'review-country'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'United Kingdom'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'review-postal'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'W1U 6PL'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify employment info.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'review-employmentStatus'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Employed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'review-employer'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Acme Corp'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'review-income'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'$50,000 - $100,000'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 7: Submit from the Review Page</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Complete all steps and click Submit. Verify the success message.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 7: submit application from review page'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> completeAllSteps</span><span style="color:#E1E4E8">(page);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click the Submit button on the review page.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-submit'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the success message appears.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'form-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'form-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">success</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'form-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'submitted successfully'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 8: Step 2 Validation Prevents Advancing</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Navigate to step 2, leave fields empty, and click Next.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 8: step 2 validation prevents advancing when empty'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Fill and pass step 1.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> fillStep1</span><span style="color:#E1E4E8">(page);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-next-1'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Now on step 2 — click Next without filling anything.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-next-2'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify we remain on step 2.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'step-2'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'step-3'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeHidden</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify error messages appear for step 2 fields.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'error-street'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'error-city'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'error-country'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'error-postal'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>d:Ta7a6,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-02-forms/14-multi-step-forms/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">describe</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Kata 14: Multi-Step Forms'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">  beforeEach</span><span style="color:#E1E4E8">(() </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Helper: Fill step 1 (Personal Info) with valid data.</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#F97583">  function</span><span style="color:#B392F0"> fillStep1</span><span style="color:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-full-name"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">clear</span><span style="color:#E1E4E8">().</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Aisha Patel'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-email"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">clear</span><span style="color:#E1E4E8">().</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'aisha@example.com'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-phone"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">clear</span><span style="color:#E1E4E8">().</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'+1-555-123-4567'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Helper: Fill step 2 (Address) with valid data.</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#F97583">  function</span><span style="color:#B392F0"> fillStep2</span><span style="color:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-street"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">clear</span><span style="color:#E1E4E8">().</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'42 Baker Street'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-city"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">clear</span><span style="color:#E1E4E8">().</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'London'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#6A737D">    // select(value) picks the &#x3C;option> whose value attribute matches.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-country"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">select</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'GB'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-postal"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">clear</span><span style="color:#E1E4E8">().</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'W1U 6PL'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Helper: Fill step 3 (Employment) with valid data.</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#F97583">  function</span><span style="color:#B392F0"> fillStep3</span><span style="color:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-employment-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">select</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'employed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-employer"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">clear</span><span style="color:#E1E4E8">().</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Acme Corp'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-income"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">select</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'50k-100k'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Helper: Fill and navigate all 3 steps to reach the review page.</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#F97583">  function</span><span style="color:#B392F0"> completeAllSteps</span><span style="color:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#B392F0">    fillStep1</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-next-1"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">    fillStep2</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-next-2"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">    fillStep3</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-next-3"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">  }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 1: Navigate Forward Through Steps</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: navigate forward from step 1 to step 2'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Verify step 1 is initially visible.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="step-1"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Fill step 1 and click Next.</span></span>
+<span class="line"><span style="color:#B392F0">    fillStep1</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-next-1"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify step 2 is visible and step 1 is hidden.</span></span>
+<span class="line"><span style="color:#6A737D">    // should('be.visible') checks the element is rendered (display:block).</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="step-2"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#6A737D">    // should('not.be.visible') checks the element has display:none.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="step-1"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 2: Navigate Back to Previous Step</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: navigate back from step 2 to step 1'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#B392F0">    fillStep1</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-next-1"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="step-2"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Click Back.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-back-2"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify step 1 is visible again.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="step-1"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="step-2"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify data is still in the fields.</span></span>
+<span class="line"><span style="color:#6A737D">    // should('have.value', str) checks the input's current value.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-full-name"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.value'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Aisha Patel'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-email"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.value'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'aisha@example.com'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 3: Verify Progress Indicator Updates</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: progress indicator updates on navigation'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Initially, indicator 1 should be active.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="indicator-1"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'active'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="indicator-2"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'active'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Navigate to step 2.</span></span>
+<span class="line"><span style="color:#B392F0">    fillStep1</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-next-1"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Indicator 1 should be "completed", indicator 2 should be "active".</span></span>
+<span class="line"><span style="color:#6A737D">    // should('have.class', name) checks the element's classList.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="indicator-1"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'completed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="indicator-2"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'active'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Indicators 3 and 4 should have neither class.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="indicator-3"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'active'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'completed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 4: Step 1 Validation Prevents Advancing</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: step 1 validation prevents advancing when empty'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Click Next without filling anything.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-next-1"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Still on step 1.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="step-1"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="step-2"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Errors appear.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="error-full-name"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="error-email"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="error-phone"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 5: Complete the Full 4-Step Flow</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: complete full 4-step flow'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#B392F0">    completeAllSteps</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify we reached step 4.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="step-4"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="step-3"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // All indicators updated.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="indicator-4"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'active'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="indicator-1"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'completed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="indicator-2"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'completed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="indicator-3"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'completed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 6: Verify Review Page Shows All Entered Data</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: review page displays all entered data'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#B392F0">    completeAllSteps</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="step-4"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Personal info.</span></span>
+<span class="line"><span style="color:#6A737D">    // should('have.text', str) checks the element's textContent exactly.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="review-fullName"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Aisha Patel'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="review-email"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'aisha@example.com'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="review-phone"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'+1-555-123-4567'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Address info.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="review-street"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'42 Baker Street'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="review-city"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'London'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="review-country"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'United Kingdom'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="review-postal"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'W1U 6PL'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Employment info.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="review-employmentStatus"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Employed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="review-employer"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Acme Corp'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="review-income"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'$50,000 - $100,000'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 7: Submit from the Review Page</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 7: submit application from review page'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#B392F0">    completeAllSteps</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-submit"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="form-status"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'success'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'submitted successfully'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 8: Step 2 Validation Prevents Advancing</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 8: step 2 validation prevents advancing when empty'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Pass step 1.</span></span>
+<span class="line"><span style="color:#B392F0">    fillStep1</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-next-1"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Click Next on step 2 without filling anything.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-next-2"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Still on step 2.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="step-2"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="step-3"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Errors appear.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="error-street"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="error-city"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="error-country"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="error-postal"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"kata":{"slug":"14-multi-step-forms","number":14,"title":"Multi-Step Forms","phaseSlug":"phase-02-forms","phaseNumber":2,"phaseName":"Forms","readmeRaw":"$3","hasPlayground":true,"playwrightFiles":[{"filename":"multi-step-forms.spec.ts","content":"$4"}],"cypressFiles":[{"filename":"multi-step-forms.cy.ts","content":"$5"}]},"prev":{"slug":"13-form-validation","number":13,"title":"Form Validation","phaseSlug":"phase-02-forms","phaseNumber":2,"phaseName":"Forms","readmeRaw":"$6","hasPlayground":true,"playwrightFiles":[{"filename":"form-validation.spec.ts","content":"$7"}],"cypressFiles":[{"filename":"form-validation.cy.ts","content":"$8"}]},"next":{"slug":"15-file-upload","number":15,"title":"File Upload","phaseSlug":"phase-02-forms","phaseNumber":2,"phaseName":"Forms","readmeRaw":"$9","hasPlayground":true,"playwrightFiles":[{"filename":"file-upload.spec.ts","content":"$a"}],"cypressFiles":[{"filename":"file-upload.cy.ts","content":"$b"}]},"playwrightHtml":[{"filename":"multi-step-forms.spec.ts","html":"$c"}],"cypressHtml":[{"filename":"multi-step-forms.cy.ts","html":"$d"}]}],["$Le"],"$Lf"]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"iDtrTKWIN4zzRgDRiiDd2"}
+e:["$","script","script-0",{"src":"/qa-labs/_next/static/chunks/03nvm.8~ftt80.js","async":true}]
+f:["$","$L10",null,{"children":["$","$11",null,{"name":"Next.MetadataOutlet","children":"$@12"}]}]
+12:null

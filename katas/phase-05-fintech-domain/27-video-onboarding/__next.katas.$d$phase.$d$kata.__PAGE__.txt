@@ -1,0 +1,2417 @@
+1:"$Sreact.fragment"
+2:I[31749,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js","/qa-labs/_next/static/chunks/03nvm.8~ftt80.js"],"KataPageClient"]
+10:I[49583,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js"],"OutletBoundary"]
+11:"$Sreact.suspense"
+3:T1d5c,# Kata 27: Video Onboarding
+
+## What You Will Learn
+
+- How to test canvas-based UI elements (simulated video feed)
+- How to verify timer-based state changes (countdown, call duration)
+- How to test OTP (one-time password) input flows
+- How to verify connection state transitions (idle, connecting, connected, disconnected)
+- How to test screenshot capture from a canvas element
+- How to use `page.evaluate()` to inspect canvas state
+- How to coordinate multiple async events (timer + animation + user input)
+
+## Prerequisites
+
+- Completed Katas 1-26
+- Understanding of `requestAnimationFrame` and `setInterval` concepts
+- Familiarity with canvas basics (no deep knowledge needed)
+
+## Concepts Explained
+
+### Testing Canvas Elements
+
+```
+Canvas elements (<canvas>) render pixels, not DOM elements.
+You can't query individual shapes drawn on a canvas the way
+you query DOM elements. Instead, you test canvas UIs by:
+
+1. CHECKING SURROUNDING STATE
+   Verify counters, status text, and buttons that change when
+   the canvas is active. For example, a frame counter that
+   increments proves the canvas is being updated.
+
+2. USING toDataURL()
+   canvas.toDataURL() converts the canvas content to a base64
+   image string. You can verify it's not empty, or compare it
+   to a known value (snapshot testing).
+
+3. CHECKING DIMENSIONS
+   Verify the canvas has the expected width and height attributes.
+```
+
+### Testing Timers and Countdowns
+
+```
+Timer-based UIs use setInterval or setTimeout to update values
+over time. Testing strategies:
+
+1. WAIT FOR SPECIFIC VALUES
+   Instead of sleeping for exact durations, wait for the DOM text
+   to contain the expected value. Both Playwright and Cypress
+   retry assertions automatically.
+
+2. USE GENEROUS TIMEOUTS
+   Timers can be slightly off due to browser scheduling. Use
+   timeouts larger than the expected wait time.
+
+3. VERIFY DIRECTION
+   For countdowns, verify the value decreases. For duration
+   timers, verify the value increases.
+```
+
+### Testing OTP Input
+
+```
+OTP inputs are typically 6 separate single-character fields.
+Testing requires:
+
+1. TYPING INTO EACH FIELD INDIVIDUALLY
+   Each field accepts one character and auto-focuses the next.
+
+2. VERIFYING THE OTP CODE
+   The playground displays the OTP code, so tests can read it
+   and enter it into the inputs.
+
+Playwright:
+  const otp = await page.getByTestId('otp-display').textContent();
+  for (let i = 0; i < 6; i++) {
+    await page.getByTestId(`otp-${i + 1}`).fill(otp[i]);
+  }
+
+Cypress:
+  cy.get('[data-testid="otp-display"]').invoke('text').then((otp) => {
+    for (let i = 0; i < 6; i++) {
+      cy.get(`[data-testid="otp-${i + 1}"]`).type(otp[i]);
+    }
+  });
+```
+
+## Playground
+
+The playground is a video call simulation page with:
+
+1. **Canvas Video Feed** — a `<canvas>` element that draws animated colored rectangles using `requestAnimationFrame`. Shows the OTP code and call duration overlaid on the feed.
+
+2. **Call Controls** — "Start Call" and "End Call" buttons. Start Call transitions through Connecting (500ms delay) to Connected.
+
+3. **Connection Status** — badge showing Idle, Connecting..., Connected, or Disconnected.
+
+4. **Call Duration** — increments every second while the call is active (MM:SS format).
+
+5. **Countdown Timer** — counts down from 60 seconds. Auto-ends the call when it reaches zero.
+
+6. **Frame Count** — shows how many animation frames have been drawn.
+
+7. **OTP Verification** — the 6-digit OTP code is shown in the video feed and displayed above the input. Enter the code in 6 individual input fields and click Verify.
+
+8. **Screenshot Capture** — captures the current canvas frame as a PNG image and displays a preview.
+
+9. **Onboarding Status** — tracks whether the video call, OTP verification, and screenshot have been completed. Overall status becomes "Complete" when all three are done.
+
+## Exercises
+
+### Exercise 1: Start Call and Verify Canvas Updates
+Start the call and verify the frame count increases above 0, proving the canvas is being animated.
+
+### Exercise 2: Verify Timer Counts
+Start the call and wait for the call duration to show at least "00:02". Verify the countdown timer shows a value less than "01:00".
+
+### Exercise 3: End Call and Verify Status
+Start the call, then end it. Verify the connection status changes to "Disconnected" and the video call status shows "Completed".
+
+### Exercise 4: Enter OTP and Verify
+Start the call, read the displayed OTP code, enter it into the 6 input fields, click Verify, and confirm the success message appears.
+
+### Exercise 5: Verify Call Duration
+Start the call, wait 3 seconds, then verify the call duration shows at least "00:03".
+
+### Exercise 6: Screenshot Capture Changes State
+Start the call, click the screenshot button, and verify the screenshot preview image appears and the status updates.
+
+### Exercise 7: Verify Connection States
+Verify the initial state is "Idle". Start the call and verify it transitions through "Connecting..." to "Connected". End the call and verify "Disconnected".
+
+### Exercise 8: Complete Full Video Onboarding Flow
+Start the call, verify OTP, capture a screenshot, end the call, and verify the overall status is "Complete".
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/video-onboarding.spec.ts`
+
+### Cypress Solution
+
+See `cypress/video-onboarding.cy.ts`
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Asserting canvas pixel content directly | Canvas pixels are hard to assert deterministically in tests | Assert on surrounding state (frame count, status text) instead |
+| Not waiting for the "Connected" state | The call has a 500ms connecting delay | Wait for connection-status to show "Connected" before interacting |
+| Checking call duration too precisely | Timer ticks may not be perfectly aligned | Use `toContainText` or verify the value is at least the expected amount |
+| Entering OTP before call starts | The OTP code is generated only when the call starts | Start the call first, then read and enter the OTP |
+| Forgetting to end the call for "Complete" status | Overall status requires video call to be "Completed" | End the call after OTP and screenshot to reach "Complete" |
+
+## Quick Reference
+
+### Playwright Canvas and Timer Testing
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Check frame count | `toHaveText()` with regex | `await expect(el).not.toHaveText('0')` |
+| Wait for timer value | `toHaveText()` with timeout | `await expect(el).toHaveText('00:02', { timeout: 5000 })` |
+| Read OTP from page | `textContent()` | `const otp = await el.textContent()` |
+| Fill OTP digit | `locator.fill()` | `await page.getByTestId('otp-1').fill('3')` |
+| Check image visible | `toBeVisible()` | `await expect(img).toBeVisible()` |
+| Check canvas dataURL | `page.evaluate()` | `await page.evaluate(() => canvas.toDataURL())` |
+
+### Cypress Canvas and Timer Testing
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Check frame count | `.should('not.have.text')` | `cy.get(el).should('not.have.text', '0')` |
+| Wait for timer value | `.should('have.text')` | `cy.get(el).should('have.text', '00:02')` |
+| Read OTP from page | `.invoke('text')` | `cy.get(el).invoke('text').then(...)` |
+| Type OTP digit | `cy.get().type()` | `cy.get('[data-testid="otp-1"]').type('3')` |
+| Check image visible | `.should('be.visible')` | `cy.get('img').should('be.visible')` |
+| Check attribute | `.should('have.attr')` | `cy.get('img').should('have.attr', 'src')` |
+4:T27ae,import { test, expect } from '@playwright/test';
+
+// The base URL for our playground page.
+const PLAYGROUND = '/phase-05-fintech-domain/27-video-onboarding/playground/';
+
+// ─── Helper: startAndWaitForCall ──────────────────────────────────────
+// Clicks Start Call and waits for the connection status to show "Connected".
+// The call has a 500ms connecting delay, so we wait for the text to change.
+async function startAndWaitForCall(page: any) {
+  await page.getByTestId('btn-start-call').click();
+  await expect(page.getByTestId('connection-status')).toHaveText('Connected', { timeout: 3000 });
+}
+
+// ─── Helper: enterOtp ────────────────────────────────────────────────
+// Reads the displayed OTP code, then fills each digit into the OTP inputs.
+// locator.textContent() returns the element's text as a string.
+// locator.fill(value) clears the input and sets the new value.
+async function enterOtp(page: any) {
+  const otp = await page.getByTestId('otp-display').textContent();
+  for (let i = 0; i < 6; i++) {
+    await page.getByTestId(`otp-${i + 1}`).fill(otp![i]);
+  }
+}
+
+// --------------------------------------------------------------------------
+// Exercise 1: Start Call and Verify Canvas Updates
+// --------------------------------------------------------------------------
+// Start the call and verify the frame count increases, proving animation runs.
+test('exercise 1: start call and verify canvas updates', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify initial frame count is 0.
+  await expect(page.getByTestId('frame-count')).toHaveText('0');
+
+  // Start the call and wait for connection.
+  await startAndWaitForCall(page);
+
+  // Wait for the frame count to increase above 0.
+  // We use a regex that matches any non-zero number.
+  // not.toHaveText('0') retries until the text is no longer "0".
+  await expect(page.getByTestId('frame-count')).not.toHaveText('0', { timeout: 3000 });
+
+  // Verify the canvas element exists and has expected dimensions.
+  const canvas = page.getByTestId('video-canvas');
+  await expect(canvas).toBeVisible();
+  await expect(canvas).toHaveAttribute('width', '400');
+  await expect(canvas).toHaveAttribute('height', '300');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Verify Timer Counts
+// --------------------------------------------------------------------------
+// Start the call and verify the duration timer increases and countdown decreases.
+test('exercise 2: verify timer counts', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+  await startAndWaitForCall(page);
+
+  // Wait for the call duration to reach at least "00:02".
+  // toHaveText() retries until the text matches. We give 5 seconds.
+  await expect(page.getByTestId('call-duration')).toHaveText('00:02', { timeout: 5000 });
+
+  // Verify the countdown timer is less than 01:00.
+  // We read the text content and parse it.
+  const countdownText = await page.getByTestId('countdown-timer').textContent();
+  // Parse "MM:SS" format: extract seconds value.
+  const parts = countdownText!.split(':');
+  const totalSeconds = parseInt(parts[0]) * 60 + parseInt(parts[1]);
+  // The countdown started at 60 and has been running, so it should be less.
+  expect(totalSeconds).toBeLessThan(60);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: End Call and Verify Status
+// --------------------------------------------------------------------------
+// Start the call, then end it. Verify status transitions.
+test('exercise 3: end call and verify status', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+  await startAndWaitForCall(page);
+
+  // Click "End Call".
+  await page.getByTestId('btn-end-call').click();
+
+  // Verify connection status is "Disconnected".
+  await expect(page.getByTestId('connection-status')).toHaveText('Disconnected');
+
+  // Verify the connection status badge has the disconnected CSS class.
+  await expect(page.getByTestId('connection-status')).toHaveClass(/status-disconnected/);
+
+  // Verify the video call status shows "Completed".
+  await expect(page.getByTestId('status-video-call')).toHaveText('Completed');
+
+  // Verify "Start Call" is re-enabled and "End Call" is disabled.
+  await expect(page.getByTestId('btn-start-call')).toBeEnabled();
+  await expect(page.getByTestId('btn-end-call')).toBeDisabled();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Enter OTP and Verify
+// --------------------------------------------------------------------------
+// Read the OTP, enter it, click Verify, and confirm success.
+test('exercise 4: enter OTP and verify', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+  await startAndWaitForCall(page);
+
+  // Read the OTP code displayed on the page.
+  const otp = await page.getByTestId('otp-display').textContent();
+  // The OTP should be 6 digits.
+  expect(otp).toMatch(/^\d{6}$/);
+
+  // Enter each digit into the individual OTP input fields.
+  await enterOtp(page);
+
+  // Click the Verify button.
+  await page.getByTestId('btn-verify-otp').click();
+
+  // Verify success message appears.
+  await expect(page.getByTestId('otp-success')).toBeVisible();
+  await expect(page.getByTestId('otp-success')).toHaveText('OTP verified successfully!');
+
+  // Verify the OTP verified status updates.
+  await expect(page.getByTestId('status-otp-verified')).toHaveText('Yes');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Verify Call Duration
+// --------------------------------------------------------------------------
+// Start the call, wait 3 seconds, then verify duration.
+test('exercise 5: verify call duration', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+  await startAndWaitForCall(page);
+
+  // Wait for the call duration to reach at least "00:03".
+  // toHaveText() retries until the text matches the expected value.
+  await expect(page.getByTestId('call-duration')).toHaveText('00:03', { timeout: 6000 });
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Screenshot Capture Changes State
+// --------------------------------------------------------------------------
+// Start the call, capture a screenshot, verify preview and status.
+test('exercise 6: screenshot capture changes state', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+  await startAndWaitForCall(page);
+
+  // Verify initial screenshot status.
+  await expect(page.getByTestId('screenshot-status')).toHaveText('No screenshot taken');
+  await expect(page.getByTestId('status-screenshot')).toHaveText('No');
+
+  // Click the screenshot button.
+  await page.getByTestId('btn-screenshot').click();
+
+  // Verify the screenshot preview image appears.
+  // toBeVisible() retries until the element is visible in the DOM.
+  await expect(page.getByTestId('screenshot-preview')).toBeVisible();
+
+  // Verify the preview image has a data URL src (base64 PNG).
+  // toHaveAttribute(name, value) checks the element's attribute matches.
+  await expect(page.getByTestId('screenshot-preview')).toHaveAttribute('src', /^data:image\/png/);
+
+  // Verify status text updates.
+  await expect(page.getByTestId('screenshot-status')).toHaveText('Screenshot captured');
+  await expect(page.getByTestId('status-screenshot')).toHaveText('Yes');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Verify Connection States
+// --------------------------------------------------------------------------
+// Walk through all connection states: Idle -> Connecting -> Connected -> Disconnected.
+test('exercise 7: verify connection states', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Initial state: Idle.
+  await expect(page.getByTestId('connection-status')).toHaveText('Idle');
+  await expect(page.getByTestId('connection-status')).toHaveClass(/status-idle/);
+
+  // Click Start Call — should transition to "Connecting...".
+  await page.getByTestId('btn-start-call').click();
+  await expect(page.getByTestId('connection-status')).toHaveText('Connecting...');
+  await expect(page.getByTestId('connection-status')).toHaveClass(/status-connecting/);
+
+  // Wait for "Connected".
+  await expect(page.getByTestId('connection-status')).toHaveText('Connected', { timeout: 3000 });
+  await expect(page.getByTestId('connection-status')).toHaveClass(/status-connected/);
+
+  // End the call — should show "Disconnected".
+  await page.getByTestId('btn-end-call').click();
+  await expect(page.getByTestId('connection-status')).toHaveText('Disconnected');
+  await expect(page.getByTestId('connection-status')).toHaveClass(/status-disconnected/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Complete Full Video Onboarding Flow
+// --------------------------------------------------------------------------
+// Start call, verify OTP, capture screenshot, end call, verify "Complete".
+test('exercise 8: complete full video onboarding flow', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+  await startAndWaitForCall(page);
+
+  // Verify OTP.
+  await enterOtp(page);
+  await page.getByTestId('btn-verify-otp').click();
+  await expect(page.getByTestId('otp-success')).toBeVisible();
+
+  // Capture screenshot.
+  await page.getByTestId('btn-screenshot').click();
+  await expect(page.getByTestId('screenshot-preview')).toBeVisible();
+
+  // End the call.
+  await page.getByTestId('btn-end-call').click();
+  await expect(page.getByTestId('connection-status')).toHaveText('Disconnected');
+
+  // Verify all individual statuses.
+  await expect(page.getByTestId('status-video-call')).toHaveText('Completed');
+  await expect(page.getByTestId('status-otp-verified')).toHaveText('Yes');
+  await expect(page.getByTestId('status-screenshot')).toHaveText('Yes');
+
+  // Verify overall status is "Complete".
+  await expect(page.getByTestId('overall-status')).toHaveText('Complete');
+});
+5:T22de,const PLAYGROUND = '/phase-05-fintech-domain/27-video-onboarding/playground/';
+
+// ─── Helper: startAndWaitForCall ──────────────────────────────────────
+// Clicks Start Call and waits for the connection status to show "Connected".
+// The call has a 500ms connecting delay before it transitions.
+function startAndWaitForCall() {
+  cy.get('[data-testid="btn-start-call"]').click();
+  cy.get('[data-testid="connection-status"]', { timeout: 3000 })
+    .should('have.text', 'Connected');
+}
+
+// ─── Helper: enterOtp ────────────────────────────────────────────────
+// Reads the displayed OTP code, then types each digit into the OTP inputs.
+// cy.get().invoke('text') yields the element's text content.
+// .then(callback) runs after the text is retrieved.
+function enterOtp() {
+  cy.get('[data-testid="otp-display"]').invoke('text').then((otp) => {
+    for (let i = 0; i < 6; i++) {
+      cy.get(`[data-testid="otp-${i + 1}"]`).type(otp[i]);
+    }
+  });
+}
+
+describe('Kata 27: Video Onboarding', () => {
+
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Start Call and Verify Canvas Updates
+  // --------------------------------------------------------------------------
+  // Start the call and verify the frame count increases above 0.
+  it('exercise 1: start call and verify canvas updates', () => {
+    // Verify initial frame count is 0.
+    cy.get('[data-testid="frame-count"]').should('have.text', '0');
+
+    // Start the call.
+    startAndWaitForCall();
+
+    // Wait for frame count to be non-zero.
+    // .should('not.have.text', '0') retries until the text changes.
+    cy.get('[data-testid="frame-count"]', { timeout: 3000 })
+      .should('not.have.text', '0');
+
+    // Verify the canvas element is visible and has expected dimensions.
+    cy.get('[data-testid="video-canvas"]')
+      .should('be.visible')
+      .and('have.attr', 'width', '400')
+      .and('have.attr', 'height', '300');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Verify Timer Counts
+  // --------------------------------------------------------------------------
+  // Start the call and verify duration increases and countdown decreases.
+  it('exercise 2: verify timer counts', () => {
+    startAndWaitForCall();
+
+    // Wait for call duration to reach "00:02".
+    // .should('have.text', '00:02') retries until the text matches.
+    cy.get('[data-testid="call-duration"]', { timeout: 5000 })
+      .should('have.text', '00:02');
+
+    // Verify the countdown timer has decreased from 01:00.
+    cy.get('[data-testid="countdown-timer"]').invoke('text').then((text) => {
+      const parts = text.split(':');
+      const totalSeconds = parseInt(parts[0]) * 60 + parseInt(parts[1]);
+      expect(totalSeconds).to.be.lessThan(60);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: End Call and Verify Status
+  // --------------------------------------------------------------------------
+  // Start the call, then end it. Verify status changes.
+  it('exercise 3: end call and verify status', () => {
+    startAndWaitForCall();
+
+    // End the call.
+    cy.get('[data-testid="btn-end-call"]').click();
+
+    // Verify connection status.
+    cy.get('[data-testid="connection-status"]')
+      .should('have.text', 'Disconnected')
+      .and('have.class', 'status-disconnected');
+
+    // Verify video call status.
+    cy.get('[data-testid="status-video-call"]').should('have.text', 'Completed');
+
+    // Verify button states.
+    cy.get('[data-testid="btn-start-call"]').should('not.be.disabled');
+    cy.get('[data-testid="btn-end-call"]').should('be.disabled');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Enter OTP and Verify
+  // --------------------------------------------------------------------------
+  // Read the OTP, enter it, click Verify, confirm success.
+  it('exercise 4: enter OTP and verify', () => {
+    startAndWaitForCall();
+
+    // Verify the OTP code is 6 digits.
+    cy.get('[data-testid="otp-display"]').invoke('text')
+      .should('match', /^\d{6}$/);
+
+    // Enter the OTP digits.
+    enterOtp();
+
+    // Click Verify.
+    cy.get('[data-testid="btn-verify-otp"]').click();
+
+    // Verify success message appears.
+    // .should('be.visible') checks the element is displayed.
+    cy.get('[data-testid="otp-success"]')
+      .should('be.visible')
+      .and('have.text', 'OTP verified successfully!');
+
+    // Verify status updates.
+    cy.get('[data-testid="status-otp-verified"]').should('have.text', 'Yes');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Verify Call Duration
+  // --------------------------------------------------------------------------
+  // Wait 3 seconds and verify the duration shows at least "00:03".
+  it('exercise 5: verify call duration', () => {
+    startAndWaitForCall();
+
+    // Wait for duration to reach "00:03".
+    cy.get('[data-testid="call-duration"]', { timeout: 6000 })
+      .should('have.text', '00:03');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Screenshot Capture Changes State
+  // --------------------------------------------------------------------------
+  // Capture a screenshot and verify preview and status update.
+  it('exercise 6: screenshot capture changes state', () => {
+    startAndWaitForCall();
+
+    // Verify initial state.
+    cy.get('[data-testid="screenshot-status"]').should('have.text', 'No screenshot taken');
+    cy.get('[data-testid="status-screenshot"]').should('have.text', 'No');
+
+    // Capture screenshot.
+    cy.get('[data-testid="btn-screenshot"]').click();
+
+    // Verify preview image is visible with a data URL src.
+    // .should('have.attr', 'src') checks the element has the attribute.
+    // .and('match', regex) further validates the attribute value.
+    cy.get('[data-testid="screenshot-preview"]')
+      .should('be.visible')
+      .and('have.attr', 'src')
+      .and('match', /^data:image\/png/);
+
+    // Verify status updates.
+    cy.get('[data-testid="screenshot-status"]').should('have.text', 'Screenshot captured');
+    cy.get('[data-testid="status-screenshot"]').should('have.text', 'Yes');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Verify Connection States
+  // --------------------------------------------------------------------------
+  // Walk through: Idle -> Connecting -> Connected -> Disconnected.
+  it('exercise 7: verify connection states', () => {
+    // Initial: Idle.
+    cy.get('[data-testid="connection-status"]')
+      .should('have.text', 'Idle')
+      .and('have.class', 'status-idle');
+
+    // Start Call: should show Connecting first.
+    cy.get('[data-testid="btn-start-call"]').click();
+    cy.get('[data-testid="connection-status"]')
+      .should('have.text', 'Connecting...')
+      .and('have.class', 'status-connecting');
+
+    // Then Connected.
+    cy.get('[data-testid="connection-status"]', { timeout: 3000 })
+      .should('have.text', 'Connected')
+      .and('have.class', 'status-connected');
+
+    // End Call: Disconnected.
+    cy.get('[data-testid="btn-end-call"]').click();
+    cy.get('[data-testid="connection-status"]')
+      .should('have.text', 'Disconnected')
+      .and('have.class', 'status-disconnected');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Complete Full Video Onboarding Flow
+  // --------------------------------------------------------------------------
+  // Start call, verify OTP, screenshot, end call, verify "Complete".
+  it('exercise 8: complete full video onboarding flow', () => {
+    startAndWaitForCall();
+
+    // Verify OTP.
+    enterOtp();
+    cy.get('[data-testid="btn-verify-otp"]').click();
+    cy.get('[data-testid="otp-success"]').should('be.visible');
+
+    // Capture screenshot.
+    cy.get('[data-testid="btn-screenshot"]').click();
+    cy.get('[data-testid="screenshot-preview"]').should('be.visible');
+
+    // End the call.
+    cy.get('[data-testid="btn-end-call"]').click();
+    cy.get('[data-testid="connection-status"]').should('have.text', 'Disconnected');
+
+    // Verify all statuses.
+    cy.get('[data-testid="status-video-call"]').should('have.text', 'Completed');
+    cy.get('[data-testid="status-otp-verified"]').should('have.text', 'Yes');
+    cy.get('[data-testid="status-screenshot"]').should('have.text', 'Yes');
+
+    // Verify overall status is "Complete".
+    cy.get('[data-testid="overall-status"]').should('have.text', 'Complete');
+  });
+});
+6:T1da2,# Kata 26: KYC Onboarding Flow
+
+## What You Will Learn
+
+- How to test multi-step wizard/onboarding flows end-to-end
+- How to verify progress indicators update correctly per step
+- How to navigate back and forth between steps without losing data
+- How to simulate file uploads in Playwright and Cypress
+- How to verify review/summary pages reflect previously entered data
+- How to validate required fields at each step before advancing
+- How to test both success and failure outcomes of a form submission
+
+## Prerequisites
+
+- Completed Katas 1-25 (especially form and navigation katas)
+- Understanding of multi-step form patterns
+- Familiarity with file input handling in browser tests
+
+## Concepts Explained
+
+### Multi-Step Onboarding Flows
+
+```
+KYC (Know Your Customer) onboarding is a common fintech pattern
+where users complete identity verification in a guided, multi-step flow.
+
+Typical steps:
+  1. Welcome / introduction page
+  2. Personal information form (name, email, DOB, country)
+  3. Document upload (passport, driver's license, etc.)
+  4. Review summary — user confirms all entered data
+  5. Submission result — success or failure
+
+Testing challenges:
+  - Each step has its own validation rules
+  - Data entered in step 2 must appear correctly in step 4
+  - Navigation backward should preserve previously entered data
+  - Progress indicators must reflect the current step
+  - The final submission may succeed or fail
+```
+
+### Simulating File Uploads
+
+```
+Playwright:
+  // setInputFiles() sets files on a file input element.
+  // This simulates the user selecting a file in the file picker dialog.
+  await page.getByTestId('file-input').setInputFiles({
+    name: 'passport.pdf',
+    mimeType: 'application/pdf',
+    buffer: Buffer.from('fake-pdf-content')
+  });
+
+Cypress:
+  // selectFile() is a Cypress command that simulates file selection.
+  // It creates a File object and triggers the change event on the input.
+  cy.get('[data-testid="file-input"]').selectFile({
+    contents: Cypress.Buffer.from('fake-pdf-content'),
+    fileName: 'passport.pdf',
+    mimeType: 'application/pdf'
+  }, { force: true });
+```
+
+### Testing Data Flow Across Steps
+
+```
+A key testing concern in multi-step flows: does data entered in
+earlier steps appear correctly on the review page?
+
+Pattern:
+  1. Fill in fields on step 2 with known values
+  2. Proceed to step 3 (document upload)
+  3. Proceed to step 4 (review)
+  4. Assert that each review field matches what was entered
+
+This catches bugs where:
+  - Field values are not carried forward
+  - Field values are swapped or truncated
+  - Select dropdown shows the value code instead of the display text
+```
+
+## Playground
+
+The playground is a complete KYC onboarding application with five steps:
+
+1. **Welcome** — introduction page with a "Get Started" button
+2. **Personal Info** — form with first name, last name, email, DOB, country
+3. **Document Upload** — document type selector and file upload area
+4. **Review** — summary table showing all entered data
+5. **Result** — success or failure message after submission
+
+Features:
+- Progress bar with 5 numbered steps (completed / active / pending states)
+- Validation errors shown per step when required fields are empty
+- Upload area that shows the selected filename
+- Review table that auto-populates from entered data
+- Success result with random reference number
+- Failure result triggered by email containing "fail"
+
+## Exercises
+
+### Exercise 1: Complete Happy Path End-to-End
+Walk through all 5 steps: click Get Started, fill personal info, upload a document, review, and submit. Verify the success result page appears.
+
+### Exercise 2: Verify Each Step Content
+Navigate through each step and verify its heading and key content elements are visible.
+
+### Exercise 3: Navigate Back and Forth
+Go to step 2, fill data, go to step 3, then navigate back to step 2. Verify the previously entered data is still present.
+
+### Exercise 4: Verify Review Page Data
+Fill in personal info and upload a document, then verify the review page shows every field value correctly.
+
+### Exercise 5: Submit and Verify Success
+Complete the flow and verify the success icon, title, message, and reference number appear.
+
+### Exercise 6: Validate Required Fields Per Step
+Try to advance from step 2 without filling fields. Verify validation errors appear. Try to advance from step 3 without uploading. Verify the upload error appears.
+
+### Exercise 7: Verify Progress Indicator
+At each step, verify the progress bar highlights the correct step as "active" and marks previous steps as "completed".
+
+### Exercise 8: Test With Different Applicant Data
+Run the flow twice with different data sets (different names, emails, countries). Verify the review page reflects each data set correctly. Use an email containing "fail" to trigger the failure result.
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/kyc-onboarding-flow.spec.ts`
+
+### Cypress Solution
+
+See `cypress/kyc-onboarding-flow.cy.ts`
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Not waiting for step transition | Steps change via CSS class toggle; asserting too early may target the wrong step | Wait for the target step's `data-testid` to be visible |
+| Using `fill()` on a hidden file input | The file input is hidden; `fill()` doesn't work for file inputs | Use `setInputFiles()` (Playwright) or `selectFile()` (Cypress) |
+| Checking review data before navigating to step 4 | Review table is populated only when step 4 becomes active | Navigate to step 4 first, then assert review values |
+| Not resetting state between tests | Each test should start fresh; leftover data from a previous test can cause false passes | Navigate to the playground URL at the start of each test |
+| Forgetting the submit delay | Submission has a 1-second simulated delay | Wait for the result step to be visible before asserting |
+
+## Quick Reference
+
+### Playwright Multi-Step Flow Testing
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Click button | `locator.click()` | `await page.getByTestId('btn-start').click()` |
+| Fill input | `locator.fill()` | `await page.getByTestId('input-first-name').fill('John')` |
+| Select option | `locator.selectOption()` | `await page.getByTestId('select-country').selectOption('US')` |
+| Upload file | `locator.setInputFiles()` | `await page.getByTestId('file-input').setInputFiles(...)` |
+| Check visibility | `expect(locator).toBeVisible()` | `await expect(page.getByTestId('step-review')).toBeVisible()` |
+| Check text | `expect(locator).toHaveText()` | `await expect(page.getByTestId('review-email')).toHaveText('a@b.com')` |
+| Check class | `expect(locator).toHaveClass()` | `await expect(step).toHaveClass(/active/)` |
+
+### Cypress Multi-Step Flow Testing
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Click button | `cy.get().click()` | `cy.get('[data-testid="btn-start"]').click()` |
+| Fill input | `cy.get().type()` | `cy.get('[data-testid="input-first-name"]').type('John')` |
+| Select option | `cy.get().select()` | `cy.get('[data-testid="select-country"]').select('US')` |
+| Upload file | `cy.get().selectFile()` | `cy.get('[data-testid="file-input"]').selectFile(...)` |
+| Check visibility | `.should('be.visible')` | `cy.get('[data-testid="step-review"]').should('be.visible')` |
+| Check text | `.should('have.text')` | `cy.get('[data-testid="review-email"]').should('have.text', 'a@b.com')` |
+| Check class | `.should('have.class')` | `cy.get('[data-testid="progress-step-2"]').should('have.class', 'active')` |
+7:T3848,import { test, expect } from '@playwright/test';
+
+// The base URL for our playground page. All tests navigate here first.
+const PLAYGROUND = '/phase-05-fintech-domain/26-kyc-onboarding-flow/playground/';
+
+// ─── Helper: fillPersonalInfo ────────────────────────────────────────
+// Fills the personal info form (step 2) with the given data.
+// locator.fill(value) clears the input first, then types the value.
+// locator.selectOption(value) selects the <option> with the matching value attribute.
+async function fillPersonalInfo(page: any, data: {
+  firstName: string; lastName: string; email: string; dob: string; country: string;
+}) {
+  await page.getByTestId('input-first-name').fill(data.firstName);
+  await page.getByTestId('input-last-name').fill(data.lastName);
+  await page.getByTestId('input-email').fill(data.email);
+  await page.getByTestId('input-dob').fill(data.dob);
+  await page.getByTestId('select-country').selectOption(data.country);
+}
+
+// ─── Helper: uploadDocument ──────────────────────────────────────────
+// Selects a document type and simulates a file upload.
+// setInputFiles() accepts an object with name, mimeType, and buffer
+// to create a synthetic file without needing a real file on disk.
+async function uploadDocument(page: any, docType: string = 'passport', fileName: string = 'passport.pdf') {
+  await page.getByTestId('select-doc-type').selectOption(docType);
+  await page.getByTestId('file-input').setInputFiles({
+    name: fileName,
+    mimeType: 'application/pdf',
+    buffer: Buffer.from('fake-pdf-content')
+  });
+}
+
+// Default test data used across exercises.
+const DEFAULT_DATA = {
+  firstName: 'John',
+  lastName: 'Doe',
+  email: 'john.doe@example.com',
+  dob: '1990-05-15',
+  country: 'US'
+};
+
+// --------------------------------------------------------------------------
+// Exercise 1: Complete Happy Path End-to-End
+// --------------------------------------------------------------------------
+// Walk through all 5 steps and verify the success result page appears.
+test('exercise 1: complete happy path end-to-end', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Step 1: Welcome — click "Get Started" to begin.
+  await expect(page.getByTestId('step-welcome')).toBeVisible();
+  await page.getByTestId('btn-start').click();
+
+  // Step 2: Personal Info — fill the form and click "Next".
+  await expect(page.getByTestId('step-personal')).toBeVisible();
+  await fillPersonalInfo(page, DEFAULT_DATA);
+  await page.getByTestId('btn-next-personal').click();
+
+  // Step 3: Document Upload — select type, upload file, click "Next".
+  await expect(page.getByTestId('step-document')).toBeVisible();
+  await uploadDocument(page);
+  await page.getByTestId('btn-next-document').click();
+
+  // Step 4: Review — verify the review step is visible, then submit.
+  await expect(page.getByTestId('step-review')).toBeVisible();
+  await page.getByTestId('btn-submit').click();
+
+  // Step 5: Result — wait for the result to appear (1s submit delay).
+  // toBeVisible() retries until the element is visible or the timeout expires.
+  await expect(page.getByTestId('step-result')).toBeVisible({ timeout: 3000 });
+  await expect(page.getByTestId('result-title')).toHaveText('Application Submitted');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Verify Each Step Content
+// --------------------------------------------------------------------------
+// Navigate through each step and verify its heading and elements.
+test('exercise 2: verify each step content', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Step 1: Welcome — should show the welcome heading.
+  await expect(page.getByTestId('step-welcome')).toBeVisible();
+  await expect(page.getByTestId('step-welcome')).toContainText('Welcome to KYC Onboarding');
+  await page.getByTestId('btn-start').click();
+
+  // Step 2: Personal Info — should show form fields.
+  await expect(page.getByTestId('step-personal')).toBeVisible();
+  await expect(page.getByTestId('input-first-name')).toBeVisible();
+  await expect(page.getByTestId('input-email')).toBeVisible();
+  await expect(page.getByTestId('select-country')).toBeVisible();
+
+  // Fill and advance so we can check step 3.
+  await fillPersonalInfo(page, DEFAULT_DATA);
+  await page.getByTestId('btn-next-personal').click();
+
+  // Step 3: Document Upload — should show upload area.
+  await expect(page.getByTestId('step-document')).toBeVisible();
+  await expect(page.getByTestId('upload-area')).toBeVisible();
+  await expect(page.getByTestId('select-doc-type')).toBeVisible();
+
+  // Fill and advance so we can check step 4.
+  await uploadDocument(page);
+  await page.getByTestId('btn-next-document').click();
+
+  // Step 4: Review — should show the review table.
+  await expect(page.getByTestId('step-review')).toBeVisible();
+  await expect(page.getByTestId('review-table')).toBeVisible();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Navigate Back and Forth
+// --------------------------------------------------------------------------
+// Go forward, then back, and verify entered data is preserved.
+test('exercise 3: navigate back and forth', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Go to step 2 and fill data.
+  await page.getByTestId('btn-start').click();
+  await fillPersonalInfo(page, DEFAULT_DATA);
+
+  // Advance to step 3.
+  await page.getByTestId('btn-next-personal').click();
+  await expect(page.getByTestId('step-document')).toBeVisible();
+
+  // Navigate back to step 2.
+  await page.getByTestId('btn-back-document').click();
+  await expect(page.getByTestId('step-personal')).toBeVisible();
+
+  // Verify the data is still present.
+  // toHaveValue(value) checks the current value of an input element.
+  await expect(page.getByTestId('input-first-name')).toHaveValue('John');
+  await expect(page.getByTestId('input-last-name')).toHaveValue('Doe');
+  await expect(page.getByTestId('input-email')).toHaveValue('john.doe@example.com');
+  await expect(page.getByTestId('select-country')).toHaveValue('US');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Verify Review Page Data
+// --------------------------------------------------------------------------
+// Fill in all data, then verify the review page shows every field correctly.
+test('exercise 4: verify review page data', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Complete steps 1-3.
+  await page.getByTestId('btn-start').click();
+  await fillPersonalInfo(page, DEFAULT_DATA);
+  await page.getByTestId('btn-next-personal').click();
+  await uploadDocument(page, 'passport', 'my-passport.pdf');
+  await page.getByTestId('btn-next-document').click();
+
+  // Verify each review field matches the entered data.
+  // toHaveText(text) checks the element's textContent matches exactly.
+  await expect(page.getByTestId('review-first-name')).toHaveText('John');
+  await expect(page.getByTestId('review-last-name')).toHaveText('Doe');
+  await expect(page.getByTestId('review-email')).toHaveText('john.doe@example.com');
+  await expect(page.getByTestId('review-dob')).toHaveText('1990-05-15');
+  await expect(page.getByTestId('review-country')).toHaveText('United States');
+  await expect(page.getByTestId('review-doc-type')).toHaveText('Passport');
+  await expect(page.getByTestId('review-doc-file')).toHaveText('my-passport.pdf');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Submit and Verify Success
+// --------------------------------------------------------------------------
+// Complete the flow and verify all elements of the success result page.
+test('exercise 5: submit and verify success', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Complete all steps.
+  await page.getByTestId('btn-start').click();
+  await fillPersonalInfo(page, DEFAULT_DATA);
+  await page.getByTestId('btn-next-personal').click();
+  await uploadDocument(page);
+  await page.getByTestId('btn-next-document').click();
+  await page.getByTestId('btn-submit').click();
+
+  // Wait for the result step to appear after the 1s submission delay.
+  await expect(page.getByTestId('step-result')).toBeVisible({ timeout: 3000 });
+
+  // Verify the success result elements.
+  await expect(page.getByTestId('result-title')).toHaveText('Application Submitted');
+  await expect(page.getByTestId('result-message')).toContainText('submitted successfully');
+
+  // Verify the reference number starts with "KYC-".
+  // toContainText(text) checks that the element's text contains the given substring.
+  await expect(page.getByTestId('result-ref')).toContainText('Reference: KYC-');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Validate Required Fields Per Step
+// --------------------------------------------------------------------------
+// Try to advance without filling fields and verify validation errors appear.
+test('exercise 6: validate required fields per step', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Go to step 2 (Personal Info).
+  await page.getByTestId('btn-start').click();
+
+  // Click "Next" without filling anything.
+  await page.getByTestId('btn-next-personal').click();
+
+  // Verify we're still on step 2 (didn't advance).
+  await expect(page.getByTestId('step-personal')).toBeVisible();
+
+  // Verify all error messages are now visible.
+  // The 'visible' CSS class is added to show each error message.
+  await expect(page.getByTestId('error-first-name')).toBeVisible();
+  await expect(page.getByTestId('error-last-name')).toBeVisible();
+  await expect(page.getByTestId('error-email')).toBeVisible();
+  await expect(page.getByTestId('error-dob')).toBeVisible();
+  await expect(page.getByTestId('error-country')).toBeVisible();
+
+  // Fill the fields and advance to step 3.
+  await fillPersonalInfo(page, DEFAULT_DATA);
+  await page.getByTestId('btn-next-personal').click();
+  await expect(page.getByTestId('step-document')).toBeVisible();
+
+  // Click "Next" on step 3 without selecting doc type or uploading.
+  await page.getByTestId('btn-next-document').click();
+
+  // Verify we're still on step 3 and errors are shown.
+  await expect(page.getByTestId('step-document')).toBeVisible();
+  await expect(page.getByTestId('error-doc-type')).toBeVisible();
+  await expect(page.getByTestId('error-upload')).toBeVisible();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Verify Progress Indicator
+// --------------------------------------------------------------------------
+// At each step, verify the progress bar highlights the correct step.
+test('exercise 7: verify progress indicator', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Step 1: only step 1 is active, none completed.
+  // toHaveClass(/regex/) checks that the element's class attribute matches the regex.
+  await expect(page.getByTestId('progress-step-1')).toHaveClass(/active/);
+  await expect(page.getByTestId('progress-step-2')).not.toHaveClass(/active|completed/);
+
+  // Move to step 2.
+  await page.getByTestId('btn-start').click();
+
+  // Step 2: step 1 is completed, step 2 is active.
+  await expect(page.getByTestId('progress-step-1')).toHaveClass(/completed/);
+  await expect(page.getByTestId('progress-step-2')).toHaveClass(/active/);
+  await expect(page.getByTestId('progress-step-3')).not.toHaveClass(/active|completed/);
+
+  // Move to step 3.
+  await fillPersonalInfo(page, DEFAULT_DATA);
+  await page.getByTestId('btn-next-personal').click();
+
+  // Step 3: steps 1-2 completed, step 3 active.
+  await expect(page.getByTestId('progress-step-1')).toHaveClass(/completed/);
+  await expect(page.getByTestId('progress-step-2')).toHaveClass(/completed/);
+  await expect(page.getByTestId('progress-step-3')).toHaveClass(/active/);
+
+  // Move to step 4.
+  await uploadDocument(page);
+  await page.getByTestId('btn-next-document').click();
+
+  // Step 4: steps 1-3 completed, step 4 active.
+  await expect(page.getByTestId('progress-step-3')).toHaveClass(/completed/);
+  await expect(page.getByTestId('progress-step-4')).toHaveClass(/active/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Test With Different Applicant Data
+// --------------------------------------------------------------------------
+// Run the flow with different data sets and verify the review page.
+// Also test the failure scenario by using an email containing "fail".
+test('exercise 8: test with different applicant data', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Data set 1: normal flow with success.
+  const data1 = {
+    firstName: 'Alice', lastName: 'Smith',
+    email: 'alice@example.com', dob: '1985-12-01', country: 'UK'
+  };
+
+  await page.getByTestId('btn-start').click();
+  await fillPersonalInfo(page, data1);
+  await page.getByTestId('btn-next-personal').click();
+  await uploadDocument(page, 'drivers-license', 'license.jpg');
+  await page.getByTestId('btn-next-document').click();
+
+  // Verify review shows Alice's data.
+  await expect(page.getByTestId('review-first-name')).toHaveText('Alice');
+  await expect(page.getByTestId('review-last-name')).toHaveText('Smith');
+  await expect(page.getByTestId('review-country')).toHaveText('United Kingdom');
+  await expect(page.getByTestId('review-doc-type')).toHaveText("Driver's License");
+
+  // Now reload and test a failure scenario.
+  await page.goto(PLAYGROUND);
+
+  const data2 = {
+    firstName: 'Bob', lastName: 'Fail',
+    email: 'bob@fail.com', dob: '2000-01-01', country: 'DE'
+  };
+
+  await page.getByTestId('btn-start').click();
+  await fillPersonalInfo(page, data2);
+  await page.getByTestId('btn-next-personal').click();
+  await uploadDocument(page, 'national-id', 'id-card.png');
+  await page.getByTestId('btn-next-document').click();
+  await page.getByTestId('btn-submit').click();
+
+  // Verify the failure result page.
+  await expect(page.getByTestId('step-result')).toBeVisible({ timeout: 3000 });
+  await expect(page.getByTestId('result-title')).toHaveText('Verification Failed');
+  await expect(page.getByTestId('result-message')).toContainText('could not verify');
+});
+8:T3537,const PLAYGROUND = '/phase-05-fintech-domain/26-kyc-onboarding-flow/playground/';
+
+// ─── Helper: fillPersonalInfo ────────────────────────────────────────
+// Fills the personal info form (step 2) with the given data.
+// cy.get().clear().type() clears any existing value and types new text.
+// cy.get().select(value) selects the <option> with the matching value.
+function fillPersonalInfo(data: {
+  firstName: string; lastName: string; email: string; dob: string; country: string;
+}) {
+  cy.get('[data-testid="input-first-name"]').clear().type(data.firstName);
+  cy.get('[data-testid="input-last-name"]').clear().type(data.lastName);
+  cy.get('[data-testid="input-email"]').clear().type(data.email);
+  cy.get('[data-testid="input-dob"]').clear().type(data.dob);
+  cy.get('[data-testid="select-country"]').select(data.country);
+}
+
+// ─── Helper: uploadDocument ──────────────────────────────────────────
+// Selects a document type and simulates a file upload.
+// cy.get().selectFile() creates a synthetic file and triggers the file input's change event.
+// { force: true } is needed because the file input is hidden (display:none).
+function uploadDocument(docType: string = 'passport', fileName: string = 'passport.pdf') {
+  cy.get('[data-testid="select-doc-type"]').select(docType);
+  cy.get('[data-testid="file-input"]').selectFile({
+    contents: Cypress.Buffer.from('fake-pdf-content'),
+    fileName: fileName,
+    mimeType: 'application/pdf'
+  }, { force: true });
+}
+
+// Default test data used across exercises.
+const DEFAULT_DATA = {
+  firstName: 'John',
+  lastName: 'Doe',
+  email: 'john.doe@example.com',
+  dob: '1990-05-15',
+  country: 'US'
+};
+
+describe('Kata 26: KYC Onboarding Flow', () => {
+
+  // beforeEach runs before every test. We navigate to the playground
+  // so each test starts with a fresh page state.
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Complete Happy Path End-to-End
+  // --------------------------------------------------------------------------
+  // Walk through all 5 steps and verify the success result page appears.
+  it('exercise 1: complete happy path end-to-end', () => {
+    // Step 1: Welcome — click "Get Started".
+    cy.get('[data-testid="step-welcome"]').should('be.visible');
+    cy.get('[data-testid="btn-start"]').click();
+
+    // Step 2: Personal Info — fill and click "Next".
+    cy.get('[data-testid="step-personal"]').should('be.visible');
+    fillPersonalInfo(DEFAULT_DATA);
+    cy.get('[data-testid="btn-next-personal"]').click();
+
+    // Step 3: Document Upload — select type, upload, click "Next".
+    cy.get('[data-testid="step-document"]').should('be.visible');
+    uploadDocument();
+    cy.get('[data-testid="btn-next-document"]').click();
+
+    // Step 4: Review — verify visible, then submit.
+    cy.get('[data-testid="step-review"]').should('be.visible');
+    cy.get('[data-testid="btn-submit"]').click();
+
+    // Step 5: Result — wait for the result to appear (1s submit delay).
+    // { timeout: 3000 } gives Cypress extra time to retry the assertion.
+    cy.get('[data-testid="step-result"]', { timeout: 3000 }).should('be.visible');
+    cy.get('[data-testid="result-title"]').should('have.text', 'Application Submitted');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Verify Each Step Content
+  // --------------------------------------------------------------------------
+  // Navigate through each step and verify its heading and key elements.
+  it('exercise 2: verify each step content', () => {
+    // Step 1: Welcome.
+    cy.get('[data-testid="step-welcome"]').should('be.visible')
+      .and('contain.text', 'Welcome to KYC Onboarding');
+    cy.get('[data-testid="btn-start"]').click();
+
+    // Step 2: Personal Info — verify form fields are visible.
+    cy.get('[data-testid="step-personal"]').should('be.visible');
+    cy.get('[data-testid="input-first-name"]').should('be.visible');
+    cy.get('[data-testid="input-email"]').should('be.visible');
+    cy.get('[data-testid="select-country"]').should('be.visible');
+
+    // Fill and advance.
+    fillPersonalInfo(DEFAULT_DATA);
+    cy.get('[data-testid="btn-next-personal"]').click();
+
+    // Step 3: Document Upload — verify upload area is visible.
+    cy.get('[data-testid="step-document"]').should('be.visible');
+    cy.get('[data-testid="upload-area"]').should('be.visible');
+    cy.get('[data-testid="select-doc-type"]').should('be.visible');
+
+    // Fill and advance.
+    uploadDocument();
+    cy.get('[data-testid="btn-next-document"]').click();
+
+    // Step 4: Review — verify the review table is visible.
+    cy.get('[data-testid="step-review"]').should('be.visible');
+    cy.get('[data-testid="review-table"]').should('be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Navigate Back and Forth
+  // --------------------------------------------------------------------------
+  // Go forward, then back, and verify entered data is preserved.
+  it('exercise 3: navigate back and forth', () => {
+    // Go to step 2 and fill data.
+    cy.get('[data-testid="btn-start"]').click();
+    fillPersonalInfo(DEFAULT_DATA);
+
+    // Advance to step 3.
+    cy.get('[data-testid="btn-next-personal"]').click();
+    cy.get('[data-testid="step-document"]').should('be.visible');
+
+    // Navigate back to step 2.
+    cy.get('[data-testid="btn-back-document"]').click();
+    cy.get('[data-testid="step-personal"]').should('be.visible');
+
+    // Verify the data is still present.
+    // .should('have.value', value) checks the input's current value.
+    cy.get('[data-testid="input-first-name"]').should('have.value', 'John');
+    cy.get('[data-testid="input-last-name"]').should('have.value', 'Doe');
+    cy.get('[data-testid="input-email"]').should('have.value', 'john.doe@example.com');
+    cy.get('[data-testid="select-country"]').should('have.value', 'US');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Verify Review Page Data
+  // --------------------------------------------------------------------------
+  // Fill in all data, then verify the review page shows every field correctly.
+  it('exercise 4: verify review page data', () => {
+    cy.get('[data-testid="btn-start"]').click();
+    fillPersonalInfo(DEFAULT_DATA);
+    cy.get('[data-testid="btn-next-personal"]').click();
+    uploadDocument('passport', 'my-passport.pdf');
+    cy.get('[data-testid="btn-next-document"]').click();
+
+    // Verify each review field matches the entered data.
+    cy.get('[data-testid="review-first-name"]').should('have.text', 'John');
+    cy.get('[data-testid="review-last-name"]').should('have.text', 'Doe');
+    cy.get('[data-testid="review-email"]').should('have.text', 'john.doe@example.com');
+    cy.get('[data-testid="review-dob"]').should('have.text', '1990-05-15');
+    cy.get('[data-testid="review-country"]').should('have.text', 'United States');
+    cy.get('[data-testid="review-doc-type"]').should('have.text', 'Passport');
+    cy.get('[data-testid="review-doc-file"]').should('have.text', 'my-passport.pdf');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Submit and Verify Success
+  // --------------------------------------------------------------------------
+  // Complete the flow and verify all elements of the success result page.
+  it('exercise 5: submit and verify success', () => {
+    cy.get('[data-testid="btn-start"]').click();
+    fillPersonalInfo(DEFAULT_DATA);
+    cy.get('[data-testid="btn-next-personal"]').click();
+    uploadDocument();
+    cy.get('[data-testid="btn-next-document"]').click();
+    cy.get('[data-testid="btn-submit"]').click();
+
+    // Wait for the result step (1s submission delay).
+    cy.get('[data-testid="step-result"]', { timeout: 3000 }).should('be.visible');
+    cy.get('[data-testid="result-title"]').should('have.text', 'Application Submitted');
+    cy.get('[data-testid="result-message"]').should('contain.text', 'submitted successfully');
+
+    // Verify the reference number starts with "KYC-".
+    // .should('contain.text', text) checks that the element's text includes the substring.
+    cy.get('[data-testid="result-ref"]').should('contain.text', 'Reference: KYC-');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Validate Required Fields Per Step
+  // --------------------------------------------------------------------------
+  // Try to advance without filling fields and verify validation errors appear.
+  it('exercise 6: validate required fields per step', () => {
+    cy.get('[data-testid="btn-start"]').click();
+
+    // Click "Next" without filling anything.
+    cy.get('[data-testid="btn-next-personal"]').click();
+
+    // Verify we're still on step 2.
+    cy.get('[data-testid="step-personal"]').should('be.visible');
+
+    // Verify all error messages are visible.
+    cy.get('[data-testid="error-first-name"]').should('be.visible');
+    cy.get('[data-testid="error-last-name"]').should('be.visible');
+    cy.get('[data-testid="error-email"]').should('be.visible');
+    cy.get('[data-testid="error-dob"]').should('be.visible');
+    cy.get('[data-testid="error-country"]').should('be.visible');
+
+    // Fill fields and advance to step 3.
+    fillPersonalInfo(DEFAULT_DATA);
+    cy.get('[data-testid="btn-next-personal"]').click();
+    cy.get('[data-testid="step-document"]').should('be.visible');
+
+    // Click "Next" on step 3 without uploading.
+    cy.get('[data-testid="btn-next-document"]').click();
+
+    // Verify we're still on step 3 with errors.
+    cy.get('[data-testid="step-document"]').should('be.visible');
+    cy.get('[data-testid="error-doc-type"]').should('be.visible');
+    cy.get('[data-testid="error-upload"]').should('be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Verify Progress Indicator
+  // --------------------------------------------------------------------------
+  // At each step, verify the progress bar highlights the correct step.
+  it('exercise 7: verify progress indicator', () => {
+    // Step 1: step 1 is active.
+    cy.get('[data-testid="progress-step-1"]').should('have.class', 'active');
+    cy.get('[data-testid="progress-step-2"]').should('not.have.class', 'active')
+      .and('not.have.class', 'completed');
+
+    // Move to step 2.
+    cy.get('[data-testid="btn-start"]').click();
+    cy.get('[data-testid="progress-step-1"]').should('have.class', 'completed');
+    cy.get('[data-testid="progress-step-2"]').should('have.class', 'active');
+    cy.get('[data-testid="progress-step-3"]').should('not.have.class', 'active')
+      .and('not.have.class', 'completed');
+
+    // Move to step 3.
+    fillPersonalInfo(DEFAULT_DATA);
+    cy.get('[data-testid="btn-next-personal"]').click();
+    cy.get('[data-testid="progress-step-1"]').should('have.class', 'completed');
+    cy.get('[data-testid="progress-step-2"]').should('have.class', 'completed');
+    cy.get('[data-testid="progress-step-3"]').should('have.class', 'active');
+
+    // Move to step 4.
+    uploadDocument();
+    cy.get('[data-testid="btn-next-document"]').click();
+    cy.get('[data-testid="progress-step-3"]').should('have.class', 'completed');
+    cy.get('[data-testid="progress-step-4"]').should('have.class', 'active');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Test With Different Applicant Data
+  // --------------------------------------------------------------------------
+  // Run the flow with different data and test the failure scenario.
+  it('exercise 8: test with different applicant data', () => {
+    // Data set 1: Alice, UK, driver's license.
+    const data1 = {
+      firstName: 'Alice', lastName: 'Smith',
+      email: 'alice@example.com', dob: '1985-12-01', country: 'UK'
+    };
+
+    cy.get('[data-testid="btn-start"]').click();
+    fillPersonalInfo(data1);
+    cy.get('[data-testid="btn-next-personal"]').click();
+    uploadDocument('drivers-license', 'license.jpg');
+    cy.get('[data-testid="btn-next-document"]').click();
+
+    // Verify review shows Alice's data.
+    cy.get('[data-testid="review-first-name"]').should('have.text', 'Alice');
+    cy.get('[data-testid="review-last-name"]').should('have.text', 'Smith');
+    cy.get('[data-testid="review-country"]').should('have.text', 'United Kingdom');
+    cy.get('[data-testid="review-doc-type"]').should('have.text', "Driver's License");
+
+    // Reload and test failure scenario.
+    cy.visit(PLAYGROUND);
+
+    const data2 = {
+      firstName: 'Bob', lastName: 'Fail',
+      email: 'bob@fail.com', dob: '2000-01-01', country: 'DE'
+    };
+
+    cy.get('[data-testid="btn-start"]').click();
+    fillPersonalInfo(data2);
+    cy.get('[data-testid="btn-next-personal"]').click();
+    uploadDocument('national-id', 'id-card.png');
+    cy.get('[data-testid="btn-next-document"]').click();
+    cy.get('[data-testid="btn-submit"]').click();
+
+    // Verify the failure result.
+    cy.get('[data-testid="step-result"]', { timeout: 3000 }).should('be.visible');
+    cy.get('[data-testid="result-title"]').should('have.text', 'Verification Failed');
+    cy.get('[data-testid="result-message"]').should('contain.text', 'could not verify');
+  });
+});
+9:T1b71,# Kata 28: Document Verification
+
+## What You Will Learn
+
+- How to test document upload and processing workflows
+- How to wait for asynchronous processing to complete (spinners, loading states)
+- How to verify extracted/auto-filled data from simulated OCR
+- How to test edit-and-confirm flows on extracted data
+- How to verify status transitions across multiple phases
+- How to test error states and retry flows
+- How to simulate invalid documents and verify failure handling
+
+## Prerequisites
+
+- Completed Katas 1-27
+- Understanding of file upload testing from Kata 26
+- Familiarity with async state transitions (loading, success, error)
+
+## Concepts Explained
+
+### Document Verification Workflow
+
+```
+In fintech, document verification typically follows this pattern:
+
+1. UPLOAD — User selects a document type and uploads an image/PDF
+2. PROCESSING — OCR (Optical Character Recognition) extracts text
+3. REVIEW — Extracted fields are shown for user review/correction
+4. CONFIRMED — User confirms the data is correct
+
+Each state has its own UI: upload form, spinner, extracted fields
+form, and confirmation message. Tests must verify each transition.
+```
+
+### Waiting for Async Processing
+
+```
+The OCR processing step takes time (simulated with a 2-second delay).
+Tests must wait for the spinner to disappear and the results to appear.
+
+Playwright:
+  // toBeVisible() retries until the element appears in the DOM.
+  // Use a generous timeout since processing takes 2 seconds.
+  await expect(page.getByTestId('extracted-fields')).toBeVisible({ timeout: 5000 });
+
+Cypress:
+  // .should('be.visible') retries until the assertion passes.
+  cy.get('[data-testid="extracted-fields"]', { timeout: 5000 })
+    .should('be.visible');
+
+Both frameworks automatically retry the assertion until the
+timeout expires, so you don't need explicit sleep/wait calls.
+```
+
+### Testing Editable Extracted Fields
+
+```
+After OCR, extracted fields are pre-filled but editable.
+Tests should:
+  1. Verify the auto-filled values are correct
+  2. Clear a field and type a new value
+  3. Confirm and verify the new value is accepted
+
+This tests a common fintech pattern where OCR may produce
+imperfect results that users need to correct.
+```
+
+## Playground
+
+The playground simulates a document upload + OCR verification flow:
+
+1. **Upload Section** — document type selector, file upload area, and "Process Document" button
+2. **Processing Spinner** — animated spinner with "Extracting text via OCR..." message shown during the 2-second simulated processing delay
+3. **Extracted Fields** — five auto-filled fields (name, DOB, ID number, address, expiry) with a "Confirm Verification" button
+4. **Confirmed Section** — success message after confirmation
+5. **Error Banner** — shown when an "invalid" document is uploaded (filename contains "invalid"), with a "Try Again" button
+
+Status transitions are tracked via:
+- A status badge (Upload / Processing / Review / Confirmed / Failed)
+- Step pills (Upload, Processing, Review, Confirmed) that show completed/active states
+
+OCR results vary by document type (passport, driver's license, national ID) for realistic testing.
+
+## Exercises
+
+### Exercise 1: Upload and Verify Processing Starts
+Select a document type, upload a file, click "Process Document". Verify the spinner appears and the status changes to "Processing".
+
+### Exercise 2: Wait for OCR Results
+Upload and process a document. Wait for the spinner to disappear and the extracted fields to appear. Verify the status changes to "Review".
+
+### Exercise 3: Verify Extracted Fields
+Process a passport document and verify all five extracted fields contain the expected OCR values (name, DOB, ID number, address, expiry).
+
+### Exercise 4: Edit Extracted Field
+After OCR extraction, clear the name field and type a new name. Confirm and verify the flow completes (the edit is accepted).
+
+### Exercise 5: Confirm Verification
+Complete the upload, processing, and review steps. Click "Confirm Verification" and verify the confirmed section appears with the success message.
+
+### Exercise 6: Verify Status Transitions
+Walk through the entire flow and verify the status badge text and step pills change correctly at each phase: Upload -> Processing -> Review -> Confirmed.
+
+### Exercise 7: Test With Invalid Document
+Upload a file whose name contains "invalid". Process it and verify the error banner appears with the failure message and the status shows "Failed".
+
+### Exercise 8: Retry After Failure
+Upload an invalid document, process it (triggers error), then click "Try Again". Verify the page resets to the upload state. Upload a valid document and verify it processes successfully.
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/document-verification.spec.ts`
+
+### Cypress Solution
+
+See `cypress/document-verification.cy.ts`
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Not waiting for processing to complete | The OCR simulation takes 2 seconds; asserting on extracted fields too early will fail | Wait for `extracted-fields` to be visible with `timeout: 5000` |
+| Asserting on the spinner after it disappears | The spinner is hidden after processing; checking it will fail | Assert the spinner is visible during processing, then wait for extracted fields |
+| Forgetting to select a document type | The OCR results depend on the document type selection | Always select a document type before processing |
+| Using the wrong filename for failure testing | Only filenames containing "invalid" trigger the failure path | Use a filename like "invalid-doc.pdf" to trigger errors |
+| Not resetting between retry tests | The retry resets the file input; you must re-upload | After clicking "Try Again", re-select document type and re-upload |
+
+## Quick Reference
+
+### Playwright Document Verification
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Upload file | `setInputFiles()` | `await page.getByTestId('file-input').setInputFiles(...)` |
+| Wait for spinner | `toBeVisible()` | `await expect(spinner).toBeVisible()` |
+| Wait for results | `toBeVisible()` | `await expect(fields).toBeVisible({ timeout: 5000 })` |
+| Check field value | `toHaveValue()` | `await expect(input).toHaveValue('Jane Doe')` |
+| Edit field | `fill()` | `await input.fill('New Name')` |
+| Check status | `toHaveText()` | `await expect(badge).toHaveText('Review')` |
+
+### Cypress Document Verification
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Upload file | `selectFile()` | `cy.get(input).selectFile(...)` |
+| Wait for spinner | `.should('be.visible')` | `cy.get(spinner).should('be.visible')` |
+| Wait for results | `.should('be.visible')` | `cy.get(fields, { timeout: 5000 }).should('be.visible')` |
+| Check field value | `.should('have.value')` | `cy.get(input).should('have.value', 'Jane Doe')` |
+| Edit field | `.clear().type()` | `cy.get(input).clear().type('New Name')` |
+| Check status | `.should('have.text')` | `cy.get(badge).should('have.text', 'Review')` |
+a:T2b48,import { test, expect } from '@playwright/test';
+
+// The base URL for our playground page.
+const PLAYGROUND = '/phase-05-fintech-domain/28-document-verification/playground/';
+
+// ─── Helper: uploadFile ──────────────────────────────────────────────
+// Selects a document type and uploads a simulated file.
+// setInputFiles() creates a synthetic file without needing a real file on disk.
+// The buffer parameter provides fake content for the file.
+async function uploadFile(page: any, docType: string = 'passport', fileName: string = 'passport.pdf') {
+  await page.getByTestId('select-doc-type').selectOption(docType);
+  await page.getByTestId('file-input').setInputFiles({
+    name: fileName,
+    mimeType: 'application/pdf',
+    buffer: Buffer.from('fake-content')
+  });
+}
+
+// ─── Helper: uploadAndProcess ────────────────────────────────────────
+// Uploads a file and clicks the Process button. Optionally waits for
+// the extracted fields to appear (indicating processing is complete).
+async function uploadAndProcess(page: any, docType: string = 'passport', fileName: string = 'passport.pdf', waitForResults: boolean = true) {
+  await uploadFile(page, docType, fileName);
+  await page.getByTestId('btn-process').click();
+  if (waitForResults) {
+    // Wait for the extracted fields section to become visible.
+    // The processing takes 2 seconds, so we allow up to 5 seconds.
+    await expect(page.getByTestId('extracted-fields')).toBeVisible({ timeout: 5000 });
+  }
+}
+
+// --------------------------------------------------------------------------
+// Exercise 1: Upload and Verify Processing Starts
+// --------------------------------------------------------------------------
+// Upload a file, click Process, verify the spinner and status change.
+test('exercise 1: upload and verify processing starts', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify initial status is "Upload".
+  await expect(page.getByTestId('current-status')).toHaveText('Upload');
+
+  // Upload a file.
+  await uploadFile(page);
+
+  // Verify the upload area shows the file is selected.
+  await expect(page.getByTestId('upload-filename')).toHaveText('passport.pdf');
+  await expect(page.getByTestId('upload-area')).toHaveClass(/has-file/);
+
+  // Click "Process Document".
+  await page.getByTestId('btn-process').click();
+
+  // Verify the spinner is visible.
+  // toBeVisible() checks the element is displayed in the viewport.
+  await expect(page.getByTestId('processing-spinner')).toBeVisible();
+  await expect(page.getByTestId('processing-text')).toHaveText('Extracting text via OCR...');
+
+  // Verify status changed to "Processing".
+  await expect(page.getByTestId('current-status')).toHaveText('Processing');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Wait for OCR Results
+// --------------------------------------------------------------------------
+// Upload, process, wait for the spinner to disappear and results to appear.
+test('exercise 2: wait for OCR results', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Upload and start processing.
+  await uploadFile(page);
+  await page.getByTestId('btn-process').click();
+
+  // Verify spinner is visible during processing.
+  await expect(page.getByTestId('processing-spinner')).toBeVisible();
+
+  // Wait for the extracted fields to appear (processing complete).
+  // toBeVisible() with timeout will retry until the element appears.
+  await expect(page.getByTestId('extracted-fields')).toBeVisible({ timeout: 5000 });
+
+  // Verify the spinner is now hidden.
+  await expect(page.getByTestId('processing-spinner')).toBeHidden();
+
+  // Verify status is now "Review".
+  await expect(page.getByTestId('current-status')).toHaveText('Review');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Verify Extracted Fields
+// --------------------------------------------------------------------------
+// Process a passport and verify all OCR-extracted field values.
+test('exercise 3: verify extracted fields', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+  await uploadAndProcess(page, 'passport');
+
+  // Verify each extracted field contains the expected OCR value.
+  // toHaveValue(value) checks the input element's current value.
+  await expect(page.getByTestId('extracted-name')).toHaveValue('Jane Alice Doe');
+  await expect(page.getByTestId('extracted-dob')).toHaveValue('15-Mar-1990');
+  await expect(page.getByTestId('extracted-id-number')).toHaveValue('P12345678');
+  await expect(page.getByTestId('extracted-address')).toHaveValue('123 Main St, New York, NY 10001');
+  await expect(page.getByTestId('extracted-expiry')).toHaveValue('15-Mar-2030');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Edit Extracted Field
+// --------------------------------------------------------------------------
+// After OCR, edit the name field, then confirm successfully.
+test('exercise 4: edit extracted field', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+  await uploadAndProcess(page, 'passport');
+
+  // Verify the original OCR name.
+  await expect(page.getByTestId('extracted-name')).toHaveValue('Jane Alice Doe');
+
+  // Clear the name field and type a corrected name.
+  // fill() clears the input first, then types the new value.
+  await page.getByTestId('extracted-name').fill('Jane A. Doe-Smith');
+
+  // Verify the field now has the new value.
+  await expect(page.getByTestId('extracted-name')).toHaveValue('Jane A. Doe-Smith');
+
+  // Confirm verification — should succeed even with edited fields.
+  await page.getByTestId('btn-confirm').click();
+  await expect(page.getByTestId('confirmed-section')).toBeVisible();
+  await expect(page.getByTestId('current-status')).toHaveText('Confirmed');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Confirm Verification
+// --------------------------------------------------------------------------
+// Complete the full flow and verify the confirmation page.
+test('exercise 5: confirm verification', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+  await uploadAndProcess(page, 'drivers-license', 'license.jpg');
+
+  // Click "Confirm Verification".
+  await page.getByTestId('btn-confirm').click();
+
+  // Verify the confirmed section is visible with the success message.
+  await expect(page.getByTestId('confirmed-section')).toBeVisible();
+  await expect(page.getByTestId('confirmed-title')).toHaveText('Document Verified');
+  await expect(page.getByTestId('confirmed-message')).toContainText('Verification complete');
+
+  // Verify the status badge shows "Confirmed".
+  await expect(page.getByTestId('current-status')).toHaveText('Confirmed');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Verify Status Transitions
+// --------------------------------------------------------------------------
+// Walk through the entire flow and verify status at each phase.
+test('exercise 6: verify status transitions', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Phase 1: Upload — initial state.
+  await expect(page.getByTestId('current-status')).toHaveText('Upload');
+  await expect(page.getByTestId('step-upload-pill')).toHaveClass(/active/);
+
+  // Upload a file and start processing.
+  await uploadFile(page);
+  await page.getByTestId('btn-process').click();
+
+  // Phase 2: Processing.
+  await expect(page.getByTestId('current-status')).toHaveText('Processing');
+  await expect(page.getByTestId('step-processing-pill')).toHaveClass(/active/);
+  await expect(page.getByTestId('step-upload-pill')).toHaveClass(/completed/);
+
+  // Phase 3: Review — wait for processing to complete.
+  await expect(page.getByTestId('extracted-fields')).toBeVisible({ timeout: 5000 });
+  await expect(page.getByTestId('current-status')).toHaveText('Review');
+  await expect(page.getByTestId('step-review-pill')).toHaveClass(/active/);
+  await expect(page.getByTestId('step-processing-pill')).toHaveClass(/completed/);
+
+  // Phase 4: Confirmed.
+  await page.getByTestId('btn-confirm').click();
+  await expect(page.getByTestId('current-status')).toHaveText('Confirmed');
+  await expect(page.getByTestId('step-confirmed-pill')).toHaveClass(/active/);
+  await expect(page.getByTestId('step-review-pill')).toHaveClass(/completed/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Test With Invalid Document
+// --------------------------------------------------------------------------
+// Upload an "invalid" document and verify the error state.
+test('exercise 7: test with invalid document', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Upload a file with "invalid" in the name — this triggers the failure path.
+  await uploadFile(page, 'passport', 'invalid-blurry-doc.pdf');
+  await page.getByTestId('btn-process').click();
+
+  // Wait for the error banner to appear (after 2s processing delay).
+  await expect(page.getByTestId('error-banner')).toBeVisible({ timeout: 5000 });
+
+  // Verify the error message text.
+  await expect(page.getByTestId('error-message')).toContainText('could not be processed');
+
+  // Verify the status shows "Failed".
+  await expect(page.getByTestId('current-status')).toHaveText('Failed');
+
+  // Verify the "Try Again" button is visible.
+  await expect(page.getByTestId('btn-retry')).toBeVisible();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Retry After Failure
+// --------------------------------------------------------------------------
+// Upload invalid doc, fail, retry, then succeed with a valid document.
+test('exercise 8: retry after failure', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // First attempt: invalid document.
+  await uploadFile(page, 'passport', 'invalid-doc.pdf');
+  await page.getByTestId('btn-process').click();
+  await expect(page.getByTestId('error-banner')).toBeVisible({ timeout: 5000 });
+  await expect(page.getByTestId('current-status')).toHaveText('Failed');
+
+  // Click "Try Again" to reset to upload state.
+  await page.getByTestId('btn-retry').click();
+
+  // Verify we're back to the upload state.
+  await expect(page.getByTestId('current-status')).toHaveText('Upload');
+  await expect(page.getByTestId('upload-section')).toBeVisible();
+  await expect(page.getByTestId('error-banner')).toBeHidden();
+
+  // Second attempt: valid document.
+  await uploadAndProcess(page, 'national-id', 'valid-id-card.pdf');
+
+  // Verify OCR results appear.
+  await expect(page.getByTestId('extracted-name')).toHaveValue('Maria Garcia Lopez');
+  await expect(page.getByTestId('current-status')).toHaveText('Review');
+
+  // Confirm verification.
+  await page.getByTestId('btn-confirm').click();
+  await expect(page.getByTestId('current-status')).toHaveText('Confirmed');
+});
+b:T2558,const PLAYGROUND = '/phase-05-fintech-domain/28-document-verification/playground/';
+
+// ─── Helper: uploadFile ──────────────────────────────────────────────
+// Selects a document type and simulates a file upload.
+// cy.get().selectFile() creates a synthetic file and triggers the change event.
+// { force: true } is needed because the file input is hidden (display:none).
+function uploadFile(docType: string = 'passport', fileName: string = 'passport.pdf') {
+  cy.get('[data-testid="select-doc-type"]').select(docType);
+  cy.get('[data-testid="file-input"]').selectFile({
+    contents: Cypress.Buffer.from('fake-content'),
+    fileName: fileName,
+    mimeType: 'application/pdf'
+  }, { force: true });
+}
+
+// ─── Helper: uploadAndProcess ────────────────────────────────────────
+// Uploads a file, clicks Process, and optionally waits for OCR results.
+function uploadAndProcess(docType: string = 'passport', fileName: string = 'passport.pdf', waitForResults: boolean = true) {
+  uploadFile(docType, fileName);
+  cy.get('[data-testid="btn-process"]').click();
+  if (waitForResults) {
+    // Wait for extracted fields to appear (2s processing delay).
+    cy.get('[data-testid="extracted-fields"]', { timeout: 5000 }).should('be.visible');
+  }
+}
+
+describe('Kata 28: Document Verification', () => {
+
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Upload and Verify Processing Starts
+  // --------------------------------------------------------------------------
+  it('exercise 1: upload and verify processing starts', () => {
+    // Verify initial status.
+    cy.get('[data-testid="current-status"]').should('have.text', 'Upload');
+
+    // Upload a file.
+    uploadFile();
+
+    // Verify file is shown.
+    cy.get('[data-testid="upload-filename"]').should('have.text', 'passport.pdf');
+    cy.get('[data-testid="upload-area"]').should('have.class', 'has-file');
+
+    // Click Process.
+    cy.get('[data-testid="btn-process"]').click();
+
+    // Verify spinner is visible.
+    cy.get('[data-testid="processing-spinner"]').should('be.visible');
+    cy.get('[data-testid="processing-text"]').should('have.text', 'Extracting text via OCR...');
+
+    // Verify status changed to Processing.
+    cy.get('[data-testid="current-status"]').should('have.text', 'Processing');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Wait for OCR Results
+  // --------------------------------------------------------------------------
+  it('exercise 2: wait for OCR results', () => {
+    uploadFile();
+    cy.get('[data-testid="btn-process"]').click();
+
+    // Verify spinner is visible during processing.
+    cy.get('[data-testid="processing-spinner"]').should('be.visible');
+
+    // Wait for extracted fields (processing takes 2s).
+    // { timeout: 5000 } gives Cypress enough time to retry.
+    cy.get('[data-testid="extracted-fields"]', { timeout: 5000 }).should('be.visible');
+
+    // Verify spinner is now hidden.
+    cy.get('[data-testid="processing-spinner"]').should('not.be.visible');
+
+    // Verify status is "Review".
+    cy.get('[data-testid="current-status"]').should('have.text', 'Review');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Verify Extracted Fields
+  // --------------------------------------------------------------------------
+  it('exercise 3: verify extracted fields', () => {
+    uploadAndProcess('passport');
+
+    // Verify each field value.
+    // .should('have.value', text) checks an input element's value attribute.
+    cy.get('[data-testid="extracted-name"]').should('have.value', 'Jane Alice Doe');
+    cy.get('[data-testid="extracted-dob"]').should('have.value', '15-Mar-1990');
+    cy.get('[data-testid="extracted-id-number"]').should('have.value', 'P12345678');
+    cy.get('[data-testid="extracted-address"]').should('have.value', '123 Main St, New York, NY 10001');
+    cy.get('[data-testid="extracted-expiry"]').should('have.value', '15-Mar-2030');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Edit Extracted Field
+  // --------------------------------------------------------------------------
+  it('exercise 4: edit extracted field', () => {
+    uploadAndProcess('passport');
+
+    // Verify original name.
+    cy.get('[data-testid="extracted-name"]').should('have.value', 'Jane Alice Doe');
+
+    // Clear and type a new name.
+    // .clear() removes existing text, .type() enters new text.
+    cy.get('[data-testid="extracted-name"]').clear().type('Jane A. Doe-Smith');
+    cy.get('[data-testid="extracted-name"]').should('have.value', 'Jane A. Doe-Smith');
+
+    // Confirm — should succeed with edited field.
+    cy.get('[data-testid="btn-confirm"]').click();
+    cy.get('[data-testid="confirmed-section"]').should('be.visible');
+    cy.get('[data-testid="current-status"]').should('have.text', 'Confirmed');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Confirm Verification
+  // --------------------------------------------------------------------------
+  it('exercise 5: confirm verification', () => {
+    uploadAndProcess('drivers-license', 'license.jpg');
+
+    // Click Confirm.
+    cy.get('[data-testid="btn-confirm"]').click();
+
+    // Verify confirmation page.
+    cy.get('[data-testid="confirmed-section"]').should('be.visible');
+    cy.get('[data-testid="confirmed-title"]').should('have.text', 'Document Verified');
+    cy.get('[data-testid="confirmed-message"]').should('contain.text', 'Verification complete');
+    cy.get('[data-testid="current-status"]').should('have.text', 'Confirmed');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Verify Status Transitions
+  // --------------------------------------------------------------------------
+  it('exercise 6: verify status transitions', () => {
+    // Phase 1: Upload.
+    cy.get('[data-testid="current-status"]').should('have.text', 'Upload');
+    cy.get('[data-testid="step-upload-pill"]').should('have.class', 'active');
+
+    // Upload and process.
+    uploadFile();
+    cy.get('[data-testid="btn-process"]').click();
+
+    // Phase 2: Processing.
+    cy.get('[data-testid="current-status"]').should('have.text', 'Processing');
+    cy.get('[data-testid="step-processing-pill"]').should('have.class', 'active');
+    cy.get('[data-testid="step-upload-pill"]').should('have.class', 'completed');
+
+    // Phase 3: Review.
+    cy.get('[data-testid="extracted-fields"]', { timeout: 5000 }).should('be.visible');
+    cy.get('[data-testid="current-status"]').should('have.text', 'Review');
+    cy.get('[data-testid="step-review-pill"]').should('have.class', 'active');
+    cy.get('[data-testid="step-processing-pill"]').should('have.class', 'completed');
+
+    // Phase 4: Confirmed.
+    cy.get('[data-testid="btn-confirm"]').click();
+    cy.get('[data-testid="current-status"]').should('have.text', 'Confirmed');
+    cy.get('[data-testid="step-confirmed-pill"]').should('have.class', 'active');
+    cy.get('[data-testid="step-review-pill"]').should('have.class', 'completed');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Test With Invalid Document
+  // --------------------------------------------------------------------------
+  it('exercise 7: test with invalid document', () => {
+    // Upload a file with "invalid" in the name to trigger failure.
+    uploadFile('passport', 'invalid-blurry-doc.pdf');
+    cy.get('[data-testid="btn-process"]').click();
+
+    // Wait for error banner (after 2s processing).
+    cy.get('[data-testid="error-banner"]', { timeout: 5000 }).should('be.visible');
+    cy.get('[data-testid="error-message"]').should('contain.text', 'could not be processed');
+    cy.get('[data-testid="current-status"]').should('have.text', 'Failed');
+    cy.get('[data-testid="btn-retry"]').should('be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Retry After Failure
+  // --------------------------------------------------------------------------
+  it('exercise 8: retry after failure', () => {
+    // First attempt: invalid.
+    uploadFile('passport', 'invalid-doc.pdf');
+    cy.get('[data-testid="btn-process"]').click();
+    cy.get('[data-testid="error-banner"]', { timeout: 5000 }).should('be.visible');
+    cy.get('[data-testid="current-status"]').should('have.text', 'Failed');
+
+    // Click "Try Again".
+    cy.get('[data-testid="btn-retry"]').click();
+
+    // Verify reset to upload state.
+    cy.get('[data-testid="current-status"]').should('have.text', 'Upload');
+    cy.get('[data-testid="upload-section"]').should('be.visible');
+    cy.get('[data-testid="error-banner"]').should('not.be.visible');
+
+    // Second attempt: valid document.
+    uploadAndProcess('national-id', 'valid-id-card.pdf');
+
+    // Verify OCR results.
+    cy.get('[data-testid="extracted-name"]').should('have.value', 'Maria Garcia Lopez');
+    cy.get('[data-testid="current-status"]').should('have.text', 'Review');
+
+    // Confirm.
+    cy.get('[data-testid="btn-confirm"]').click();
+    cy.get('[data-testid="current-status"]').should('have.text', 'Confirmed');
+  });
+});
+c:Tb4aa,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { test, expect } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> '@playwright/test'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// The base URL for our playground page.</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-05-fintech-domain/27-video-onboarding/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// ─── Helper: startAndWaitForCall ──────────────────────────────────────</span></span>
+<span class="line"><span style="color:#6A737D">// Clicks Start Call and waits for the connection status to show "Connected".</span></span>
+<span class="line"><span style="color:#6A737D">// The call has a 500ms connecting delay, so we wait for the text to change.</span></span>
+<span class="line"><span style="color:#F97583">async</span><span style="color:#F97583"> function</span><span style="color:#B392F0"> startAndWaitForCall</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">page</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> any</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-start-call'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'connection-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Connected'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">3000</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// ─── Helper: enterOtp ────────────────────────────────────────────────</span></span>
+<span class="line"><span style="color:#6A737D">// Reads the displayed OTP code, then fills each digit into the OTP inputs.</span></span>
+<span class="line"><span style="color:#6A737D">// locator.textContent() returns the element's text as a string.</span></span>
+<span class="line"><span style="color:#6A737D">// locator.fill(value) clears the input and sets the new value.</span></span>
+<span class="line"><span style="color:#F97583">async</span><span style="color:#F97583"> function</span><span style="color:#B392F0"> enterOtp</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">page</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> any</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> otp</span><span style="color:#F97583"> =</span><span style="color:#F97583"> await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'otp-display'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">textContent</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  for</span><span style="color:#E1E4E8"> (</span><span style="color:#F97583">let</span><span style="color:#E1E4E8"> i </span><span style="color:#F97583">=</span><span style="color:#79B8FF"> 0</span><span style="color:#E1E4E8">; i </span><span style="color:#F97583">&#x3C;</span><span style="color:#79B8FF"> 6</span><span style="color:#E1E4E8">; i</span><span style="color:#F97583">++</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#F97583">    await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`otp-${</span><span style="color:#E1E4E8">i</span><span style="color:#F97583"> +</span><span style="color:#79B8FF"> 1</span><span style="color:#9ECBFF">}`</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(otp</span><span style="color:#F97583">!</span><span style="color:#E1E4E8">[i]);</span></span>
+<span class="line"><span style="color:#E1E4E8">  }</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 1: Start Call and Verify Canvas Updates</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Start the call and verify the frame count increases, proving animation runs.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: start call and verify canvas updates'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify initial frame count is 0.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'frame-count'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'0'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Start the call and wait for connection.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> startAndWaitForCall</span><span style="color:#E1E4E8">(page);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Wait for the frame count to increase above 0.</span></span>
+<span class="line"><span style="color:#6A737D">  // We use a regex that matches any non-zero number.</span></span>
+<span class="line"><span style="color:#6A737D">  // not.toHaveText('0') retries until the text is no longer "0".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'frame-count'</span><span style="color:#E1E4E8">)).not.</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'0'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">3000</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the canvas element exists and has expected dimensions.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> canvas</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'video-canvas'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(canvas).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(canvas).</span><span style="color:#B392F0">toHaveAttribute</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'width'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'400'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(canvas).</span><span style="color:#B392F0">toHaveAttribute</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'height'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'300'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 2: Verify Timer Counts</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Start the call and verify the duration timer increases and countdown decreases.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: verify timer counts'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> startAndWaitForCall</span><span style="color:#E1E4E8">(page);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Wait for the call duration to reach at least "00:02".</span></span>
+<span class="line"><span style="color:#6A737D">  // toHaveText() retries until the text matches. We give 5 seconds.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'call-duration'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'00:02'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the countdown timer is less than 01:00.</span></span>
+<span class="line"><span style="color:#6A737D">  // We read the text content and parse it.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> countdownText</span><span style="color:#F97583"> =</span><span style="color:#F97583"> await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'countdown-timer'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">textContent</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#6A737D">  // Parse "MM:SS" format: extract seconds value.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> parts</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> countdownText</span><span style="color:#F97583">!</span><span style="color:#E1E4E8">.</span><span style="color:#B392F0">split</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">':'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> totalSeconds</span><span style="color:#F97583"> =</span><span style="color:#B392F0"> parseInt</span><span style="color:#E1E4E8">(parts[</span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">]) </span><span style="color:#F97583">*</span><span style="color:#79B8FF"> 60</span><span style="color:#F97583"> +</span><span style="color:#B392F0"> parseInt</span><span style="color:#E1E4E8">(parts[</span><span style="color:#79B8FF">1</span><span style="color:#E1E4E8">]);</span></span>
+<span class="line"><span style="color:#6A737D">  // The countdown started at 60 and has been running, so it should be less.</span></span>
+<span class="line"><span style="color:#B392F0">  expect</span><span style="color:#E1E4E8">(totalSeconds).</span><span style="color:#B392F0">toBeLessThan</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">60</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 3: End Call and Verify Status</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Start the call, then end it. Verify status transitions.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: end call and verify status'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> startAndWaitForCall</span><span style="color:#E1E4E8">(page);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click "End Call".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-end-call'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify connection status is "Disconnected".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'connection-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Disconnected'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the connection status badge has the disconnected CSS class.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'connection-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">status-disconnected</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the video call status shows "Completed".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'status-video-call'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Completed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify "Start Call" is re-enabled and "End Call" is disabled.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-start-call'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeEnabled</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-end-call'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeDisabled</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 4: Enter OTP and Verify</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Read the OTP, enter it, click Verify, and confirm success.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: enter OTP and verify'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> startAndWaitForCall</span><span style="color:#E1E4E8">(page);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Read the OTP code displayed on the page.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> otp</span><span style="color:#F97583"> =</span><span style="color:#F97583"> await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'otp-display'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">textContent</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#6A737D">  // The OTP should be 6 digits.</span></span>
+<span class="line"><span style="color:#B392F0">  expect</span><span style="color:#E1E4E8">(otp).</span><span style="color:#B392F0">toMatch</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#F97583">^</span><span style="color:#79B8FF">\d</span><span style="color:#F97583">{6}$</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Enter each digit into the individual OTP input fields.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> enterOtp</span><span style="color:#E1E4E8">(page);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click the Verify button.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-verify-otp'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify success message appears.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'otp-success'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'otp-success'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'OTP verified successfully!'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the OTP verified status updates.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'status-otp-verified'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Yes'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 5: Verify Call Duration</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Start the call, wait 3 seconds, then verify duration.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: verify call duration'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> startAndWaitForCall</span><span style="color:#E1E4E8">(page);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Wait for the call duration to reach at least "00:03".</span></span>
+<span class="line"><span style="color:#6A737D">  // toHaveText() retries until the text matches the expected value.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'call-duration'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'00:03'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">6000</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 6: Screenshot Capture Changes State</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Start the call, capture a screenshot, verify preview and status.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: screenshot capture changes state'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> startAndWaitForCall</span><span style="color:#E1E4E8">(page);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify initial screenshot status.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'screenshot-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'No screenshot taken'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'status-screenshot'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'No'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click the screenshot button.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-screenshot'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the screenshot preview image appears.</span></span>
+<span class="line"><span style="color:#6A737D">  // toBeVisible() retries until the element is visible in the DOM.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'screenshot-preview'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the preview image has a data URL src (base64 PNG).</span></span>
+<span class="line"><span style="color:#6A737D">  // toHaveAttribute(name, value) checks the element's attribute matches.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'screenshot-preview'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveAttribute</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'src'</span><span style="color:#E1E4E8">,</span><span style="color:#9ECBFF"> /</span><span style="color:#F97583">^</span><span style="color:#DBEDFF">data:image</span><span style="color:#85E89D;font-weight:bold">\/</span><span style="color:#DBEDFF">png</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify status text updates.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'screenshot-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Screenshot captured'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'status-screenshot'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Yes'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 7: Verify Connection States</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Walk through all connection states: Idle -> Connecting -> Connected -> Disconnected.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 7: verify connection states'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Initial state: Idle.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'connection-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Idle'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'connection-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">status-idle</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click Start Call — should transition to "Connecting...".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-start-call'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'connection-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Connecting...'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'connection-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">status-connecting</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Wait for "Connected".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'connection-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Connected'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">3000</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'connection-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">status-connected</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // End the call — should show "Disconnected".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-end-call'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'connection-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Disconnected'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'connection-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">status-disconnected</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 8: Complete Full Video Onboarding Flow</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Start call, verify OTP, capture screenshot, end call, verify "Complete".</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 8: complete full video onboarding flow'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> startAndWaitForCall</span><span style="color:#E1E4E8">(page);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify OTP.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> enterOtp</span><span style="color:#E1E4E8">(page);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-verify-otp'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'otp-success'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Capture screenshot.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-screenshot'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'screenshot-preview'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // End the call.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-end-call'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'connection-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Disconnected'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify all individual statuses.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'status-video-call'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Completed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'status-otp-verified'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Yes'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'status-screenshot'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Yes'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify overall status is "Complete".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'overall-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Complete'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>d:T9ea9,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-05-fintech-domain/27-video-onboarding/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// ─── Helper: startAndWaitForCall ──────────────────────────────────────</span></span>
+<span class="line"><span style="color:#6A737D">// Clicks Start Call and waits for the connection status to show "Connected".</span></span>
+<span class="line"><span style="color:#6A737D">// The call has a 500ms connecting delay before it transitions.</span></span>
+<span class="line"><span style="color:#F97583">function</span><span style="color:#B392F0"> startAndWaitForCall</span><span style="color:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#E1E4E8">  cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-start-call"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">  cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="connection-status"]'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">3000</span><span style="color:#E1E4E8"> })</span></span>
+<span class="line"><span style="color:#E1E4E8">    .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Connected'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// ─── Helper: enterOtp ────────────────────────────────────────────────</span></span>
+<span class="line"><span style="color:#6A737D">// Reads the displayed OTP code, then types each digit into the OTP inputs.</span></span>
+<span class="line"><span style="color:#6A737D">// cy.get().invoke('text') yields the element's text content.</span></span>
+<span class="line"><span style="color:#6A737D">// .then(callback) runs after the text is retrieved.</span></span>
+<span class="line"><span style="color:#F97583">function</span><span style="color:#B392F0"> enterOtp</span><span style="color:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#E1E4E8">  cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="otp-display"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">invoke</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'text'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">then</span><span style="color:#E1E4E8">((</span><span style="color:#FFAB70">otp</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">    for</span><span style="color:#E1E4E8"> (</span><span style="color:#F97583">let</span><span style="color:#E1E4E8"> i </span><span style="color:#F97583">=</span><span style="color:#79B8FF"> 0</span><span style="color:#E1E4E8">; i </span><span style="color:#F97583">&#x3C;</span><span style="color:#79B8FF"> 6</span><span style="color:#E1E4E8">; i</span><span style="color:#F97583">++</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`[data-testid="otp-${</span><span style="color:#E1E4E8">i</span><span style="color:#F97583"> +</span><span style="color:#79B8FF"> 1</span><span style="color:#9ECBFF">}"]`</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(otp[i]);</span></span>
+<span class="line"><span style="color:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">describe</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Kata 27: Video Onboarding'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">  beforeEach</span><span style="color:#E1E4E8">(() </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 1: Start Call and Verify Canvas Updates</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Start the call and verify the frame count increases above 0.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: start call and verify canvas updates'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Verify initial frame count is 0.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="frame-count"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'0'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Start the call.</span></span>
+<span class="line"><span style="color:#B392F0">    startAndWaitForCall</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Wait for frame count to be non-zero.</span></span>
+<span class="line"><span style="color:#6A737D">    // .should('not.have.text', '0') retries until the text changes.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="frame-count"]'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">3000</span><span style="color:#E1E4E8"> })</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'0'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the canvas element is visible and has expected dimensions.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="video-canvas"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.attr'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'width'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'400'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.attr'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'height'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'300'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 2: Verify Timer Counts</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Start the call and verify duration increases and countdown decreases.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: verify timer counts'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#B392F0">    startAndWaitForCall</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Wait for call duration to reach "00:02".</span></span>
+<span class="line"><span style="color:#6A737D">    // .should('have.text', '00:02') retries until the text matches.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="call-duration"]'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8"> })</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'00:02'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the countdown timer has decreased from 01:00.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="countdown-timer"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">invoke</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'text'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">then</span><span style="color:#E1E4E8">((</span><span style="color:#FFAB70">text</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">      const</span><span style="color:#79B8FF"> parts</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> text.</span><span style="color:#B392F0">split</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">':'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">      const</span><span style="color:#79B8FF"> totalSeconds</span><span style="color:#F97583"> =</span><span style="color:#B392F0"> parseInt</span><span style="color:#E1E4E8">(parts[</span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">]) </span><span style="color:#F97583">*</span><span style="color:#79B8FF"> 60</span><span style="color:#F97583"> +</span><span style="color:#B392F0"> parseInt</span><span style="color:#E1E4E8">(parts[</span><span style="color:#79B8FF">1</span><span style="color:#E1E4E8">]);</span></span>
+<span class="line"><span style="color:#B392F0">      expect</span><span style="color:#E1E4E8">(totalSeconds).to.be.</span><span style="color:#B392F0">lessThan</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">60</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 3: End Call and Verify Status</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Start the call, then end it. Verify status changes.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: end call and verify status'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#B392F0">    startAndWaitForCall</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // End the call.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-end-call"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify connection status.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="connection-status"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Disconnected'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'status-disconnected'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify video call status.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="status-video-call"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Completed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify button states.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-start-call"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.be.disabled'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-end-call"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.disabled'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 4: Enter OTP and Verify</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Read the OTP, enter it, click Verify, confirm success.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: enter OTP and verify'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#B392F0">    startAndWaitForCall</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the OTP code is 6 digits.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="otp-display"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">invoke</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'text'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'match'</span><span style="color:#E1E4E8">,</span><span style="color:#9ECBFF"> /</span><span style="color:#F97583">^</span><span style="color:#79B8FF">\d</span><span style="color:#F97583">{6}$</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Enter the OTP digits.</span></span>
+<span class="line"><span style="color:#B392F0">    enterOtp</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Click Verify.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-verify-otp"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify success message appears.</span></span>
+<span class="line"><span style="color:#6A737D">    // .should('be.visible') checks the element is displayed.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="otp-success"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'OTP verified successfully!'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify status updates.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="status-otp-verified"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Yes'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 5: Verify Call Duration</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Wait 3 seconds and verify the duration shows at least "00:03".</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: verify call duration'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#B392F0">    startAndWaitForCall</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Wait for duration to reach "00:03".</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="call-duration"]'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">6000</span><span style="color:#E1E4E8"> })</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'00:03'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 6: Screenshot Capture Changes State</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Capture a screenshot and verify preview and status update.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: screenshot capture changes state'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#B392F0">    startAndWaitForCall</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify initial state.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="screenshot-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'No screenshot taken'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="status-screenshot"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'No'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Capture screenshot.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-screenshot"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify preview image is visible with a data URL src.</span></span>
+<span class="line"><span style="color:#6A737D">    // .should('have.attr', 'src') checks the element has the attribute.</span></span>
+<span class="line"><span style="color:#6A737D">    // .and('match', regex) further validates the attribute value.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="screenshot-preview"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.attr'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'src'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'match'</span><span style="color:#E1E4E8">,</span><span style="color:#9ECBFF"> /</span><span style="color:#F97583">^</span><span style="color:#DBEDFF">data:image</span><span style="color:#85E89D;font-weight:bold">\/</span><span style="color:#DBEDFF">png</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify status updates.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="screenshot-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Screenshot captured'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="status-screenshot"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Yes'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 7: Verify Connection States</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Walk through: Idle -> Connecting -> Connected -> Disconnected.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 7: verify connection states'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Initial: Idle.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="connection-status"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Idle'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'status-idle'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Start Call: should show Connecting first.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-start-call"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="connection-status"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Connecting...'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'status-connecting'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Then Connected.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="connection-status"]'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">3000</span><span style="color:#E1E4E8"> })</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Connected'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'status-connected'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // End Call: Disconnected.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-end-call"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="connection-status"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Disconnected'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'status-disconnected'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 8: Complete Full Video Onboarding Flow</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Start call, verify OTP, screenshot, end call, verify "Complete".</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 8: complete full video onboarding flow'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#B392F0">    startAndWaitForCall</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify OTP.</span></span>
+<span class="line"><span style="color:#B392F0">    enterOtp</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-verify-otp"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="otp-success"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Capture screenshot.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-screenshot"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="screenshot-preview"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // End the call.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-end-call"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="connection-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Disconnected'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify all statuses.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="status-video-call"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Completed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="status-otp-verified"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Yes'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="status-screenshot"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Yes'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify overall status is "Complete".</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="overall-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Complete'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"kata":{"slug":"27-video-onboarding","number":27,"title":"Video Onboarding","phaseSlug":"phase-05-fintech-domain","phaseNumber":5,"phaseName":"Fintech Domain","readmeRaw":"$3","hasPlayground":true,"playwrightFiles":[{"filename":"video-onboarding.spec.ts","content":"$4"}],"cypressFiles":[{"filename":"video-onboarding.cy.ts","content":"$5"}]},"prev":{"slug":"26-kyc-onboarding-flow","number":26,"title":"KYC Onboarding Flow","phaseSlug":"phase-05-fintech-domain","phaseNumber":5,"phaseName":"Fintech Domain","readmeRaw":"$6","hasPlayground":true,"playwrightFiles":[{"filename":"kyc-onboarding-flow.spec.ts","content":"$7"}],"cypressFiles":[{"filename":"kyc-onboarding-flow.cy.ts","content":"$8"}]},"next":{"slug":"28-document-verification","number":28,"title":"Document Verification","phaseSlug":"phase-05-fintech-domain","phaseNumber":5,"phaseName":"Fintech Domain","readmeRaw":"$9","hasPlayground":true,"playwrightFiles":[{"filename":"document-verification.spec.ts","content":"$a"}],"cypressFiles":[{"filename":"document-verification.cy.ts","content":"$b"}]},"playwrightHtml":[{"filename":"video-onboarding.spec.ts","html":"$c"}],"cypressHtml":[{"filename":"video-onboarding.cy.ts","html":"$d"}]}],["$Le"],"$Lf"]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"iDtrTKWIN4zzRgDRiiDd2"}
+e:["$","script","script-0",{"src":"/qa-labs/_next/static/chunks/03nvm.8~ftt80.js","async":true}]
+f:["$","$L10",null,{"children":["$","$11",null,{"name":"Next.MetadataOutlet","children":"$@12"}]}]
+12:null

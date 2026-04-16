@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kata 10: Canvas and SVG | QA Labs</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f8fafc;
+      color: #1e293b;
+      padding: 2rem;
+    }
+    .header {
+      background: #0f172a;
+      color: white;
+      padding: 1rem 2rem;
+      margin: -2rem -2rem 2rem;
+    }
+    .header h1 { font-size: 1.25rem; }
+    .header .kata-badge {
+      display: inline-block;
+      background: #38bdf8;
+      color: #0f172a;
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      margin-right: 0.5rem;
+    }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+    .section {
+      margin-bottom: 2rem;
+      padding: 1.5rem;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .section h2 {
+      font-size: 1rem;
+      color: #475569;
+      margin-bottom: 1rem;
+      border-bottom: 1px solid #e2e8f0;
+      padding-bottom: 0.5rem;
+    }
+    button {
+      padding: 0.5rem 1rem;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.875rem;
+      cursor: pointer;
+      margin-right: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+    .btn-primary { background: #3b82f6; color: white; }
+    .btn-secondary { background: #64748b; color: white; }
+    .btn-danger { background: #ef4444; color: white; }
+    .btn-success { background: #22c55e; color: white; }
+
+    /* ── Signature pad ──────────────────────────────────────────────── */
+    .canvas-wrapper {
+      border: 2px dashed #cbd5e1;
+      border-radius: 8px;
+      display: inline-block;
+      margin-bottom: 1rem;
+    }
+    #signature-pad {
+      display: block;
+      cursor: crosshair;
+      background: white;
+      border-radius: 6px;
+    }
+    .sig-actions {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-top: 0.5rem;
+    }
+    .status-badge {
+      display: inline-block;
+      padding: 0.2rem 0.6rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .status-unsigned { background: #fef3c7; color: #92400e; }
+    .status-signed   { background: #dcfce7; color: #166534; }
+
+    /* ── SVG heat map ──────────────────────────────────────────────── */
+    .heatmap-cell {
+      cursor: pointer;
+      transition: stroke-width 0.15s;
+    }
+    .heatmap-cell:hover { stroke-width: 3; }
+    .heatmap-cell.selected { stroke: #1e293b; stroke-width: 3; }
+
+    /* ── Tooltip ───────────────────────────────────────────────────── */
+    .svg-tooltip {
+      position: absolute;
+      background: #1e293b;
+      color: white;
+      font-size: 0.75rem;
+      padding: 0.35rem 0.6rem;
+      border-radius: 4px;
+      pointer-events: none;
+      display: none;
+      z-index: 50;
+    }
+    .svg-tooltip.visible { display: block; }
+
+    /* ── Canvas chart ──────────────────────────────────────────────── */
+    #chart-canvas {
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ================================================================== -->
+  <!-- Header                                                             -->
+  <!-- ================================================================== -->
+  <header class="header" data-testid="header">
+    <span class="kata-badge">KATA 10</span>
+    <h1>Signature &amp; Visualization - Canvas &amp; SVG</h1>
+  </header>
+
+  <div class="grid">
+
+    <!-- ================================================================ -->
+    <!-- Left column: Signature Pad (Canvas)                              -->
+    <!-- ================================================================ -->
+    <div>
+      <div class="section" data-testid="signature-section">
+        <h2>Signature Pad</h2>
+        <p style="font-size:0.8rem;color:#64748b;margin-bottom:0.75rem;">
+          Draw your signature below using the mouse.
+        </p>
+        <div class="canvas-wrapper" data-testid="canvas-wrapper">
+          <canvas
+            id="signature-pad"
+            data-testid="signature-pad"
+            width="400"
+            height="200"
+          ></canvas>
+        </div>
+        <div class="sig-actions">
+          <button class="btn-danger" data-testid="clear-signature" id="clear-btn">Clear</button>
+          <button class="btn-success" data-testid="capture-signature" id="capture-btn">Capture Signature</button>
+          <span class="status-badge status-unsigned" data-testid="signature-status" id="sig-status">
+            Unsigned
+          </span>
+        </div>
+      </div>
+
+      <!-- ============================================================== -->
+      <!-- Canvas-based bar chart                                         -->
+      <!-- ============================================================== -->
+      <div class="section" data-testid="chart-section">
+        <h2>Monthly Loan Disbursements (Canvas Chart)</h2>
+        <canvas
+          id="chart-canvas"
+          data-testid="chart-canvas"
+          width="400"
+          height="220"
+        ></canvas>
+      </div>
+    </div>
+
+    <!-- ================================================================ -->
+    <!-- Right column: SVG visualisations                                 -->
+    <!-- ================================================================ -->
+    <div>
+
+      <!-- ============================================================== -->
+      <!-- SVG Risk Heat Map                                              -->
+      <!-- ============================================================== -->
+      <div class="section" data-testid="heatmap-section">
+        <h2>Risk Heat Map</h2>
+        <p style="font-size:0.8rem;color:#64748b;margin-bottom:0.75rem;">
+          Click a cell to select it. Hover to see the tooltip.
+        </p>
+        <div style="position:relative;">
+          <svg
+            data-testid="risk-heatmap"
+            width="360"
+            height="200"
+            viewBox="0 0 360 200"
+          >
+            <!-- Row labels -->
+            <text x="5" y="55" font-size="11" fill="#64748b">Credit</text>
+            <text x="5" y="115" font-size="11" fill="#64748b">Market</text>
+            <text x="5" y="175" font-size="11" fill="#64748b">Ops</text>
+            <!-- Column labels -->
+            <text x="95" y="20" font-size="11" fill="#64748b" text-anchor="middle">Q1</text>
+            <text x="165" y="20" font-size="11" fill="#64748b" text-anchor="middle">Q2</text>
+            <text x="235" y="20" font-size="11" fill="#64748b" text-anchor="middle">Q3</text>
+            <text x="305" y="20" font-size="11" fill="#64748b" text-anchor="middle">Q4</text>
+
+            <!-- Heat map cells: 3 rows x 4 columns -->
+            <!-- Row 1: Credit -->
+            <rect class="heatmap-cell" data-testid="cell-credit-q1" x="65"  y="30"  width="60" height="40" rx="4" fill="#fecaca" stroke="#fca5a5" stroke-width="1" data-risk="72" data-label="Credit Q1: 72" />
+            <rect class="heatmap-cell" data-testid="cell-credit-q2" x="135" y="30"  width="60" height="40" rx="4" fill="#fee2e2" stroke="#fca5a5" stroke-width="1" data-risk="45" data-label="Credit Q2: 45" />
+            <rect class="heatmap-cell" data-testid="cell-credit-q3" x="205" y="30"  width="60" height="40" rx="4" fill="#ef4444" stroke="#dc2626" stroke-width="1" data-risk="91" data-label="Credit Q3: 91" />
+            <rect class="heatmap-cell" data-testid="cell-credit-q4" x="275" y="30"  width="60" height="40" rx="4" fill="#fecaca" stroke="#fca5a5" stroke-width="1" data-risk="68" data-label="Credit Q4: 68" />
+
+            <!-- Row 2: Market -->
+            <rect class="heatmap-cell" data-testid="cell-market-q1" x="65"  y="90"  width="60" height="40" rx="4" fill="#bbf7d0" stroke="#86efac" stroke-width="1" data-risk="25" data-label="Market Q1: 25" />
+            <rect class="heatmap-cell" data-testid="cell-market-q2" x="135" y="90"  width="60" height="40" rx="4" fill="#fef3c7" stroke="#fde68a" stroke-width="1" data-risk="53" data-label="Market Q2: 53" />
+            <rect class="heatmap-cell" data-testid="cell-market-q3" x="205" y="90"  width="60" height="40" rx="4" fill="#fecaca" stroke="#fca5a5" stroke-width="1" data-risk="78" data-label="Market Q3: 78" />
+            <rect class="heatmap-cell" data-testid="cell-market-q4" x="275" y="90"  width="60" height="40" rx="4" fill="#fef3c7" stroke="#fde68a" stroke-width="1" data-risk="41" data-label="Market Q4: 41" />
+
+            <!-- Row 3: Ops -->
+            <rect class="heatmap-cell" data-testid="cell-ops-q1" x="65"  y="150" width="60" height="40" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="1" data-risk="12" data-label="Ops Q1: 12" />
+            <rect class="heatmap-cell" data-testid="cell-ops-q2" x="135" y="150" width="60" height="40" rx="4" fill="#bbf7d0" stroke="#86efac" stroke-width="1" data-risk="30" data-label="Ops Q2: 30" />
+            <rect class="heatmap-cell" data-testid="cell-ops-q3" x="205" y="150" width="60" height="40" rx="4" fill="#fef3c7" stroke="#fde68a" stroke-width="1" data-risk="55" data-label="Ops Q3: 55" />
+            <rect class="heatmap-cell" data-testid="cell-ops-q4" x="275" y="150" width="60" height="40" rx="4" fill="#dcfce7" stroke="#86efac" stroke-width="1" data-risk="18" data-label="Ops Q4: 18" />
+          </svg>
+          <!-- Tooltip shown on hover over heat map cells -->
+          <div class="svg-tooltip" data-testid="heatmap-tooltip" id="heatmap-tooltip"></div>
+        </div>
+        <!-- Shows which cell is currently selected -->
+        <p style="font-size:0.8rem;margin-top:0.5rem;">
+          Selected: <span data-testid="selected-cell" id="selected-cell">None</span>
+        </p>
+      </div>
+
+      <!-- ============================================================== -->
+      <!-- SVG Bar Chart: Monthly Approvals                               -->
+      <!-- ============================================================== -->
+      <div class="section" data-testid="barchart-section">
+        <h2>Monthly Approval Counts (SVG)</h2>
+        <svg
+          data-testid="approval-barchart"
+          width="360"
+          height="200"
+          viewBox="0 0 360 200"
+        >
+          <!-- Y-axis baseline -->
+          <line x1="40" y1="170" x2="340" y2="170" stroke="#cbd5e1" stroke-width="1" />
+
+          <!-- Bars — height encodes the approval count value -->
+          <rect data-testid="bar-jan" x="50"  y="90"  width="30" height="80"  rx="3" fill="#3b82f6" data-value="80"  />
+          <rect data-testid="bar-feb" x="95"  y="50"  width="30" height="120" rx="3" fill="#3b82f6" data-value="120" />
+          <rect data-testid="bar-mar" x="140" y="70"  width="30" height="100" rx="3" fill="#3b82f6" data-value="100" />
+          <rect data-testid="bar-apr" x="185" y="110" width="30" height="60"  rx="3" fill="#3b82f6" data-value="60"  />
+          <rect data-testid="bar-may" x="230" y="30"  width="30" height="140" rx="3" fill="#3b82f6" data-value="140" />
+          <rect data-testid="bar-jun" x="275" y="80"  width="30" height="90"  rx="3" fill="#3b82f6" data-value="90"  />
+
+          <!-- X-axis labels -->
+          <text x="65"  y="188" font-size="11" fill="#64748b" text-anchor="middle">Jan</text>
+          <text x="110" y="188" font-size="11" fill="#64748b" text-anchor="middle">Feb</text>
+          <text x="155" y="188" font-size="11" fill="#64748b" text-anchor="middle">Mar</text>
+          <text x="200" y="188" font-size="11" fill="#64748b" text-anchor="middle">Apr</text>
+          <text x="245" y="188" font-size="11" fill="#64748b" text-anchor="middle">May</text>
+          <text x="290" y="188" font-size="11" fill="#64748b" text-anchor="middle">Jun</text>
+        </svg>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ────────────────────────────────────────────────────────────────────
+    // Signature Pad (HTML5 Canvas drawing)
+    // ────────────────────────────────────────────────────────────────────
+    const canvas  = document.getElementById('signature-pad');
+    const ctx     = canvas.getContext('2d');
+    let isDrawing = false;
+
+    // hasContent tracks whether anything has been drawn on the canvas.
+    // Tests can read this flag or check pixel data directly.
+    // Exposed on window so Playwright's page.evaluate can read it.
+    window.hasContent = false;
+
+    // Configure the drawing style
+    ctx.lineWidth   = 2;
+    ctx.lineCap     = 'round';
+    ctx.strokeStyle = '#1e293b';
+
+    // mousedown — start a new stroke at the cursor position
+    canvas.addEventListener('mousedown', (e) => {
+      isDrawing = true;
+      // beginPath starts a new sub-path so strokes don't connect
+      ctx.beginPath();
+      // moveTo sets the starting point of the stroke
+      ctx.moveTo(e.offsetX, e.offsetY);
+    });
+
+    // mousemove — continue the stroke while the button is held
+    canvas.addEventListener('mousemove', (e) => {
+      if (!isDrawing) return;
+      // lineTo draws a straight segment from the last point to (offsetX, offsetY)
+      ctx.lineTo(e.offsetX, e.offsetY);
+      // stroke renders the path on the canvas
+      ctx.stroke();
+      window.hasContent = true;
+    });
+
+    // mouseup — end the stroke
+    canvas.addEventListener('mouseup', () => {
+      isDrawing = false;
+    });
+
+    // mouseleave — end the stroke if the cursor leaves the canvas
+    canvas.addEventListener('mouseleave', () => {
+      isDrawing = false;
+    });
+
+    // ── Clear button ──────────────────────────────────────────────────
+    const clearBtn  = document.getElementById('clear-btn');
+    const sigStatus = document.getElementById('sig-status');
+
+    clearBtn.addEventListener('click', () => {
+      // clearRect erases all pixels in the given rectangle.
+      // Passing (0, 0, width, height) clears the entire canvas.
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      window.hasContent = false;
+
+      // Reset signature status
+      sigStatus.textContent = 'Unsigned';
+      sigStatus.className   = 'status-badge status-unsigned';
+
+      // Reset capture button state
+      const captureBtn = document.getElementById('capture-btn');
+      captureBtn.textContent = 'Capture Signature';
+      captureBtn.className   = 'btn-success';
+    });
+
+    // ── Capture button ────────────────────────────────────────────────
+    const captureBtn = document.getElementById('capture-btn');
+
+    captureBtn.addEventListener('click', () => {
+      if (!window.hasContent) return;    // do nothing if canvas is blank
+
+      // Update signature status to "Signed"
+      sigStatus.textContent = 'Signed';
+      sigStatus.className   = 'status-badge status-signed';
+
+      // Change the button to show it has been captured
+      captureBtn.textContent = 'Signature Captured';
+      captureBtn.className   = 'btn-secondary';
+    });
+
+    // ────────────────────────────────────────────────────────────────────
+    // Helper: check if canvas is blank by sampling pixel data
+    // Exposed on window so tests can call it via page.evaluate.
+    // ────────────────────────────────────────────────────────────────────
+    window.isCanvasBlank = function (canvasEl) {
+      const c   = canvasEl || canvas;
+      const ctx2 = c.getContext('2d');
+      // getImageData returns an object with a .data property containing
+      // every pixel's RGBA values as a flat Uint8ClampedArray.
+      const data = ctx2.getImageData(0, 0, c.width, c.height).data;
+      // If every alpha value (every 4th byte) is 0, the canvas is blank.
+      for (let i = 3; i < data.length; i += 4) {
+        if (data[i] !== 0) return false;
+      }
+      return true;
+    };
+
+    // ────────────────────────────────────────────────────────────────────
+    // SVG Risk Heat Map — click to select, hover for tooltip
+    // ────────────────────────────────────────────────────────────────────
+    const cells        = document.querySelectorAll('.heatmap-cell');
+    const tooltip      = document.getElementById('heatmap-tooltip');
+    const selectedSpan = document.getElementById('selected-cell');
+
+    cells.forEach((cell) => {
+      // Click handler — toggle "selected" class and update the label
+      cell.addEventListener('click', () => {
+        // Remove selected from all cells first
+        cells.forEach((c) => c.classList.remove('selected'));
+        // Add selected to the clicked cell
+        cell.classList.add('selected');
+        // Update the selected-cell text
+        selectedSpan.textContent = cell.getAttribute('data-label');
+      });
+
+      // Mouseover — show tooltip near the cursor
+      cell.addEventListener('mouseover', (e) => {
+        tooltip.textContent = cell.getAttribute('data-label');
+        tooltip.classList.add('visible');
+      });
+
+      // Mousemove — follow the cursor
+      cell.addEventListener('mousemove', (e) => {
+        // Position the tooltip relative to the heat map container
+        const container = cell.closest('[style*="position"]') || cell.parentElement;
+        const rect = container.getBoundingClientRect();
+        tooltip.style.left = (e.clientX - rect.left + 12) + 'px';
+        tooltip.style.top  = (e.clientY - rect.top  - 10) + 'px';
+      });
+
+      // Mouseout — hide tooltip
+      cell.addEventListener('mouseout', () => {
+        tooltip.classList.remove('visible');
+      });
+    });
+
+    // ────────────────────────────────────────────────────────────────────
+    // Canvas-based bar chart (drawn programmatically)
+    // ────────────────────────────────────────────────────────────────────
+    const chartCanvas = document.getElementById('chart-canvas');
+    const chartCtx    = chartCanvas.getContext('2d');
+
+    const chartData = [
+      { label: 'Jan', value: 120 },
+      { label: 'Feb', value: 180 },
+      { label: 'Mar', value: 95  },
+      { label: 'Apr', value: 210 },
+      { label: 'May', value: 160 },
+      { label: 'Jun', value: 140 },
+    ];
+
+    const barWidth  = 40;
+    const gap       = 20;
+    const chartLeft = 50;
+    const chartBottom = 200;
+    const maxValue  = 220;
+
+    // Draw each bar
+    chartData.forEach((d, i) => {
+      const x = chartLeft + i * (barWidth + gap);
+      const barHeight = (d.value / maxValue) * 170;
+      const y = chartBottom - barHeight;
+
+      // fillRect draws a filled rectangle: (x, y, width, height)
+      chartCtx.fillStyle = '#6366f1';
+      chartCtx.fillRect(x, y, barWidth, barHeight);
+
+      // Draw the value label above the bar
+      chartCtx.fillStyle = '#475569';
+      chartCtx.font = '11px sans-serif';
+      chartCtx.textAlign = 'center';
+      chartCtx.fillText(d.value.toString(), x + barWidth / 2, y - 5);
+
+      // Draw the month label below the bar
+      chartCtx.fillText(d.label, x + barWidth / 2, chartBottom + 15);
+    });
+
+    // Draw baseline
+    chartCtx.strokeStyle = '#cbd5e1';
+    chartCtx.beginPath();
+    chartCtx.moveTo(chartLeft - 10, chartBottom);
+    chartCtx.lineTo(chartLeft + chartData.length * (barWidth + gap), chartBottom);
+    chartCtx.stroke();
+  </script>
+</body>
+</html>

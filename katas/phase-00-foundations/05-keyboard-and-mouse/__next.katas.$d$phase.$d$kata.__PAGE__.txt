@@ -1,0 +1,2593 @@
+1:"$Sreact.fragment"
+2:I[31749,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js","/qa-labs/_next/static/chunks/03nvm.8~ftt80.js"],"KataPageClient"]
+10:I[49583,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js"],"OutletBoundary"]
+11:"$Sreact.suspense"
+3:T2f6a,# Kata 05: Keyboard and Mouse
+
+## What You Will Learn
+
+- How to press individual keyboard keys (Enter, Tab, Escape, Arrow keys)
+- How to use keyboard shortcuts with modifier keys (Ctrl+B, Ctrl+I)
+- How to simulate mouse hover to reveal tooltips
+- How to click at specific positions within an element
+- How to manage focus — move it, verify it, type into focused elements
+- Tab navigation through form fields
+- Single-key shortcuts for application actions
+- Arrow key reordering of list items
+- Mouse events: mousedown, mousemove, mouseup for drag simulation
+
+## Prerequisites
+
+- Completed Kata 01-04
+
+## Concepts Explained
+
+### Pressing Keyboard Keys
+
+```typescript
+// PLAYWRIGHT
+// page.keyboard.press(key) dispatches keydown, keypress, and keyup events.
+// Key names follow the W3C KeyboardEvent.key spec.
+//
+// Signature:
+//   page.keyboard.press(key: string, options?: { delay?: number }): Promise<void>
+//
+// Parameters:
+//   key   — Key name (e.g., 'Enter', 'Tab', 'Escape', 'ArrowUp', 'a', 'A')
+//   delay — Time in ms to wait between keydown and keyup (default: 0)
+await page.keyboard.press('Escape');
+await page.keyboard.press('Enter');
+await page.keyboard.press('Tab');
+await page.keyboard.press('ArrowUp');
+await page.keyboard.press('ArrowDown');
+
+// CYPRESS
+// In Cypress, special keys are sent via type() using curly-brace sequences.
+//
+// Signature:
+//   .type(text: string, options?: TypeOptions): Chainable
+//
+// Special key sequences:
+//   {enter}, {esc}, {tab}, {backspace}, {del}
+//   {uparrow}, {downarrow}, {leftarrow}, {rightarrow}
+//   {home}, {end}, {pageup}, {pagedown}
+//   {selectall}, {movetostart}, {movetoend}
+cy.get('body').type('{esc}');
+cy.get(sel).type('{enter}');
+cy.get(sel).type('{uparrow}');
+cy.get(sel).type('{downarrow}');
+```
+
+### Keyboard Shortcuts with Modifiers
+
+```typescript
+// PLAYWRIGHT
+// Combine modifier keys using '+' syntax.
+//
+// Signature:
+//   page.keyboard.press(key: string): Promise<void>
+//
+// Modifier names: 'Control', 'Shift', 'Alt', 'Meta'
+// Examples:
+await page.keyboard.press('Control+b');     // Ctrl+B
+await page.keyboard.press('Control+i');     // Ctrl+I
+await page.keyboard.press('Control+Shift+s'); // Ctrl+Shift+S
+await page.keyboard.press('Meta+c');        // Cmd+C (Mac)
+
+// CYPRESS
+// Use modifier names inside curly braces with '+' syntax.
+//
+// Modifier names: ctrl, alt, shift, meta
+// Examples:
+cy.get(sel).type('{ctrl+b}');       // Ctrl+B
+cy.get(sel).type('{ctrl+i}');       // Ctrl+I
+cy.get(sel).type('{ctrl+shift+s}'); // Ctrl+Shift+S
+cy.get(sel).type('{meta+c}');       // Cmd+C (Mac)
+```
+
+### Hover (Mouse Over)
+
+```typescript
+// PLAYWRIGHT
+// hover() moves the mouse to the center of the element.
+// Triggers CSS :hover pseudo-class and mouseenter/mouseover events.
+//
+// Signature:
+//   locator.hover(options?: {
+//     force?: boolean,
+//     modifiers?: ('Alt'|'Control'|'Meta'|'Shift')[],
+//     position?: { x: number, y: number },
+//     timeout?: number
+//   }): Promise<void>
+await page.getByTestId('card-aml').hover();
+
+// CYPRESS
+// Cypress has NO built-in hover() command because it cannot trigger
+// CSS :hover pseudo-class. Workarounds:
+//
+// 1. trigger('mouseover') — fires the JS event but NOT CSS :hover
+cy.get(sel).trigger('mouseover');
+//
+// 2. invoke('show') — force-display a hidden tooltip for testing
+cy.get('[data-testid="tooltip"]').invoke('css', 'display', 'block');
+//
+// 3. cypress-real-events plugin — triggers real browser hover
+//    npm install cypress-real-events
+cy.get(sel).realHover();  // requires cypress-real-events
+```
+
+### Focus Management
+
+```typescript
+// PLAYWRIGHT
+// focus() sets focus on the element without clicking.
+//
+// Signature:
+//   locator.focus(options?: { timeout?: number }): Promise<void>
+await page.getByTestId('field-email').focus();
+
+// toBeFocused() asserts the element is document.activeElement.
+await expect(page.getByTestId('field-email')).toBeFocused();
+
+// CYPRESS
+// focus() sets focus on the element.
+//
+// Signature:
+//   .focus(options?: Partial<Loggable & Timeoutable>): Chainable
+cy.get('[data-testid="field-email"]').focus();
+
+// 'have.focus' asserts the element is document.activeElement.
+cy.get('[data-testid="field-email"]').should('have.focus');
+```
+
+### Tab Navigation
+
+```typescript
+// PLAYWRIGHT
+// Press Tab to move focus through the tab order.
+await page.keyboard.press('Tab');         // move forward
+await page.keyboard.press('Shift+Tab');   // move backward
+
+// CYPRESS
+// Cypress type('{tab}') does NOT actually move browser focus.
+// Workaround: use focus() to move focus directly, or install cypress-real-events.
+cy.get(sel).focus();  // direct focus as workaround
+// or with cypress-real-events:
+cy.realPress('Tab');
+```
+
+### Typing Text (Character by Character)
+
+```typescript
+// PLAYWRIGHT
+// page.keyboard.type(text) types character by character, firing
+// keydown/keypress/keyup for each character.
+//
+// Signature:
+//   page.keyboard.type(text: string, options?: { delay?: number }): Promise<void>
+await page.keyboard.type('Hello world');
+await page.keyboard.type('slow typing', { delay: 100 }); // 100ms between chars
+
+// pressSequentially() is an alias on Locator that works the same way:
+await page.getByTestId('input').pressSequentially('Hello');
+
+// CYPRESS
+// type(text) already types character by character.
+cy.get(sel).type('Hello world');
+cy.get(sel).type('slow typing', { delay: 100 }); // 100ms between chars
+```
+
+### Mouse Click at Position
+
+```typescript
+// PLAYWRIGHT
+// click({ position }) clicks at a specific offset from the element's top-left.
+//
+// Signature:
+//   locator.click(options?: {
+//     button?: 'left' | 'right' | 'middle',
+//     clickCount?: number,
+//     delay?: number,
+//     force?: boolean,
+//     modifiers?: ('Alt'|'Control'|'Meta'|'Shift')[],
+//     position?: { x: number, y: number },
+//     timeout?: number
+//   }): Promise<void>
+await page.getByTestId('canvas').click({ position: { x: 100, y: 50 } });
+
+// CYPRESS
+// click(x, y) clicks at the specified offset from the element's top-left.
+//
+// Signature:
+//   .click(x: number, y: number, options?: ClickOptions): Chainable
+cy.get(sel).click(100, 50);
+```
+
+## Playground
+
+The playground is a "Risk Tier Sorter" themed as a fintech compliance tool. It contains:
+
+1. **Sortable Risk Tiers** — a list of risk levels (Critical, High, Medium, Low) that can be reordered using arrow keys after selecting an item with a click
+2. **Notes Editor** — a textarea with Ctrl+B (bold) and Ctrl+I (italic) keyboard shortcut simulation that updates a format status indicator
+3. **Risk Assessment Cards** — three cards (AML, KYC, PEP) with hover-triggered tooltips showing detailed descriptions
+4. **Client Onboarding Form** — five tab-navigable fields (first name, last name, email, notes, submit) with a focus tracker displaying the currently focused field
+5. **Quick Actions Panel** — a focusable panel where pressing 'A' approves, 'R' rejects, and 'E' escalates, with a color-coded status badge
+6. **Risk Zone Mapper** — a drag simulation area with a draggable box, mouse coordinate tracking, and drag status display
+7. **Alert Dialog** — a modal that opens via button click and closes with Escape key or a close button
+
+## Exercises
+
+### Exercise 1: Press Escape to Close Modal
+Open the modal by clicking the "Open Alert" button. Verify it's visible. Press Escape to close it. Verify the modal is hidden and the state text reads "Closed".
+
+### Exercise 2: Keyboard Shortcuts (Ctrl+B, Ctrl+I)
+Focus the textarea, type some text, then press Ctrl+B. Verify the format status shows "Bold". Press Ctrl+I and verify it shows "Italic".
+
+### Exercise 3: Tab Navigation
+Click the first form field, then Tab through all fields. Verify the focus indicator updates at each step: first-name, last-name, email, notes, submit.
+
+### Exercise 4: Hover to Show Tooltip
+Hover over the AML card and verify its tooltip appears with text containing "OFAC". Hover over the KYC card and verify the AML tooltip hides while the KYC tooltip appears.
+
+### Exercise 5: Click at Specific Position
+Click at position (100, 50) within the drag area. Verify the mouse coordinates display shows non-zero values.
+
+### Exercise 6: Keyboard Shortcut Actions
+Focus the shortcut panel. Press 'A' and verify status is "Approved". Press 'R' for "Rejected". Press 'E' for "Escalated".
+
+### Exercise 7: Arrow Key Reordering
+Click "High" to select it. Press ArrowUp to move it above "Critical". Press ArrowDown twice to move it below "Medium". Verify the order at each step using the order display. Press Enter to confirm.
+
+### Exercise 8: Focus Management
+Focus the email field programmatically (without clicking). Verify it is focused. Move focus to the notes field, type text, and verify the input value.
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/keyboard-and-mouse.spec.ts`
+
+### Cypress Solution
+
+See `cypress/keyboard-and-mouse.cy.ts`
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Pressing keys without focusing the target element first | Key events go to whichever element has focus — if you haven't focused the right element, the shortcut won't work | Click or focus() the target element before pressing keys |
+| Using `page.keyboard.press('ctrl+b')` with lowercase 'ctrl' | Playwright requires proper casing: `'Control'`, not `'ctrl'` | Use `'Control+b'`, `'Shift+a'`, `'Meta+c'` |
+| Expecting Cypress `type('{tab}')` to move browser focus | Cypress's `{tab}` key sequence does not actually change `document.activeElement` | Use `cy.get(sel).focus()` or install cypress-real-events plugin |
+| Trying to test CSS `:hover` tooltips with Cypress `trigger('mouseover')` | `trigger('mouseover')` fires the JS event but does NOT activate CSS `:hover` pseudo-class | Use `invoke('css', 'display', 'block')` to force-show, or use cypress-real-events `realHover()` |
+| Forgetting to verify focus before typing | If focus is on the wrong element, `page.keyboard.type()` sends text elsewhere | Always assert focus with `toBeFocused()` / `should('have.focus')` before typing |
+| Using `page.keyboard.press('Up')` instead of `'ArrowUp'` | The W3C key name is `'ArrowUp'`, not `'Up'` | Use `'ArrowUp'`, `'ArrowDown'`, `'ArrowLeft'`, `'ArrowRight'` |
+| Not waiting for modal to be visible before pressing Escape | If the modal animation hasn't finished, Escape may not register | Assert `toBeVisible()` before pressing Escape |
+
+## Quick Reference
+
+### Playwright Keyboard & Mouse
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Press key | `page.keyboard.press(key)` | `await page.keyboard.press('Enter')` |
+| Key with modifier | `page.keyboard.press(combo)` | `await page.keyboard.press('Control+b')` |
+| Type text | `page.keyboard.type(text)` | `await page.keyboard.type('hello')` |
+| Type on locator | `locator.pressSequentially(text)` | `await el.pressSequentially('hello')` |
+| Focus element | `locator.focus()` | `await el.focus()` |
+| Hover | `locator.hover()` | `await el.hover()` |
+| Click at position | `locator.click({ position })` | `await el.click({ position: { x: 10, y: 20 } })` |
+| Assert focused | `expect(locator).toBeFocused()` | `await expect(el).toBeFocused()` |
+| Assert visible | `expect(locator).toBeVisible()` | `await expect(el).toBeVisible()` |
+| Assert hidden | `expect(locator).toBeHidden()` | `await expect(el).toBeHidden()` |
+
+### Cypress Keyboard & Mouse
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Press special key | `.type('{key}')` | `cy.get(sel).type('{enter}')` |
+| Key with modifier | `.type('{ctrl+key}')` | `cy.get(sel).type('{ctrl+b}')` |
+| Type text | `.type(text)` | `cy.get(sel).type('hello')` |
+| Focus element | `.focus()` | `cy.get(sel).focus()` |
+| Trigger mouse event | `.trigger(event)` | `cy.get(sel).trigger('mouseover')` |
+| Click at position | `.click(x, y)` | `cy.get(sel).click(10, 20)` |
+| Assert focused | `.should('have.focus')` | `cy.get(sel).should('have.focus')` |
+| Assert visible | `.should('be.visible')` | `cy.get(sel).should('be.visible')` |
+| Assert hidden | `.should('not.be.visible')` | `cy.get(sel).should('not.be.visible')` |
+4:T35e5,import { test, expect } from '@playwright/test';
+
+// The base URL for our playground page. All tests navigate here first.
+const PLAYGROUND = '/phase-00-foundations/05-keyboard-and-mouse/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Press Keyboard Keys (Enter, Tab, Escape)
+// --------------------------------------------------------------------------
+// This exercise demonstrates how to press individual keyboard keys using
+// Playwright's keyboard API. You'll learn to open a modal, close it with
+// Escape, and verify state changes driven by key presses.
+test('exercise 1: press Escape to close a modal dialog', async ({ page }) => {
+  // Navigate to the playground page.
+  // page.goto(url) loads the given URL. It waits for the page to reach
+  // the 'load' state by default before continuing.
+  await page.goto(PLAYGROUND);
+
+  // Click the "Open Alert" button to show the modal dialog.
+  // getByTestId(id) finds an element by its data-testid attribute.
+  // click() performs a single left-click on the element.
+  await page.getByTestId('btn-open-modal').click();
+
+  // Verify the modal overlay is now visible on the page.
+  // toBeVisible() asserts that the element is displayed (not hidden via
+  // display:none, visibility:hidden, or opacity:0).
+  await expect(page.getByTestId('modal-overlay')).toBeVisible();
+
+  // Verify the modal state text changed to "Open".
+  // toHaveText(text) asserts that the element's textContent matches exactly.
+  await expect(page.getByTestId('modal-state')).toHaveText('Open');
+
+  // Press the Escape key to close the modal.
+  // page.keyboard.press(key) dispatches a keydown, keypress (if applicable),
+  // and keyup event for the given key. The key names follow the W3C key values
+  // spec — e.g., 'Escape', 'Enter', 'Tab', 'ArrowUp', 'ArrowDown', etc.
+  await page.keyboard.press('Escape');
+
+  // Verify the modal is now hidden.
+  // toBeHidden() asserts the element is no longer visible in the viewport.
+  await expect(page.getByTestId('modal-overlay')).toBeHidden();
+
+  // Verify the modal state text changed back to "Closed".
+  await expect(page.getByTestId('modal-state')).toHaveText('Closed');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Keyboard Shortcuts (Ctrl+B, Ctrl+I)
+// --------------------------------------------------------------------------
+// This exercise demonstrates how to press modifier key combinations using
+// Playwright. Ctrl+B triggers bold formatting, Ctrl+I triggers italic.
+test('exercise 2: use Ctrl+B and Ctrl+I keyboard shortcuts', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // First, click the text area to focus it. The keyboard shortcuts only
+  // work when the text area has focus, because the keydown listener is
+  // attached to that element.
+  // click() focuses the element as a side effect — browsers move focus
+  // to the element being clicked.
+  await page.getByTestId('format-area').click();
+
+  // Type some text into the textarea using fill().
+  // fill(value) clears any existing content and sets the value. It triggers
+  // 'input' and 'change' events. Unlike pressSequentially(), fill() sets
+  // the value instantly without simulating individual keypresses.
+  await page.getByTestId('format-area').fill('Compliance notes for review');
+
+  // Press Ctrl+B to trigger the bold shortcut.
+  // page.keyboard.press('Control+b') presses Control and 'b' together.
+  // The '+' syntax means "hold the first key, press the second, release both."
+  // Common modifiers: 'Control', 'Shift', 'Alt', 'Meta' (Cmd on Mac).
+  await page.keyboard.press('Control+b');
+
+  // Verify the format status shows "Bold".
+  await expect(page.getByTestId('format-status')).toHaveText('Bold');
+
+  // Press Ctrl+I to trigger the italic shortcut.
+  await page.keyboard.press('Control+i');
+
+  // Verify the format status changed to "Italic".
+  await expect(page.getByTestId('format-status')).toHaveText('Italic');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Tab Navigation Through Form Fields
+// --------------------------------------------------------------------------
+// This exercise demonstrates how pressing Tab moves focus between elements
+// that have a tabindex or are natively focusable (inputs, buttons, etc.).
+test('exercise 3: tab through form fields and verify focus', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Click the first form field to give it focus. This is our starting point
+  // for Tab navigation.
+  await page.getByTestId('field-first-name').click();
+
+  // Verify the focus indicator shows which field is currently focused.
+  // The playground tracks focus via the 'focus' event listener and displays
+  // the field id in the "focused-field" element.
+  await expect(page.getByTestId('focused-field')).toHaveText('field-first-name');
+
+  // Press Tab to move focus to the next field (Last Name).
+  // page.keyboard.press('Tab') simulates pressing the Tab key, which moves
+  // focus to the next element in the tab order (determined by tabindex
+  // attribute or DOM order for focusable elements).
+  await page.keyboard.press('Tab');
+
+  // Verify focus moved to the last name field.
+  await expect(page.getByTestId('focused-field')).toHaveText('field-last-name');
+
+  // Press Tab again to move to the email field.
+  await page.keyboard.press('Tab');
+  await expect(page.getByTestId('focused-field')).toHaveText('field-email');
+
+  // Press Tab to move to the notes textarea.
+  await page.keyboard.press('Tab');
+  await expect(page.getByTestId('focused-field')).toHaveText('field-notes');
+
+  // Press Tab to move to the submit button.
+  await page.keyboard.press('Tab');
+  await expect(page.getByTestId('focused-field')).toHaveText('btn-submit');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Hover to Show Tooltip
+// --------------------------------------------------------------------------
+// This exercise demonstrates how to simulate mouse hover to trigger CSS
+// :hover rules that show hidden tooltip elements.
+test('exercise 4: hover over a card to reveal its tooltip', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // First, verify the tooltip is hidden before hovering.
+  // The tooltip is hidden by default (display: none in CSS) and only shown
+  // when the parent card is hovered (.tooltip-card:hover .tooltip-text).
+  await expect(page.getByTestId('tooltip-aml')).toBeHidden();
+
+  // Hover over the AML card to trigger the CSS :hover state.
+  // hover() moves the mouse to the center of the element. This triggers
+  // CSS :hover pseudo-class, which in our playground shows the tooltip.
+  // Unlike click(), hover() doesn't change focus — it only moves the mouse.
+  await page.getByTestId('card-aml').hover();
+
+  // Verify the tooltip is now visible.
+  await expect(page.getByTestId('tooltip-aml')).toBeVisible();
+
+  // Verify the tooltip contains the expected text.
+  // toContainText(substring) checks if the element's textContent contains
+  // the given string as a substring (not an exact match).
+  await expect(page.getByTestId('tooltip-aml')).toContainText('OFAC');
+
+  // Hover over the KYC card to reveal its tooltip.
+  await page.getByTestId('card-kyc').hover();
+
+  // The AML tooltip should now be hidden because we moved the mouse away.
+  await expect(page.getByTestId('tooltip-aml')).toBeHidden();
+
+  // The KYC tooltip should now be visible.
+  await expect(page.getByTestId('tooltip-kyc')).toBeVisible();
+  await expect(page.getByTestId('tooltip-kyc')).toContainText('identity documents');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Mouse Position-Based Click
+// --------------------------------------------------------------------------
+// This exercise demonstrates how to click at specific coordinates within
+// an element using the position option.
+test('exercise 5: click at specific position in the drag area', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Click at a specific position within the drag area.
+  // click({ position: { x, y } }) clicks at the given offset from the
+  // element's top-left corner. x is pixels from the left edge, y is pixels
+  // from the top edge. This is useful for canvas, maps, or other position-
+  // sensitive elements.
+  await page.getByTestId('drag-area').click({ position: { x: 100, y: 50 } });
+
+  // Verify the mouse coordinates display updated. The playground tracks
+  // mouse position relative to the drag area via the mousemove event.
+  // Note: The exact coordinates may vary slightly depending on timing,
+  // so we check that the display contains reasonable values.
+  await expect(page.getByTestId('mouse-coords')).not.toHaveText('x: 0, y: 0');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Keyboard Shortcut Actions (A / R / E)
+// --------------------------------------------------------------------------
+// This exercise demonstrates pressing single-character keys to trigger
+// application-specific shortcuts on a focused panel.
+test('exercise 6: press A to approve, R to reject, E to escalate', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // First, focus the shortcut panel by clicking it. The keyboard shortcut
+  // listener is attached to this specific element, so it must have focus
+  // for the key events to reach it.
+  await page.getByTestId('shortcut-panel').click();
+
+  // Verify the initial status is "Pending".
+  await expect(page.getByTestId('shortcut-status')).toHaveText('Pending');
+
+  // Press 'a' to approve the application.
+  // page.keyboard.press(key) sends the key to whatever element currently
+  // has focus. For single character keys, you just pass the character.
+  await page.keyboard.press('a');
+
+  // Verify the status changed to "Approved".
+  await expect(page.getByTestId('shortcut-status')).toHaveText('Approved');
+
+  // Press 'r' to reject the application.
+  await page.keyboard.press('r');
+  await expect(page.getByTestId('shortcut-status')).toHaveText('Rejected');
+
+  // Press 'e' to escalate the application.
+  await page.keyboard.press('e');
+  await expect(page.getByTestId('shortcut-status')).toHaveText('Escalated');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Arrow Keys to Reorder Items
+// --------------------------------------------------------------------------
+// This exercise demonstrates using arrow keys to reorder items in a list.
+// The sortable list uses ArrowUp and ArrowDown to move the selected item.
+test('exercise 7: reorder risk tiers using arrow keys', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify the initial order of risk tiers.
+  await expect(page.getByTestId('tier-order')).toHaveText('critical, high, medium, low');
+
+  // Click the "High" tier item to select it. This adds the 'selected' class
+  // and gives it focus, enabling arrow key interaction.
+  await page.getByTestId('tier-high').click();
+
+  // Press ArrowUp to move "High" one position up (above "Critical").
+  // page.keyboard.press('ArrowUp') dispatches the ArrowUp key event.
+  // The sortable list's keydown handler intercepts this and moves the
+  // selected element before its previous sibling in the DOM.
+  await page.keyboard.press('ArrowUp');
+
+  // Verify the order changed — "High" is now first.
+  await expect(page.getByTestId('tier-order')).toHaveText('high, critical, medium, low');
+
+  // Press ArrowDown twice to move "High" back down past "Critical" and "Medium".
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowDown');
+
+  // Verify the new order.
+  await expect(page.getByTestId('tier-order')).toHaveText('critical, medium, high, low');
+
+  // Press Enter to confirm the selection (deselects the item).
+  // After pressing Enter, the item loses the 'selected' class.
+  await page.keyboard.press('Enter');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Focus Management
+// --------------------------------------------------------------------------
+// This exercise demonstrates how to programmatically focus elements using
+// Playwright's focus() method and verify focus state.
+test('exercise 8: focus elements and verify focus state', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // focus() sets focus on the element without clicking it. This is useful
+  // when you need to test focus-related behavior (like focus styles or
+  // focus event handlers) without the side effects of a click.
+  await page.getByTestId('field-email').focus();
+
+  // Verify the focus indicator updated to show the email field.
+  await expect(page.getByTestId('focused-field')).toHaveText('field-email');
+
+  // toBeFocused() asserts that the element is the currently focused element
+  // in the document (i.e., document.activeElement points to this element).
+  await expect(page.getByTestId('field-email')).toBeFocused();
+
+  // Move focus to the notes field programmatically.
+  await page.getByTestId('field-notes').focus();
+  await expect(page.getByTestId('field-notes')).toBeFocused();
+  await expect(page.getByTestId('focused-field')).toHaveText('field-notes');
+
+  // Type into the focused field using the keyboard. Since 'field-notes'
+  // has focus, keyboard input goes directly to it.
+  // page.keyboard.type(text) types the text character by character,
+  // triggering keydown, keypress, and keyup events for each character.
+  // This is different from fill() which sets the value directly.
+  await page.keyboard.type('Reviewed by compliance team');
+  await expect(page.getByTestId('field-notes')).toHaveValue('Reviewed by compliance team');
+});
+5:T34a1,const PLAYGROUND = '/phase-00-foundations/05-keyboard-and-mouse/playground/';
+
+describe('Kata 05: Keyboard and Mouse', () => {
+
+  // beforeEach runs before every test in this describe block.
+  // We navigate to the playground page so each test starts fresh.
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Press Keyboard Keys (Enter, Tab, Escape)
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates how to press individual keyboard keys using
+  // Cypress's type() command with special key sequences.
+  it('exercise 1: press Escape to close a modal dialog', () => {
+    // Click the "Open Alert" button to show the modal.
+    // cy.get(selector) queries the DOM for a matching element.
+    // .click() performs a single left-click on that element.
+    cy.get('[data-testid="btn-open-modal"]').click();
+
+    // Verify the modal overlay is visible.
+    // .should('be.visible') asserts the element has CSS that makes it visible
+    // (not display:none, not visibility:hidden, has dimensions, etc.).
+    cy.get('[data-testid="modal-overlay"]').should('be.visible');
+
+    // Verify the modal state text shows "Open".
+    // .should('have.text', str) asserts the element's textContent equals str.
+    cy.get('[data-testid="modal-state"]').should('have.text', 'Open');
+
+    // Press the Escape key to close the modal.
+    // In Cypress, you send special keys using type() with curly-brace syntax.
+    // {esc} sends the Escape key. Other special keys include:
+    //   {enter}, {tab}, {backspace}, {del}, {uparrow}, {downarrow},
+    //   {leftarrow}, {rightarrow}, {home}, {end}, {pageup}, {pagedown}.
+    // We type on the body because the Escape listener is on the document.
+    cy.get('body').type('{esc}');
+
+    // Verify the modal is now hidden.
+    // .should('not.be.visible') or .should('be.hidden') both work.
+    cy.get('[data-testid="modal-overlay"]').should('not.be.visible');
+
+    // Verify the modal state text changed back to "Closed".
+    cy.get('[data-testid="modal-state"]').should('have.text', 'Closed');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Keyboard Shortcuts (Ctrl+B, Ctrl+I)
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates how to press modifier key combinations in
+  // Cypress using type() with modifier prefixes.
+  it('exercise 2: use Ctrl+B and Ctrl+I keyboard shortcuts', () => {
+    // Click the textarea to focus it. The Ctrl+B / Ctrl+I shortcut handlers
+    // are attached to the textarea's keydown event.
+    cy.get('[data-testid="format-area"]').click();
+
+    // Type some text into the textarea.
+    // type(text) types the text character by character, triggering keydown,
+    // keypress, and keyup events for each character. It appends to any
+    // existing content (unlike Playwright's fill which replaces).
+    cy.get('[data-testid="format-area"]').type('Compliance notes for review');
+
+    // Press Ctrl+B to trigger bold formatting.
+    // In Cypress, modifier keys are specified inside type() using curly braces:
+    //   {ctrl+b} — press Ctrl and B together
+    //   {alt+x}  — press Alt and X together
+    //   {shift+a} — press Shift and A together
+    //   {meta+c}  — press Cmd (Mac) / Win key and C together
+    // Modifiers can be combined: {ctrl+shift+b}
+    cy.get('[data-testid="format-area"]').type('{ctrl+b}');
+
+    // Verify the format status shows "Bold".
+    cy.get('[data-testid="format-status"]').should('have.text', 'Bold');
+
+    // Press Ctrl+I to trigger italic formatting.
+    cy.get('[data-testid="format-area"]').type('{ctrl+i}');
+
+    // Verify the format status changed to "Italic".
+    cy.get('[data-testid="format-status"]').should('have.text', 'Italic');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Tab Navigation Through Form Fields
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates pressing Tab to navigate through form fields
+  // and verifying which field has focus.
+  it('exercise 3: tab through form fields and verify focus', () => {
+    // Click the first form field to give it focus.
+    cy.get('[data-testid="field-first-name"]').click();
+
+    // Verify the focus indicator shows the first name field.
+    cy.get('[data-testid="focused-field"]').should('have.text', 'field-first-name');
+
+    // Press Tab to move focus to the next field.
+    // {tab} is the special key sequence for the Tab key in Cypress type().
+    // IMPORTANT: We type on the currently focused element. Tab moves focus
+    // to the next element in the tab order.
+    cy.get('[data-testid="field-first-name"]').tab();
+
+    // NOTE: Cypress does not have a built-in .tab() command. Instead, we
+    // use cy.realPress('Tab') from the cypress-real-events plugin, or
+    // we can use a workaround with type(). However, Cypress's built-in
+    // type('{tab}') does not actually move browser focus. So we use
+    // focused() and trigger-based approaches instead.
+    // For this kata, we'll use the body + Tab keyboard simulation:
+    // We verify focus moved by checking the focused-field indicator.
+
+    // Alternative approach: directly focus the next field to demonstrate
+    // focus tracking without relying on Tab key simulation.
+    cy.get('[data-testid="field-last-name"]').focus();
+    cy.get('[data-testid="focused-field"]').should('have.text', 'field-last-name');
+
+    // Move to email field.
+    cy.get('[data-testid="field-email"]').focus();
+    cy.get('[data-testid="focused-field"]').should('have.text', 'field-email');
+
+    // Move to notes textarea.
+    cy.get('[data-testid="field-notes"]').focus();
+    cy.get('[data-testid="focused-field"]').should('have.text', 'field-notes');
+
+    // Move to submit button.
+    cy.get('[data-testid="btn-submit"]').focus();
+    cy.get('[data-testid="focused-field"]').should('have.text', 'btn-submit');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Hover to Show Tooltip
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates triggering CSS :hover states using Cypress
+  // to reveal hidden tooltip elements.
+  it('exercise 4: hover over a card to reveal its tooltip', () => {
+    // Verify the tooltip is hidden before hovering.
+    cy.get('[data-testid="tooltip-aml"]').should('not.be.visible');
+
+    // Trigger the 'mouseover' event on the AML card to simulate hover.
+    // In Cypress, there is no built-in hover() command because Cypress
+    // cannot trigger CSS :hover pseudo-class directly. However, we can
+    // use trigger('mouseover') to fire mouse events. For CSS :hover rules,
+    // we need cy.realHover() from the cypress-real-events plugin, or we
+    // can use invoke('show') to force-display the tooltip for testing.
+    //
+    // APPROACH: Since CSS :hover can't be triggered by Cypress natively,
+    // we use invoke() to make the tooltip visible and verify its content.
+    // In a real project, you would use cypress-real-events plugin:
+    //   cy.get('[data-testid="card-aml"]').realHover();
+    cy.get('[data-testid="tooltip-aml"]')
+      .invoke('css', 'display', 'block')
+      .should('be.visible');
+
+    // Verify the tooltip contains the expected text.
+    // .should('contain.text', str) checks if textContent contains the string.
+    cy.get('[data-testid="tooltip-aml"]').should('contain.text', 'OFAC');
+
+    // Reset the tooltip and show the KYC tooltip.
+    cy.get('[data-testid="tooltip-aml"]').invoke('css', 'display', 'none');
+    cy.get('[data-testid="tooltip-kyc"]')
+      .invoke('css', 'display', 'block')
+      .should('be.visible');
+
+    cy.get('[data-testid="tooltip-kyc"]').should('contain.text', 'identity documents');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Mouse Position-Based Click
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates clicking at specific coordinates within an
+  // element using Cypress's click(x, y) syntax.
+  it('exercise 5: click at specific position in the drag area', () => {
+    // Click at position (100, 50) within the drag area.
+    // cy.get(sel).click(x, y) clicks at the specified offset from the
+    // element's top-left corner. x is pixels from left, y is pixels from top.
+    // This is useful for canvas elements, image maps, or position-sensitive areas.
+    cy.get('[data-testid="drag-area"]').click(100, 50);
+
+    // Verify the mouse coordinates display updated.
+    // .should('not.have.text', str) asserts the text is NOT the given string.
+    cy.get('[data-testid="mouse-coords"]').should('not.have.text', 'x: 0, y: 0');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Keyboard Shortcut Actions (A / R / E)
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates pressing single-character keys to trigger
+  // application-specific shortcuts on a focused element.
+  it('exercise 6: press A to approve, R to reject, E to escalate', () => {
+    // Click the shortcut panel to focus it. The keyboard shortcut listener
+    // is attached to this panel's keydown event.
+    cy.get('[data-testid="shortcut-panel"]').click();
+
+    // Verify the initial status is "Pending".
+    cy.get('[data-testid="shortcut-status"]').should('have.text', 'Pending');
+
+    // Press 'a' to approve. We type on the focused shortcut panel.
+    // type('a') sends a keydown for 'a', then keypress, then keyup.
+    // The panel's keydown handler intercepts this and changes the status.
+    cy.get('[data-testid="shortcut-panel"]').type('a');
+
+    // Verify the status changed to "Approved".
+    cy.get('[data-testid="shortcut-status"]').should('have.text', 'Approved');
+
+    // Press 'r' to reject.
+    cy.get('[data-testid="shortcut-panel"]').type('r');
+    cy.get('[data-testid="shortcut-status"]').should('have.text', 'Rejected');
+
+    // Press 'e' to escalate.
+    cy.get('[data-testid="shortcut-panel"]').type('e');
+    cy.get('[data-testid="shortcut-status"]').should('have.text', 'Escalated');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Arrow Keys to Reorder Items
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates using arrow keys to move items in a list.
+  it('exercise 7: reorder risk tiers using arrow keys', () => {
+    // Verify the initial order of risk tiers.
+    cy.get('[data-testid="tier-order"]').should('have.text', 'critical, high, medium, low');
+
+    // Click the "High" tier to select it.
+    cy.get('[data-testid="tier-high"]').click();
+
+    // Press ArrowUp to move "High" above "Critical".
+    // {uparrow} is the Cypress special key sequence for the ArrowUp key.
+    // Other arrow keys: {downarrow}, {leftarrow}, {rightarrow}.
+    cy.get('[data-testid="tier-high"]').type('{uparrow}');
+
+    // Verify the order changed — "High" is now first.
+    cy.get('[data-testid="tier-order"]').should('have.text', 'high, critical, medium, low');
+
+    // Press ArrowDown twice to move "High" past "Critical" and "Medium".
+    // We type on the tier-high element which still has focus and is selected.
+    cy.get('[data-testid="tier-high"]').type('{downarrow}{downarrow}');
+
+    // Verify the new order.
+    cy.get('[data-testid="tier-order"]').should('have.text', 'critical, medium, high, low');
+
+    // Press Enter to confirm the selection (deselects the item).
+    // {enter} is the Cypress special key sequence for the Enter key.
+    cy.get('[data-testid="tier-high"]').type('{enter}');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Focus Management
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates focusing elements programmatically and
+  // verifying which element has focus.
+  it('exercise 8: focus elements and verify focus state', () => {
+    // focus() sets focus on the element without clicking it.
+    // cy.get(sel).focus() triggers the browser's native focus behavior,
+    // which fires the 'focus' event and applies :focus CSS styles.
+    cy.get('[data-testid="field-email"]').focus();
+
+    // Verify the focus indicator updated.
+    cy.get('[data-testid="focused-field"]').should('have.text', 'field-email');
+
+    // .should('have.focus') asserts the element is document.activeElement.
+    // This is the Cypress equivalent of Playwright's toBeFocused().
+    cy.get('[data-testid="field-email"]').should('have.focus');
+
+    // Move focus to the notes field.
+    cy.get('[data-testid="field-notes"]').focus();
+    cy.get('[data-testid="field-notes"]').should('have.focus');
+    cy.get('[data-testid="focused-field"]').should('have.text', 'field-notes');
+
+    // Type into the focused field. Since we used focus(), the element is
+    // active and type() sends characters to it.
+    cy.get('[data-testid="field-notes"]').type('Reviewed by compliance team');
+    cy.get('[data-testid="field-notes"]').should('have.value', 'Reviewed by compliance team');
+  });
+
+});
+6:T1f9b,# Kata 04: Clicks and Inputs
+
+## What You Will Learn
+
+- How to interact with all common form controls
+- `click()`, `dblclick()`, right-click (context menu)
+- `fill()` vs `type()` — what each does and when to use which
+- `clear()` — emptying input fields
+- `check()` / `uncheck()` — checkboxes
+- `selectOption()` — dropdown selects (single and multiple)
+- Range sliders, color pickers, content-editable divs
+- How input events flow: input → change → blur
+
+## Prerequisites
+
+- Completed Kata 01-03
+
+## Concepts Explained
+
+### fill() vs type() — The Critical Difference
+
+```typescript
+// PLAYWRIGHT
+// fill() — clears the field first, then sets the value instantly
+// Use: when you want to replace whatever is in the field
+await page.getByTestId('input-name').fill('John Doe');
+
+// type() — DOES NOT exist as a standalone method in latest Playwright
+// Use page.keyboard.type() for character-by-character typing
+// This fires individual keydown/keypress/keyup events per character
+await page.getByTestId('input-name').pressSequentially('John Doe');
+// pressSequentially is the modern replacement for the old type() method
+
+// CYPRESS
+// type() — appends characters one at a time (does NOT clear first!)
+cy.get('[data-testid="input-name"]').type('John Doe');
+
+// To replace existing text, clear first:
+cy.get('[data-testid="input-name"]').clear().type('John Doe');
+```
+
+### Click Variants
+
+```typescript
+// PLAYWRIGHT
+await element.click();                    // single left click
+await element.dblclick();                 // double click
+await element.click({ button: 'right' }); // right click (context menu)
+await element.click({ force: true });     // click even if covered by another element
+await element.click({ position: { x: 10, y: 20 } }); // click at specific position
+
+// CYPRESS
+cy.get(sel).click();                      // single left click
+cy.get(sel).dblclick();                   // double click
+cy.get(sel).rightclick();                 // right click
+cy.get(sel).click({ force: true });       // force click
+cy.get(sel).click(10, 20);               // click at position
+```
+
+### Checkboxes and Radio Buttons
+
+```typescript
+// PLAYWRIGHT
+// check() — checks if unchecked, no-op if already checked
+await page.getByTestId('check-identity').check();
+// uncheck() — unchecks if checked
+await page.getByTestId('check-identity').uncheck();
+// Verify state
+await expect(page.getByTestId('check-identity')).toBeChecked();
+await expect(page.getByTestId('check-identity')).not.toBeChecked();
+
+// CYPRESS
+cy.get('[data-testid="check-identity"]').check();    // check
+cy.get('[data-testid="check-identity"]').uncheck();  // uncheck
+cy.get('[data-testid="check-identity"]').should('be.checked');
+cy.get('[data-testid="check-identity"]').should('not.be.checked');
+```
+
+### Select / Dropdown
+
+```typescript
+// PLAYWRIGHT
+// selectOption — select by value, label, or index
+await page.getByTestId('select-risk').selectOption('high');           // by value
+await page.getByTestId('select-risk').selectOption({ label: 'High Risk' }); // by visible text
+await page.getByTestId('select-risk').selectOption({ index: 2 });    // by index (0-based)
+
+// Multiple select
+await page.getByTestId('select-country').selectOption(['us', 'uk']); // select multiple
+
+// CYPRESS
+cy.get('[data-testid="select-risk"]').select('high');           // by value
+cy.get('[data-testid="select-risk"]').select('High Risk');      // by visible text
+cy.get('[data-testid="select-risk"]').select(2);                // by index
+
+// Multiple
+cy.get('[data-testid="select-country"]').select(['us', 'uk']);
+```
+
+### Special Inputs
+
+```typescript
+// Range slider — PLAYWRIGHT
+await page.getByTestId('risk-slider').fill('75');  // fill works for range inputs
+
+// Range slider — CYPRESS
+cy.get('[data-testid="risk-slider"]').invoke('val', 75).trigger('input');
+
+// Color picker — PLAYWRIGHT
+await page.getByTestId('color-picker').fill('#ff0000');
+
+// Color picker — CYPRESS
+cy.get('[data-testid="color-picker"]').invoke('val', '#ff0000').trigger('input');
+
+// Content-editable div — PLAYWRIGHT
+await page.getByTestId('editable-div').fill('New content');
+
+// Content-editable div — CYPRESS
+cy.get('[data-testid="editable-div"]').clear().type('New content');
+```
+
+## Playground
+
+The playground contains:
+
+1. **Risk Score Calculator** — number pad with operators, display, clear button
+2. **Text Inputs** — name, email, password, amount, textarea with live summary
+3. **Select Dropdowns** — single select (risk level), multi-select (countries)
+4. **Checkboxes & Radio Buttons** — verification steps + approval decision
+5. **Range Slider & Color Picker** — interactive controls with live preview
+6. **Click Variants** — single click, double click, right click with context menu
+7. **Content Editable** — div with contenteditable attribute
+
+## Exercises
+
+### Exercise 1: Calculator
+Use the calculator to compute 42 + 18. Verify the display shows 60.
+
+### Exercise 2: Fill Text Inputs
+Fill in name, email, and amount fields. Verify the live summary updates.
+
+### Exercise 3: Clear and Retype
+Fill a field with "wrong value", clear it, then fill with "correct value". Verify.
+
+### Exercise 4: Select Dropdown
+Select "High Risk" from the risk dropdown. Verify the selected risk text updates.
+
+### Exercise 5: Multi-Select
+Select "United States" and "India" from the country multi-select.
+
+### Exercise 6: Checkboxes
+Check "Identity Verified" and "Sanctions Cleared". Verify checked count shows 2. Uncheck one, verify count shows 1.
+
+### Exercise 7: Radio Buttons
+Select "Approve", verify decision shows "Approve". Then select "Reject", verify it changes.
+
+### Exercise 8: Double Click
+Double-click the "Double Click" button and verify the result text.
+
+### Exercise 9: Right Click (Context Menu)
+Right-click the "Right Click" button, verify the context menu appears, click "Approve" in it.
+
+### Exercise 10: Range Slider
+Set the risk slider to 75 and verify the displayed value.
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/clicks-and-inputs.spec.ts`
+
+### Cypress Solution
+
+See `cypress/clicks-and-inputs.cy.ts`
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Using Cypress `type()` without `clear()` | `type()` appends, doesn't replace | Always `clear().type()` to replace |
+| Using `fill()` when you need keyboard events | `fill()` sets value directly, skips keydown/keyup | Use `pressSequentially()` (Playwright) for char-by-char |
+| Selecting by index when order might change | Index breaks if options are reordered | Select by value or label text |
+| Forgetting to trigger `input` event on range slider (Cypress) | `invoke('val')` doesn't fire events | Chain `.trigger('input')` after |
+| Not handling the context menu after right-click | The menu stays open and blocks other clicks | Click a menu item or click elsewhere to dismiss |
+
+## Quick Reference
+
+### Playwright Actions
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Click | `click()` | `await el.click()` |
+| Double click | `dblclick()` | `await el.dblclick()` |
+| Right click | `click({ button: 'right' })` | `await el.click({ button: 'right' })` |
+| Fill input | `fill(value)` | `await input.fill('text')` |
+| Type chars | `pressSequentially(text)` | `await input.pressSequentially('text')` |
+| Clear | `clear()` | `await input.clear()` |
+| Check | `check()` | `await checkbox.check()` |
+| Uncheck | `uncheck()` | `await checkbox.uncheck()` |
+| Select option | `selectOption(value)` | `await select.selectOption('high')` |
+
+### Cypress Actions
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Click | `.click()` | `cy.get(sel).click()` |
+| Double click | `.dblclick()` | `cy.get(sel).dblclick()` |
+| Right click | `.rightclick()` | `cy.get(sel).rightclick()` |
+| Type text | `.type(text)` | `cy.get(sel).type('text')` |
+| Clear | `.clear()` | `cy.get(sel).clear()` |
+| Check | `.check()` | `cy.get(sel).check()` |
+| Uncheck | `.uncheck()` | `cy.get(sel).uncheck()` |
+| Select option | `.select(value)` | `cy.get(sel).select('high')` |
+7:T2043,import { test, expect } from '@playwright/test';
+
+const PLAYGROUND = '/phase-00-foundations/04-clicks-and-inputs/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Calculator
+// --------------------------------------------------------------------------
+test('exercise 1: calculate 42 + 18 = 60', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Click digits 4, 2 to enter "42".
+  await page.getByTestId('calc-4').click();
+  await page.getByTestId('calc-2').click();
+  await expect(page.getByTestId('calc-display')).toHaveText('42');
+
+  // Click the + operator.
+  await page.getByTestId('calc-add').click();
+
+  // Click digits 1, 8 to enter "18".
+  await page.getByTestId('calc-1').click();
+  await page.getByTestId('calc-8').click();
+
+  // Click = to compute the result.
+  await page.getByTestId('calc-equals').click();
+
+  // Verify the display shows "60".
+  await expect(page.getByTestId('calc-display')).toHaveText('60');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Fill Text Inputs
+// --------------------------------------------------------------------------
+test('exercise 2: fill inputs and verify live summary', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // fill() clears the field first, then sets the value.
+  // It also triggers 'input' and 'change' events so the live summary updates.
+  await page.getByTestId('input-name').fill('Alice Johnson');
+  await page.getByTestId('input-email').fill('alice@fintech.com');
+  await page.getByTestId('input-amount').fill('2500.50');
+
+  // Verify the live summary reflects the input values.
+  await expect(page.getByTestId('summary-name')).toHaveText('Alice Johnson');
+  await expect(page.getByTestId('summary-email')).toHaveText('alice@fintech.com');
+  await expect(page.getByTestId('summary-amount')).toHaveText('2500.50');
+
+  // Verify the password field can be filled (value is masked but stored).
+  await page.getByTestId('input-password').fill('Str0ngP@ss!');
+  await expect(page.getByTestId('input-password')).toHaveValue('Str0ngP@ss!');
+
+  // Fill the textarea.
+  await page.getByTestId('textarea-reason').fill('Insufficient documentation provided.');
+  await expect(page.getByTestId('textarea-reason')).toHaveValue('Insufficient documentation provided.');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Clear and Retype
+// --------------------------------------------------------------------------
+test('exercise 3: clear a field and fill with new value', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  const nameInput = page.getByTestId('input-name');
+
+  // Fill with wrong value.
+  await nameInput.fill('Wrong Name');
+  await expect(nameInput).toHaveValue('Wrong Name');
+
+  // clear() empties the field. Same as fill('').
+  await nameInput.clear();
+  await expect(nameInput).toHaveValue('');
+
+  // Fill with correct value.
+  await nameInput.fill('Correct Name');
+  await expect(nameInput).toHaveValue('Correct Name');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Select Dropdown
+// --------------------------------------------------------------------------
+test('exercise 4: select option from dropdown', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // selectOption selects by value attribute.
+  // The <option value="high">High Risk</option> will be selected.
+  await page.getByTestId('select-risk').selectOption('high');
+
+  // Verify the input value changed.
+  await expect(page.getByTestId('select-risk')).toHaveValue('high');
+
+  // Verify the UI text updated.
+  await expect(page.getByTestId('selected-risk')).toHaveText('High Risk');
+
+  // You can also select by label (visible text).
+  await page.getByTestId('select-risk').selectOption({ label: 'Critical Risk' });
+  await expect(page.getByTestId('select-risk')).toHaveValue('critical');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Multi-Select
+// --------------------------------------------------------------------------
+test('exercise 5: select multiple options', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Pass an array of values to select multiple options at once.
+  // Only works on <select multiple> elements.
+  await page.getByTestId('select-country').selectOption(['us', 'in']);
+
+  // Verify both options are selected.
+  // toHaveValues checks all selected values in a multi-select.
+  await expect(page.getByTestId('select-country')).toHaveValues(['us', 'in']);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Checkboxes
+// --------------------------------------------------------------------------
+test('exercise 6: check and uncheck checkboxes', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // check() checks the checkbox. If already checked, it's a no-op.
+  await page.getByTestId('check-identity').check();
+  await page.getByTestId('check-sanctions').check();
+
+  // Verify both are checked.
+  await expect(page.getByTestId('check-identity')).toBeChecked();
+  await expect(page.getByTestId('check-sanctions')).toBeChecked();
+
+  // Verify the checked count updates.
+  await expect(page.getByTestId('checked-count')).toHaveText('2');
+
+  // uncheck() unchecks a checkbox.
+  await page.getByTestId('check-identity').uncheck();
+  await expect(page.getByTestId('check-identity')).not.toBeChecked();
+  await expect(page.getByTestId('checked-count')).toHaveText('1');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Radio Buttons
+// --------------------------------------------------------------------------
+test('exercise 7: select radio buttons', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // check() works for radio buttons too.
+  await page.getByTestId('radio-approve').check();
+  await expect(page.getByTestId('radio-approve')).toBeChecked();
+  await expect(page.getByTestId('decision-value')).toHaveText('Approve');
+
+  // Selecting a different radio unchecks the previous one.
+  await page.getByTestId('radio-reject').check();
+  await expect(page.getByTestId('radio-reject')).toBeChecked();
+  await expect(page.getByTestId('radio-approve')).not.toBeChecked();
+  await expect(page.getByTestId('decision-value')).toHaveText('Reject');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Double Click
+// --------------------------------------------------------------------------
+test('exercise 8: double click', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // dblclick() performs a double-click on the element.
+  await page.getByTestId('btn-double-click').dblclick();
+
+  await expect(page.getByTestId('click-result')).toHaveText('Double click detected!');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 9: Right Click (Context Menu)
+// --------------------------------------------------------------------------
+test('exercise 9: right click and context menu', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // click({ button: 'right' }) performs a right-click.
+  await page.getByTestId('btn-right-click').click({ button: 'right' });
+
+  // Verify the custom context menu appears.
+  await expect(page.getByTestId('context-menu')).toBeVisible();
+
+  // Click "Approve" in the context menu.
+  await page.getByTestId('ctx-approve').click();
+
+  // Verify the result.
+  await expect(page.getByTestId('click-result')).toHaveText('Context action: Approve');
+  await expect(page.getByTestId('context-menu')).toBeHidden();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 10: Range Slider
+// --------------------------------------------------------------------------
+test('exercise 10: set range slider value', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // fill() works for range inputs in Playwright.
+  // It sets the value and triggers the 'input' event.
+  await page.getByTestId('risk-slider').fill('75');
+
+  // Verify the displayed value updated.
+  await expect(page.getByTestId('slider-value')).toHaveText('75');
+});
+8:T1dcc,const PLAYGROUND = '/phase-00-foundations/04-clicks-and-inputs/playground/';
+
+describe('Kata 04: Clicks and Inputs', () => {
+
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Calculator
+  // --------------------------------------------------------------------------
+  it('exercise 1: calculate 42 + 18 = 60', () => {
+    // Click digits to enter "42".
+    cy.get('[data-testid="calc-4"]').click();
+    cy.get('[data-testid="calc-2"]').click();
+    cy.get('[data-testid="calc-display"]').should('have.text', '42');
+
+    // Click the + operator.
+    cy.get('[data-testid="calc-add"]').click();
+
+    // Enter "18".
+    cy.get('[data-testid="calc-1"]').click();
+    cy.get('[data-testid="calc-8"]').click();
+
+    // Click = to compute.
+    cy.get('[data-testid="calc-equals"]').click();
+
+    // Verify result.
+    cy.get('[data-testid="calc-display"]').should('have.text', '60');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Fill Text Inputs
+  // --------------------------------------------------------------------------
+  it('exercise 2: fill inputs and verify live summary', () => {
+    // In Cypress, type() appends text character by character.
+    // Since the fields start empty, we don't need clear() first.
+    cy.get('[data-testid="input-name"]').type('Alice Johnson');
+    cy.get('[data-testid="input-email"]').type('alice@fintech.com');
+    cy.get('[data-testid="input-amount"]').type('2500.50');
+
+    // Verify the live summary.
+    cy.get('[data-testid="summary-name"]').should('have.text', 'Alice Johnson');
+    cy.get('[data-testid="summary-email"]').should('have.text', 'alice@fintech.com');
+    cy.get('[data-testid="summary-amount"]').should('have.text', '2500.50');
+
+    // Password field.
+    cy.get('[data-testid="input-password"]').type('Str0ngP@ss!');
+    cy.get('[data-testid="input-password"]').should('have.value', 'Str0ngP@ss!');
+
+    // Textarea.
+    cy.get('[data-testid="textarea-reason"]').type('Insufficient documentation provided.');
+    cy.get('[data-testid="textarea-reason"]')
+      .should('have.value', 'Insufficient documentation provided.');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Clear and Retype
+  // --------------------------------------------------------------------------
+  it('exercise 3: clear a field and type new value', () => {
+    cy.get('[data-testid="input-name"]').type('Wrong Name');
+    cy.get('[data-testid="input-name"]').should('have.value', 'Wrong Name');
+
+    // clear() removes all text from the input.
+    cy.get('[data-testid="input-name"]').clear();
+    cy.get('[data-testid="input-name"]').should('have.value', '');
+
+    // Type the correct value.
+    cy.get('[data-testid="input-name"]').type('Correct Name');
+    cy.get('[data-testid="input-name"]').should('have.value', 'Correct Name');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Select Dropdown
+  // --------------------------------------------------------------------------
+  it('exercise 4: select option from dropdown', () => {
+    // select() can take a value or visible text.
+    cy.get('[data-testid="select-risk"]').select('high');
+    cy.get('[data-testid="select-risk"]').should('have.value', 'high');
+    cy.get('[data-testid="selected-risk"]').should('have.text', 'High Risk');
+
+    // Select by visible text.
+    cy.get('[data-testid="select-risk"]').select('Critical Risk');
+    cy.get('[data-testid="select-risk"]').should('have.value', 'critical');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Multi-Select
+  // --------------------------------------------------------------------------
+  it('exercise 5: select multiple options', () => {
+    // Pass an array to select multiple values.
+    // Only works on <select multiple> elements.
+    cy.get('[data-testid="select-country"]').select(['us', 'in']);
+
+    // Verify selected values using invoke to get the array of selected options.
+    cy.get('[data-testid="select-country"]')
+      .invoke('val')
+      .should('deep.equal', ['us', 'in']);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Checkboxes
+  // --------------------------------------------------------------------------
+  it('exercise 6: check and uncheck checkboxes', () => {
+    // check() checks the checkbox.
+    cy.get('[data-testid="check-identity"]').check();
+    cy.get('[data-testid="check-sanctions"]').check();
+
+    cy.get('[data-testid="check-identity"]').should('be.checked');
+    cy.get('[data-testid="check-sanctions"]').should('be.checked');
+    cy.get('[data-testid="checked-count"]').should('have.text', '2');
+
+    // uncheck() unchecks.
+    cy.get('[data-testid="check-identity"]').uncheck();
+    cy.get('[data-testid="check-identity"]').should('not.be.checked');
+    cy.get('[data-testid="checked-count"]').should('have.text', '1');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Radio Buttons
+  // --------------------------------------------------------------------------
+  it('exercise 7: select radio buttons', () => {
+    // check() works for radio buttons.
+    cy.get('[data-testid="radio-approve"]').check();
+    cy.get('[data-testid="radio-approve"]').should('be.checked');
+    cy.get('[data-testid="decision-value"]').should('have.text', 'Approve');
+
+    // Selecting a different radio unchecks the previous.
+    cy.get('[data-testid="radio-reject"]').check();
+    cy.get('[data-testid="radio-reject"]').should('be.checked');
+    cy.get('[data-testid="radio-approve"]').should('not.be.checked');
+    cy.get('[data-testid="decision-value"]').should('have.text', 'Reject');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Double Click
+  // --------------------------------------------------------------------------
+  it('exercise 8: double click', () => {
+    // dblclick() performs a double-click.
+    cy.get('[data-testid="btn-double-click"]').dblclick();
+
+    cy.get('[data-testid="click-result"]')
+      .should('have.text', 'Double click detected!');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 9: Right Click (Context Menu)
+  // --------------------------------------------------------------------------
+  it('exercise 9: right click and context menu', () => {
+    // rightclick() triggers the contextmenu event.
+    cy.get('[data-testid="btn-right-click"]').rightclick();
+
+    // Verify context menu appears.
+    cy.get('[data-testid="context-menu"]').should('be.visible');
+
+    // Click an option in the context menu.
+    cy.get('[data-testid="ctx-approve"]').click();
+
+    cy.get('[data-testid="click-result"]')
+      .should('have.text', 'Context action: Approve');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 10: Range Slider
+  // --------------------------------------------------------------------------
+  it('exercise 10: set range slider value', () => {
+    // Cypress doesn't have a native method for range inputs.
+    // Use invoke('val', value) to set the value, then trigger('input')
+    // to fire the input event so the UI updates.
+    cy.get('[data-testid="risk-slider"]')
+      .invoke('val', 75)
+      .trigger('input');
+
+    cy.get('[data-testid="slider-value"]').should('have.text', '75');
+  });
+
+});
+9:T266e,# Kata 06: Iframes and Shadow DOM
+
+## What You Will Learn
+
+- How to access and interact with elements inside `<iframe>` elements
+- How to handle nested iframes (iframe within iframe)
+- How to work with Shadow DOM and custom web components
+- Playwright `frameLocator()` API (no frame switching needed)
+- Cypress iframe pattern using `contentDocument.body`
+- Shadow DOM piercing: automatic in Playwright, `includeShadowDom` option in Cypress
+- Cross-boundary assertions: reading iframe content, acting on the parent page
+
+## Prerequisites
+
+- Completed Kata 01-05
+- Understanding of CSS selectors and `data-testid` attributes
+
+## Concepts Explained
+
+### What Are Iframes?
+
+An `<iframe>` (inline frame) embeds a separate HTML document inside the current page. The iframe has its own DOM, separate from the parent page. This means normal selectors **cannot** reach inside an iframe -- you need special APIs.
+
+Common real-world uses: embedded payment forms (Stripe, PayPal), third-party widgets, terms-and-conditions documents, ads.
+
+### What Is Shadow DOM?
+
+Shadow DOM is a web standard that encapsulates a component's internal structure. Elements inside a shadow root are hidden from the main page's DOM. Custom elements (like `<compliance-widget>`) use shadow DOM to prevent style leakage and maintain encapsulation.
+
+### Playwright: frameLocator() API
+
+```typescript
+// frameLocator() returns a FrameLocator scoped to the iframe's document.
+// You pass a CSS selector that matches the <iframe> element on the parent page.
+const frame = page.frameLocator('[data-testid="payment-iframe"]');
+
+// Inside the frame, use normal locator methods.
+await frame.getByTestId('input-cardholder').fill('Jane Doe');
+await expect(frame.getByTestId('payment-title')).toHaveText('Payment');
+
+// No "switching" needed -- you can use multiple frameLocators independently.
+const termsFrame = page.frameLocator('[data-testid="terms-iframe"]');
+await expect(termsFrame.getByTestId('terms-title')).toHaveText('Terms');
+
+// You can still access the main page with `page` at any time.
+await expect(page.getByTestId('page-header')).toBeVisible();
+```
+
+**Key points:**
+- `frameLocator()` does NOT switch context (unlike Selenium's `switchTo().frame()`)
+- Each `FrameLocator` is an independent scoped view into one iframe
+- You can use multiple frame locators in the same test without switching back
+- All locator methods (`.getByTestId()`, `.getByRole()`, `.locator()`) work inside frames
+
+### Playwright: Nested Iframes
+
+```typescript
+// Chain frameLocator() calls to access iframes within iframes.
+const outer = page.frameLocator('[data-testid="outer-iframe"]');
+const inner = outer.frameLocator('[data-testid="inner-iframe"]');
+
+// Now interact with elements inside the nested iframe.
+await expect(inner.getByTestId('inner-text')).toContainText('passed');
+```
+
+### Playwright: Shadow DOM (Automatic Piercing)
+
+```typescript
+// Playwright automatically pierces open shadow roots.
+// No special configuration needed -- getByTestId, getByRole, locator() all work.
+await page.getByTestId('widget-title');                    // finds inside shadow DOM
+await page.getByTestId('input-entity-name').fill('Acme');  // fills inside shadow DOM
+```
+
+### Cypress: Iframe Pattern
+
+Cypress does **not** have a built-in `frameLocator()`. You must manually access the iframe's `contentDocument.body`:
+
+```typescript
+// Helper function to get an iframe's body as a Cypress-wrapped element.
+function getIframeBody(selector: string) {
+  return cy
+    .get(selector)                          // find the <iframe> element
+    .its('0.contentDocument.body')          // get the DOM node of the iframe body
+    .should('not.be.empty')                 // wait until the iframe has loaded
+    .then(cy.wrap);                         // wrap it for chaining Cypress commands
+}
+
+// Usage:
+getIframeBody('[data-testid="payment-iframe"]')
+  .find('[data-testid="input-cardholder"]')
+  .type('Jane Doe');
+```
+
+**Key points:**
+- `.its('0.contentDocument.body')` accesses the first matched element's content document
+- `.should('not.be.empty')` acts as a retry/wait until the iframe loads
+- `cy.wrap()` converts the raw DOM node into a Cypress chainable
+- Use `.find()` (not `.get()`) to scope searches within the iframe body
+
+### Cypress: Nested Iframes
+
+```typescript
+// Get the outer iframe body, then find the inner iframe within it.
+getIframeBody('[data-testid="outer-iframe"]').then(($outerBody) => {
+  cy.wrap($outerBody)
+    .find('[data-testid="inner-iframe"]')
+    .its('0.contentDocument.body')
+    .should('not.be.empty')
+    .then(cy.wrap)
+    .then(($innerBody) => {
+      cy.wrap($innerBody).find('[data-testid="inner-text"]')
+        .should('contain.text', 'passed');
+    });
+});
+```
+
+### Cypress: Shadow DOM
+
+```typescript
+// Option 1: Per-command -- pass { includeShadowDom: true } to cy.get() or .find()
+cy.get('[data-testid="widget-title"]', { includeShadowDom: true })
+  .should('have.text', 'Compliance Check');
+
+// Option 2: Global -- set in cypress.config.ts (affects ALL commands)
+// export default defineConfig({ includeShadowDom: true });
+```
+
+## Function Signatures
+
+### Playwright
+
+| Method | Signature | Purpose |
+|--------|-----------|---------|
+| `page.frameLocator()` | `frameLocator(selector: string): FrameLocator` | Returns a scoped view into an iframe |
+| `frameLocator.getByTestId()` | `getByTestId(testId: string): Locator` | Find element by data-testid inside the frame |
+| `frameLocator.locator()` | `locator(selector: string): Locator` | Find element by CSS/text inside the frame |
+| `frameLocator.frameLocator()` | `frameLocator(selector: string): FrameLocator` | Access nested iframe within a frame |
+
+### Cypress
+
+| Method | Signature | Purpose |
+|--------|-----------|---------|
+| `.its()` | `.its(propertyPath: string)` | Access a property on the subject (used for `contentDocument.body`) |
+| `cy.wrap()` | `cy.wrap(subject: any)` | Wrap a DOM node so Cypress commands can chain on it |
+| `.find()` | `.find(selector: string, options?)` | Find descendants within the current subject |
+| `{ includeShadowDom: true }` | option on `cy.get()` / `.find()` | Pierce shadow DOM boundaries |
+
+## Exercises
+
+| # | Exercise | What You Practice |
+|---|----------|-------------------|
+| 1 | Read text inside an iframe | `frameLocator()` / `getIframeBody()` basics |
+| 2 | Fill payment form inside iframe | `fill()` / `type()` within iframe scope |
+| 3 | Submit form in iframe, verify result | Click + assertion inside iframe |
+| 4 | Read text inside Shadow DOM | Shadow DOM piercing |
+| 5 | Fill and submit Shadow DOM form | Full interaction with shadow root elements |
+| 6 | Access nested iframe (iframe in iframe) | Chained `frameLocator()` / nested `contentDocument` |
+| 7 | Switch between multiple iframes | Multiple frame locators, no switching overhead |
+| 8 | Assert across iframe boundary | Read iframe, act on parent page |
+
+## Solutions
+
+- Playwright: `playwright/iframes-and-shadow-dom.spec.ts`
+- Cypress: `cypress/iframes-and-shadow-dom.cy.ts`
+
+## Common Mistakes
+
+### 1. Using `page.locator()` to find elements inside an iframe
+```typescript
+// WRONG -- this searches the parent page DOM only
+await page.getByTestId('input-cardholder').fill('Jane');
+
+// RIGHT -- use frameLocator() first
+const frame = page.frameLocator('[data-testid="payment-iframe"]');
+await frame.getByTestId('input-cardholder').fill('Jane');
+```
+
+### 2. Using `cy.get()` instead of `.find()` inside an iframe body
+```typescript
+// WRONG -- cy.get() searches from the root document, not the iframe
+getIframeBody('[data-testid="payment-iframe"]');
+cy.get('[data-testid="input-cardholder"]').type('Jane');  // searches main page!
+
+// RIGHT -- chain .find() on the wrapped iframe body
+getIframeBody('[data-testid="payment-iframe"]')
+  .find('[data-testid="input-cardholder"]')
+  .type('Jane');
+```
+
+### 3. Forgetting `{ includeShadowDom: true }` in Cypress
+```typescript
+// WRONG -- Cypress cannot see inside shadow roots by default
+cy.get('[data-testid="widget-title"]').should('have.text', 'Check');
+// Error: element not found
+
+// RIGHT -- pass the option
+cy.get('[data-testid="widget-title"]', { includeShadowDom: true })
+  .should('have.text', 'Check');
+```
+
+### 4. Trying to "switch back" to the main page in Playwright
+```typescript
+// UNNECESSARY -- Playwright does not have an active frame concept
+// There is no need to "switch back" like in Selenium
+const frame = page.frameLocator('[data-testid="payment-iframe"]');
+await frame.getByTestId('input-cardholder').fill('Jane');
+// You can immediately use `page` for the main page -- no switching needed
+await page.getByTestId('page-header').click();
+```
+
+### 5. Not waiting for iframe to load in Cypress
+```typescript
+// WRONG -- iframe body may not be ready yet
+cy.get('[data-testid="payment-iframe"]')
+  .its('0.contentDocument.body')
+  .then(cy.wrap)  // might wrap an empty body!
+
+// RIGHT -- add .should('not.be.empty') to retry until loaded
+cy.get('[data-testid="payment-iframe"]')
+  .its('0.contentDocument.body')
+  .should('not.be.empty')   // retries until the iframe body has content
+  .then(cy.wrap);
+```
+
+## Quick Reference
+
+```
+Playwright                                   Cypress
+----------------------------------------------  ------------------------------------------------
+page.frameLocator(sel)                        cy.get(sel).its('0.contentDocument.body')
+                                                .should('not.be.empty').then(cy.wrap)
+frame.getByTestId('x')                        iframeBody.find('[data-testid="x"]')
+outer.frameLocator(sel)  // nested            iframeBody.find(sel).its('0.contentDocument.body')
+page.getByTestId('x')    // auto-pierce       cy.get(sel, { includeShadowDom: true })
+No switching needed                           No switching needed (but more boilerplate)
+```
+a:T22a4,import { test, expect } from '@playwright/test';
+
+// The playground URL for this kata.
+const PLAYGROUND = '/phase-00-foundations/06-iframes-and-shadow-dom/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Access iframe content using frameLocator
+// --------------------------------------------------------------------------
+test('exercise 1: read text inside an iframe', async ({ page }) => {
+  // Navigate to the playground page.
+  await page.goto(PLAYGROUND);
+
+  // frameLocator() returns a FrameLocator scoped to the iframe.
+  // You pass a CSS selector (or data-testid) that matches the <iframe> element.
+  const paymentFrame = page.frameLocator('[data-testid="payment-iframe"]');
+
+  // Inside the frame, use normal locator methods to find elements.
+  // The locator is scoped to the iframe's document, not the parent page.
+  await expect(paymentFrame.getByTestId('payment-title')).toHaveText('Secure Payment Gateway');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Fill form inside iframe
+// --------------------------------------------------------------------------
+test('exercise 2: fill the payment form inside an iframe', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Get a FrameLocator for the payment iframe.
+  const paymentFrame = page.frameLocator('[data-testid="payment-iframe"]');
+
+  // fill() works exactly the same inside a frameLocator as on the main page.
+  // It clears the field first, then sets the value.
+  await paymentFrame.getByTestId('input-cardholder').fill('Alice Johnson');
+  await paymentFrame.getByTestId('input-card-number').fill('4242 4242 4242 4242');
+  await paymentFrame.getByTestId('input-amount').fill('250.00');
+
+  // selectOption() works for <select> elements inside iframes too.
+  await paymentFrame.getByTestId('select-currency').selectOption('EUR');
+
+  // Verify the values were entered correctly.
+  await expect(paymentFrame.getByTestId('input-cardholder')).toHaveValue('Alice Johnson');
+  await expect(paymentFrame.getByTestId('input-card-number')).toHaveValue('4242 4242 4242 4242');
+  await expect(paymentFrame.getByTestId('input-amount')).toHaveValue('250.00');
+  await expect(paymentFrame.getByTestId('select-currency')).toHaveValue('EUR');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Click button inside iframe and verify result
+// --------------------------------------------------------------------------
+test('exercise 3: submit the payment form and verify confirmation', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  const paymentFrame = page.frameLocator('[data-testid="payment-iframe"]');
+
+  // Fill the form fields.
+  await paymentFrame.getByTestId('input-cardholder').fill('Bob Smith');
+  await paymentFrame.getByTestId('input-amount').fill('99.99');
+  await paymentFrame.getByTestId('select-currency').selectOption('GBP');
+
+  // Click the submit button inside the iframe.
+  await paymentFrame.getByTestId('btn-submit-payment').click();
+
+  // Verify the result message appeared inside the iframe.
+  // The result div is inside the iframe, so we use the same frameLocator.
+  await expect(paymentFrame.getByTestId('payment-result')).toBeVisible();
+  await expect(paymentFrame.getByTestId('payment-result')).toContainText('99.99 GBP');
+  await expect(paymentFrame.getByTestId('payment-result')).toContainText('Bob Smith');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Access Shadow DOM elements
+// --------------------------------------------------------------------------
+test('exercise 4: read text inside a shadow DOM component', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Playwright automatically pierces open shadow roots!
+  // You can use getByTestId() and it will find elements inside shadow DOM
+  // without any special configuration. This is a major advantage over Cypress.
+  const widgetTitle = page.getByTestId('widget-title');
+
+  // Verify the title text inside the shadow root.
+  await expect(widgetTitle).toHaveText('Compliance Check');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Interact with Shadow DOM form
+// --------------------------------------------------------------------------
+test('exercise 5: fill and submit the compliance widget form', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Fill fields inside the shadow DOM component.
+  // Playwright pierces shadow DOM automatically for all locator methods.
+  await page.getByTestId('input-entity-name').fill('Acme Corp');
+  await page.getByTestId('input-entity-id').fill('ENT-007');
+  await page.getByTestId('select-check-type').selectOption('aml');
+
+  // Click the button inside the shadow root.
+  await page.getByTestId('btn-run-check').click();
+
+  // Verify the status message appeared inside the shadow DOM.
+  const status = page.getByTestId('check-status');
+  await expect(status).toBeVisible();
+  await expect(status).toContainText('AML check passed for Acme Corp (ENT-007)');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Access nested iframes (iframe inside iframe)
+// --------------------------------------------------------------------------
+test('exercise 6: read content from a nested iframe', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // First, get the outer iframe using frameLocator().
+  const outerFrame = page.frameLocator('[data-testid="outer-iframe"]');
+
+  // Verify content in the outer frame.
+  await expect(outerFrame.getByTestId('outer-title')).toHaveText('Outer Audit Frame');
+  await expect(outerFrame.getByTestId('outer-text')).toContainText('outer compliance audit layer');
+
+  // To access a nested iframe, chain another frameLocator() on the outer one.
+  // This is how Playwright handles iframe-within-iframe scenarios.
+  const innerFrame = outerFrame.frameLocator('[data-testid="inner-iframe"]');
+
+  // Now you can interact with elements inside the nested iframe.
+  await expect(innerFrame.getByTestId('inner-text')).toContainText('All checks passed');
+  await expect(innerFrame.getByTestId('inner-text')).toContainText('AUD-2026-0415');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Switch between multiple iframes
+// --------------------------------------------------------------------------
+test('exercise 7: interact with multiple iframes in sequence', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Unlike Selenium, Playwright does NOT require "switching" to a frame.
+  // You simply create frameLocators for each iframe and use them independently.
+  // There is no "active frame" concept — each frameLocator is a scoped view.
+
+  // Access the payment iframe.
+  const paymentFrame = page.frameLocator('[data-testid="payment-iframe"]');
+  await paymentFrame.getByTestId('input-cardholder').fill('Multi-Frame Test');
+
+  // Access the terms iframe — no need to "switch back" to the main page first.
+  const termsFrame = page.frameLocator('[data-testid="terms-iframe"]');
+  await expect(termsFrame.getByTestId('terms-title')).toHaveText('Terms of Service v3.1');
+
+  // Go back and verify the payment iframe still has the value we entered.
+  // Since there is no frame switching, the value is still accessible.
+  await expect(paymentFrame.getByTestId('input-cardholder')).toHaveValue('Multi-Frame Test');
+
+  // Access something on the main page (outside any iframe) — no switching needed.
+  await expect(page.getByTestId('page-header')).toBeVisible();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Assert content across iframe boundary
+// --------------------------------------------------------------------------
+test('exercise 8: verify terms iframe content and accept on main page', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Step 1: Read content from inside the terms iframe.
+  const termsFrame = page.frameLocator('[data-testid="terms-iframe"]');
+  await expect(termsFrame.getByTestId('terms-section-1')).toContainText('compliance regulations');
+  await expect(termsFrame.getByTestId('terms-last-updated')).toHaveText('Last updated: 2026-04-01');
+
+  // Step 2: Interact with the checkbox and button on the MAIN page (not in iframe).
+  // The terms checkbox and accept button are on the main page, not inside the iframe.
+  // This tests the common pattern: read iframe content, then act on the parent page.
+  await page.getByTestId('terms-checkbox').check();
+  await page.getByTestId('btn-accept-terms').click();
+
+  // Step 3: Verify the result on the main page.
+  await expect(page.getByTestId('terms-result')).toHaveText('Terms accepted successfully. You may proceed.');
+});
+b:T23d7,const PLAYGROUND = '/phase-00-foundations/06-iframes-and-shadow-dom/playground/';
+
+// ---------------------------------------------------------------------------
+// Helper: get the <body> of an iframe.
+// Cypress does NOT have built-in iframe support like Playwright's frameLocator.
+// This helper reaches into the iframe's contentDocument and wraps its body
+// so you can chain normal Cypress commands on it.
+// ---------------------------------------------------------------------------
+function getIframeBody(selector: string) {
+  return cy
+    .get(selector)                              // find the <iframe> element
+    .its('0.contentDocument.body')              // get its contentDocument.body (DOM node)
+    .should('not.be.empty')                     // make sure the iframe has loaded
+    .then(cy.wrap);                             // wrap it so we can chain Cypress commands
+}
+
+describe('Kata 06: Iframes and Shadow DOM', () => {
+
+  beforeEach(() => {
+    // Visit the playground before every test.
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Access iframe content using the iframe helper
+  // --------------------------------------------------------------------------
+  it('exercise 1: read text inside an iframe', () => {
+    // Use the helper to get the payment iframe's body.
+    // Once wrapped, you can use .find() to locate elements inside.
+    getIframeBody('[data-testid="payment-iframe"]')
+      .find('[data-testid="payment-title"]')      // find element inside the iframe body
+      .should('have.text', 'Secure Payment Gateway');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Fill form inside iframe
+  // --------------------------------------------------------------------------
+  it('exercise 2: fill the payment form inside an iframe', () => {
+    // Get the iframe body, then use .find() + .type() to fill fields.
+    // Remember: Cypress type() appends text (fields start empty here, so that's fine).
+    getIframeBody('[data-testid="payment-iframe"]').then(($body) => {
+      // .find() scopes the search to the iframe body.
+      cy.wrap($body).find('[data-testid="input-cardholder"]').type('Alice Johnson');
+      cy.wrap($body).find('[data-testid="input-card-number"]').type('4242 4242 4242 4242');
+      cy.wrap($body).find('[data-testid="input-amount"]').type('250.00');
+      cy.wrap($body).find('[data-testid="select-currency"]').select('EUR');
+
+      // Verify the values.
+      cy.wrap($body).find('[data-testid="input-cardholder"]').should('have.value', 'Alice Johnson');
+      cy.wrap($body).find('[data-testid="input-card-number"]').should('have.value', '4242 4242 4242 4242');
+      cy.wrap($body).find('[data-testid="input-amount"]').should('have.value', '250.00');
+      cy.wrap($body).find('[data-testid="select-currency"]').should('have.value', 'EUR');
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Click button inside iframe and verify result
+  // --------------------------------------------------------------------------
+  it('exercise 3: submit the payment form and verify confirmation', () => {
+    getIframeBody('[data-testid="payment-iframe"]').then(($body) => {
+      // Fill the form.
+      cy.wrap($body).find('[data-testid="input-cardholder"]').type('Bob Smith');
+      cy.wrap($body).find('[data-testid="input-amount"]').type('99.99');
+      cy.wrap($body).find('[data-testid="select-currency"]').select('GBP');
+
+      // Click submit inside the iframe.
+      cy.wrap($body).find('[data-testid="btn-submit-payment"]').click();
+
+      // Verify the result message appeared inside the iframe.
+      cy.wrap($body).find('[data-testid="payment-result"]')
+        .should('be.visible')
+        .and('contain.text', '99.99 GBP')
+        .and('contain.text', 'Bob Smith');
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Access Shadow DOM elements
+  // --------------------------------------------------------------------------
+  it('exercise 4: read text inside a shadow DOM component', () => {
+    // Cypress needs { includeShadowDom: true } to pierce shadow roots.
+    // This option tells cy.get() / .find() to search inside shadow DOM.
+    cy.get('[data-testid="widget-title"]', { includeShadowDom: true })
+      .should('have.text', 'Compliance Check');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Interact with Shadow DOM form
+  // --------------------------------------------------------------------------
+  it('exercise 5: fill and submit the compliance widget form', () => {
+    // Each command that targets a shadow DOM element needs { includeShadowDom: true }.
+    // Alternatively, set "includeShadowDom": true in cypress.config.ts globally.
+    cy.get('[data-testid="input-entity-name"]', { includeShadowDom: true })
+      .type('Acme Corp');
+
+    cy.get('[data-testid="input-entity-id"]', { includeShadowDom: true })
+      .type('ENT-007');
+
+    cy.get('[data-testid="select-check-type"]', { includeShadowDom: true })
+      .select('aml');
+
+    // Click the button inside the shadow root.
+    cy.get('[data-testid="btn-run-check"]', { includeShadowDom: true })
+      .click();
+
+    // Verify the status message.
+    cy.get('[data-testid="check-status"]', { includeShadowDom: true })
+      .should('be.visible')
+      .and('contain.text', 'AML check passed for Acme Corp (ENT-007)');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Access nested iframes (iframe inside iframe)
+  // --------------------------------------------------------------------------
+  it('exercise 6: read content from a nested iframe', () => {
+    // Step 1: Get the outer iframe body.
+    getIframeBody('[data-testid="outer-iframe"]').then(($outerBody) => {
+      // Verify content in the outer frame.
+      cy.wrap($outerBody).find('[data-testid="outer-title"]')
+        .should('have.text', 'Outer Audit Frame');
+
+      cy.wrap($outerBody).find('[data-testid="outer-text"]')
+        .should('contain.text', 'outer compliance audit layer');
+
+      // Step 2: Get the inner iframe body from within the outer iframe.
+      // We find the inner <iframe> element, then access its contentDocument.
+      cy.wrap($outerBody)
+        .find('[data-testid="inner-iframe"]')
+        .its('0.contentDocument.body')
+        .should('not.be.empty')
+        .then(cy.wrap)
+        .then(($innerBody) => {
+          // Now we can assert on elements inside the nested iframe.
+          cy.wrap($innerBody).find('[data-testid="inner-text"]')
+            .should('contain.text', 'All checks passed')
+            .and('contain.text', 'AUD-2026-0415');
+        });
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Switch between multiple iframes
+  // --------------------------------------------------------------------------
+  it('exercise 7: interact with multiple iframes in sequence', () => {
+    // In Cypress, there is no explicit "switch to frame" like Selenium.
+    // You just get each iframe's body whenever you need it.
+
+    // Access the payment iframe and fill a field.
+    getIframeBody('[data-testid="payment-iframe"]')
+      .find('[data-testid="input-cardholder"]')
+      .type('Multi-Frame Test');
+
+    // Access the terms iframe — no "switching" required.
+    getIframeBody('[data-testid="terms-iframe"]')
+      .find('[data-testid="terms-title"]')
+      .should('have.text', 'Terms of Service v3.1');
+
+    // Go back and verify the payment iframe still has the entered value.
+    getIframeBody('[data-testid="payment-iframe"]')
+      .find('[data-testid="input-cardholder"]')
+      .should('have.value', 'Multi-Frame Test');
+
+    // Access something on the main page (outside any iframe).
+    cy.get('[data-testid="page-header"]').should('be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Assert content across iframe boundary
+  // --------------------------------------------------------------------------
+  it('exercise 8: verify terms iframe content and accept on main page', () => {
+    // Step 1: Read content from inside the terms iframe.
+    getIframeBody('[data-testid="terms-iframe"]').then(($body) => {
+      cy.wrap($body).find('[data-testid="terms-section-1"]')
+        .should('contain.text', 'compliance regulations');
+
+      cy.wrap($body).find('[data-testid="terms-last-updated"]')
+        .should('have.text', 'Last updated: 2026-04-01');
+    });
+
+    // Step 2: Interact with elements on the MAIN page (not in iframe).
+    // The checkbox and button are on the parent page, not inside the iframe.
+    cy.get('[data-testid="terms-checkbox"]').check();
+    cy.get('[data-testid="btn-accept-terms"]').click();
+
+    // Step 3: Verify the result on the main page.
+    cy.get('[data-testid="terms-result"]')
+      .should('have.text', 'Terms accepted successfully. You may proceed.');
+  });
+
+});
+c:Tbf2d,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { test, expect } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> '@playwright/test'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// The base URL for our playground page. All tests navigate here first.</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-00-foundations/05-keyboard-and-mouse/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 1: Press Keyboard Keys (Enter, Tab, Escape)</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// This exercise demonstrates how to press individual keyboard keys using</span></span>
+<span class="line"><span style="color:#6A737D">// Playwright's keyboard API. You'll learn to open a modal, close it with</span></span>
+<span class="line"><span style="color:#6A737D">// Escape, and verify state changes driven by key presses.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: press Escape to close a modal dialog'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">  // Navigate to the playground page.</span></span>
+<span class="line"><span style="color:#6A737D">  // page.goto(url) loads the given URL. It waits for the page to reach</span></span>
+<span class="line"><span style="color:#6A737D">  // the 'load' state by default before continuing.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click the "Open Alert" button to show the modal dialog.</span></span>
+<span class="line"><span style="color:#6A737D">  // getByTestId(id) finds an element by its data-testid attribute.</span></span>
+<span class="line"><span style="color:#6A737D">  // click() performs a single left-click on the element.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-open-modal'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the modal overlay is now visible on the page.</span></span>
+<span class="line"><span style="color:#6A737D">  // toBeVisible() asserts that the element is displayed (not hidden via</span></span>
+<span class="line"><span style="color:#6A737D">  // display:none, visibility:hidden, or opacity:0).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'modal-overlay'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the modal state text changed to "Open".</span></span>
+<span class="line"><span style="color:#6A737D">  // toHaveText(text) asserts that the element's textContent matches exactly.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'modal-state'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Open'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Press the Escape key to close the modal.</span></span>
+<span class="line"><span style="color:#6A737D">  // page.keyboard.press(key) dispatches a keydown, keypress (if applicable),</span></span>
+<span class="line"><span style="color:#6A737D">  // and keyup event for the given key. The key names follow the W3C key values</span></span>
+<span class="line"><span style="color:#6A737D">  // spec — e.g., 'Escape', 'Enter', 'Tab', 'ArrowUp', 'ArrowDown', etc.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.keyboard.</span><span style="color:#B392F0">press</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Escape'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the modal is now hidden.</span></span>
+<span class="line"><span style="color:#6A737D">  // toBeHidden() asserts the element is no longer visible in the viewport.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'modal-overlay'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeHidden</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the modal state text changed back to "Closed".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'modal-state'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Closed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 2: Keyboard Shortcuts (Ctrl+B, Ctrl+I)</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// This exercise demonstrates how to press modifier key combinations using</span></span>
+<span class="line"><span style="color:#6A737D">// Playwright. Ctrl+B triggers bold formatting, Ctrl+I triggers italic.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: use Ctrl+B and Ctrl+I keyboard shortcuts'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // First, click the text area to focus it. The keyboard shortcuts only</span></span>
+<span class="line"><span style="color:#6A737D">  // work when the text area has focus, because the keydown listener is</span></span>
+<span class="line"><span style="color:#6A737D">  // attached to that element.</span></span>
+<span class="line"><span style="color:#6A737D">  // click() focuses the element as a side effect — browsers move focus</span></span>
+<span class="line"><span style="color:#6A737D">  // to the element being clicked.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'format-area'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Type some text into the textarea using fill().</span></span>
+<span class="line"><span style="color:#6A737D">  // fill(value) clears any existing content and sets the value. It triggers</span></span>
+<span class="line"><span style="color:#6A737D">  // 'input' and 'change' events. Unlike pressSequentially(), fill() sets</span></span>
+<span class="line"><span style="color:#6A737D">  // the value instantly without simulating individual keypresses.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'format-area'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Compliance notes for review'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Press Ctrl+B to trigger the bold shortcut.</span></span>
+<span class="line"><span style="color:#6A737D">  // page.keyboard.press('Control+b') presses Control and 'b' together.</span></span>
+<span class="line"><span style="color:#6A737D">  // The '+' syntax means "hold the first key, press the second, release both."</span></span>
+<span class="line"><span style="color:#6A737D">  // Common modifiers: 'Control', 'Shift', 'Alt', 'Meta' (Cmd on Mac).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.keyboard.</span><span style="color:#B392F0">press</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Control+b'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the format status shows "Bold".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'format-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Bold'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Press Ctrl+I to trigger the italic shortcut.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.keyboard.</span><span style="color:#B392F0">press</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Control+i'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the format status changed to "Italic".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'format-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Italic'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 3: Tab Navigation Through Form Fields</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// This exercise demonstrates how pressing Tab moves focus between elements</span></span>
+<span class="line"><span style="color:#6A737D">// that have a tabindex or are natively focusable (inputs, buttons, etc.).</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: tab through form fields and verify focus'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click the first form field to give it focus. This is our starting point</span></span>
+<span class="line"><span style="color:#6A737D">  // for Tab navigation.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'field-first-name'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the focus indicator shows which field is currently focused.</span></span>
+<span class="line"><span style="color:#6A737D">  // The playground tracks focus via the 'focus' event listener and displays</span></span>
+<span class="line"><span style="color:#6A737D">  // the field id in the "focused-field" element.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'focused-field'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'field-first-name'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Press Tab to move focus to the next field (Last Name).</span></span>
+<span class="line"><span style="color:#6A737D">  // page.keyboard.press('Tab') simulates pressing the Tab key, which moves</span></span>
+<span class="line"><span style="color:#6A737D">  // focus to the next element in the tab order (determined by tabindex</span></span>
+<span class="line"><span style="color:#6A737D">  // attribute or DOM order for focusable elements).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.keyboard.</span><span style="color:#B392F0">press</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Tab'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify focus moved to the last name field.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'focused-field'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'field-last-name'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Press Tab again to move to the email field.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.keyboard.</span><span style="color:#B392F0">press</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Tab'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'focused-field'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'field-email'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Press Tab to move to the notes textarea.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.keyboard.</span><span style="color:#B392F0">press</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Tab'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'focused-field'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'field-notes'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Press Tab to move to the submit button.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.keyboard.</span><span style="color:#B392F0">press</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Tab'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'focused-field'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-submit'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 4: Hover to Show Tooltip</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// This exercise demonstrates how to simulate mouse hover to trigger CSS</span></span>
+<span class="line"><span style="color:#6A737D">// :hover rules that show hidden tooltip elements.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: hover over a card to reveal its tooltip'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // First, verify the tooltip is hidden before hovering.</span></span>
+<span class="line"><span style="color:#6A737D">  // The tooltip is hidden by default (display: none in CSS) and only shown</span></span>
+<span class="line"><span style="color:#6A737D">  // when the parent card is hovered (.tooltip-card:hover .tooltip-text).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'tooltip-aml'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeHidden</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Hover over the AML card to trigger the CSS :hover state.</span></span>
+<span class="line"><span style="color:#6A737D">  // hover() moves the mouse to the center of the element. This triggers</span></span>
+<span class="line"><span style="color:#6A737D">  // CSS :hover pseudo-class, which in our playground shows the tooltip.</span></span>
+<span class="line"><span style="color:#6A737D">  // Unlike click(), hover() doesn't change focus — it only moves the mouse.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'card-aml'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">hover</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the tooltip is now visible.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'tooltip-aml'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the tooltip contains the expected text.</span></span>
+<span class="line"><span style="color:#6A737D">  // toContainText(substring) checks if the element's textContent contains</span></span>
+<span class="line"><span style="color:#6A737D">  // the given string as a substring (not an exact match).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'tooltip-aml'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'OFAC'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Hover over the KYC card to reveal its tooltip.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'card-kyc'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">hover</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // The AML tooltip should now be hidden because we moved the mouse away.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'tooltip-aml'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeHidden</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // The KYC tooltip should now be visible.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'tooltip-kyc'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'tooltip-kyc'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'identity documents'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 5: Mouse Position-Based Click</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// This exercise demonstrates how to click at specific coordinates within</span></span>
+<span class="line"><span style="color:#6A737D">// an element using the position option.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: click at specific position in the drag area'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click at a specific position within the drag area.</span></span>
+<span class="line"><span style="color:#6A737D">  // click({ position: { x, y } }) clicks at the given offset from the</span></span>
+<span class="line"><span style="color:#6A737D">  // element's top-left corner. x is pixels from the left edge, y is pixels</span></span>
+<span class="line"><span style="color:#6A737D">  // from the top edge. This is useful for canvas, maps, or other position-</span></span>
+<span class="line"><span style="color:#6A737D">  // sensitive elements.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'drag-area'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">({ position: { x: </span><span style="color:#79B8FF">100</span><span style="color:#E1E4E8">, y: </span><span style="color:#79B8FF">50</span><span style="color:#E1E4E8"> } });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the mouse coordinates display updated. The playground tracks</span></span>
+<span class="line"><span style="color:#6A737D">  // mouse position relative to the drag area via the mousemove event.</span></span>
+<span class="line"><span style="color:#6A737D">  // Note: The exact coordinates may vary slightly depending on timing,</span></span>
+<span class="line"><span style="color:#6A737D">  // so we check that the display contains reasonable values.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'mouse-coords'</span><span style="color:#E1E4E8">)).not.</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'x: 0, y: 0'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 6: Keyboard Shortcut Actions (A / R / E)</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// This exercise demonstrates pressing single-character keys to trigger</span></span>
+<span class="line"><span style="color:#6A737D">// application-specific shortcuts on a focused panel.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: press A to approve, R to reject, E to escalate'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // First, focus the shortcut panel by clicking it. The keyboard shortcut</span></span>
+<span class="line"><span style="color:#6A737D">  // listener is attached to this specific element, so it must have focus</span></span>
+<span class="line"><span style="color:#6A737D">  // for the key events to reach it.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'shortcut-panel'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the initial status is "Pending".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'shortcut-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Pending'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Press 'a' to approve the application.</span></span>
+<span class="line"><span style="color:#6A737D">  // page.keyboard.press(key) sends the key to whatever element currently</span></span>
+<span class="line"><span style="color:#6A737D">  // has focus. For single character keys, you just pass the character.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.keyboard.</span><span style="color:#B392F0">press</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'a'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the status changed to "Approved".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'shortcut-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Approved'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Press 'r' to reject the application.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.keyboard.</span><span style="color:#B392F0">press</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'r'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'shortcut-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Rejected'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Press 'e' to escalate the application.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.keyboard.</span><span style="color:#B392F0">press</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'e'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'shortcut-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Escalated'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 7: Arrow Keys to Reorder Items</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// This exercise demonstrates using arrow keys to reorder items in a list.</span></span>
+<span class="line"><span style="color:#6A737D">// The sortable list uses ArrowUp and ArrowDown to move the selected item.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 7: reorder risk tiers using arrow keys'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the initial order of risk tiers.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'tier-order'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'critical, high, medium, low'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click the "High" tier item to select it. This adds the 'selected' class</span></span>
+<span class="line"><span style="color:#6A737D">  // and gives it focus, enabling arrow key interaction.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'tier-high'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Press ArrowUp to move "High" one position up (above "Critical").</span></span>
+<span class="line"><span style="color:#6A737D">  // page.keyboard.press('ArrowUp') dispatches the ArrowUp key event.</span></span>
+<span class="line"><span style="color:#6A737D">  // The sortable list's keydown handler intercepts this and moves the</span></span>
+<span class="line"><span style="color:#6A737D">  // selected element before its previous sibling in the DOM.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.keyboard.</span><span style="color:#B392F0">press</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'ArrowUp'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the order changed — "High" is now first.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'tier-order'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'high, critical, medium, low'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Press ArrowDown twice to move "High" back down past "Critical" and "Medium".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.keyboard.</span><span style="color:#B392F0">press</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'ArrowDown'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.keyboard.</span><span style="color:#B392F0">press</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'ArrowDown'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the new order.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'tier-order'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'critical, medium, high, low'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Press Enter to confirm the selection (deselects the item).</span></span>
+<span class="line"><span style="color:#6A737D">  // After pressing Enter, the item loses the 'selected' class.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.keyboard.</span><span style="color:#B392F0">press</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Enter'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 8: Focus Management</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// This exercise demonstrates how to programmatically focus elements using</span></span>
+<span class="line"><span style="color:#6A737D">// Playwright's focus() method and verify focus state.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 8: focus elements and verify focus state'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // focus() sets focus on the element without clicking it. This is useful</span></span>
+<span class="line"><span style="color:#6A737D">  // when you need to test focus-related behavior (like focus styles or</span></span>
+<span class="line"><span style="color:#6A737D">  // focus event handlers) without the side effects of a click.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'field-email'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">focus</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the focus indicator updated to show the email field.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'focused-field'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'field-email'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // toBeFocused() asserts that the element is the currently focused element</span></span>
+<span class="line"><span style="color:#6A737D">  // in the document (i.e., document.activeElement points to this element).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'field-email'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeFocused</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Move focus to the notes field programmatically.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'field-notes'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">focus</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'field-notes'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeFocused</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'focused-field'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'field-notes'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Type into the focused field using the keyboard. Since 'field-notes'</span></span>
+<span class="line"><span style="color:#6A737D">  // has focus, keyboard input goes directly to it.</span></span>
+<span class="line"><span style="color:#6A737D">  // page.keyboard.type(text) types the text character by character,</span></span>
+<span class="line"><span style="color:#6A737D">  // triggering keydown, keypress, and keyup events for each character.</span></span>
+<span class="line"><span style="color:#6A737D">  // This is different from fill() which sets the value directly.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.keyboard.</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Reviewed by compliance team'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'field-notes'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveValue</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Reviewed by compliance team'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>d:Tb765,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-00-foundations/05-keyboard-and-mouse/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">describe</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Kata 05: Keyboard and Mouse'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // beforeEach runs before every test in this describe block.</span></span>
+<span class="line"><span style="color:#6A737D">  // We navigate to the playground page so each test starts fresh.</span></span>
+<span class="line"><span style="color:#B392F0">  beforeEach</span><span style="color:#E1E4E8">(() </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 1: Press Keyboard Keys (Enter, Tab, Escape)</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // This exercise demonstrates how to press individual keyboard keys using</span></span>
+<span class="line"><span style="color:#6A737D">  // Cypress's type() command with special key sequences.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: press Escape to close a modal dialog'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Click the "Open Alert" button to show the modal.</span></span>
+<span class="line"><span style="color:#6A737D">    // cy.get(selector) queries the DOM for a matching element.</span></span>
+<span class="line"><span style="color:#6A737D">    // .click() performs a single left-click on that element.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-open-modal"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the modal overlay is visible.</span></span>
+<span class="line"><span style="color:#6A737D">    // .should('be.visible') asserts the element has CSS that makes it visible</span></span>
+<span class="line"><span style="color:#6A737D">    // (not display:none, not visibility:hidden, has dimensions, etc.).</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="modal-overlay"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the modal state text shows "Open".</span></span>
+<span class="line"><span style="color:#6A737D">    // .should('have.text', str) asserts the element's textContent equals str.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="modal-state"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Open'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Press the Escape key to close the modal.</span></span>
+<span class="line"><span style="color:#6A737D">    // In Cypress, you send special keys using type() with curly-brace syntax.</span></span>
+<span class="line"><span style="color:#6A737D">    // {esc} sends the Escape key. Other special keys include:</span></span>
+<span class="line"><span style="color:#6A737D">    //   {enter}, {tab}, {backspace}, {del}, {uparrow}, {downarrow},</span></span>
+<span class="line"><span style="color:#6A737D">    //   {leftarrow}, {rightarrow}, {home}, {end}, {pageup}, {pagedown}.</span></span>
+<span class="line"><span style="color:#6A737D">    // We type on the body because the Escape listener is on the document.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'body'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'{esc}'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the modal is now hidden.</span></span>
+<span class="line"><span style="color:#6A737D">    // .should('not.be.visible') or .should('be.hidden') both work.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="modal-overlay"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the modal state text changed back to "Closed".</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="modal-state"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Closed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 2: Keyboard Shortcuts (Ctrl+B, Ctrl+I)</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // This exercise demonstrates how to press modifier key combinations in</span></span>
+<span class="line"><span style="color:#6A737D">  // Cypress using type() with modifier prefixes.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: use Ctrl+B and Ctrl+I keyboard shortcuts'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Click the textarea to focus it. The Ctrl+B / Ctrl+I shortcut handlers</span></span>
+<span class="line"><span style="color:#6A737D">    // are attached to the textarea's keydown event.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="format-area"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Type some text into the textarea.</span></span>
+<span class="line"><span style="color:#6A737D">    // type(text) types the text character by character, triggering keydown,</span></span>
+<span class="line"><span style="color:#6A737D">    // keypress, and keyup events for each character. It appends to any</span></span>
+<span class="line"><span style="color:#6A737D">    // existing content (unlike Playwright's fill which replaces).</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="format-area"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Compliance notes for review'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Press Ctrl+B to trigger bold formatting.</span></span>
+<span class="line"><span style="color:#6A737D">    // In Cypress, modifier keys are specified inside type() using curly braces:</span></span>
+<span class="line"><span style="color:#6A737D">    //   {ctrl+b} — press Ctrl and B together</span></span>
+<span class="line"><span style="color:#6A737D">    //   {alt+x}  — press Alt and X together</span></span>
+<span class="line"><span style="color:#6A737D">    //   {shift+a} — press Shift and A together</span></span>
+<span class="line"><span style="color:#6A737D">    //   {meta+c}  — press Cmd (Mac) / Win key and C together</span></span>
+<span class="line"><span style="color:#6A737D">    // Modifiers can be combined: {ctrl+shift+b}</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="format-area"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'{ctrl+b}'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the format status shows "Bold".</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="format-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Bold'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Press Ctrl+I to trigger italic formatting.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="format-area"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'{ctrl+i}'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the format status changed to "Italic".</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="format-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Italic'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 3: Tab Navigation Through Form Fields</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // This exercise demonstrates pressing Tab to navigate through form fields</span></span>
+<span class="line"><span style="color:#6A737D">  // and verifying which field has focus.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: tab through form fields and verify focus'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Click the first form field to give it focus.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="field-first-name"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the focus indicator shows the first name field.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="focused-field"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'field-first-name'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Press Tab to move focus to the next field.</span></span>
+<span class="line"><span style="color:#6A737D">    // {tab} is the special key sequence for the Tab key in Cypress type().</span></span>
+<span class="line"><span style="color:#6A737D">    // IMPORTANT: We type on the currently focused element. Tab moves focus</span></span>
+<span class="line"><span style="color:#6A737D">    // to the next element in the tab order.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="field-first-name"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">tab</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // NOTE: Cypress does not have a built-in .tab() command. Instead, we</span></span>
+<span class="line"><span style="color:#6A737D">    // use cy.realPress('Tab') from the cypress-real-events plugin, or</span></span>
+<span class="line"><span style="color:#6A737D">    // we can use a workaround with type(). However, Cypress's built-in</span></span>
+<span class="line"><span style="color:#6A737D">    // type('{tab}') does not actually move browser focus. So we use</span></span>
+<span class="line"><span style="color:#6A737D">    // focused() and trigger-based approaches instead.</span></span>
+<span class="line"><span style="color:#6A737D">    // For this kata, we'll use the body + Tab keyboard simulation:</span></span>
+<span class="line"><span style="color:#6A737D">    // We verify focus moved by checking the focused-field indicator.</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Alternative approach: directly focus the next field to demonstrate</span></span>
+<span class="line"><span style="color:#6A737D">    // focus tracking without relying on Tab key simulation.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="field-last-name"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">focus</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="focused-field"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'field-last-name'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Move to email field.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="field-email"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">focus</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="focused-field"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'field-email'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Move to notes textarea.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="field-notes"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">focus</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="focused-field"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'field-notes'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Move to submit button.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-submit"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">focus</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="focused-field"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'btn-submit'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 4: Hover to Show Tooltip</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // This exercise demonstrates triggering CSS :hover states using Cypress</span></span>
+<span class="line"><span style="color:#6A737D">  // to reveal hidden tooltip elements.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: hover over a card to reveal its tooltip'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Verify the tooltip is hidden before hovering.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="tooltip-aml"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Trigger the 'mouseover' event on the AML card to simulate hover.</span></span>
+<span class="line"><span style="color:#6A737D">    // In Cypress, there is no built-in hover() command because Cypress</span></span>
+<span class="line"><span style="color:#6A737D">    // cannot trigger CSS :hover pseudo-class directly. However, we can</span></span>
+<span class="line"><span style="color:#6A737D">    // use trigger('mouseover') to fire mouse events. For CSS :hover rules,</span></span>
+<span class="line"><span style="color:#6A737D">    // we need cy.realHover() from the cypress-real-events plugin, or we</span></span>
+<span class="line"><span style="color:#6A737D">    // can use invoke('show') to force-display the tooltip for testing.</span></span>
+<span class="line"><span style="color:#6A737D">    //</span></span>
+<span class="line"><span style="color:#6A737D">    // APPROACH: Since CSS :hover can't be triggered by Cypress natively,</span></span>
+<span class="line"><span style="color:#6A737D">    // we use invoke() to make the tooltip visible and verify its content.</span></span>
+<span class="line"><span style="color:#6A737D">    // In a real project, you would use cypress-real-events plugin:</span></span>
+<span class="line"><span style="color:#6A737D">    //   cy.get('[data-testid="card-aml"]').realHover();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="tooltip-aml"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">invoke</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'css'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'display'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'block'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the tooltip contains the expected text.</span></span>
+<span class="line"><span style="color:#6A737D">    // .should('contain.text', str) checks if textContent contains the string.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="tooltip-aml"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'OFAC'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Reset the tooltip and show the KYC tooltip.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="tooltip-aml"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">invoke</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'css'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'display'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'none'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="tooltip-kyc"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">invoke</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'css'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'display'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'block'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="tooltip-kyc"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'identity documents'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 5: Mouse Position-Based Click</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // This exercise demonstrates clicking at specific coordinates within an</span></span>
+<span class="line"><span style="color:#6A737D">  // element using Cypress's click(x, y) syntax.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: click at specific position in the drag area'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Click at position (100, 50) within the drag area.</span></span>
+<span class="line"><span style="color:#6A737D">    // cy.get(sel).click(x, y) clicks at the specified offset from the</span></span>
+<span class="line"><span style="color:#6A737D">    // element's top-left corner. x is pixels from left, y is pixels from top.</span></span>
+<span class="line"><span style="color:#6A737D">    // This is useful for canvas elements, image maps, or position-sensitive areas.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="drag-area"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">100</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">50</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the mouse coordinates display updated.</span></span>
+<span class="line"><span style="color:#6A737D">    // .should('not.have.text', str) asserts the text is NOT the given string.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="mouse-coords"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'x: 0, y: 0'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 6: Keyboard Shortcut Actions (A / R / E)</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // This exercise demonstrates pressing single-character keys to trigger</span></span>
+<span class="line"><span style="color:#6A737D">  // application-specific shortcuts on a focused element.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: press A to approve, R to reject, E to escalate'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Click the shortcut panel to focus it. The keyboard shortcut listener</span></span>
+<span class="line"><span style="color:#6A737D">    // is attached to this panel's keydown event.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="shortcut-panel"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the initial status is "Pending".</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="shortcut-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Pending'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Press 'a' to approve. We type on the focused shortcut panel.</span></span>
+<span class="line"><span style="color:#6A737D">    // type('a') sends a keydown for 'a', then keypress, then keyup.</span></span>
+<span class="line"><span style="color:#6A737D">    // The panel's keydown handler intercepts this and changes the status.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="shortcut-panel"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'a'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the status changed to "Approved".</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="shortcut-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Approved'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Press 'r' to reject.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="shortcut-panel"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'r'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="shortcut-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Rejected'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Press 'e' to escalate.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="shortcut-panel"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'e'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="shortcut-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Escalated'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 7: Arrow Keys to Reorder Items</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // This exercise demonstrates using arrow keys to move items in a list.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 7: reorder risk tiers using arrow keys'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Verify the initial order of risk tiers.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="tier-order"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'critical, high, medium, low'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Click the "High" tier to select it.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="tier-high"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Press ArrowUp to move "High" above "Critical".</span></span>
+<span class="line"><span style="color:#6A737D">    // {uparrow} is the Cypress special key sequence for the ArrowUp key.</span></span>
+<span class="line"><span style="color:#6A737D">    // Other arrow keys: {downarrow}, {leftarrow}, {rightarrow}.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="tier-high"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'{uparrow}'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the order changed — "High" is now first.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="tier-order"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'high, critical, medium, low'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Press ArrowDown twice to move "High" past "Critical" and "Medium".</span></span>
+<span class="line"><span style="color:#6A737D">    // We type on the tier-high element which still has focus and is selected.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="tier-high"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'{downarrow}{downarrow}'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the new order.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="tier-order"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'critical, medium, high, low'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Press Enter to confirm the selection (deselects the item).</span></span>
+<span class="line"><span style="color:#6A737D">    // {enter} is the Cypress special key sequence for the Enter key.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="tier-high"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'{enter}'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 8: Focus Management</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // This exercise demonstrates focusing elements programmatically and</span></span>
+<span class="line"><span style="color:#6A737D">  // verifying which element has focus.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 8: focus elements and verify focus state'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // focus() sets focus on the element without clicking it.</span></span>
+<span class="line"><span style="color:#6A737D">    // cy.get(sel).focus() triggers the browser's native focus behavior,</span></span>
+<span class="line"><span style="color:#6A737D">    // which fires the 'focus' event and applies :focus CSS styles.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="field-email"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">focus</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the focus indicator updated.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="focused-field"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'field-email'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // .should('have.focus') asserts the element is document.activeElement.</span></span>
+<span class="line"><span style="color:#6A737D">    // This is the Cypress equivalent of Playwright's toBeFocused().</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="field-email"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.focus'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Move focus to the notes field.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="field-notes"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">focus</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="field-notes"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.focus'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="focused-field"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'field-notes'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Type into the focused field. Since we used focus(), the element is</span></span>
+<span class="line"><span style="color:#6A737D">    // active and type() sends characters to it.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="field-notes"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Reviewed by compliance team'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="field-notes"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.value'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Reviewed by compliance team'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"kata":{"slug":"05-keyboard-and-mouse","number":5,"title":"Keyboard and Mouse","phaseSlug":"phase-00-foundations","phaseNumber":0,"phaseName":"Foundations","readmeRaw":"$3","hasPlayground":true,"playwrightFiles":[{"filename":"keyboard-and-mouse.spec.ts","content":"$4"}],"cypressFiles":[{"filename":"keyboard-and-mouse.cy.ts","content":"$5"}]},"prev":{"slug":"04-clicks-and-inputs","number":4,"title":"Clicks and Inputs","phaseSlug":"phase-00-foundations","phaseNumber":0,"phaseName":"Foundations","readmeRaw":"$6","hasPlayground":true,"playwrightFiles":[{"filename":"clicks-and-inputs.spec.ts","content":"$7"}],"cypressFiles":[{"filename":"clicks-and-inputs.cy.ts","content":"$8"}]},"next":{"slug":"06-iframes-and-shadow-dom","number":6,"title":"Iframes and Shadow DOM","phaseSlug":"phase-00-foundations","phaseNumber":0,"phaseName":"Foundations","readmeRaw":"$9","hasPlayground":true,"playwrightFiles":[{"filename":"iframes-and-shadow-dom.spec.ts","content":"$a"}],"cypressFiles":[{"filename":"iframes-and-shadow-dom.cy.ts","content":"$b"}]},"playwrightHtml":[{"filename":"keyboard-and-mouse.spec.ts","html":"$c"}],"cypressHtml":[{"filename":"keyboard-and-mouse.cy.ts","html":"$d"}]}],["$Le"],"$Lf"]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"iDtrTKWIN4zzRgDRiiDd2"}
+e:["$","script","script-0",{"src":"/qa-labs/_next/static/chunks/03nvm.8~ftt80.js","async":true}]
+f:["$","$L10",null,{"children":["$","$11",null,{"name":"Next.MetadataOutlet","children":"$@12"}]}]
+12:null

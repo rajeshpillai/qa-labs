@@ -1,0 +1,2522 @@
+1:"$Sreact.fragment"
+2:I[31749,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js","/qa-labs/_next/static/chunks/03nvm.8~ftt80.js"],"KataPageClient"]
+13:I[49583,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js"],"OutletBoundary"]
+14:"$Sreact.suspense"
+3:Tc7a,# Kata 36: Notifications and Toasts
+
+## What You Will Learn
+
+- How to test auto-dismissing toast notifications (appear then vanish)
+- How to test persistent banners that stay until manually dismissed
+- How to handle modal dialogs with confirm/cancel actions
+- How to test snackbar notifications with action buttons (Undo)
+- How to verify notification badge counts
+- How to interact with slide-in notification drawers
+- How to verify priority-based stacking order of notifications
+
+## Prerequisites
+
+- Completed Katas 01-35
+- Understanding of CSS animations, timers, and DOM assertions
+
+## Concepts Explained
+
+### Notification Types
+
+```
+1. Toast       — brief auto-dismiss message (3s), stacks bottom-right
+2. Banner      — persistent bar at top, manual dismiss only
+3. Modal       — blocking dialog, requires user action (confirm/cancel)
+4. Snackbar    — bottom-center bar with optional action (e.g., Undo)
+5. Badge       — counter on an icon showing unread notification count
+6. Drawer      — slide-in panel listing all notifications
+```
+
+### Testing Auto-Dismiss Elements
+
+```typescript
+// PLAYWRIGHT
+// Toast appears, then auto-dismisses after 3 seconds.
+// Use toBeVisible() to verify it appeared, then toBeHidden()
+// with a timeout to wait for auto-dismiss.
+await expect(toast).toBeVisible();
+await expect(toast).toBeHidden({ timeout: 5000 });
+
+// CYPRESS
+// Use should('be.visible') then should('not.exist') with
+// sufficient timeout for auto-dismiss.
+cy.get('[data-testid="toast-info"]').should('be.visible');
+cy.get('[data-testid="toast-info"]', { timeout: 5000 }).should('not.exist');
+```
+
+### Priority Stacking
+
+```
+When multiple notifications fire, priority determines visual order:
+  - Error (highest)  — appears on top
+  - Warning          — appears in middle
+  - Info (lowest)    — appears at bottom
+
+The toast container uses CSS flex-direction: column-reverse so the
+last appended element appears visually on top.
+```
+
+## Playground Overview
+
+A notification testing playground with:
+
+- **Toast buttons** — Trigger info, success, warning, error toasts (auto-dismiss 3s)
+- **Banner** — Persistent info bar with dismiss button
+- **Modal dialog** — Blocking confirmation with Cancel/Confirm
+- **Snackbar** — "Item deleted" bar with Undo action
+- **Badge** — Bell icon with unread count
+- **Drawer** — Slide-in panel listing all notifications
+- **Multi-toast** — Fire 3 toasts simultaneously
+- **Priority toasts** — Fire info + warning + error to test stacking order
+
+## Exercises
+
+1. **Trigger toast, verify appears then dismisses** — Show a toast and wait for auto-dismiss
+2. **Verify banner persists** — Show banner, verify it stays visible
+3. **Dismiss notification** — Show banner, click dismiss, verify it's gone
+4. **Verify badge count** — Trigger notifications and check the badge number
+5. **Open notification drawer** — Click bell, verify drawer slides in with items
+6. **Click snackbar action (undo)** — Show snackbar, click Undo, verify status
+7. **Verify priority stacking order** — Fire priority toasts, verify error is on top
+8. **Multiple toasts stacking** — Fire 3 toasts and verify all are visible simultaneously
+4:T2222,import { test, expect } from '@playwright/test';
+
+// Base URL for the playground page.
+const PLAYGROUND = '/phase-06-complex-scenarios/36-notifications-and-toasts/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Trigger Toast, Verify Appears Then Dismisses
+// --------------------------------------------------------------------------
+// Shows an info toast and verifies it auto-dismisses after 3 seconds.
+test('exercise 1: trigger toast and verify auto-dismiss', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Click the Info Toast button.
+  await page.getByTestId('toast-info-btn').click();
+
+  // Verify the toast appeared.
+  // getByTestId('toast-info') finds the dynamically created toast element.
+  const toast = page.getByTestId('toast-info');
+  await expect(toast).toBeVisible();
+
+  // Verify the toast text content.
+  await expect(toast).toContainText('System update available');
+
+  // Wait for auto-dismiss (3 seconds + animation).
+  // toBeHidden() with a timeout waits up to that many milliseconds
+  // for the element to become invisible or removed from the DOM.
+  await expect(toast).toBeHidden({ timeout: 5000 });
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Verify Banner Persists
+// --------------------------------------------------------------------------
+// Shows the banner and verifies it stays visible (no auto-dismiss).
+test('exercise 2: verify banner persists', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Show the banner.
+  await page.getByTestId('show-banner-btn').click();
+
+  // Verify the banner is visible.
+  await expect(page.getByTestId('banner')).toBeVisible();
+  await expect(page.getByTestId('banner-text')).toContainText('maintenance');
+
+  // Wait 2 seconds and verify the banner is still visible (it persists).
+  await page.waitForTimeout(2000);
+  await expect(page.getByTestId('banner')).toBeVisible();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Dismiss Notification
+// --------------------------------------------------------------------------
+// Shows the banner, clicks the dismiss button, verifies it's gone.
+test('exercise 3: dismiss banner notification', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Show and verify the banner.
+  await page.getByTestId('show-banner-btn').click();
+  await expect(page.getByTestId('banner')).toBeVisible();
+
+  // Click the dismiss button (X).
+  await page.getByTestId('banner-dismiss').click();
+
+  // Verify the banner is hidden.
+  await expect(page.getByTestId('banner')).toBeHidden();
+
+  // Verify the last action was recorded.
+  await expect(page.getByTestId('last-action')).toHaveText('Banner dismissed');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Verify Badge Count
+// --------------------------------------------------------------------------
+// Triggers multiple notifications and verifies the badge count updates.
+test('exercise 4: verify badge count', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Badge should start hidden (0 notifications).
+  await expect(page.getByTestId('badge-count')).toBeHidden();
+
+  // Trigger 3 toasts.
+  await page.getByTestId('toast-info-btn').click();
+  await page.getByTestId('toast-success-btn').click();
+  await page.getByTestId('toast-error-btn').click();
+
+  // Verify the badge count is 3.
+  await expect(page.getByTestId('badge-count')).toBeVisible();
+  await expect(page.getByTestId('badge-count')).toHaveText('3');
+
+  // Verify total notifications count.
+  await expect(page.getByTestId('total-notifications')).toHaveText('3');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Open Notification Drawer
+// --------------------------------------------------------------------------
+// Clicks the bell icon, verifies the drawer slides in with items.
+test('exercise 5: open notification drawer', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Create some notifications first.
+  await page.getByTestId('toast-info-btn').click();
+  await page.getByTestId('toast-error-btn').click();
+
+  // Click the bell button to open the drawer.
+  await page.getByTestId('bell-btn').click();
+
+  // Verify the drawer is open.
+  // We check for the 'open' CSS class on the drawer element.
+  await expect(page.getByTestId('notification-drawer')).toHaveClass(/open/);
+
+  // Verify the drawer overlay is visible (dim background).
+  await expect(page.getByTestId('drawer-overlay')).toBeVisible();
+
+  // Verify the drawer contains notification items.
+  // The first notification item has data-testid="drawer-item-0".
+  await expect(page.getByTestId('drawer-item-0')).toBeVisible();
+  await expect(page.getByTestId('drawer-item-1')).toBeVisible();
+
+  // Verify the badge was reset to 0 (notifications "read").
+  await expect(page.getByTestId('badge-count')).toBeHidden();
+
+  // Close the drawer.
+  await page.getByTestId('drawer-close').click();
+  await expect(page.getByTestId('notification-drawer')).not.toHaveClass(/open/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Click Snackbar Action (Undo)
+// --------------------------------------------------------------------------
+// Shows the snackbar and clicks the Undo button.
+test('exercise 6: click snackbar undo action', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Show the snackbar.
+  await page.getByTestId('show-snackbar-btn').click();
+
+  // Verify the snackbar is visible with the correct message.
+  await expect(page.getByTestId('snackbar')).toBeVisible();
+  await expect(page.getByTestId('snackbar-message')).toContainText('Item deleted');
+
+  // Click the Undo button.
+  await page.getByTestId('snackbar-undo').click();
+
+  // Verify the snackbar dismissed.
+  await expect(page.getByTestId('snackbar')).toBeHidden();
+
+  // Verify the undo status updated.
+  await expect(page.getByTestId('undo-status')).toHaveText('Item restored');
+
+  // Verify the last action was "Undo performed".
+  await expect(page.getByTestId('last-action')).toHaveText('Undo performed');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Verify Priority Stacking Order
+// --------------------------------------------------------------------------
+// Fires priority toasts (info, warning, error) and verifies the error
+// toast appears last (visually on top due to column-reverse).
+test('exercise 7: verify priority stacking order', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Click the Priority Toasts button (fires info, then warning, then error).
+  await page.getByTestId('priority-toast-btn').click();
+
+  // Wait a moment for all toasts to appear.
+  await page.waitForTimeout(500);
+
+  // Get all toast elements in the container.
+  // locator.all() returns an array of all matching locators.
+  const toasts = await page.locator('.toast').all();
+
+  // There should be 3 toasts.
+  expect(toasts.length).toBe(3);
+
+  // The last toast in DOM order is the error (highest priority).
+  // Because of column-reverse, the last DOM element appears on top visually.
+  const lastToast = toasts[toasts.length - 1];
+  await expect(lastToast).toHaveAttribute('data-toast-type', 'error');
+
+  // The first toast in DOM order is the info (lowest priority).
+  const firstToast = toasts[0];
+  await expect(firstToast).toHaveAttribute('data-toast-type', 'info');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Multiple Toasts Stacking
+// --------------------------------------------------------------------------
+// Fires 3 toasts and verifies all are visible simultaneously.
+test('exercise 8: multiple toasts stacking', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Click the "Fire 3 Toasts" button.
+  await page.getByTestId('multi-toast-btn').click();
+
+  // Wait for all toasts to appear.
+  await page.waitForTimeout(500);
+
+  // Verify the toast container has 3 toasts.
+  // locator.count() returns the number of matching elements.
+  await expect(page.locator('.toast')).toHaveCount(3);
+
+  // Verify each toast has the expected type.
+  await expect(page.getByTestId('toast-info')).toBeVisible();
+  await expect(page.getByTestId('toast-success')).toBeVisible();
+  await expect(page.getByTestId('toast-warning')).toBeVisible();
+
+  // Verify the total notification count updated.
+  await expect(page.getByTestId('total-notifications')).toHaveText('3');
+
+  // Wait for auto-dismiss (3s + animation) and verify all are gone.
+  await expect(page.locator('.toast')).toHaveCount(0, { timeout: 6000 });
+});
+5:T1e57,const PLAYGROUND = '/phase-06-complex-scenarios/36-notifications-and-toasts/playground/';
+
+describe('Kata 36: Notifications and Toasts', () => {
+
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Trigger Toast, Verify Appears Then Dismisses
+  // --------------------------------------------------------------------------
+  // Shows an info toast, verifies it appears, then waits for auto-dismiss.
+  it('exercise 1: trigger toast and verify auto-dismiss', () => {
+    // Click the Info Toast button.
+    cy.get('[data-testid="toast-info-btn"]').click();
+
+    // Verify the toast appeared with correct text.
+    cy.get('[data-testid="toast-info"]')
+      .should('be.visible')
+      .and('contain.text', 'System update available');
+
+    // Wait for auto-dismiss (3s + animation). The toast element is removed
+    // from the DOM after dismissal, so we check for non-existence.
+    // .should('not.exist') waits (up to the default or specified timeout)
+    // until the element is no longer in the DOM.
+    cy.get('[data-testid="toast-info"]', { timeout: 5000 })
+      .should('not.exist');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Verify Banner Persists
+  // --------------------------------------------------------------------------
+  // Shows the banner and verifies it stays visible after a delay.
+  it('exercise 2: verify banner persists', () => {
+    // Show the banner.
+    cy.get('[data-testid="show-banner-btn"]').click();
+
+    // Verify visible.
+    cy.get('[data-testid="banner"]').should('be.visible');
+    cy.get('[data-testid="banner-text"]').should('contain.text', 'maintenance');
+
+    // Wait 2 seconds and verify it's still visible (does not auto-dismiss).
+    // cy.wait(ms) pauses the test for the given milliseconds.
+    cy.wait(2000);
+    cy.get('[data-testid="banner"]').should('be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Dismiss Notification
+  // --------------------------------------------------------------------------
+  // Shows the banner, dismisses it, verifies it's gone.
+  it('exercise 3: dismiss banner notification', () => {
+    // Show banner.
+    cy.get('[data-testid="show-banner-btn"]').click();
+    cy.get('[data-testid="banner"]').should('be.visible');
+
+    // Click dismiss.
+    cy.get('[data-testid="banner-dismiss"]').click();
+
+    // Verify hidden.
+    cy.get('[data-testid="banner"]').should('not.be.visible');
+
+    // Verify last action.
+    cy.get('[data-testid="last-action"]').should('have.text', 'Banner dismissed');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Verify Badge Count
+  // --------------------------------------------------------------------------
+  // Triggers multiple notifications and checks the badge number.
+  it('exercise 4: verify badge count', () => {
+    // Badge starts hidden.
+    cy.get('[data-testid="badge-count"]').should('not.be.visible');
+
+    // Trigger 3 toasts.
+    cy.get('[data-testid="toast-info-btn"]').click();
+    cy.get('[data-testid="toast-success-btn"]').click();
+    cy.get('[data-testid="toast-error-btn"]').click();
+
+    // Verify badge count is 3.
+    cy.get('[data-testid="badge-count"]')
+      .should('be.visible')
+      .and('have.text', '3');
+
+    // Verify total notifications.
+    cy.get('[data-testid="total-notifications"]').should('have.text', '3');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Open Notification Drawer
+  // --------------------------------------------------------------------------
+  // Clicks the bell, verifies the drawer opens with notification items.
+  it('exercise 5: open notification drawer', () => {
+    // Create notifications.
+    cy.get('[data-testid="toast-info-btn"]').click();
+    cy.get('[data-testid="toast-error-btn"]').click();
+
+    // Open drawer.
+    cy.get('[data-testid="bell-btn"]').click();
+
+    // Verify drawer is open.
+    cy.get('[data-testid="notification-drawer"]').should('have.class', 'open');
+
+    // Verify overlay visible.
+    cy.get('[data-testid="drawer-overlay"]').should('be.visible');
+
+    // Verify items in the drawer.
+    cy.get('[data-testid="drawer-item-0"]').should('be.visible');
+    cy.get('[data-testid="drawer-item-1"]').should('be.visible');
+
+    // Verify badge reset (notifications "read").
+    cy.get('[data-testid="badge-count"]').should('not.be.visible');
+
+    // Close drawer.
+    cy.get('[data-testid="drawer-close"]').click();
+    cy.get('[data-testid="notification-drawer"]').should('not.have.class', 'open');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Click Snackbar Action (Undo)
+  // --------------------------------------------------------------------------
+  // Shows the snackbar and clicks the Undo button.
+  it('exercise 6: click snackbar undo action', () => {
+    // Show snackbar.
+    cy.get('[data-testid="show-snackbar-btn"]').click();
+
+    // Verify visible with correct message.
+    cy.get('[data-testid="snackbar"]').should('be.visible');
+    cy.get('[data-testid="snackbar-message"]').should('contain.text', 'Item deleted');
+
+    // Click Undo.
+    cy.get('[data-testid="snackbar-undo"]').click();
+
+    // Verify snackbar dismissed.
+    cy.get('[data-testid="snackbar"]').should('not.be.visible');
+
+    // Verify undo status.
+    cy.get('[data-testid="undo-status"]').should('have.text', 'Item restored');
+
+    // Verify last action.
+    cy.get('[data-testid="last-action"]').should('have.text', 'Undo performed');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Verify Priority Stacking Order
+  // --------------------------------------------------------------------------
+  // Fires priority toasts and verifies the error toast appears last in DOM
+  // (visually on top due to column-reverse).
+  it('exercise 7: verify priority stacking order', () => {
+    // Fire priority toasts.
+    cy.get('[data-testid="priority-toast-btn"]').click();
+
+    // Wait for all toasts to appear.
+    cy.wait(500);
+
+    // Verify 3 toasts exist.
+    cy.get('.toast').should('have.length', 3);
+
+    // The last toast in the DOM should be the error (highest priority).
+    // .last() gets the last element in the set of matched elements.
+    cy.get('.toast').last().should('have.attr', 'data-toast-type', 'error');
+
+    // The first toast in the DOM should be the info (lowest priority).
+    // .first() gets the first element in the set.
+    cy.get('.toast').first().should('have.attr', 'data-toast-type', 'info');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Multiple Toasts Stacking
+  // --------------------------------------------------------------------------
+  // Fires 3 toasts and verifies all are visible simultaneously.
+  it('exercise 8: multiple toasts stacking', () => {
+    // Fire 3 toasts.
+    cy.get('[data-testid="multi-toast-btn"]').click();
+
+    // Wait for all toasts.
+    cy.wait(500);
+
+    // Verify 3 toasts visible.
+    cy.get('.toast').should('have.length', 3);
+
+    // Verify each type is present.
+    cy.get('[data-testid="toast-info"]').should('be.visible');
+    cy.get('[data-testid="toast-success"]').should('be.visible');
+    cy.get('[data-testid="toast-warning"]').should('be.visible');
+
+    // Verify total count.
+    cy.get('[data-testid="total-notifications"]').should('have.text', '3');
+
+    // Wait for auto-dismiss and verify all are gone.
+    cy.get('.toast', { timeout: 6000 }).should('have.length', 0);
+  });
+});
+6:T183c,# Kata 35: Error Recovery and Retries
+
+## What You Will Learn
+
+- How to test error states and verify error messages
+- How to test retry mechanisms and verify recovery
+- How to control randomness in tests using window-level overrides
+- How to test graceful degradation (cached data fallback)
+- How to verify circuit breaker patterns (stop retrying after N failures)
+- How to verify error boundaries catch and display errors
+- How to test that form data is preserved after errors
+
+## Prerequisites
+
+- Completed Katas 01-34
+- Understanding of page evaluation (page.evaluate / cy.window)
+
+## Concepts Explained
+
+### Controlling Randomness in Tests
+
+```
+Real apps often have random or unpredictable behavior (network failures,
+race conditions). To test these reliably, the playground exposes global
+flags that tests can set:
+
+  window.__forceResult = 'success'   — random action always succeeds
+  window.__forceResult = 'error'     — random action always fails
+  window.__forceTimeout = true       — timeout always triggers
+  window.__circuitForceFailure = true — circuit breaker always fails
+```
+
+### Playwright: page.evaluate()
+
+```typescript
+// PLAYWRIGHT
+// page.evaluate(fn) runs JavaScript in the browser context.
+// Use this to set global flags or read internal state.
+
+await page.evaluate(() => {
+  (window as any).__forceResult = 'error';
+});
+```
+
+### Cypress: cy.window()
+
+```typescript
+// CYPRESS
+// cy.window() yields the browser's window object.
+// .then(win => ...) lets you set properties on it.
+
+cy.window().then(win => {
+  (win as any).__forceResult = 'error';
+});
+```
+
+### Circuit Breaker Pattern
+
+```
+A circuit breaker protects against cascading failures:
+
+  CLOSED (normal)  -->  failure  -->  failure  -->  failure  -->  OPEN (blocked)
+                                                                     |
+                                                                   Reset
+                                                                     |
+                                                                  CLOSED
+
+When OPEN, all calls are immediately rejected without attempting the
+real operation. The circuit must be manually (or automatically) reset.
+```
+
+## Playground Overview
+
+Six cards demonstrating different error scenarios:
+
+1. **Random Failure** — 50% success rate, retry button on failure
+2. **Error Boundary** — Component crash with "Try Again" recovery
+3. **Network Request** — Graceful degradation with cached data fallback
+4. **Timeout Simulation** — Request that times out after 3 seconds
+5. **Circuit Breaker** — Blocks calls after 3 consecutive failures
+6. **Form Error Recovery** — First submit fails, data preserved for retry
+
+## Exercises
+
+1. **Trigger error, verify error message** — Force a failure and check the error text
+2. **Click retry, verify recovery** — Force failure, then force success, click retry
+3. **Test with mocked consistent failure** — Force all attempts to fail
+4. **Test graceful degradation** — Go offline and verify cached data appears
+5. **Verify circuit breaker after N failures** — Trigger 3 failures and verify circuit opens
+6. **Verify error boundary UI** — Crash the component and verify the error boundary
+7. **Test timeout handling** — Force a timeout and verify the error message
+8. **Verify error does not lose form data** — Submit form, fail, verify inputs preserved
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Forgetting to set `window.__forceResult` before triggering the action | The action uses the flag at the moment it runs; setting it after has no effect | Use `page.evaluate()` or `cy.window()` to set the flag before clicking the action button |
+| Not resetting force flags between tests | A flag set in one test bleeds into the next, causing unexpected pass/fail | Reset flags (`window.__forceResult = null`) in a `beforeEach` or at the start of each test |
+| Asserting circuit breaker state after fewer than 3 failures | The circuit breaker opens after 3 consecutive failures, not 1 or 2 | Trigger exactly 3 failures before asserting the circuit is open |
+| Not waiting for the retry animation or delay to complete | Retry mechanisms often include a delay (e.g., 1-2 seconds) before the next attempt | Use appropriate timeouts when asserting on post-retry state |
+| Testing graceful degradation without triggering the error first | Cached data fallback only appears when the network request fails | Force the error state before checking for the cached data fallback UI |
+
+## Quick Reference
+
+### Playwright Error Testing
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Force failure | `page.evaluate()` | `await page.evaluate(() => { (window as any).__forceResult = 'error' })` |
+| Force success | `page.evaluate()` | `await page.evaluate(() => { (window as any).__forceResult = 'success' })` |
+| Force timeout | `page.evaluate()` | `await page.evaluate(() => { (window as any).__forceTimeout = true })` |
+| Force circuit failure | `page.evaluate()` | `await page.evaluate(() => { (window as any).__circuitForceFailure = true })` |
+| Check error text | `expect().toHaveText()` | `await expect(errorMsg).toHaveText('Something went wrong')` |
+| Click retry | `locator.click()` | `await page.getByTestId('retry-btn').click()` |
+| Verify recovery | `expect().toBeVisible()` | `await expect(successMsg).toBeVisible()` |
+
+### Cypress Error Testing
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Force failure | `cy.window()` | `cy.window().then(win => { (win as any).__forceResult = 'error' })` |
+| Force success | `cy.window()` | `cy.window().then(win => { (win as any).__forceResult = 'success' })` |
+| Force timeout | `cy.window()` | `cy.window().then(win => { (win as any).__forceTimeout = true })` |
+| Force circuit failure | `cy.window()` | `cy.window().then(win => { (win as any).__circuitForceFailure = true })` |
+| Check error text | `.should('have.text')` | `cy.get(errorMsg).should('have.text', 'Something went wrong')` |
+| Click retry | `.click()` | `cy.get('[data-testid="retry-btn"]').click()` |
+| Verify recovery | `.should('be.visible')` | `cy.get(successMsg).should('be.visible')` |
+7:T268d,import { test, expect } from '@playwright/test';
+
+// Base URL for the playground page.
+const PLAYGROUND = '/phase-06-complex-scenarios/35-error-recovery-and-retries/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Trigger Error, Verify Error Message
+// --------------------------------------------------------------------------
+// Forces a failure using page.evaluate() and verifies the error message.
+test('exercise 1: trigger error and verify error message', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Set the global override to force the random action to fail.
+  // page.evaluate(fn) executes the given function in the browser context.
+  // We cast window to `any` because __forceResult is a custom property
+  // not defined in the Window type.
+  await page.evaluate(() => {
+    (window as any).__forceResult = 'error';
+  });
+
+  // Click the action button.
+  await page.getByTestId('random-action-btn').click();
+
+  // Verify the error result is displayed.
+  await expect(page.getByTestId('random-result')).toContainText('failed');
+
+  // Verify the retry button appeared.
+  await expect(page.getByTestId('random-retry-btn')).toBeVisible();
+
+  // Verify the attempt counter incremented.
+  await expect(page.getByTestId('random-attempts')).toHaveText('1');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Click Retry, Verify Recovery
+// --------------------------------------------------------------------------
+// First forces a failure, then forces success and clicks retry.
+test('exercise 2: click retry and verify recovery', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Force failure on first click.
+  await page.evaluate(() => { (window as any).__forceResult = 'error'; });
+  await page.getByTestId('random-action-btn').click();
+  await expect(page.getByTestId('random-result')).toContainText('failed');
+
+  // Now force success for the retry.
+  await page.evaluate(() => { (window as any).__forceResult = 'success'; });
+  await page.getByTestId('random-retry-btn').click();
+
+  // Verify recovery — the result should now show success.
+  await expect(page.getByTestId('random-result')).toContainText('successfully');
+
+  // Verify the retry button is hidden after success.
+  await expect(page.getByTestId('random-retry-btn')).toBeHidden();
+
+  // Verify the attempt count is 2 (one failure + one success).
+  await expect(page.getByTestId('random-attempts')).toHaveText('2');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Test with Mocked Consistent Failure
+// --------------------------------------------------------------------------
+// Forces all attempts to fail and verifies the error persists.
+test('exercise 3: test with mocked consistent failure', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Force all actions to fail.
+  await page.evaluate(() => { (window as any).__forceResult = 'error'; });
+
+  // Click the action button 3 times.
+  for (let i = 0; i < 3; i++) {
+    // First click uses the main button, subsequent clicks use the retry button.
+    if (i === 0) {
+      await page.getByTestId('random-action-btn').click();
+    } else {
+      await page.getByTestId('random-retry-btn').click();
+    }
+    // Verify each attempt shows the error.
+    await expect(page.getByTestId('random-result')).toContainText('failed');
+  }
+
+  // Verify all 3 attempts were counted.
+  await expect(page.getByTestId('random-attempts')).toHaveText('3');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Test Graceful Degradation
+// --------------------------------------------------------------------------
+// Simulates going offline and verifies cached data is shown as fallback.
+test('exercise 4: test graceful degradation with cached data', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // First fetch while online — should show fresh data.
+  await page.getByTestId('fetch-data-btn').click();
+  await expect(page.getByTestId('fetch-result')).toContainText('Live data', { timeout: 3000 });
+  await expect(page.getByTestId('data-source')).toHaveText('network');
+
+  // Click "Go Offline" to simulate network failure.
+  await page.getByTestId('simulate-offline-btn').click();
+
+  // Fetch again — should show cached data.
+  await page.getByTestId('fetch-data-btn').click();
+  await expect(page.getByTestId('fetch-result')).toContainText('Cached from', { timeout: 3000 });
+  await expect(page.getByTestId('data-source')).toHaveText('cache');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Verify Circuit Breaker After N Failures
+// --------------------------------------------------------------------------
+// Forces 3 consecutive failures and verifies the circuit breaker opens.
+test('exercise 5: verify circuit breaker after 3 failures', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify the circuit starts CLOSED.
+  await expect(page.getByTestId('circuit-status')).toHaveText('CLOSED');
+
+  // Force all circuit calls to fail.
+  await page.evaluate(() => { (window as any).__circuitForceFailure = true; });
+
+  // Click 3 times to trigger 3 failures.
+  for (let i = 0; i < 3; i++) {
+    await page.getByTestId('circuit-action-btn').click();
+  }
+
+  // Verify the circuit is now OPEN.
+  await expect(page.getByTestId('circuit-status')).toHaveText('OPEN');
+  await expect(page.getByTestId('circuit-failures')).toHaveText('3');
+
+  // Verify additional calls are blocked.
+  await page.getByTestId('circuit-action-btn').click();
+  await expect(page.getByTestId('circuit-result')).toContainText('Circuit is OPEN');
+
+  // Reset the circuit and verify it's CLOSED again.
+  await page.getByTestId('circuit-reset-btn').click();
+  await expect(page.getByTestId('circuit-status')).toHaveText('CLOSED');
+  await expect(page.getByTestId('circuit-failures')).toHaveText('0');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Verify Error Boundary UI
+// --------------------------------------------------------------------------
+// Triggers a component crash and verifies the error boundary displays.
+test('exercise 6: verify error boundary UI', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify the component content is visible before the crash.
+  await expect(page.getByTestId('component-content')).toBeVisible();
+
+  // Click the "Trigger Crash" button.
+  await page.getByTestId('crash-btn').click();
+
+  // Verify the error boundary is now visible.
+  await expect(page.getByTestId('error-boundary')).toBeVisible();
+  await expect(page.getByTestId('error-boundary-message')).toContainText('unexpected error');
+
+  // Verify the component content is hidden.
+  await expect(page.getByTestId('component-content')).toBeHidden();
+
+  // Click "Try Again" to recover.
+  await page.getByTestId('error-boundary-retry').click();
+
+  // Verify the component is restored and the error boundary is hidden.
+  await expect(page.getByTestId('component-content')).toBeVisible();
+  await expect(page.getByTestId('error-boundary')).toBeHidden();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Test Timeout Handling
+// --------------------------------------------------------------------------
+// Forces a timeout and verifies the timeout error message appears.
+test('exercise 7: test timeout handling', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Force the request to time out.
+  await page.evaluate(() => { (window as any).__forceTimeout = true; });
+
+  // Click Send Request.
+  await page.getByTestId('timeout-btn').click();
+
+  // Verify the loading state appears first.
+  await expect(page.getByTestId('timeout-result')).toContainText('in progress');
+
+  // Wait for the timeout (3 seconds) and verify the error.
+  await expect(page.getByTestId('timeout-result')).toContainText('timed out', { timeout: 5000 });
+
+  // Verify the retry button appeared.
+  await expect(page.getByTestId('timeout-retry-btn')).toBeVisible();
+
+  // Force success and retry.
+  await page.evaluate(() => { (window as any).__forceTimeout = false; });
+  await page.getByTestId('timeout-retry-btn').click();
+
+  // Verify recovery.
+  await expect(page.getByTestId('timeout-result')).toContainText('successfully', { timeout: 3000 });
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Verify Error Does Not Lose Form Data
+// --------------------------------------------------------------------------
+// Fills the form, submits (first attempt fails), verifies form data is
+// preserved, submits again (succeeds).
+test('exercise 8: verify error does not lose form data', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Fill in the form with test data.
+  await page.getByTestId('form-name').fill('John Doe');
+  await page.getByTestId('form-email').fill('john@example.com');
+
+  // First submit — should fail (default behavior: first attempt fails).
+  await page.getByTestId('form-submit-btn').click();
+  await expect(page.getByTestId('form-result')).toContainText('Failed to submit');
+
+  // Verify form data is preserved (inputs still have the entered values).
+  // toHaveValue(value) checks the input's current value.
+  await expect(page.getByTestId('form-name')).toHaveValue('John Doe');
+  await expect(page.getByTestId('form-email')).toHaveValue('john@example.com');
+
+  // Second submit — should succeed.
+  await page.getByTestId('form-submit-btn').click();
+  await expect(page.getByTestId('form-result')).toContainText('successfully');
+  await expect(page.getByTestId('form-result')).toContainText('John Doe');
+
+  // Verify attempt count is 2.
+  await expect(page.getByTestId('form-attempts')).toHaveText('2');
+});
+8:T21c0,const PLAYGROUND = '/phase-06-complex-scenarios/35-error-recovery-and-retries/playground/';
+
+describe('Kata 35: Error Recovery and Retries', () => {
+
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Trigger Error, Verify Error Message
+  // --------------------------------------------------------------------------
+  // Forces a failure using cy.window() and verifies the error text.
+  it('exercise 1: trigger error and verify error message', () => {
+    // cy.window() yields the browser's window object.
+    // .then(win => ...) lets us set custom properties on it.
+    cy.window().then(win => {
+      (win as any).__forceResult = 'error';
+    });
+
+    // Click the action button.
+    cy.get('[data-testid="random-action-btn"]').click();
+
+    // Verify the error message is displayed.
+    cy.get('[data-testid="random-result"]').should('contain.text', 'failed');
+
+    // Verify the retry button appeared.
+    cy.get('[data-testid="random-retry-btn"]').should('be.visible');
+
+    // Verify attempt count.
+    cy.get('[data-testid="random-attempts"]').should('have.text', '1');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Click Retry, Verify Recovery
+  // --------------------------------------------------------------------------
+  it('exercise 2: click retry and verify recovery', () => {
+    // Force failure first.
+    cy.window().then(win => { (win as any).__forceResult = 'error'; });
+    cy.get('[data-testid="random-action-btn"]').click();
+    cy.get('[data-testid="random-result"]').should('contain.text', 'failed');
+
+    // Force success for retry.
+    cy.window().then(win => { (win as any).__forceResult = 'success'; });
+    cy.get('[data-testid="random-retry-btn"]').click();
+
+    // Verify recovery.
+    cy.get('[data-testid="random-result"]').should('contain.text', 'successfully');
+
+    // Verify retry button hidden after success.
+    cy.get('[data-testid="random-retry-btn"]').should('not.be.visible');
+
+    // Verify attempt count is 2.
+    cy.get('[data-testid="random-attempts"]').should('have.text', '2');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Test with Mocked Consistent Failure
+  // --------------------------------------------------------------------------
+  it('exercise 3: test with mocked consistent failure', () => {
+    cy.window().then(win => { (win as any).__forceResult = 'error'; });
+
+    // Click 3 times. First click on main button, then retry button.
+    cy.get('[data-testid="random-action-btn"]').click();
+    cy.get('[data-testid="random-result"]').should('contain.text', 'failed');
+
+    cy.get('[data-testid="random-retry-btn"]').click();
+    cy.get('[data-testid="random-result"]').should('contain.text', 'failed');
+
+    cy.get('[data-testid="random-retry-btn"]').click();
+    cy.get('[data-testid="random-result"]').should('contain.text', 'failed');
+
+    // Verify all 3 attempts counted.
+    cy.get('[data-testid="random-attempts"]').should('have.text', '3');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Test Graceful Degradation
+  // --------------------------------------------------------------------------
+  it('exercise 4: test graceful degradation with cached data', () => {
+    // Fetch while online.
+    cy.get('[data-testid="fetch-data-btn"]').click();
+    cy.get('[data-testid="fetch-result"]').should('contain.text', 'Live data');
+    cy.get('[data-testid="data-source"]').should('have.text', 'network');
+
+    // Go offline.
+    cy.get('[data-testid="simulate-offline-btn"]').click();
+
+    // Fetch while offline — should show cached data.
+    cy.get('[data-testid="fetch-data-btn"]').click();
+    cy.get('[data-testid="fetch-result"]').should('contain.text', 'Cached from');
+    cy.get('[data-testid="data-source"]').should('have.text', 'cache');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Verify Circuit Breaker After N Failures
+  // --------------------------------------------------------------------------
+  it('exercise 5: verify circuit breaker after 3 failures', () => {
+    // Verify circuit starts CLOSED.
+    cy.get('[data-testid="circuit-status"]').should('have.text', 'CLOSED');
+
+    // Force all calls to fail.
+    cy.window().then(win => { (win as any).__circuitForceFailure = true; });
+
+    // Trigger 3 failures.
+    cy.get('[data-testid="circuit-action-btn"]').click();
+    cy.get('[data-testid="circuit-action-btn"]').click();
+    cy.get('[data-testid="circuit-action-btn"]').click();
+
+    // Verify circuit is OPEN.
+    cy.get('[data-testid="circuit-status"]').should('have.text', 'OPEN');
+    cy.get('[data-testid="circuit-failures"]').should('have.text', '3');
+
+    // Verify additional calls are blocked.
+    cy.get('[data-testid="circuit-action-btn"]').click();
+    cy.get('[data-testid="circuit-result"]').should('contain.text', 'Circuit is OPEN');
+
+    // Reset and verify CLOSED.
+    cy.get('[data-testid="circuit-reset-btn"]').click();
+    cy.get('[data-testid="circuit-status"]').should('have.text', 'CLOSED');
+    cy.get('[data-testid="circuit-failures"]').should('have.text', '0');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Verify Error Boundary UI
+  // --------------------------------------------------------------------------
+  it('exercise 6: verify error boundary UI', () => {
+    // Component visible before crash.
+    cy.get('[data-testid="component-content"]').should('be.visible');
+
+    // Trigger crash.
+    cy.get('[data-testid="crash-btn"]').click();
+
+    // Error boundary visible.
+    cy.get('[data-testid="error-boundary"]').should('be.visible');
+    cy.get('[data-testid="error-boundary-message"]').should('contain.text', 'unexpected error');
+
+    // Component hidden.
+    cy.get('[data-testid="component-content"]').should('not.be.visible');
+
+    // Recover.
+    cy.get('[data-testid="error-boundary-retry"]').click();
+
+    // Component restored, error boundary hidden.
+    cy.get('[data-testid="component-content"]').should('be.visible');
+    cy.get('[data-testid="error-boundary"]').should('not.be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Test Timeout Handling
+  // --------------------------------------------------------------------------
+  it('exercise 7: test timeout handling', () => {
+    // Force timeout.
+    cy.window().then(win => { (win as any).__forceTimeout = true; });
+
+    cy.get('[data-testid="timeout-btn"]').click();
+
+    // Verify loading state.
+    cy.get('[data-testid="timeout-result"]').should('contain.text', 'in progress');
+
+    // Wait for timeout (3s) and verify error.
+    cy.get('[data-testid="timeout-result"]', { timeout: 5000 })
+      .should('contain.text', 'timed out');
+
+    // Verify retry button appeared.
+    cy.get('[data-testid="timeout-retry-btn"]').should('be.visible');
+
+    // Force success and retry.
+    cy.window().then(win => { (win as any).__forceTimeout = false; });
+    cy.get('[data-testid="timeout-retry-btn"]').click();
+
+    // Verify recovery.
+    cy.get('[data-testid="timeout-result"]', { timeout: 3000 })
+      .should('contain.text', 'successfully');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Verify Error Does Not Lose Form Data
+  // --------------------------------------------------------------------------
+  it('exercise 8: verify error does not lose form data', () => {
+    // Fill form.
+    cy.get('[data-testid="form-name"]').type('John Doe');
+    cy.get('[data-testid="form-email"]').type('john@example.com');
+
+    // First submit fails (default behavior).
+    cy.get('[data-testid="form-submit-btn"]').click();
+    cy.get('[data-testid="form-result"]').should('contain.text', 'Failed to submit');
+
+    // Verify form data is preserved.
+    // .should('have.value', val) checks the input's current value.
+    cy.get('[data-testid="form-name"]').should('have.value', 'John Doe');
+    cy.get('[data-testid="form-email"]').should('have.value', 'john@example.com');
+
+    // Second submit succeeds.
+    cy.get('[data-testid="form-submit-btn"]').click();
+    cy.get('[data-testid="form-result"]').should('contain.text', 'successfully');
+    cy.get('[data-testid="form-result"]').should('contain.text', 'John Doe');
+
+    // Verify attempt count.
+    cy.get('[data-testid="form-attempts"]').should('have.text', '2');
+  });
+});
+9:T1ecf,# Kata 37: Page Object Model (POM)
+
+## What You Will Learn
+
+- What the Page Object Model pattern is and why it matters for test maintainability
+- How to create POM classes in Playwright using TypeScript classes
+- How to create POM-style objects in Cypress using plain objects and functions
+- How to refactor raw tests into POM-based tests
+- How tests become shorter, more readable, and easier to maintain with POM
+- How to share POM classes across multiple test files
+
+## Prerequisites
+
+- Completed Katas 01-36
+- Understanding of TypeScript classes and objects
+- Familiarity with the KYC onboarding form from Kata 26
+
+## Playground
+
+This kata reuses the KYC onboarding form from Kata 26.
+Open `playground/index.html` for a quick reference page that links to Kata 26.
+The tests in this kata target the Kata 26 playground at:
+`/phase-05-fintech-domain/26-kyc-onboarding-flow/playground/`
+
+## Concepts Explained
+
+### What Is the Page Object Model?
+
+```
+The Page Object Model (POM) is a design pattern used in test automation.
+It creates an abstraction layer between your tests and the page under test.
+
+Instead of writing selectors and actions directly in your test:
+
+  // WITHOUT POM — selectors are scattered in every test
+  await page.getByTestId('full-name-input').fill('Aisha Patel');
+  await page.getByTestId('email-input').fill('aisha@example.com');
+  await page.getByTestId('country-select').selectOption('IN');
+  await page.getByTestId('submit-btn').click();
+
+You create a Page Object that wraps all interactions:
+
+  // WITH POM — tests read like English
+  await kycForm.fillName('Aisha Patel');
+  await kycForm.fillEmail('aisha@example.com');
+  await kycForm.selectCountry('IN');
+  await kycForm.submit();
+```
+
+### Why Use POM?
+
+```
+1. MAINTAINABILITY
+   If a selector changes (e.g., data-testid="full-name-input" becomes
+   data-testid="name-field"), you update ONE place — the Page Object.
+   Without POM, you update every test that uses that selector.
+
+2. READABILITY
+   Tests read like user stories instead of DOM manipulation code.
+   "kycForm.fillName('Aisha')" is clearer than
+   "page.getByTestId('full-name-input').fill('Aisha')".
+
+3. REUSABILITY
+   Multiple test files can import the same Page Object.
+   The KYC form appears in Kata 26, 37, 38, 39 — one POM serves all.
+
+4. SEPARATION OF CONCERNS
+   Tests describe WHAT to verify. Page Objects describe HOW to interact.
+   This separation makes both easier to understand and modify.
+```
+
+### POM in Playwright vs Cypress
+
+```
+PLAYWRIGHT — uses TypeScript classes.
+Each Page Object class receives a `page` fixture in its constructor.
+Methods are async because Playwright actions return Promises.
+
+  class KycFormPage {
+    constructor(private page: Page) {}
+    async fillName(name: string) {
+      await this.page.getByTestId('full-name-input').fill(name);
+    }
+  }
+
+CYPRESS — does NOT use classes (Cypress discourages it).
+Instead, use plain objects or factory functions that return helper methods.
+Methods use Cypress chains (cy.get().type()) and are NOT async.
+
+  const kycFormPage = {
+    fillName(name: string) {
+      cy.get('[data-testid="full-name-input"]').type(name);
+    }
+  };
+```
+
+### Anatomy of a Good Page Object
+
+```
+A well-designed Page Object follows these rules:
+
+1. One Page Object per page or major component
+2. Expose actions (fill, click, navigate) — NOT selectors
+3. Expose assertions where it makes sense (verifySuccess, isVisible)
+4. Never expose internal page details (selectors, DOM structure)
+5. Methods should be named from the user's perspective
+6. Constructor takes the page/browser instance
+
+Directory structure:
+  playwright/
+    pages/
+      kyc-form.page.ts      ← Page Object for the KYC form
+      review.page.ts         ← Page Object for the review section
+    page-object-model.spec.ts ← Tests using the Page Objects
+  cypress/
+    pages/
+      kyc-form.page.ts      ← POM object for Cypress
+    page-object-model.cy.ts  ← Tests using the POM object
+```
+
+## Exercises
+
+### Exercise 1: Read Tests Without POM (Understanding the Problem)
+Look at tests that use raw selectors. Count how many times the same
+selector appears. This is the problem POM solves.
+
+### Exercise 2: Create a Playwright POM Class
+Build `playwright/pages/kyc-form.page.ts` with methods for every form
+field and action.
+
+### Exercise 3: Create a Playwright Review Page POM
+Build `playwright/pages/review.page.ts` for the review/status section.
+
+### Exercise 4: Write Tests Using POM Classes
+Use the POM classes in `playwright/page-object-model.spec.ts` to write
+clean, readable tests.
+
+### Exercise 5: Create a Cypress POM Object
+Build `cypress/pages/kyc-form.page.ts` using the Cypress object pattern
+(no classes).
+
+### Exercise 6: Refactor Cypress Tests to Use POM
+Use the POM object in `cypress/page-object-model.cy.ts` and compare
+the before/after readability.
+
+## Key Takeaways
+
+```
+- POM is the most widely-used pattern in professional test automation
+- Playwright POM uses classes; Cypress POM uses objects/functions
+- POM reduces duplication and makes selector changes a one-line fix
+- Name methods from the user's perspective, not the DOM's perspective
+- Start simple — you don't need POM for 3 tests, but you will for 30
+```
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Exposing selectors as public properties on the Page Object | This defeats the purpose of POM — tests become coupled to selectors again | Keep selectors private; expose only action methods (`fillName()`, `submit()`) |
+| Using Cypress classes with `async/await` | Cypress commands are chainable and do not return Promises; `await cy.get()` does not work | Use plain objects or factory functions for Cypress POM; reserve classes for Playwright |
+| Creating one giant Page Object for the entire app | A massive POM is hard to maintain and violates single-responsibility | Create one Page Object per page or major component (e.g., `KycFormPage`, `ReviewPage`) |
+| Putting assertions inside every POM method | POM methods should perform actions; mixing assertions in makes them less reusable | Keep assertions in the test file; only add verification methods (e.g., `verifySuccess()`) when truly reusable |
+| Not passing the `page` fixture to the Playwright POM constructor | Without the `page` reference, methods cannot interact with the browser | Always accept `page: Page` in the constructor and store it as a class field |
+
+## Quick Reference
+
+### Playwright POM Pattern
+
+| Concept | Syntax | Example |
+|---------|--------|---------|
+| Define POM class | `class PageName` | `class KycFormPage { constructor(private page: Page) {} }` |
+| Create action method | `async methodName()` | `async fillName(name: string) { await this.page.getByTestId('name').fill(name) }` |
+| Instantiate in test | `new PageName(page)` | `const kycForm = new KycFormPage(page)` |
+| Use in test | `await pom.method()` | `await kycForm.fillName('Aisha Patel')` |
+| Navigation method | `async goto()` | `async goto() { await this.page.goto('/kyc-form') }` |
+| Verification method | `async verifyX()` | `async verifySuccess() { await expect(this.page.getByTestId('status')).toHaveText('Approved') }` |
+
+### Cypress POM Pattern
+
+| Concept | Syntax | Example |
+|---------|--------|---------|
+| Define POM object | `const pageName = {}` | `const kycFormPage = { fillName(name) { cy.get('[data-testid="name"]').type(name) } }` |
+| Factory function | `function createPage()` | `function createKycForm() { return { fillName(n) { cy.get(...).type(n) } } }` |
+| Use in test | `pageName.method()` | `kycFormPage.fillName('Aisha Patel')` |
+| Export POM | `export const` | `export const kycFormPage = { ... }` |
+| Import POM | `import { pom }` | `import { kycFormPage } from '../pages/kyc-form.page'` |
+| Chain actions | sequential calls | `kycFormPage.fillName('Aisha'); kycFormPage.submit()` |
+a:T22ce,import { test, expect } from '@playwright/test';
+import { KycFormPage } from './pages/kyc-form.page';
+import { ReviewPage } from './pages/review.page';
+
+// =============================================================================
+// Kata 37: Page Object Model — Playwright Tests
+// =============================================================================
+// These tests demonstrate the POM pattern by showing tests BEFORE refactoring
+// (raw selectors) and AFTER refactoring (using Page Objects).
+//
+// The tests target Kata 37's own flat KYC form playground, which mirrors
+// the Kata 26 domain but is purpose-built for POM practice (a single page
+// containing both the applicant lookup and the KYC submission form).
+// All API calls are intercepted — no real backend is needed.
+// =============================================================================
+
+const PLAYGROUND = '/phase-07-advanced-patterns/37-page-object-model/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Test WITHOUT POM (The Problem)
+// --------------------------------------------------------------------------
+// This test uses raw selectors everywhere. Notice how the same selectors
+// appear repeatedly. If 'full-name-input' changes to 'name-field', you
+// would need to update EVERY test that uses it.
+test('exercise 1: submit KYC form WITHOUT POM (raw selectors)', async ({ page }) => {
+  // Intercept the POST request so the test doesn't need a real backend.
+  // page.route() catches outgoing requests and returns a fake response.
+  await page.route('/api/kyc/submit', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ referenceId: 'KYC-RAW-001' })
+    });
+  });
+
+  // Navigate to the playground page.
+  await page.goto(PLAYGROUND);
+
+  // Fill form fields using raw selectors — these appear in EVERY test.
+  // getByTestId('full-name-input') finds the element with data-testid="full-name-input".
+  await page.getByTestId('full-name-input').fill('Aisha Patel');
+  await page.getByTestId('email-input').fill('aisha@example.com');
+  await page.getByTestId('country-select').selectOption('IN');
+  await page.getByTestId('doc-type-select').selectOption('passport');
+
+  // Click submit using a raw selector.
+  await page.getByTestId('submit-btn').click();
+
+  // Assert using raw selectors.
+  await expect(page.getByTestId('submit-status')).toContainText('KYC-RAW-001');
+  await expect(page.getByTestId('submit-status')).toHaveClass(/status-success/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Same Test WITH POM (The Solution)
+// --------------------------------------------------------------------------
+// This test does the EXACT same thing as Exercise 1, but uses the KycFormPage
+// Page Object. Notice how much cleaner and more readable it is.
+test('exercise 2: submit KYC form WITH POM (page object)', async ({ page }) => {
+  // Intercept the POST request.
+  await page.route('/api/kyc/submit', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ referenceId: 'KYC-POM-001' })
+    });
+  });
+
+  // Create the Page Object. The constructor receives the Playwright `page`.
+  // All selectors are now hidden inside the KycFormPage class.
+  const kycForm = new KycFormPage(page);
+
+  // Navigate using the Page Object's method.
+  await kycForm.goto();
+
+  // Fill the form using high-level methods.
+  // Each method name describes the user action, not the DOM element.
+  await kycForm.fillName('Aisha Patel');
+  await kycForm.fillEmail('aisha@example.com');
+  await kycForm.selectCountry('IN');
+  await kycForm.selectDocType('passport');
+
+  // Submit using the Page Object.
+  await kycForm.submit();
+
+  // Assert using the Page Object's assertion method.
+  await kycForm.expectSuccess('KYC-POM-001');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Use the fillForm() Convenience Method
+// --------------------------------------------------------------------------
+// The Page Object also offers a fillForm() method that fills all fields
+// in a single call. This makes data-driven tests very concise.
+test('exercise 3: fill entire form with one method call', async ({ page }) => {
+  await page.route('/api/kyc/submit', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ referenceId: 'KYC-FILL-001' })
+    });
+  });
+
+  const kycForm = new KycFormPage(page);
+  await kycForm.goto();
+
+  // fillForm() accepts an object with all field values.
+  // This pattern is excellent for parameterized/data-driven tests.
+  await kycForm.fillForm({
+    name: 'Carlos Rivera',
+    email: 'carlos@example.com',
+    country: 'US',
+    docType: 'drivers-license'
+  });
+
+  await kycForm.submit();
+  await kycForm.expectSuccess('KYC-FILL-001');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Use the ReviewPage POM for Applicant Lookup
+// --------------------------------------------------------------------------
+// This exercise uses a second Page Object — ReviewPage — to test the
+// applicant lookup section. Using multiple POMs in one test is common
+// when the page has distinct sections.
+test('exercise 4: load applicant data using ReviewPage POM', async ({ page }) => {
+  // Intercept the GET request for applicant data.
+  await page.route('/api/applicant*', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        name: 'Aisha Patel',
+        email: 'aisha@example.com',
+        country: 'India',
+        riskLevel: 'High'
+      })
+    });
+  });
+
+  // Create the ReviewPage POM.
+  const reviewPage = new ReviewPage(page);
+  await reviewPage.goto();
+
+  // Use the convenience method to enter ID and click Load.
+  await reviewPage.lookupApplicant('APP-1001');
+
+  // Assert the displayed data using the POM's assertion method.
+  await reviewPage.expectApplicantData({
+    name: 'Aisha Patel',
+    email: 'aisha@example.com',
+    country: 'India',
+    risk: 'High'
+  });
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Multiple POMs in One Test
+// --------------------------------------------------------------------------
+// In real apps, you often interact with multiple sections of a page.
+// This test uses BOTH KycFormPage and ReviewPage in the same test.
+test('exercise 5: use multiple POMs in one test', async ({ page }) => {
+  // Intercept both API endpoints.
+  await page.route('/api/applicant*', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        name: 'Priya Sharma',
+        email: 'priya@example.com',
+        country: 'India',
+        riskLevel: 'Low'
+      })
+    });
+  });
+
+  await page.route('/api/kyc/submit', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ referenceId: 'KYC-MULTI-001' })
+    });
+  });
+
+  // Create both Page Objects from the same `page`.
+  const reviewPage = new ReviewPage(page);
+  const kycForm = new KycFormPage(page);
+
+  // Navigate once — both POMs share the same page.
+  await reviewPage.goto();
+
+  // Step 1: Look up an existing applicant.
+  await reviewPage.lookupApplicant('APP-1002');
+  await reviewPage.expectApplicantData({
+    name: 'Priya Sharma',
+    email: 'priya@example.com',
+    country: 'India',
+    risk: 'Low'
+  });
+
+  // Step 2: Submit a new KYC application.
+  await kycForm.fillForm({
+    name: 'Priya Sharma',
+    email: 'priya@example.com',
+    country: 'IN'
+  });
+  await kycForm.submit();
+  await kycForm.expectSuccess('KYC-MULTI-001');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: POM Makes Error Testing Clean
+// --------------------------------------------------------------------------
+// Testing error scenarios is common. The POM's expectError() method
+// makes these tests just as readable as success tests.
+test('exercise 6: test error handling with POM', async ({ page }) => {
+  // Intercept and return a 500 error.
+  await page.route('/api/kyc/submit', async (route) => {
+    await route.fulfill({
+      status: 500,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: 'Internal server error' })
+    });
+  });
+
+  const kycForm = new KycFormPage(page);
+  await kycForm.goto();
+
+  await kycForm.fillForm({
+    name: 'Test User',
+    email: 'test@example.com'
+  });
+
+  await kycForm.submit();
+
+  // The POM's expectError() method checks for the error class and message.
+  await kycForm.expectError('error');
+});
+b:T194c,import { type Page, type Locator, expect } from '@playwright/test';
+
+// =============================================================================
+// KycFormPage — Page Object Model for the KYC Onboarding Form
+// =============================================================================
+//
+// This class encapsulates all interactions with the KYC form.
+// Each method maps to a user action (fill a field, click a button, etc.).
+//
+// RULE 1: The constructor receives the Playwright `page` fixture.
+// RULE 2: Selectors are defined ONCE as private properties — never in tests.
+// RULE 3: Public methods are named from the user's perspective.
+// RULE 4: Methods return `this` where possible to allow chaining.
+// =============================================================================
+
+export class KycFormPage {
+  // ---------------------------------------------------------------------------
+  // Private locators — these are the ONLY place selectors appear.
+  // If the dev team changes a data-testid, you fix it here and nowhere else.
+  // ---------------------------------------------------------------------------
+
+  /** The full-name text input field. */
+  private readonly nameInput: Locator;
+
+  /** The email text input field. */
+  private readonly emailInput: Locator;
+
+  /** The country dropdown (select element). */
+  private readonly countrySelect: Locator;
+
+  /** The document type dropdown (select element). */
+  private readonly docTypeSelect: Locator;
+
+  /** The submit button that sends the form. */
+  private readonly submitButton: Locator;
+
+  /** The status message that appears after submission. */
+  private readonly submitStatus: Locator;
+
+  /** The loading spinner that shows during submission. */
+  private readonly submitLoading: Locator;
+
+  // ---------------------------------------------------------------------------
+  // Constructor
+  // ---------------------------------------------------------------------------
+  // The `page` parameter is Playwright's Page object.
+  // We store it and create all locators up front.
+  // Locators are lazy — they don't query the DOM until you call an action.
+  // ---------------------------------------------------------------------------
+  constructor(private readonly page: Page) {
+    this.nameInput = page.getByTestId('full-name-input');
+    this.emailInput = page.getByTestId('email-input');
+    this.countrySelect = page.getByTestId('country-select');
+    this.docTypeSelect = page.getByTestId('doc-type-select');
+    this.submitButton = page.getByTestId('submit-btn');
+    this.submitStatus = page.getByTestId('submit-status');
+    this.submitLoading = page.getByTestId('submit-loading');
+  }
+
+  // ---------------------------------------------------------------------------
+  // Navigation
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Navigate to the KYC form playground.
+   * goto() loads the URL in the browser. Kata 37 ships its own flat
+   * KYC form playground purpose-built for practicing the POM pattern.
+   */
+  async goto(): Promise<void> {
+    await this.page.goto('/phase-07-advanced-patterns/37-page-object-model/playground/');
+  }
+
+  // ---------------------------------------------------------------------------
+  // Actions — each method performs ONE user action
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Fill the Full Name field.
+   * fill() clears any existing text first, then types the new value.
+   *
+   * @param name — the applicant's full name to enter
+   */
+  async fillName(name: string): Promise<void> {
+    await this.nameInput.fill(name);
+  }
+
+  /**
+   * Fill the Email field.
+   *
+   * @param email — the applicant's email address to enter
+   */
+  async fillEmail(email: string): Promise<void> {
+    await this.emailInput.fill(email);
+  }
+
+  /**
+   * Select a country from the dropdown.
+   * selectOption() picks a value from a <select> element by its value attribute.
+   *
+   * @param countryCode — the country code (e.g., 'US', 'IN', 'GB', 'DE')
+   */
+  async selectCountry(countryCode: string): Promise<void> {
+    await this.countrySelect.selectOption(countryCode);
+  }
+
+  /**
+   * Select a document type from the dropdown.
+   *
+   * @param docType — the document type value (e.g., 'passport', 'drivers-license')
+   */
+  async selectDocType(docType: string): Promise<void> {
+    await this.docTypeSelect.selectOption(docType);
+  }
+
+  /**
+   * Click the Submit KYC button.
+   */
+  async submit(): Promise<void> {
+    await this.submitButton.click();
+  }
+
+  /**
+   * Fill the entire form in one call — a convenience method.
+   * This is useful when multiple tests need to fill the same form
+   * with different data.
+   *
+   * @param data — an object with name, email, country, and docType fields
+   */
+  async fillForm(data: {
+    name: string;
+    email: string;
+    country?: string;
+    docType?: string;
+  }): Promise<void> {
+    await this.fillName(data.name);
+    await this.fillEmail(data.email);
+    if (data.country) {
+      await this.selectCountry(data.country);
+    }
+    if (data.docType) {
+      await this.selectDocType(data.docType);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Assertions — verify page state from the user's perspective
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Assert that the submission succeeded and shows the expected reference ID.
+   *
+   * @param referenceId — the expected reference ID in the success message
+   */
+  async expectSuccess(referenceId: string): Promise<void> {
+    await expect(this.submitStatus).toContainText(referenceId);
+    await expect(this.submitStatus).toHaveClass(/status-success/);
+  }
+
+  /**
+   * Assert that the submission failed and shows an error message.
+   *
+   * @param errorText — the expected text in the error message
+   */
+  async expectError(errorText: string): Promise<void> {
+    await expect(this.submitStatus).toContainText(errorText);
+    await expect(this.submitStatus).toHaveClass(/status-error/);
+  }
+
+  /**
+   * Assert that the submit button is visible and enabled.
+   */
+  async expectSubmitEnabled(): Promise<void> {
+    await expect(this.submitButton).toBeEnabled();
+  }
+
+  /**
+   * Assert that the submit button is disabled.
+   */
+  async expectSubmitDisabled(): Promise<void> {
+    await expect(this.submitButton).toBeDisabled();
+  }
+}
+c:T14bf,import { type Page, type Locator, expect } from '@playwright/test';
+
+// =============================================================================
+// ReviewPage — Page Object Model for the Applicant Lookup / Review Section
+// =============================================================================
+//
+// This class encapsulates interactions with the applicant lookup section
+// of the KYC playground. It handles loading applicant data and verifying
+// the displayed information.
+//
+// In a real app, the "review" page might be a separate route. Here it is
+// the top section of the Kata 26 playground that loads applicant data via
+// a GET request.
+// =============================================================================
+
+export class ReviewPage {
+  // ---------------------------------------------------------------------------
+  // Private locators
+  // ---------------------------------------------------------------------------
+
+  /** The text input for the applicant ID. */
+  private readonly applicantIdInput: Locator;
+
+  /** The button that triggers the applicant lookup. */
+  private readonly loadButton: Locator;
+
+  /** The card that displays loaded applicant data. */
+  private readonly applicantCard: Locator;
+
+  /** Individual fields inside the applicant card. */
+  private readonly applicantName: Locator;
+  private readonly applicantEmail: Locator;
+  private readonly applicantCountry: Locator;
+  private readonly applicantRisk: Locator;
+
+  /** The error message element for failed lookups. */
+  private readonly errorMessage: Locator;
+
+  /** The loading spinner. */
+  private readonly loadingIndicator: Locator;
+
+  // ---------------------------------------------------------------------------
+  // Constructor
+  // ---------------------------------------------------------------------------
+  constructor(private readonly page: Page) {
+    this.applicantIdInput = page.getByTestId('applicant-id-input');
+    this.loadButton = page.getByTestId('load-applicant-btn');
+    this.applicantCard = page.getByTestId('applicant-card');
+    this.applicantName = page.getByTestId('applicant-name');
+    this.applicantEmail = page.getByTestId('applicant-email');
+    this.applicantCountry = page.getByTestId('applicant-country');
+    this.applicantRisk = page.getByTestId('applicant-risk');
+    this.errorMessage = page.getByTestId('applicant-error');
+    this.loadingIndicator = page.getByTestId('applicant-loading');
+  }
+
+  // ---------------------------------------------------------------------------
+  // Navigation
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Navigate to the KYC playground (same page as the form).
+   * Kata 37's own playground hosts BOTH the applicant lookup and the
+   * KYC submission form, so this URL matches KycFormPage.goto().
+   */
+  async goto(): Promise<void> {
+    await this.page.goto('/phase-07-advanced-patterns/37-page-object-model/playground/');
+  }
+
+  // ---------------------------------------------------------------------------
+  // Actions
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Enter an applicant ID into the lookup field.
+   *
+   * @param id — the applicant ID to search for (e.g., 'APP-1001')
+   */
+  async enterApplicantId(id: string): Promise<void> {
+    // clear() removes existing text; fill() replaces it with the new value.
+    await this.applicantIdInput.fill(id);
+  }
+
+  /**
+   * Click the "Load Applicant" button to trigger the GET request.
+   */
+  async loadApplicant(): Promise<void> {
+    await this.loadButton.click();
+  }
+
+  /**
+   * Enter an applicant ID and immediately click Load — a convenience method.
+   *
+   * @param id — the applicant ID to look up
+   */
+  async lookupApplicant(id: string): Promise<void> {
+    await this.enterApplicantId(id);
+    await this.loadApplicant();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Assertions
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Assert that the applicant card is visible and shows the expected data.
+   *
+   * @param expected — an object with the expected field values
+   */
+  async expectApplicantData(expected: {
+    name: string;
+    email: string;
+    country: string;
+    risk: string;
+  }): Promise<void> {
+    // waitFor() waits until the element appears in the DOM and is visible.
+    await this.applicantCard.waitFor({ state: 'visible' });
+
+    // toContainText() checks that the element's text includes the expected value.
+    await expect(this.applicantName).toContainText(expected.name);
+    await expect(this.applicantEmail).toContainText(expected.email);
+    await expect(this.applicantCountry).toContainText(expected.country);
+    await expect(this.applicantRisk).toContainText(expected.risk);
+  }
+
+  /**
+   * Assert that an error message is visible with the expected text.
+   *
+   * @param errorText — the expected error message text
+   */
+  async expectError(errorText: string): Promise<void> {
+    await expect(this.errorMessage).toContainText(errorText);
+  }
+
+  /**
+   * Assert that the applicant card is NOT visible (no data loaded).
+   */
+  async expectNoData(): Promise<void> {
+    await expect(this.applicantCard).not.toBeVisible();
+  }
+}
+d:T198e,import { kycFormPage } from './pages/kyc-form.page';
+
+// =============================================================================
+// Kata 37: Page Object Model — Cypress Tests
+// =============================================================================
+// These tests demonstrate the POM pattern in Cypress.
+// Exercises 1-3 show tests WITHOUT POM (raw selectors).
+// Exercises 4-6 show the SAME tests WITH POM (clean and reusable).
+// =============================================================================
+
+const PLAYGROUND = '/phase-07-advanced-patterns/37-page-object-model/playground/';
+
+describe('Kata 37: Page Object Model', () => {
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Test WITHOUT POM — Raw Selectors Everywhere
+  // --------------------------------------------------------------------------
+  // Notice how selectors like '[data-testid="full-name-input"]' are repeated
+  // in every test. If the data-testid changes, you must fix EVERY test.
+  it('exercise 1: submit KYC WITHOUT POM (raw selectors)', () => {
+    // cy.intercept() sets up request interception BEFORE the action happens.
+    // 'POST' — the HTTP method to match.
+    // '/api/kyc/submit' — the URL pattern to match.
+    // { statusCode, body } — the mock response to return.
+    cy.intercept('POST', '/api/kyc/submit', {
+      statusCode: 200,
+      body: { referenceId: 'KYC-RAW-001' }
+    }).as('submitKyc');
+
+    // Navigate to the page.
+    cy.visit(PLAYGROUND);
+
+    // Fill fields with raw selectors.
+    cy.get('[data-testid="full-name-input"]').type('Aisha Patel');
+    cy.get('[data-testid="email-input"]').type('aisha@example.com');
+    cy.get('[data-testid="country-select"]').select('IN');
+    cy.get('[data-testid="doc-type-select"]').select('passport');
+
+    // Click submit.
+    cy.get('[data-testid="submit-btn"]').click();
+
+    // Wait for the intercepted request to complete.
+    cy.wait('@submitKyc');
+
+    // Assert with raw selectors.
+    cy.get('[data-testid="submit-status"]')
+      .should('contain.text', 'KYC-RAW-001')
+      .and('have.class', 'status-success');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Another Test WITHOUT POM — Same Selectors Again
+  // --------------------------------------------------------------------------
+  // This second test repeats ALL the same selectors. Imagine 50 tests
+  // like this — that is 50 places to update when a selector changes.
+  it('exercise 2: submit different applicant WITHOUT POM', () => {
+    cy.intercept('POST', '/api/kyc/submit', {
+      statusCode: 200,
+      body: { referenceId: 'KYC-RAW-002' }
+    }).as('submitKyc');
+
+    cy.visit(PLAYGROUND);
+
+    // Same selectors, different data.
+    cy.get('[data-testid="full-name-input"]').type('Carlos Rivera');
+    cy.get('[data-testid="email-input"]').type('carlos@example.com');
+    cy.get('[data-testid="country-select"]').select('US');
+
+    cy.get('[data-testid="submit-btn"]').click();
+    cy.wait('@submitKyc');
+
+    cy.get('[data-testid="submit-status"]')
+      .should('contain.text', 'KYC-RAW-002');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Test Error WITHOUT POM
+  // --------------------------------------------------------------------------
+  it('exercise 3: test error handling WITHOUT POM', () => {
+    cy.intercept('POST', '/api/kyc/submit', {
+      statusCode: 500,
+      body: { error: 'Server error' }
+    }).as('submitKyc');
+
+    cy.visit(PLAYGROUND);
+
+    cy.get('[data-testid="full-name-input"]').type('Error User');
+    cy.get('[data-testid="email-input"]').type('error@example.com');
+    cy.get('[data-testid="submit-btn"]').click();
+    cy.wait('@submitKyc');
+
+    cy.get('[data-testid="submit-status"]')
+      .should('have.class', 'status-error');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Same Test WITH POM — Clean and Readable
+  // --------------------------------------------------------------------------
+  // Compare this to Exercise 1. The test reads like a user story.
+  // No selectors visible. If a selector changes, you fix kyc-form.page.ts
+  // and ALL tests continue working.
+  it('exercise 4: submit KYC WITH POM (page object)', () => {
+    cy.intercept('POST', '/api/kyc/submit', {
+      statusCode: 200,
+      body: { referenceId: 'KYC-POM-001' }
+    }).as('submitKyc');
+
+    // Use the Page Object to navigate.
+    kycFormPage.visit();
+
+    // Use the Page Object to fill the form.
+    kycFormPage.fillName('Aisha Patel');
+    kycFormPage.fillEmail('aisha@example.com');
+    kycFormPage.selectCountry('IN');
+    kycFormPage.selectDocType('passport');
+
+    // Use the Page Object to submit.
+    kycFormPage.submit();
+
+    cy.wait('@submitKyc');
+
+    // Use the Page Object to assert.
+    kycFormPage.expectSuccess('KYC-POM-001');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Use fillForm() Convenience Method
+  // --------------------------------------------------------------------------
+  // The fillForm() method accepts a data object — perfect for data-driven tests.
+  it('exercise 5: fill form with one method call using POM', () => {
+    cy.intercept('POST', '/api/kyc/submit', {
+      statusCode: 200,
+      body: { referenceId: 'KYC-POM-002' }
+    }).as('submitKyc');
+
+    kycFormPage.visit();
+
+    // One method call fills everything.
+    kycFormPage.fillForm({
+      name: 'Carlos Rivera',
+      email: 'carlos@example.com',
+      country: 'US',
+      docType: 'drivers-license'
+    });
+
+    kycFormPage.submit();
+    cy.wait('@submitKyc');
+    kycFormPage.expectSuccess('KYC-POM-002');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Error Testing WITH POM
+  // --------------------------------------------------------------------------
+  // Compare to Exercise 3. The intent is immediately clear.
+  it('exercise 6: test error handling WITH POM', () => {
+    cy.intercept('POST', '/api/kyc/submit', {
+      statusCode: 500,
+      body: { error: 'Server error' }
+    }).as('submitKyc');
+
+    kycFormPage.visit();
+
+    kycFormPage.fillForm({
+      name: 'Error User',
+      email: 'error@example.com'
+    });
+
+    kycFormPage.submit();
+    cy.wait('@submitKyc');
+
+    // expectError checks for the error class and text — clean and reusable.
+    kycFormPage.expectError('error');
+  });
+});
+e:T11f6,// =============================================================================
+// KYC Form Page Object — Cypress Version
+// =============================================================================
+//
+// In Cypress, we do NOT use classes. Cypress discourages the class-based
+// pattern because Cypress commands are chainable and synchronous-looking
+// (they queue commands internally). Classes with `this` can cause confusion.
+//
+// Instead, we use a PLAIN OBJECT with methods. Each method calls Cypress
+// commands directly (cy.get, cy.type, cy.click, etc.).
+//
+// This object is exported and imported in test files:
+//   import { kycFormPage } from './pages/kyc-form.page';
+// =============================================================================
+
+// The playground URL for the KYC form.
+const PLAYGROUND = '/phase-07-advanced-patterns/37-page-object-model/playground/';
+
+/**
+ * kycFormPage — a plain object containing all interactions with the KYC form.
+ *
+ * Why a plain object instead of a class?
+ * - Cypress commands are NOT Promises — they are chainable commands
+ * - Using `this` in Cypress can cause issues with command chaining
+ * - Plain objects are simpler and match Cypress's functional style
+ */
+export const kycFormPage = {
+
+  // ---------------------------------------------------------------------------
+  // Navigation
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Visit the KYC form playground page.
+   * cy.visit(url) navigates the browser to the given URL.
+   */
+  visit() {
+    cy.visit(PLAYGROUND);
+  },
+
+  // ---------------------------------------------------------------------------
+  // Actions
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Type a name into the Full Name field.
+   *
+   * cy.get(selector) finds the element in the DOM.
+   * .clear() removes any existing text.
+   * .type(text) types the text into the field.
+   *
+   * @param name — the full name to enter
+   */
+  fillName(name: string) {
+    cy.get('[data-testid="full-name-input"]').clear().type(name);
+  },
+
+  /**
+   * Type an email into the Email field.
+   *
+   * @param email — the email address to enter
+   */
+  fillEmail(email: string) {
+    cy.get('[data-testid="email-input"]').clear().type(email);
+  },
+
+  /**
+   * Select a country from the Country dropdown.
+   *
+   * cy.get(selector).select(value) picks an option from a <select> element.
+   * The value must match the <option>'s value attribute.
+   *
+   * @param countryCode — the country code (e.g., 'US', 'IN', 'GB')
+   */
+  selectCountry(countryCode: string) {
+    cy.get('[data-testid="country-select"]').select(countryCode);
+  },
+
+  /**
+   * Select a document type from the Document Type dropdown.
+   *
+   * @param docType — the document type (e.g., 'passport', 'drivers-license')
+   */
+  selectDocType(docType: string) {
+    cy.get('[data-testid="doc-type-select"]').select(docType);
+  },
+
+  /**
+   * Click the Submit KYC button.
+   */
+  submit() {
+    cy.get('[data-testid="submit-btn"]').click();
+  },
+
+  /**
+   * Fill the entire form in one call.
+   * This convenience method fills all fields from a data object.
+   *
+   * @param data — an object with name, email, and optional country/docType
+   */
+  fillForm(data: {
+    name: string;
+    email: string;
+    country?: string;
+    docType?: string;
+  }) {
+    this.fillName(data.name);
+    this.fillEmail(data.email);
+    if (data.country) {
+      this.selectCountry(data.country);
+    }
+    if (data.docType) {
+      this.selectDocType(data.docType);
+    }
+  },
+
+  // ---------------------------------------------------------------------------
+  // Assertions
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Assert that the submission succeeded and shows the expected reference ID.
+   *
+   * .should('contain.text', text) asserts the element's text includes the value.
+   * .and('have.class', cls) chains another assertion on the same element.
+   *
+   * @param referenceId — the expected reference ID in the success message
+   */
+  expectSuccess(referenceId: string) {
+    cy.get('[data-testid="submit-status"]')
+      .should('contain.text', referenceId)
+      .and('have.class', 'status-success');
+  },
+
+  /**
+   * Assert that the submission failed and shows an error.
+   *
+   * @param errorText — the expected error message text
+   */
+  expectError(errorText: string) {
+    cy.get('[data-testid="submit-status"]')
+      .should('contain.text', errorText)
+      .and('have.class', 'status-error');
+  }
+};
+f:T9a39,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { test, expect } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> '@playwright/test'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// Base URL for the playground page.</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-06-complex-scenarios/36-notifications-and-toasts/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 1: Trigger Toast, Verify Appears Then Dismisses</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Shows an info toast and verifies it auto-dismisses after 3 seconds.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: trigger toast and verify auto-dismiss'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click the Info Toast button.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'toast-info-btn'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the toast appeared.</span></span>
+<span class="line"><span style="color:#6A737D">  // getByTestId('toast-info') finds the dynamically created toast element.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> toast</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'toast-info'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(toast).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the toast text content.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(toast).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'System update available'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Wait for auto-dismiss (3 seconds + animation).</span></span>
+<span class="line"><span style="color:#6A737D">  // toBeHidden() with a timeout waits up to that many milliseconds</span></span>
+<span class="line"><span style="color:#6A737D">  // for the element to become invisible or removed from the DOM.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(toast).</span><span style="color:#B392F0">toBeHidden</span><span style="color:#E1E4E8">({ timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 2: Verify Banner Persists</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Shows the banner and verifies it stays visible (no auto-dismiss).</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: verify banner persists'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Show the banner.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'show-banner-btn'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the banner is visible.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'banner'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'banner-text'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'maintenance'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Wait 2 seconds and verify the banner is still visible (it persists).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">waitForTimeout</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">2000</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'banner'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 3: Dismiss Notification</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Shows the banner, clicks the dismiss button, verifies it's gone.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: dismiss banner notification'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Show and verify the banner.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'show-banner-btn'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'banner'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click the dismiss button (X).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'banner-dismiss'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the banner is hidden.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'banner'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeHidden</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the last action was recorded.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'last-action'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Banner dismissed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 4: Verify Badge Count</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Triggers multiple notifications and verifies the badge count updates.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: verify badge count'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Badge should start hidden (0 notifications).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'badge-count'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeHidden</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Trigger 3 toasts.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'toast-info-btn'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'toast-success-btn'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'toast-error-btn'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the badge count is 3.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'badge-count'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'badge-count'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'3'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify total notifications count.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'total-notifications'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'3'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 5: Open Notification Drawer</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Clicks the bell icon, verifies the drawer slides in with items.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: open notification drawer'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Create some notifications first.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'toast-info-btn'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'toast-error-btn'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click the bell button to open the drawer.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'bell-btn'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the drawer is open.</span></span>
+<span class="line"><span style="color:#6A737D">  // We check for the 'open' CSS class on the drawer element.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'notification-drawer'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">open</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the drawer overlay is visible (dim background).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'drawer-overlay'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the drawer contains notification items.</span></span>
+<span class="line"><span style="color:#6A737D">  // The first notification item has data-testid="drawer-item-0".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'drawer-item-0'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'drawer-item-1'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the badge was reset to 0 (notifications "read").</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'badge-count'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeHidden</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Close the drawer.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'drawer-close'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'notification-drawer'</span><span style="color:#E1E4E8">)).not.</span><span style="color:#B392F0">toHaveClass</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">open</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 6: Click Snackbar Action (Undo)</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Shows the snackbar and clicks the Undo button.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: click snackbar undo action'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Show the snackbar.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'show-snackbar-btn'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the snackbar is visible with the correct message.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'snackbar'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'snackbar-message'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Item deleted'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click the Undo button.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'snackbar-undo'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the snackbar dismissed.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'snackbar'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeHidden</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the undo status updated.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'undo-status'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Item restored'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the last action was "Undo performed".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'last-action'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Undo performed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 7: Verify Priority Stacking Order</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Fires priority toasts (info, warning, error) and verifies the error</span></span>
+<span class="line"><span style="color:#6A737D">// toast appears last (visually on top due to column-reverse).</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 7: verify priority stacking order'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click the Priority Toasts button (fires info, then warning, then error).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'priority-toast-btn'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Wait a moment for all toasts to appear.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">waitForTimeout</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">500</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Get all toast elements in the container.</span></span>
+<span class="line"><span style="color:#6A737D">  // locator.all() returns an array of all matching locators.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> toasts</span><span style="color:#F97583"> =</span><span style="color:#F97583"> await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">locator</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'.toast'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">all</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // There should be 3 toasts.</span></span>
+<span class="line"><span style="color:#B392F0">  expect</span><span style="color:#E1E4E8">(toasts.</span><span style="color:#79B8FF">length</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">toBe</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">3</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // The last toast in DOM order is the error (highest priority).</span></span>
+<span class="line"><span style="color:#6A737D">  // Because of column-reverse, the last DOM element appears on top visually.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> lastToast</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> toasts[toasts.</span><span style="color:#79B8FF">length</span><span style="color:#F97583"> -</span><span style="color:#79B8FF"> 1</span><span style="color:#E1E4E8">];</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(lastToast).</span><span style="color:#B392F0">toHaveAttribute</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'data-toast-type'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'error'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // The first toast in DOM order is the info (lowest priority).</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> firstToast</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> toasts[</span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">];</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(firstToast).</span><span style="color:#B392F0">toHaveAttribute</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'data-toast-type'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'info'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 8: Multiple Toasts Stacking</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Fires 3 toasts and verifies all are visible simultaneously.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 8: multiple toasts stacking'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click the "Fire 3 Toasts" button.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'multi-toast-btn'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Wait for all toasts to appear.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">waitForTimeout</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">500</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the toast container has 3 toasts.</span></span>
+<span class="line"><span style="color:#6A737D">  // locator.count() returns the number of matching elements.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">locator</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'.toast'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveCount</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">3</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify each toast has the expected type.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'toast-info'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'toast-success'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'toast-warning'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the total notification count updated.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'total-notifications'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'3'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Wait for auto-dismiss (3s + animation) and verify all are gone.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">locator</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'.toast'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveCount</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">6000</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>10:T8602,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-06-complex-scenarios/36-notifications-and-toasts/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">describe</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Kata 36: Notifications and Toasts'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">  beforeEach</span><span style="color:#E1E4E8">(() </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 1: Trigger Toast, Verify Appears Then Dismisses</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Shows an info toast, verifies it appears, then waits for auto-dismiss.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: trigger toast and verify auto-dismiss'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Click the Info Toast button.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="toast-info-btn"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the toast appeared with correct text.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="toast-info"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'System update available'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Wait for auto-dismiss (3s + animation). The toast element is removed</span></span>
+<span class="line"><span style="color:#6A737D">    // from the DOM after dismissal, so we check for non-existence.</span></span>
+<span class="line"><span style="color:#6A737D">    // .should('not.exist') waits (up to the default or specified timeout)</span></span>
+<span class="line"><span style="color:#6A737D">    // until the element is no longer in the DOM.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="toast-info"]'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">5000</span><span style="color:#E1E4E8"> })</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.exist'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 2: Verify Banner Persists</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Shows the banner and verifies it stays visible after a delay.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: verify banner persists'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Show the banner.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="show-banner-btn"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify visible.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="banner"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="banner-text"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'maintenance'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Wait 2 seconds and verify it's still visible (does not auto-dismiss).</span></span>
+<span class="line"><span style="color:#6A737D">    // cy.wait(ms) pauses the test for the given milliseconds.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">wait</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">2000</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="banner"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 3: Dismiss Notification</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Shows the banner, dismisses it, verifies it's gone.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: dismiss banner notification'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Show banner.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="show-banner-btn"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="banner"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Click dismiss.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="banner-dismiss"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify hidden.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="banner"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify last action.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="last-action"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Banner dismissed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 4: Verify Badge Count</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Triggers multiple notifications and checks the badge number.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: verify badge count'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Badge starts hidden.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="badge-count"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Trigger 3 toasts.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="toast-info-btn"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="toast-success-btn"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="toast-error-btn"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify badge count is 3.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="badge-count"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'3'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify total notifications.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="total-notifications"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'3'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 5: Open Notification Drawer</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Clicks the bell, verifies the drawer opens with notification items.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: open notification drawer'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Create notifications.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="toast-info-btn"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="toast-error-btn"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Open drawer.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="bell-btn"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify drawer is open.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="notification-drawer"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'open'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify overlay visible.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="drawer-overlay"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify items in the drawer.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="drawer-item-0"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="drawer-item-1"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify badge reset (notifications "read").</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="badge-count"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Close drawer.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="drawer-close"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="notification-drawer"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.have.class'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'open'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 6: Click Snackbar Action (Undo)</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Shows the snackbar and clicks the Undo button.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: click snackbar undo action'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Show snackbar.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="show-snackbar-btn"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify visible with correct message.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="snackbar"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="snackbar-message"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Item deleted'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Click Undo.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="snackbar-undo"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify snackbar dismissed.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="snackbar"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify undo status.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="undo-status"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Item restored'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify last action.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="last-action"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Undo performed'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 7: Verify Priority Stacking Order</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Fires priority toasts and verifies the error toast appears last in DOM</span></span>
+<span class="line"><span style="color:#6A737D">  // (visually on top due to column-reverse).</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 7: verify priority stacking order'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Fire priority toasts.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="priority-toast-btn"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Wait for all toasts to appear.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">wait</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">500</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify 3 toasts exist.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'.toast'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.length'</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">3</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // The last toast in the DOM should be the error (highest priority).</span></span>
+<span class="line"><span style="color:#6A737D">    // .last() gets the last element in the set of matched elements.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'.toast'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">last</span><span style="color:#E1E4E8">().</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.attr'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'data-toast-type'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'error'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // The first toast in the DOM should be the info (lowest priority).</span></span>
+<span class="line"><span style="color:#6A737D">    // .first() gets the first element in the set.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'.toast'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">first</span><span style="color:#E1E4E8">().</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.attr'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'data-toast-type'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'info'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 8: Multiple Toasts Stacking</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Fires 3 toasts and verifies all are visible simultaneously.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 8: multiple toasts stacking'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Fire 3 toasts.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="multi-toast-btn"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Wait for all toasts.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">wait</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">500</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify 3 toasts visible.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'.toast'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.length'</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">3</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify each type is present.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="toast-info"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="toast-success"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="toast-warning"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify total count.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="total-notifications"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'3'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Wait for auto-dismiss and verify all are gone.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'.toast'</span><span style="color:#E1E4E8">, { timeout: </span><span style="color:#79B8FF">6000</span><span style="color:#E1E4E8"> }).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.length'</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"kata":{"slug":"36-notifications-and-toasts","number":36,"title":"Notifications and Toasts","phaseSlug":"phase-06-complex-scenarios","phaseNumber":6,"phaseName":"Complex Scenarios","readmeRaw":"$3","hasPlayground":true,"playwrightFiles":[{"filename":"notifications-and-toasts.spec.ts","content":"$4"}],"cypressFiles":[{"filename":"notifications-and-toasts.cy.ts","content":"$5"}]},"prev":{"slug":"35-error-recovery-and-retries","number":35,"title":"Error Recovery and Retries","phaseSlug":"phase-06-complex-scenarios","phaseNumber":6,"phaseName":"Complex Scenarios","readmeRaw":"$6","hasPlayground":true,"playwrightFiles":[{"filename":"error-recovery-and-retries.spec.ts","content":"$7"}],"cypressFiles":[{"filename":"error-recovery-and-retries.cy.ts","content":"$8"}]},"next":{"slug":"37-page-object-model","number":37,"title":"Page Object Model (POM)","phaseSlug":"phase-07-advanced-patterns","phaseNumber":7,"phaseName":"Advanced Patterns","readmeRaw":"$9","hasPlayground":true,"playwrightFiles":[{"filename":"page-object-model.spec.ts","content":"$a"},{"filename":"pages/kyc-form.page.ts","content":"$b"},{"filename":"pages/review.page.ts","content":"$c"}],"cypressFiles":[{"filename":"page-object-model.cy.ts","content":"$d"},{"filename":"pages/kyc-form.page.ts","content":"$e"}]},"playwrightHtml":[{"filename":"notifications-and-toasts.spec.ts","html":"$f"}],"cypressHtml":[{"filename":"notifications-and-toasts.cy.ts","html":"$10"}]}],["$L11"],"$L12"]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"iDtrTKWIN4zzRgDRiiDd2"}
+11:["$","script","script-0",{"src":"/qa-labs/_next/static/chunks/03nvm.8~ftt80.js","async":true}]
+12:["$","$L13",null,{"children":["$","$14",null,{"name":"Next.MetadataOutlet","children":"$@15"}]}]
+15:null

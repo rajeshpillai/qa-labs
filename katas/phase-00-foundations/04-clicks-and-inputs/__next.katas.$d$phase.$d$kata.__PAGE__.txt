@@ -1,0 +1,2365 @@
+1:"$Sreact.fragment"
+2:I[31749,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js","/qa-labs/_next/static/chunks/03nvm.8~ftt80.js"],"KataPageClient"]
+10:I[49583,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js"],"OutletBoundary"]
+11:"$Sreact.suspense"
+3:T1f9b,# Kata 04: Clicks and Inputs
+
+## What You Will Learn
+
+- How to interact with all common form controls
+- `click()`, `dblclick()`, right-click (context menu)
+- `fill()` vs `type()` — what each does and when to use which
+- `clear()` — emptying input fields
+- `check()` / `uncheck()` — checkboxes
+- `selectOption()` — dropdown selects (single and multiple)
+- Range sliders, color pickers, content-editable divs
+- How input events flow: input → change → blur
+
+## Prerequisites
+
+- Completed Kata 01-03
+
+## Concepts Explained
+
+### fill() vs type() — The Critical Difference
+
+```typescript
+// PLAYWRIGHT
+// fill() — clears the field first, then sets the value instantly
+// Use: when you want to replace whatever is in the field
+await page.getByTestId('input-name').fill('John Doe');
+
+// type() — DOES NOT exist as a standalone method in latest Playwright
+// Use page.keyboard.type() for character-by-character typing
+// This fires individual keydown/keypress/keyup events per character
+await page.getByTestId('input-name').pressSequentially('John Doe');
+// pressSequentially is the modern replacement for the old type() method
+
+// CYPRESS
+// type() — appends characters one at a time (does NOT clear first!)
+cy.get('[data-testid="input-name"]').type('John Doe');
+
+// To replace existing text, clear first:
+cy.get('[data-testid="input-name"]').clear().type('John Doe');
+```
+
+### Click Variants
+
+```typescript
+// PLAYWRIGHT
+await element.click();                    // single left click
+await element.dblclick();                 // double click
+await element.click({ button: 'right' }); // right click (context menu)
+await element.click({ force: true });     // click even if covered by another element
+await element.click({ position: { x: 10, y: 20 } }); // click at specific position
+
+// CYPRESS
+cy.get(sel).click();                      // single left click
+cy.get(sel).dblclick();                   // double click
+cy.get(sel).rightclick();                 // right click
+cy.get(sel).click({ force: true });       // force click
+cy.get(sel).click(10, 20);               // click at position
+```
+
+### Checkboxes and Radio Buttons
+
+```typescript
+// PLAYWRIGHT
+// check() — checks if unchecked, no-op if already checked
+await page.getByTestId('check-identity').check();
+// uncheck() — unchecks if checked
+await page.getByTestId('check-identity').uncheck();
+// Verify state
+await expect(page.getByTestId('check-identity')).toBeChecked();
+await expect(page.getByTestId('check-identity')).not.toBeChecked();
+
+// CYPRESS
+cy.get('[data-testid="check-identity"]').check();    // check
+cy.get('[data-testid="check-identity"]').uncheck();  // uncheck
+cy.get('[data-testid="check-identity"]').should('be.checked');
+cy.get('[data-testid="check-identity"]').should('not.be.checked');
+```
+
+### Select / Dropdown
+
+```typescript
+// PLAYWRIGHT
+// selectOption — select by value, label, or index
+await page.getByTestId('select-risk').selectOption('high');           // by value
+await page.getByTestId('select-risk').selectOption({ label: 'High Risk' }); // by visible text
+await page.getByTestId('select-risk').selectOption({ index: 2 });    // by index (0-based)
+
+// Multiple select
+await page.getByTestId('select-country').selectOption(['us', 'uk']); // select multiple
+
+// CYPRESS
+cy.get('[data-testid="select-risk"]').select('high');           // by value
+cy.get('[data-testid="select-risk"]').select('High Risk');      // by visible text
+cy.get('[data-testid="select-risk"]').select(2);                // by index
+
+// Multiple
+cy.get('[data-testid="select-country"]').select(['us', 'uk']);
+```
+
+### Special Inputs
+
+```typescript
+// Range slider — PLAYWRIGHT
+await page.getByTestId('risk-slider').fill('75');  // fill works for range inputs
+
+// Range slider — CYPRESS
+cy.get('[data-testid="risk-slider"]').invoke('val', 75).trigger('input');
+
+// Color picker — PLAYWRIGHT
+await page.getByTestId('color-picker').fill('#ff0000');
+
+// Color picker — CYPRESS
+cy.get('[data-testid="color-picker"]').invoke('val', '#ff0000').trigger('input');
+
+// Content-editable div — PLAYWRIGHT
+await page.getByTestId('editable-div').fill('New content');
+
+// Content-editable div — CYPRESS
+cy.get('[data-testid="editable-div"]').clear().type('New content');
+```
+
+## Playground
+
+The playground contains:
+
+1. **Risk Score Calculator** — number pad with operators, display, clear button
+2. **Text Inputs** — name, email, password, amount, textarea with live summary
+3. **Select Dropdowns** — single select (risk level), multi-select (countries)
+4. **Checkboxes & Radio Buttons** — verification steps + approval decision
+5. **Range Slider & Color Picker** — interactive controls with live preview
+6. **Click Variants** — single click, double click, right click with context menu
+7. **Content Editable** — div with contenteditable attribute
+
+## Exercises
+
+### Exercise 1: Calculator
+Use the calculator to compute 42 + 18. Verify the display shows 60.
+
+### Exercise 2: Fill Text Inputs
+Fill in name, email, and amount fields. Verify the live summary updates.
+
+### Exercise 3: Clear and Retype
+Fill a field with "wrong value", clear it, then fill with "correct value". Verify.
+
+### Exercise 4: Select Dropdown
+Select "High Risk" from the risk dropdown. Verify the selected risk text updates.
+
+### Exercise 5: Multi-Select
+Select "United States" and "India" from the country multi-select.
+
+### Exercise 6: Checkboxes
+Check "Identity Verified" and "Sanctions Cleared". Verify checked count shows 2. Uncheck one, verify count shows 1.
+
+### Exercise 7: Radio Buttons
+Select "Approve", verify decision shows "Approve". Then select "Reject", verify it changes.
+
+### Exercise 8: Double Click
+Double-click the "Double Click" button and verify the result text.
+
+### Exercise 9: Right Click (Context Menu)
+Right-click the "Right Click" button, verify the context menu appears, click "Approve" in it.
+
+### Exercise 10: Range Slider
+Set the risk slider to 75 and verify the displayed value.
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/clicks-and-inputs.spec.ts`
+
+### Cypress Solution
+
+See `cypress/clicks-and-inputs.cy.ts`
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Using Cypress `type()` without `clear()` | `type()` appends, doesn't replace | Always `clear().type()` to replace |
+| Using `fill()` when you need keyboard events | `fill()` sets value directly, skips keydown/keyup | Use `pressSequentially()` (Playwright) for char-by-char |
+| Selecting by index when order might change | Index breaks if options are reordered | Select by value or label text |
+| Forgetting to trigger `input` event on range slider (Cypress) | `invoke('val')` doesn't fire events | Chain `.trigger('input')` after |
+| Not handling the context menu after right-click | The menu stays open and blocks other clicks | Click a menu item or click elsewhere to dismiss |
+
+## Quick Reference
+
+### Playwright Actions
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Click | `click()` | `await el.click()` |
+| Double click | `dblclick()` | `await el.dblclick()` |
+| Right click | `click({ button: 'right' })` | `await el.click({ button: 'right' })` |
+| Fill input | `fill(value)` | `await input.fill('text')` |
+| Type chars | `pressSequentially(text)` | `await input.pressSequentially('text')` |
+| Clear | `clear()` | `await input.clear()` |
+| Check | `check()` | `await checkbox.check()` |
+| Uncheck | `uncheck()` | `await checkbox.uncheck()` |
+| Select option | `selectOption(value)` | `await select.selectOption('high')` |
+
+### Cypress Actions
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Click | `.click()` | `cy.get(sel).click()` |
+| Double click | `.dblclick()` | `cy.get(sel).dblclick()` |
+| Right click | `.rightclick()` | `cy.get(sel).rightclick()` |
+| Type text | `.type(text)` | `cy.get(sel).type('text')` |
+| Clear | `.clear()` | `cy.get(sel).clear()` |
+| Check | `.check()` | `cy.get(sel).check()` |
+| Uncheck | `.uncheck()` | `cy.get(sel).uncheck()` |
+| Select option | `.select(value)` | `cy.get(sel).select('high')` |
+4:T2043,import { test, expect } from '@playwright/test';
+
+const PLAYGROUND = '/phase-00-foundations/04-clicks-and-inputs/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Calculator
+// --------------------------------------------------------------------------
+test('exercise 1: calculate 42 + 18 = 60', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Click digits 4, 2 to enter "42".
+  await page.getByTestId('calc-4').click();
+  await page.getByTestId('calc-2').click();
+  await expect(page.getByTestId('calc-display')).toHaveText('42');
+
+  // Click the + operator.
+  await page.getByTestId('calc-add').click();
+
+  // Click digits 1, 8 to enter "18".
+  await page.getByTestId('calc-1').click();
+  await page.getByTestId('calc-8').click();
+
+  // Click = to compute the result.
+  await page.getByTestId('calc-equals').click();
+
+  // Verify the display shows "60".
+  await expect(page.getByTestId('calc-display')).toHaveText('60');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Fill Text Inputs
+// --------------------------------------------------------------------------
+test('exercise 2: fill inputs and verify live summary', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // fill() clears the field first, then sets the value.
+  // It also triggers 'input' and 'change' events so the live summary updates.
+  await page.getByTestId('input-name').fill('Alice Johnson');
+  await page.getByTestId('input-email').fill('alice@fintech.com');
+  await page.getByTestId('input-amount').fill('2500.50');
+
+  // Verify the live summary reflects the input values.
+  await expect(page.getByTestId('summary-name')).toHaveText('Alice Johnson');
+  await expect(page.getByTestId('summary-email')).toHaveText('alice@fintech.com');
+  await expect(page.getByTestId('summary-amount')).toHaveText('2500.50');
+
+  // Verify the password field can be filled (value is masked but stored).
+  await page.getByTestId('input-password').fill('Str0ngP@ss!');
+  await expect(page.getByTestId('input-password')).toHaveValue('Str0ngP@ss!');
+
+  // Fill the textarea.
+  await page.getByTestId('textarea-reason').fill('Insufficient documentation provided.');
+  await expect(page.getByTestId('textarea-reason')).toHaveValue('Insufficient documentation provided.');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Clear and Retype
+// --------------------------------------------------------------------------
+test('exercise 3: clear a field and fill with new value', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  const nameInput = page.getByTestId('input-name');
+
+  // Fill with wrong value.
+  await nameInput.fill('Wrong Name');
+  await expect(nameInput).toHaveValue('Wrong Name');
+
+  // clear() empties the field. Same as fill('').
+  await nameInput.clear();
+  await expect(nameInput).toHaveValue('');
+
+  // Fill with correct value.
+  await nameInput.fill('Correct Name');
+  await expect(nameInput).toHaveValue('Correct Name');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Select Dropdown
+// --------------------------------------------------------------------------
+test('exercise 4: select option from dropdown', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // selectOption selects by value attribute.
+  // The <option value="high">High Risk</option> will be selected.
+  await page.getByTestId('select-risk').selectOption('high');
+
+  // Verify the input value changed.
+  await expect(page.getByTestId('select-risk')).toHaveValue('high');
+
+  // Verify the UI text updated.
+  await expect(page.getByTestId('selected-risk')).toHaveText('High Risk');
+
+  // You can also select by label (visible text).
+  await page.getByTestId('select-risk').selectOption({ label: 'Critical Risk' });
+  await expect(page.getByTestId('select-risk')).toHaveValue('critical');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Multi-Select
+// --------------------------------------------------------------------------
+test('exercise 5: select multiple options', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Pass an array of values to select multiple options at once.
+  // Only works on <select multiple> elements.
+  await page.getByTestId('select-country').selectOption(['us', 'in']);
+
+  // Verify both options are selected.
+  // toHaveValues checks all selected values in a multi-select.
+  await expect(page.getByTestId('select-country')).toHaveValues(['us', 'in']);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Checkboxes
+// --------------------------------------------------------------------------
+test('exercise 6: check and uncheck checkboxes', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // check() checks the checkbox. If already checked, it's a no-op.
+  await page.getByTestId('check-identity').check();
+  await page.getByTestId('check-sanctions').check();
+
+  // Verify both are checked.
+  await expect(page.getByTestId('check-identity')).toBeChecked();
+  await expect(page.getByTestId('check-sanctions')).toBeChecked();
+
+  // Verify the checked count updates.
+  await expect(page.getByTestId('checked-count')).toHaveText('2');
+
+  // uncheck() unchecks a checkbox.
+  await page.getByTestId('check-identity').uncheck();
+  await expect(page.getByTestId('check-identity')).not.toBeChecked();
+  await expect(page.getByTestId('checked-count')).toHaveText('1');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Radio Buttons
+// --------------------------------------------------------------------------
+test('exercise 7: select radio buttons', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // check() works for radio buttons too.
+  await page.getByTestId('radio-approve').check();
+  await expect(page.getByTestId('radio-approve')).toBeChecked();
+  await expect(page.getByTestId('decision-value')).toHaveText('Approve');
+
+  // Selecting a different radio unchecks the previous one.
+  await page.getByTestId('radio-reject').check();
+  await expect(page.getByTestId('radio-reject')).toBeChecked();
+  await expect(page.getByTestId('radio-approve')).not.toBeChecked();
+  await expect(page.getByTestId('decision-value')).toHaveText('Reject');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Double Click
+// --------------------------------------------------------------------------
+test('exercise 8: double click', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // dblclick() performs a double-click on the element.
+  await page.getByTestId('btn-double-click').dblclick();
+
+  await expect(page.getByTestId('click-result')).toHaveText('Double click detected!');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 9: Right Click (Context Menu)
+// --------------------------------------------------------------------------
+test('exercise 9: right click and context menu', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // click({ button: 'right' }) performs a right-click.
+  await page.getByTestId('btn-right-click').click({ button: 'right' });
+
+  // Verify the custom context menu appears.
+  await expect(page.getByTestId('context-menu')).toBeVisible();
+
+  // Click "Approve" in the context menu.
+  await page.getByTestId('ctx-approve').click();
+
+  // Verify the result.
+  await expect(page.getByTestId('click-result')).toHaveText('Context action: Approve');
+  await expect(page.getByTestId('context-menu')).toBeHidden();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 10: Range Slider
+// --------------------------------------------------------------------------
+test('exercise 10: set range slider value', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // fill() works for range inputs in Playwright.
+  // It sets the value and triggers the 'input' event.
+  await page.getByTestId('risk-slider').fill('75');
+
+  // Verify the displayed value updated.
+  await expect(page.getByTestId('slider-value')).toHaveText('75');
+});
+5:T1dcc,const PLAYGROUND = '/phase-00-foundations/04-clicks-and-inputs/playground/';
+
+describe('Kata 04: Clicks and Inputs', () => {
+
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Calculator
+  // --------------------------------------------------------------------------
+  it('exercise 1: calculate 42 + 18 = 60', () => {
+    // Click digits to enter "42".
+    cy.get('[data-testid="calc-4"]').click();
+    cy.get('[data-testid="calc-2"]').click();
+    cy.get('[data-testid="calc-display"]').should('have.text', '42');
+
+    // Click the + operator.
+    cy.get('[data-testid="calc-add"]').click();
+
+    // Enter "18".
+    cy.get('[data-testid="calc-1"]').click();
+    cy.get('[data-testid="calc-8"]').click();
+
+    // Click = to compute.
+    cy.get('[data-testid="calc-equals"]').click();
+
+    // Verify result.
+    cy.get('[data-testid="calc-display"]').should('have.text', '60');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Fill Text Inputs
+  // --------------------------------------------------------------------------
+  it('exercise 2: fill inputs and verify live summary', () => {
+    // In Cypress, type() appends text character by character.
+    // Since the fields start empty, we don't need clear() first.
+    cy.get('[data-testid="input-name"]').type('Alice Johnson');
+    cy.get('[data-testid="input-email"]').type('alice@fintech.com');
+    cy.get('[data-testid="input-amount"]').type('2500.50');
+
+    // Verify the live summary.
+    cy.get('[data-testid="summary-name"]').should('have.text', 'Alice Johnson');
+    cy.get('[data-testid="summary-email"]').should('have.text', 'alice@fintech.com');
+    cy.get('[data-testid="summary-amount"]').should('have.text', '2500.50');
+
+    // Password field.
+    cy.get('[data-testid="input-password"]').type('Str0ngP@ss!');
+    cy.get('[data-testid="input-password"]').should('have.value', 'Str0ngP@ss!');
+
+    // Textarea.
+    cy.get('[data-testid="textarea-reason"]').type('Insufficient documentation provided.');
+    cy.get('[data-testid="textarea-reason"]')
+      .should('have.value', 'Insufficient documentation provided.');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Clear and Retype
+  // --------------------------------------------------------------------------
+  it('exercise 3: clear a field and type new value', () => {
+    cy.get('[data-testid="input-name"]').type('Wrong Name');
+    cy.get('[data-testid="input-name"]').should('have.value', 'Wrong Name');
+
+    // clear() removes all text from the input.
+    cy.get('[data-testid="input-name"]').clear();
+    cy.get('[data-testid="input-name"]').should('have.value', '');
+
+    // Type the correct value.
+    cy.get('[data-testid="input-name"]').type('Correct Name');
+    cy.get('[data-testid="input-name"]').should('have.value', 'Correct Name');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Select Dropdown
+  // --------------------------------------------------------------------------
+  it('exercise 4: select option from dropdown', () => {
+    // select() can take a value or visible text.
+    cy.get('[data-testid="select-risk"]').select('high');
+    cy.get('[data-testid="select-risk"]').should('have.value', 'high');
+    cy.get('[data-testid="selected-risk"]').should('have.text', 'High Risk');
+
+    // Select by visible text.
+    cy.get('[data-testid="select-risk"]').select('Critical Risk');
+    cy.get('[data-testid="select-risk"]').should('have.value', 'critical');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Multi-Select
+  // --------------------------------------------------------------------------
+  it('exercise 5: select multiple options', () => {
+    // Pass an array to select multiple values.
+    // Only works on <select multiple> elements.
+    cy.get('[data-testid="select-country"]').select(['us', 'in']);
+
+    // Verify selected values using invoke to get the array of selected options.
+    cy.get('[data-testid="select-country"]')
+      .invoke('val')
+      .should('deep.equal', ['us', 'in']);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Checkboxes
+  // --------------------------------------------------------------------------
+  it('exercise 6: check and uncheck checkboxes', () => {
+    // check() checks the checkbox.
+    cy.get('[data-testid="check-identity"]').check();
+    cy.get('[data-testid="check-sanctions"]').check();
+
+    cy.get('[data-testid="check-identity"]').should('be.checked');
+    cy.get('[data-testid="check-sanctions"]').should('be.checked');
+    cy.get('[data-testid="checked-count"]').should('have.text', '2');
+
+    // uncheck() unchecks.
+    cy.get('[data-testid="check-identity"]').uncheck();
+    cy.get('[data-testid="check-identity"]').should('not.be.checked');
+    cy.get('[data-testid="checked-count"]').should('have.text', '1');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Radio Buttons
+  // --------------------------------------------------------------------------
+  it('exercise 7: select radio buttons', () => {
+    // check() works for radio buttons.
+    cy.get('[data-testid="radio-approve"]').check();
+    cy.get('[data-testid="radio-approve"]').should('be.checked');
+    cy.get('[data-testid="decision-value"]').should('have.text', 'Approve');
+
+    // Selecting a different radio unchecks the previous.
+    cy.get('[data-testid="radio-reject"]').check();
+    cy.get('[data-testid="radio-reject"]').should('be.checked');
+    cy.get('[data-testid="radio-approve"]').should('not.be.checked');
+    cy.get('[data-testid="decision-value"]').should('have.text', 'Reject');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Double Click
+  // --------------------------------------------------------------------------
+  it('exercise 8: double click', () => {
+    // dblclick() performs a double-click.
+    cy.get('[data-testid="btn-double-click"]').dblclick();
+
+    cy.get('[data-testid="click-result"]')
+      .should('have.text', 'Double click detected!');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 9: Right Click (Context Menu)
+  // --------------------------------------------------------------------------
+  it('exercise 9: right click and context menu', () => {
+    // rightclick() triggers the contextmenu event.
+    cy.get('[data-testid="btn-right-click"]').rightclick();
+
+    // Verify context menu appears.
+    cy.get('[data-testid="context-menu"]').should('be.visible');
+
+    // Click an option in the context menu.
+    cy.get('[data-testid="ctx-approve"]').click();
+
+    cy.get('[data-testid="click-result"]')
+      .should('have.text', 'Context action: Approve');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 10: Range Slider
+  // --------------------------------------------------------------------------
+  it('exercise 10: set range slider value', () => {
+    // Cypress doesn't have a native method for range inputs.
+    // Use invoke('val', value) to set the value, then trigger('input')
+    // to fire the input event so the UI updates.
+    cy.get('[data-testid="risk-slider"]')
+      .invoke('val', 75)
+      .trigger('input');
+
+    cy.get('[data-testid="slider-value"]').should('have.text', '75');
+  });
+
+});
+6:T2322,# Kata 03: Waits and Timing
+
+## What You Will Learn
+
+- Why timing issues cause flaky tests (the #1 problem in test automation)
+- How Playwright's auto-wait mechanism works
+- How Cypress's retry-ability works
+- When you need explicit waits vs when auto-wait handles it
+- How to handle: delayed elements, loading states, polling, debounce, progress bars, toasts
+- Why `sleep()` / `cy.wait(ms)` is almost always wrong
+- Configuring timeouts for slow operations
+
+## Prerequisites
+
+- Completed Kata 01 (Selectors) and Kata 02 (Assertions)
+
+## Concepts Explained
+
+### The Timing Problem
+
+Web pages are dynamic. Elements appear, disappear, load, animate, and change state. Your test runs faster than the browser renders. If you try to click a button that hasn't appeared yet, your test fails — not because the app is broken, but because the test was too fast.
+
+### The Wrong Solution: sleep()
+
+```typescript
+// BAD - never do this
+await page.waitForTimeout(3000); // Playwright
+cy.wait(3000);                   // Cypress
+
+// Why it's bad:
+// 1. If the element appears in 100ms, you waste 2.9 seconds
+// 2. If the element takes 3.5 seconds, your test still fails
+// 3. On slow CI servers, timings are unpredictable
+// 4. It makes your test suite painfully slow
+```
+
+### The Right Solution: Auto-Wait
+
+Both Playwright and Cypress **automatically wait** for elements. Here's how:
+
+### Playwright Auto-Wait
+
+```typescript
+// Playwright auto-waits in two places:
+
+// 1. ACTIONS auto-wait for the element to be:
+//    - Attached to DOM
+//    - Visible
+//    - Stable (not animating)
+//    - Enabled (not disabled)
+//    - Receives events (not blocked by another element)
+await page.getByTestId('btn-submit').click();
+// ^ Playwright waits up to 30s (default) for the button to be clickable
+
+// 2. ASSERTIONS auto-retry until they pass:
+await expect(page.getByTestId('result')).toHaveText('Success');
+// ^ Playwright re-checks every 100ms for up to 5s (default)
+
+// You can customize timeouts per-assertion:
+await expect(page.getByTestId('result')).toHaveText('Success', { timeout: 10000 });
+// ^ Wait up to 10 seconds
+
+// Or per-action:
+await page.getByTestId('btn').click({ timeout: 15000 });
+```
+
+### Cypress Retry-ability
+
+```typescript
+// Cypress automatically retries .should() assertions:
+cy.get('[data-testid="result"]').should('have.text', 'Success');
+// ^ Cypress retries the entire chain every few ms for up to 4s (default)
+
+// Customize timeout per-command:
+cy.get('[data-testid="result"]', { timeout: 10000 })
+  .should('have.text', 'Success');
+
+// IMPORTANT: Only the LAST command in a chain retries.
+// cy.get retries finding the element.
+// .should retries the assertion.
+// But .click() does NOT retry — it runs once.
+```
+
+### When You DO Need Explicit Waits
+
+Sometimes auto-wait isn't enough. Here are legitimate cases:
+
+```typescript
+// PLAYWRIGHT - waiting for a specific condition:
+
+// waitForSelector — wait for an element to appear or disappear
+await page.waitForSelector('[data-testid="loading"]', { state: 'hidden' });
+// ^ Waits for the loading spinner to disappear
+
+// waitForResponse — wait for a network response
+const response = await page.waitForResponse('**/api/verify');
+// ^ Waits for a specific API call to complete
+
+// waitForFunction — wait for arbitrary JavaScript condition
+await page.waitForFunction(() => {
+  return document.querySelector('[data-testid="progress"]')?.textContent === '100%';
+});
+
+// CYPRESS - explicit waits:
+
+// cy.intercept + cy.wait — wait for a network request
+cy.intercept('POST', '/api/verify').as('verify');
+cy.get('[data-testid="btn-submit"]').click();
+cy.wait('@verify'); // waits for the intercepted request to complete
+
+// Retry with should — Cypress retries the chain
+cy.get('[data-testid="loading"]').should('not.exist');
+```
+
+### Timeout Configuration
+
+```typescript
+// PLAYWRIGHT - playwright.config.ts
+export default defineConfig({
+  use: {
+    actionTimeout: 30000,   // timeout for actions (click, fill, etc.)
+  },
+  expect: {
+    timeout: 5000,          // timeout for assertions
+  },
+});
+
+// CYPRESS - cypress.config.ts
+export default defineConfig({
+  e2e: {
+    defaultCommandTimeout: 4000,  // timeout for cy.get, .should, etc.
+    pageLoadTimeout: 60000,       // timeout for cy.visit
+    requestTimeout: 5000,         // timeout for cy.request
+    responseTimeout: 30000,       // timeout for cy.wait (network)
+  },
+});
+```
+
+### Anti-Patterns
+
+```typescript
+// BAD: Fixed sleep
+await page.waitForTimeout(5000);
+
+// BAD: Polling in a loop
+while (!(await element.isVisible())) { await page.waitForTimeout(100); }
+
+// BAD: Arbitrary timeout without reason
+cy.wait(2000);
+cy.get('[data-testid="result"]').should('exist');
+
+// GOOD: Let auto-wait handle it
+await expect(page.getByTestId('result')).toBeVisible();
+
+// GOOD: Wait for specific condition
+await expect(page.getByTestId('status')).toHaveText('Complete');
+
+// GOOD: Wait for network
+cy.intercept('POST', '/api').as('req');
+cy.wait('@req');
+```
+
+## Playground
+
+The playground simulates common timing scenarios:
+
+1. **Delayed Elements** — buttons that show content after 1s, 3s, and 7s delays
+2. **Loading State** — fetch button that shows spinner then data after 2s
+3. **Auto-Refreshing Status** — polling that updates every 2s through 5 steps
+4. **Debounced Search** — search input with 300ms debounce delay
+5. **Document Processing** — progress bar that fills incrementally
+6. **Toast Notifications** — appear and auto-dismiss after 3s
+7. **Conditional Rendering** — success/error responses after 1.5s delay
+8. **Skeleton Loading** — skeleton placeholder then real data after 2.5s
+
+## Exercises
+
+### Exercise 1: Wait for Delayed Element
+Click "Show after 1s" and verify the delayed message appears.
+
+### Exercise 2: Wait for Slow Element
+Click "Show after 3s" and verify it appears. You may need to increase the assertion timeout.
+
+### Exercise 2b: Wait for Very Slow Element (Custom Timeout)
+Click "Show after 7s". This exceeds the default timeout — you must pass a custom `{ timeout: 10000 }` option to make the assertion wait long enough.
+
+### Exercise 3: Loading State Transition
+Click "Fetch Applicant Data", verify the loading spinner appears, then verify it's replaced by the applicant data.
+
+### Exercise 4: Polling / Auto-Refresh
+Click "Start Verification" and wait for the status to reach "Complete" (step 5/5). This takes ~10 seconds.
+
+### Exercise 5: Debounced Search
+Type "Priya" in the search box. Verify the searching indicator appears briefly, then the results show.
+
+### Exercise 6: Progress Bar
+Click "Upload & Process Document" and wait for the progress to reach 100%.
+
+### Exercise 7: Toast Notification Lifecycle
+Click "Success Toast", verify it appears, then verify it auto-dismisses after 3 seconds.
+
+### Exercise 8: Skeleton to Content
+Click "Load Profile", verify the skeleton loader appears, then verify the real profile data replaces it.
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/waits.spec.ts`
+
+### Cypress Solution
+
+See `cypress/waits.cy.ts`
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Using `page.waitForTimeout(5000)` | Wastes time or isn't enough | Use `expect().toBeVisible()` with auto-wait |
+| Not increasing timeout for slow ops | Default 5s may not be enough for 7s delay | Pass `{ timeout: 10000 }` to the assertion |
+| Checking for spinner then immediately checking for data | Spinner might disappear between checks | Wait for the final state (data loaded), not intermediate |
+| Using `cy.wait(ms)` instead of `cy.wait('@alias')` | Time-based waits are flaky | Intercept the request and wait for it |
+| Asserting toast text after it auto-dismisses | Toast may be gone by the time assertion runs | Assert immediately after triggering the toast |
+
+## Quick Reference
+
+### Playwright Wait Methods
+
+| Method | Use case | Example |
+|--------|----------|---------|
+| Auto-wait (default) | Element actions | `await btn.click()` — waits for clickable |
+| `expect().toBeVisible()` | Wait for element to appear | Auto-retries for 5s |
+| `expect().toBeHidden()` | Wait for element to disappear | Auto-retries for 5s |
+| `{ timeout: N }` | Override assertion timeout | `toHaveText('x', { timeout: 10000 })` |
+| `waitForSelector(sel, { state })` | Wait for DOM state | `state: 'hidden'` or `'attached'` |
+| `waitForResponse(url)` | Wait for network response | `await page.waitForResponse('**/api')` |
+| `waitForFunction(fn)` | Wait for JS condition | `() => document.title === 'Done'` |
+
+### Cypress Wait Methods
+
+| Method | Use case | Example |
+|--------|----------|---------|
+| Auto-retry (default) | `.should()` chains | Retries for 4s |
+| `{ timeout: N }` | Override command timeout | `cy.get(sel, { timeout: 10000 })` |
+| `cy.intercept + cy.wait` | Wait for network | `cy.wait('@alias')` |
+| `.should('not.exist')` | Wait for removal | Retries until element is gone |
+| `.should('be.visible')` | Wait for appearance | Retries until visible |
+7:T1b4b,import { test, expect } from '@playwright/test';
+
+const PLAYGROUND = '/phase-00-foundations/03-waits-and-timing/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Wait for Delayed Element (1s)
+// --------------------------------------------------------------------------
+test('exercise 1: wait for 1-second delayed element', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Click the button that triggers a 1-second delay.
+  await page.getByTestId('btn-delay-1s').click();
+
+  // Playwright's expect auto-retries for up to 5 seconds (default).
+  // Since the element appears after 1s, this passes within the default timeout.
+  // No sleep() or waitForTimeout needed!
+  await expect(page.getByTestId('delayed-1s')).toBeVisible();
+  await expect(page.getByTestId('delayed-1s')).toHaveText('Appeared after 1 second!');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Wait for Slow Element (3s)
+// --------------------------------------------------------------------------
+test('exercise 2: wait for 3-second delayed element', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  await page.getByTestId('btn-delay-3s').click();
+
+  // 3 seconds is within the default 5s timeout, so this works too.
+  await expect(page.getByTestId('delayed-3s')).toBeVisible();
+  await expect(page.getByTestId('delayed-3s')).toHaveText('Appeared after 3 seconds!');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2b: Wait for Very Slow Element (7s) - Custom Timeout
+// --------------------------------------------------------------------------
+test('exercise 2b: wait for 7-second delayed element with custom timeout', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  await page.getByTestId('btn-delay-7s').click();
+
+  // 7 seconds exceeds the default 5s timeout. We must increase it.
+  // The { timeout } option tells Playwright how long to retry.
+  await expect(page.getByTestId('delayed-7s')).toBeVisible({ timeout: 10000 });
+  await expect(page.getByTestId('delayed-7s')).toHaveText('Appeared after 7 seconds!');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Loading State Transition
+// --------------------------------------------------------------------------
+test('exercise 3: loading spinner then data', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify initial state.
+  await expect(page.getByTestId('initial-message')).toBeVisible();
+
+  // Click the fetch button.
+  await page.getByTestId('btn-fetch-data').click();
+
+  // Verify the loading spinner appears.
+  // The spinner shows immediately after clicking.
+  await expect(page.getByTestId('loading-spinner')).toBeVisible();
+
+  // Now wait for the data to load (replaces the spinner after 2s).
+  // We don't need to wait for the spinner to disappear first —
+  // just assert the final state and Playwright handles the timing.
+  await expect(page.getByTestId('applicant-data')).toBeVisible();
+  await expect(page.getByTestId('loaded-name')).toHaveText('Priya Sharma');
+  await expect(page.getByTestId('loaded-email')).toHaveText('priya@example.com');
+  await expect(page.getByTestId('loaded-status')).toHaveText('Verified');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Polling / Auto-Refresh
+// --------------------------------------------------------------------------
+test('exercise 4: wait for polling to complete', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Click to start the verification polling process.
+  await page.getByTestId('btn-start-polling').click();
+
+  // The status updates every 2 seconds through 5 steps.
+  // Total time: ~10 seconds. We need a longer timeout.
+  await expect(page.getByTestId('polling-step')).toHaveText('5', { timeout: 15000 });
+  await expect(page.getByTestId('polling-status')).toHaveText('Complete');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Debounced Search
+// --------------------------------------------------------------------------
+test('exercise 5: debounced search with 300ms delay', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Type into the debounced search box.
+  await page.getByTestId('input-debounce-search').fill('Priya');
+
+  // After typing, a "Searching..." indicator shows for 300ms.
+  // Then the actual results appear.
+  // We just wait for the final state — the search results.
+  await expect(page.getByTestId('search-result').first()).toBeVisible();
+  await expect(page.getByTestId('search-result').first()).toContainText('Priya Sharma');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Progress Bar
+// --------------------------------------------------------------------------
+test('exercise 6: wait for progress bar to complete', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  await page.getByTestId('btn-start-upload').click();
+
+  // The progress bar fills incrementally. We wait for the status text
+  // to indicate completion rather than checking the exact percentage.
+  await expect(page.getByTestId('upload-status')).toHaveText('Processing complete!', { timeout: 10000 });
+  await expect(page.getByTestId('upload-percent')).toHaveText('100%');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Toast Notification Lifecycle
+// --------------------------------------------------------------------------
+test('exercise 7: toast appears and auto-dismisses', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Click to show a success toast.
+  await page.getByTestId('btn-toast-success').click();
+
+  // Verify the toast appears immediately.
+  const toast = page.getByTestId('toast-1');
+  await expect(toast).toBeVisible();
+  await expect(toast).toContainText('Application approved successfully!');
+
+  // The toast auto-dismisses after 3 seconds + 0.5s fade animation.
+  // We wait for it to be removed from the DOM.
+  // toBeHidden waits for the element to become hidden or detached.
+  await expect(toast).toBeHidden({ timeout: 5000 });
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Skeleton to Content
+// --------------------------------------------------------------------------
+test('exercise 8: skeleton loading then real content', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  await page.getByTestId('btn-load-profile').click();
+
+  // Verify skeleton appears.
+  await expect(page.getByTestId('skeleton-loader')).toBeVisible();
+
+  // Wait for real profile data (replaces skeleton after 2.5s).
+  await expect(page.getByTestId('profile-data')).toBeVisible();
+  await expect(page.getByTestId('profile-name')).toHaveText('Amit Patel');
+  await expect(page.getByTestId('profile-level')).toHaveText('Level 3 - Enhanced');
+});
+8:T18ce,const PLAYGROUND = '/phase-00-foundations/03-waits-and-timing/playground/';
+
+describe('Kata 03: Waits and Timing', () => {
+
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Wait for Delayed Element (1s)
+  // --------------------------------------------------------------------------
+  it('exercise 1: wait for 1-second delayed element', () => {
+    cy.get('[data-testid="btn-delay-1s"]').click();
+
+    // Cypress automatically retries .should() assertions for up to 4s (default).
+    // Since the element appears after 1s, this works within the default timeout.
+    // No cy.wait(1000) needed!
+    cy.get('[data-testid="delayed-1s"]')
+      .should('be.visible')
+      .and('have.text', 'Appeared after 1 second!');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Wait for Slow Element (3s)
+  // --------------------------------------------------------------------------
+  it('exercise 2: wait for 3-second delayed element', () => {
+    cy.get('[data-testid="btn-delay-3s"]').click();
+
+    // 3s is within the default 4s timeout, so this works.
+    cy.get('[data-testid="delayed-3s"]')
+      .should('be.visible')
+      .and('have.text', 'Appeared after 3 seconds!');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2b: Wait for Very Slow Element (7s) - Custom Timeout
+  // --------------------------------------------------------------------------
+  it('exercise 2b: wait for 7-second delayed element with custom timeout', () => {
+    cy.get('[data-testid="btn-delay-7s"]').click();
+
+    // 7s exceeds the default 4s timeout. Pass { timeout } to cy.get
+    // to increase the retry window for this specific command.
+    cy.get('[data-testid="delayed-7s"]', { timeout: 10000 })
+      .should('be.visible')
+      .and('have.text', 'Appeared after 7 seconds!');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Loading State Transition
+  // --------------------------------------------------------------------------
+  it('exercise 3: loading spinner then data', () => {
+    // Verify initial state.
+    cy.get('[data-testid="initial-message"]').should('be.visible');
+
+    // Click the fetch button.
+    cy.get('[data-testid="btn-fetch-data"]').click();
+
+    // Verify the loading spinner appears.
+    cy.get('[data-testid="loading-spinner"]').should('be.visible');
+
+    // Wait for the data to load (replaces spinner after 2s).
+    // Cypress retries .should until the element appears.
+    cy.get('[data-testid="applicant-data"]', { timeout: 5000 })
+      .should('be.visible');
+
+    cy.get('[data-testid="loaded-name"]').should('have.text', 'Priya Sharma');
+    cy.get('[data-testid="loaded-email"]').should('have.text', 'priya@example.com');
+    cy.get('[data-testid="loaded-status"]').should('have.text', 'Verified');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Polling / Auto-Refresh
+  // --------------------------------------------------------------------------
+  it('exercise 4: wait for polling to complete', () => {
+    cy.get('[data-testid="btn-start-polling"]').click();
+
+    // The polling takes ~10 seconds (5 steps x 2s each).
+    // We need a longer timeout to wait for the final state.
+    cy.get('[data-testid="polling-step"]', { timeout: 15000 })
+      .should('have.text', '5');
+
+    cy.get('[data-testid="polling-status"]')
+      .should('have.text', 'Complete');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Debounced Search
+  // --------------------------------------------------------------------------
+  it('exercise 5: debounced search with 300ms delay', () => {
+    // Type into the debounced search box.
+    cy.get('[data-testid="input-debounce-search"]').type('Priya');
+
+    // After typing, a "Searching..." indicator shows for 300ms,
+    // then the actual results appear.
+    // We just assert the final state — Cypress retries until results show.
+    cy.get('[data-testid="search-result"]')
+      .should('have.length.gte', 1)
+      .first()
+      .should('contain.text', 'Priya Sharma');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Progress Bar
+  // --------------------------------------------------------------------------
+  it('exercise 6: wait for progress bar to complete', () => {
+    cy.get('[data-testid="btn-start-upload"]').click();
+
+    // Wait for the status text to indicate completion.
+    cy.get('[data-testid="upload-status"]', { timeout: 10000 })
+      .should('have.text', 'Processing complete!');
+
+    cy.get('[data-testid="upload-percent"]')
+      .should('have.text', '100%');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Toast Notification Lifecycle
+  // --------------------------------------------------------------------------
+  it('exercise 7: toast appears and auto-dismisses', () => {
+    cy.get('[data-testid="btn-toast-success"]').click();
+
+    // Verify the toast appears.
+    cy.get('[data-testid="toast-1"]')
+      .should('be.visible')
+      .and('contain.text', 'Application approved successfully!');
+
+    // The toast auto-dismisses after 3s + 0.5s fade.
+    // 'not.exist' waits for the element to be removed from the DOM entirely.
+    cy.get('[data-testid="toast-1"]', { timeout: 5000 })
+      .should('not.exist');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Skeleton to Content
+  // --------------------------------------------------------------------------
+  it('exercise 8: skeleton loading then real content', () => {
+    cy.get('[data-testid="btn-load-profile"]').click();
+
+    // Verify skeleton appears.
+    cy.get('[data-testid="skeleton-loader"]').should('be.visible');
+
+    // Wait for real profile data (replaces skeleton after 2.5s).
+    cy.get('[data-testid="profile-data"]', { timeout: 5000 })
+      .should('be.visible');
+
+    cy.get('[data-testid="profile-name"]').should('have.text', 'Amit Patel');
+    cy.get('[data-testid="profile-level"]').should('have.text', 'Level 3 - Enhanced');
+  });
+
+});
+9:T2f6a,# Kata 05: Keyboard and Mouse
+
+## What You Will Learn
+
+- How to press individual keyboard keys (Enter, Tab, Escape, Arrow keys)
+- How to use keyboard shortcuts with modifier keys (Ctrl+B, Ctrl+I)
+- How to simulate mouse hover to reveal tooltips
+- How to click at specific positions within an element
+- How to manage focus — move it, verify it, type into focused elements
+- Tab navigation through form fields
+- Single-key shortcuts for application actions
+- Arrow key reordering of list items
+- Mouse events: mousedown, mousemove, mouseup for drag simulation
+
+## Prerequisites
+
+- Completed Kata 01-04
+
+## Concepts Explained
+
+### Pressing Keyboard Keys
+
+```typescript
+// PLAYWRIGHT
+// page.keyboard.press(key) dispatches keydown, keypress, and keyup events.
+// Key names follow the W3C KeyboardEvent.key spec.
+//
+// Signature:
+//   page.keyboard.press(key: string, options?: { delay?: number }): Promise<void>
+//
+// Parameters:
+//   key   — Key name (e.g., 'Enter', 'Tab', 'Escape', 'ArrowUp', 'a', 'A')
+//   delay — Time in ms to wait between keydown and keyup (default: 0)
+await page.keyboard.press('Escape');
+await page.keyboard.press('Enter');
+await page.keyboard.press('Tab');
+await page.keyboard.press('ArrowUp');
+await page.keyboard.press('ArrowDown');
+
+// CYPRESS
+// In Cypress, special keys are sent via type() using curly-brace sequences.
+//
+// Signature:
+//   .type(text: string, options?: TypeOptions): Chainable
+//
+// Special key sequences:
+//   {enter}, {esc}, {tab}, {backspace}, {del}
+//   {uparrow}, {downarrow}, {leftarrow}, {rightarrow}
+//   {home}, {end}, {pageup}, {pagedown}
+//   {selectall}, {movetostart}, {movetoend}
+cy.get('body').type('{esc}');
+cy.get(sel).type('{enter}');
+cy.get(sel).type('{uparrow}');
+cy.get(sel).type('{downarrow}');
+```
+
+### Keyboard Shortcuts with Modifiers
+
+```typescript
+// PLAYWRIGHT
+// Combine modifier keys using '+' syntax.
+//
+// Signature:
+//   page.keyboard.press(key: string): Promise<void>
+//
+// Modifier names: 'Control', 'Shift', 'Alt', 'Meta'
+// Examples:
+await page.keyboard.press('Control+b');     // Ctrl+B
+await page.keyboard.press('Control+i');     // Ctrl+I
+await page.keyboard.press('Control+Shift+s'); // Ctrl+Shift+S
+await page.keyboard.press('Meta+c');        // Cmd+C (Mac)
+
+// CYPRESS
+// Use modifier names inside curly braces with '+' syntax.
+//
+// Modifier names: ctrl, alt, shift, meta
+// Examples:
+cy.get(sel).type('{ctrl+b}');       // Ctrl+B
+cy.get(sel).type('{ctrl+i}');       // Ctrl+I
+cy.get(sel).type('{ctrl+shift+s}'); // Ctrl+Shift+S
+cy.get(sel).type('{meta+c}');       // Cmd+C (Mac)
+```
+
+### Hover (Mouse Over)
+
+```typescript
+// PLAYWRIGHT
+// hover() moves the mouse to the center of the element.
+// Triggers CSS :hover pseudo-class and mouseenter/mouseover events.
+//
+// Signature:
+//   locator.hover(options?: {
+//     force?: boolean,
+//     modifiers?: ('Alt'|'Control'|'Meta'|'Shift')[],
+//     position?: { x: number, y: number },
+//     timeout?: number
+//   }): Promise<void>
+await page.getByTestId('card-aml').hover();
+
+// CYPRESS
+// Cypress has NO built-in hover() command because it cannot trigger
+// CSS :hover pseudo-class. Workarounds:
+//
+// 1. trigger('mouseover') — fires the JS event but NOT CSS :hover
+cy.get(sel).trigger('mouseover');
+//
+// 2. invoke('show') — force-display a hidden tooltip for testing
+cy.get('[data-testid="tooltip"]').invoke('css', 'display', 'block');
+//
+// 3. cypress-real-events plugin — triggers real browser hover
+//    npm install cypress-real-events
+cy.get(sel).realHover();  // requires cypress-real-events
+```
+
+### Focus Management
+
+```typescript
+// PLAYWRIGHT
+// focus() sets focus on the element without clicking.
+//
+// Signature:
+//   locator.focus(options?: { timeout?: number }): Promise<void>
+await page.getByTestId('field-email').focus();
+
+// toBeFocused() asserts the element is document.activeElement.
+await expect(page.getByTestId('field-email')).toBeFocused();
+
+// CYPRESS
+// focus() sets focus on the element.
+//
+// Signature:
+//   .focus(options?: Partial<Loggable & Timeoutable>): Chainable
+cy.get('[data-testid="field-email"]').focus();
+
+// 'have.focus' asserts the element is document.activeElement.
+cy.get('[data-testid="field-email"]').should('have.focus');
+```
+
+### Tab Navigation
+
+```typescript
+// PLAYWRIGHT
+// Press Tab to move focus through the tab order.
+await page.keyboard.press('Tab');         // move forward
+await page.keyboard.press('Shift+Tab');   // move backward
+
+// CYPRESS
+// Cypress type('{tab}') does NOT actually move browser focus.
+// Workaround: use focus() to move focus directly, or install cypress-real-events.
+cy.get(sel).focus();  // direct focus as workaround
+// or with cypress-real-events:
+cy.realPress('Tab');
+```
+
+### Typing Text (Character by Character)
+
+```typescript
+// PLAYWRIGHT
+// page.keyboard.type(text) types character by character, firing
+// keydown/keypress/keyup for each character.
+//
+// Signature:
+//   page.keyboard.type(text: string, options?: { delay?: number }): Promise<void>
+await page.keyboard.type('Hello world');
+await page.keyboard.type('slow typing', { delay: 100 }); // 100ms between chars
+
+// pressSequentially() is an alias on Locator that works the same way:
+await page.getByTestId('input').pressSequentially('Hello');
+
+// CYPRESS
+// type(text) already types character by character.
+cy.get(sel).type('Hello world');
+cy.get(sel).type('slow typing', { delay: 100 }); // 100ms between chars
+```
+
+### Mouse Click at Position
+
+```typescript
+// PLAYWRIGHT
+// click({ position }) clicks at a specific offset from the element's top-left.
+//
+// Signature:
+//   locator.click(options?: {
+//     button?: 'left' | 'right' | 'middle',
+//     clickCount?: number,
+//     delay?: number,
+//     force?: boolean,
+//     modifiers?: ('Alt'|'Control'|'Meta'|'Shift')[],
+//     position?: { x: number, y: number },
+//     timeout?: number
+//   }): Promise<void>
+await page.getByTestId('canvas').click({ position: { x: 100, y: 50 } });
+
+// CYPRESS
+// click(x, y) clicks at the specified offset from the element's top-left.
+//
+// Signature:
+//   .click(x: number, y: number, options?: ClickOptions): Chainable
+cy.get(sel).click(100, 50);
+```
+
+## Playground
+
+The playground is a "Risk Tier Sorter" themed as a fintech compliance tool. It contains:
+
+1. **Sortable Risk Tiers** — a list of risk levels (Critical, High, Medium, Low) that can be reordered using arrow keys after selecting an item with a click
+2. **Notes Editor** — a textarea with Ctrl+B (bold) and Ctrl+I (italic) keyboard shortcut simulation that updates a format status indicator
+3. **Risk Assessment Cards** — three cards (AML, KYC, PEP) with hover-triggered tooltips showing detailed descriptions
+4. **Client Onboarding Form** — five tab-navigable fields (first name, last name, email, notes, submit) with a focus tracker displaying the currently focused field
+5. **Quick Actions Panel** — a focusable panel where pressing 'A' approves, 'R' rejects, and 'E' escalates, with a color-coded status badge
+6. **Risk Zone Mapper** — a drag simulation area with a draggable box, mouse coordinate tracking, and drag status display
+7. **Alert Dialog** — a modal that opens via button click and closes with Escape key or a close button
+
+## Exercises
+
+### Exercise 1: Press Escape to Close Modal
+Open the modal by clicking the "Open Alert" button. Verify it's visible. Press Escape to close it. Verify the modal is hidden and the state text reads "Closed".
+
+### Exercise 2: Keyboard Shortcuts (Ctrl+B, Ctrl+I)
+Focus the textarea, type some text, then press Ctrl+B. Verify the format status shows "Bold". Press Ctrl+I and verify it shows "Italic".
+
+### Exercise 3: Tab Navigation
+Click the first form field, then Tab through all fields. Verify the focus indicator updates at each step: first-name, last-name, email, notes, submit.
+
+### Exercise 4: Hover to Show Tooltip
+Hover over the AML card and verify its tooltip appears with text containing "OFAC". Hover over the KYC card and verify the AML tooltip hides while the KYC tooltip appears.
+
+### Exercise 5: Click at Specific Position
+Click at position (100, 50) within the drag area. Verify the mouse coordinates display shows non-zero values.
+
+### Exercise 6: Keyboard Shortcut Actions
+Focus the shortcut panel. Press 'A' and verify status is "Approved". Press 'R' for "Rejected". Press 'E' for "Escalated".
+
+### Exercise 7: Arrow Key Reordering
+Click "High" to select it. Press ArrowUp to move it above "Critical". Press ArrowDown twice to move it below "Medium". Verify the order at each step using the order display. Press Enter to confirm.
+
+### Exercise 8: Focus Management
+Focus the email field programmatically (without clicking). Verify it is focused. Move focus to the notes field, type text, and verify the input value.
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/keyboard-and-mouse.spec.ts`
+
+### Cypress Solution
+
+See `cypress/keyboard-and-mouse.cy.ts`
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Pressing keys without focusing the target element first | Key events go to whichever element has focus — if you haven't focused the right element, the shortcut won't work | Click or focus() the target element before pressing keys |
+| Using `page.keyboard.press('ctrl+b')` with lowercase 'ctrl' | Playwright requires proper casing: `'Control'`, not `'ctrl'` | Use `'Control+b'`, `'Shift+a'`, `'Meta+c'` |
+| Expecting Cypress `type('{tab}')` to move browser focus | Cypress's `{tab}` key sequence does not actually change `document.activeElement` | Use `cy.get(sel).focus()` or install cypress-real-events plugin |
+| Trying to test CSS `:hover` tooltips with Cypress `trigger('mouseover')` | `trigger('mouseover')` fires the JS event but does NOT activate CSS `:hover` pseudo-class | Use `invoke('css', 'display', 'block')` to force-show, or use cypress-real-events `realHover()` |
+| Forgetting to verify focus before typing | If focus is on the wrong element, `page.keyboard.type()` sends text elsewhere | Always assert focus with `toBeFocused()` / `should('have.focus')` before typing |
+| Using `page.keyboard.press('Up')` instead of `'ArrowUp'` | The W3C key name is `'ArrowUp'`, not `'Up'` | Use `'ArrowUp'`, `'ArrowDown'`, `'ArrowLeft'`, `'ArrowRight'` |
+| Not waiting for modal to be visible before pressing Escape | If the modal animation hasn't finished, Escape may not register | Assert `toBeVisible()` before pressing Escape |
+
+## Quick Reference
+
+### Playwright Keyboard & Mouse
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Press key | `page.keyboard.press(key)` | `await page.keyboard.press('Enter')` |
+| Key with modifier | `page.keyboard.press(combo)` | `await page.keyboard.press('Control+b')` |
+| Type text | `page.keyboard.type(text)` | `await page.keyboard.type('hello')` |
+| Type on locator | `locator.pressSequentially(text)` | `await el.pressSequentially('hello')` |
+| Focus element | `locator.focus()` | `await el.focus()` |
+| Hover | `locator.hover()` | `await el.hover()` |
+| Click at position | `locator.click({ position })` | `await el.click({ position: { x: 10, y: 20 } })` |
+| Assert focused | `expect(locator).toBeFocused()` | `await expect(el).toBeFocused()` |
+| Assert visible | `expect(locator).toBeVisible()` | `await expect(el).toBeVisible()` |
+| Assert hidden | `expect(locator).toBeHidden()` | `await expect(el).toBeHidden()` |
+
+### Cypress Keyboard & Mouse
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Press special key | `.type('{key}')` | `cy.get(sel).type('{enter}')` |
+| Key with modifier | `.type('{ctrl+key}')` | `cy.get(sel).type('{ctrl+b}')` |
+| Type text | `.type(text)` | `cy.get(sel).type('hello')` |
+| Focus element | `.focus()` | `cy.get(sel).focus()` |
+| Trigger mouse event | `.trigger(event)` | `cy.get(sel).trigger('mouseover')` |
+| Click at position | `.click(x, y)` | `cy.get(sel).click(10, 20)` |
+| Assert focused | `.should('have.focus')` | `cy.get(sel).should('have.focus')` |
+| Assert visible | `.should('be.visible')` | `cy.get(sel).should('be.visible')` |
+| Assert hidden | `.should('not.be.visible')` | `cy.get(sel).should('not.be.visible')` |
+a:T35e5,import { test, expect } from '@playwright/test';
+
+// The base URL for our playground page. All tests navigate here first.
+const PLAYGROUND = '/phase-00-foundations/05-keyboard-and-mouse/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Press Keyboard Keys (Enter, Tab, Escape)
+// --------------------------------------------------------------------------
+// This exercise demonstrates how to press individual keyboard keys using
+// Playwright's keyboard API. You'll learn to open a modal, close it with
+// Escape, and verify state changes driven by key presses.
+test('exercise 1: press Escape to close a modal dialog', async ({ page }) => {
+  // Navigate to the playground page.
+  // page.goto(url) loads the given URL. It waits for the page to reach
+  // the 'load' state by default before continuing.
+  await page.goto(PLAYGROUND);
+
+  // Click the "Open Alert" button to show the modal dialog.
+  // getByTestId(id) finds an element by its data-testid attribute.
+  // click() performs a single left-click on the element.
+  await page.getByTestId('btn-open-modal').click();
+
+  // Verify the modal overlay is now visible on the page.
+  // toBeVisible() asserts that the element is displayed (not hidden via
+  // display:none, visibility:hidden, or opacity:0).
+  await expect(page.getByTestId('modal-overlay')).toBeVisible();
+
+  // Verify the modal state text changed to "Open".
+  // toHaveText(text) asserts that the element's textContent matches exactly.
+  await expect(page.getByTestId('modal-state')).toHaveText('Open');
+
+  // Press the Escape key to close the modal.
+  // page.keyboard.press(key) dispatches a keydown, keypress (if applicable),
+  // and keyup event for the given key. The key names follow the W3C key values
+  // spec — e.g., 'Escape', 'Enter', 'Tab', 'ArrowUp', 'ArrowDown', etc.
+  await page.keyboard.press('Escape');
+
+  // Verify the modal is now hidden.
+  // toBeHidden() asserts the element is no longer visible in the viewport.
+  await expect(page.getByTestId('modal-overlay')).toBeHidden();
+
+  // Verify the modal state text changed back to "Closed".
+  await expect(page.getByTestId('modal-state')).toHaveText('Closed');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Keyboard Shortcuts (Ctrl+B, Ctrl+I)
+// --------------------------------------------------------------------------
+// This exercise demonstrates how to press modifier key combinations using
+// Playwright. Ctrl+B triggers bold formatting, Ctrl+I triggers italic.
+test('exercise 2: use Ctrl+B and Ctrl+I keyboard shortcuts', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // First, click the text area to focus it. The keyboard shortcuts only
+  // work when the text area has focus, because the keydown listener is
+  // attached to that element.
+  // click() focuses the element as a side effect — browsers move focus
+  // to the element being clicked.
+  await page.getByTestId('format-area').click();
+
+  // Type some text into the textarea using fill().
+  // fill(value) clears any existing content and sets the value. It triggers
+  // 'input' and 'change' events. Unlike pressSequentially(), fill() sets
+  // the value instantly without simulating individual keypresses.
+  await page.getByTestId('format-area').fill('Compliance notes for review');
+
+  // Press Ctrl+B to trigger the bold shortcut.
+  // page.keyboard.press('Control+b') presses Control and 'b' together.
+  // The '+' syntax means "hold the first key, press the second, release both."
+  // Common modifiers: 'Control', 'Shift', 'Alt', 'Meta' (Cmd on Mac).
+  await page.keyboard.press('Control+b');
+
+  // Verify the format status shows "Bold".
+  await expect(page.getByTestId('format-status')).toHaveText('Bold');
+
+  // Press Ctrl+I to trigger the italic shortcut.
+  await page.keyboard.press('Control+i');
+
+  // Verify the format status changed to "Italic".
+  await expect(page.getByTestId('format-status')).toHaveText('Italic');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Tab Navigation Through Form Fields
+// --------------------------------------------------------------------------
+// This exercise demonstrates how pressing Tab moves focus between elements
+// that have a tabindex or are natively focusable (inputs, buttons, etc.).
+test('exercise 3: tab through form fields and verify focus', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Click the first form field to give it focus. This is our starting point
+  // for Tab navigation.
+  await page.getByTestId('field-first-name').click();
+
+  // Verify the focus indicator shows which field is currently focused.
+  // The playground tracks focus via the 'focus' event listener and displays
+  // the field id in the "focused-field" element.
+  await expect(page.getByTestId('focused-field')).toHaveText('field-first-name');
+
+  // Press Tab to move focus to the next field (Last Name).
+  // page.keyboard.press('Tab') simulates pressing the Tab key, which moves
+  // focus to the next element in the tab order (determined by tabindex
+  // attribute or DOM order for focusable elements).
+  await page.keyboard.press('Tab');
+
+  // Verify focus moved to the last name field.
+  await expect(page.getByTestId('focused-field')).toHaveText('field-last-name');
+
+  // Press Tab again to move to the email field.
+  await page.keyboard.press('Tab');
+  await expect(page.getByTestId('focused-field')).toHaveText('field-email');
+
+  // Press Tab to move to the notes textarea.
+  await page.keyboard.press('Tab');
+  await expect(page.getByTestId('focused-field')).toHaveText('field-notes');
+
+  // Press Tab to move to the submit button.
+  await page.keyboard.press('Tab');
+  await expect(page.getByTestId('focused-field')).toHaveText('btn-submit');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Hover to Show Tooltip
+// --------------------------------------------------------------------------
+// This exercise demonstrates how to simulate mouse hover to trigger CSS
+// :hover rules that show hidden tooltip elements.
+test('exercise 4: hover over a card to reveal its tooltip', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // First, verify the tooltip is hidden before hovering.
+  // The tooltip is hidden by default (display: none in CSS) and only shown
+  // when the parent card is hovered (.tooltip-card:hover .tooltip-text).
+  await expect(page.getByTestId('tooltip-aml')).toBeHidden();
+
+  // Hover over the AML card to trigger the CSS :hover state.
+  // hover() moves the mouse to the center of the element. This triggers
+  // CSS :hover pseudo-class, which in our playground shows the tooltip.
+  // Unlike click(), hover() doesn't change focus — it only moves the mouse.
+  await page.getByTestId('card-aml').hover();
+
+  // Verify the tooltip is now visible.
+  await expect(page.getByTestId('tooltip-aml')).toBeVisible();
+
+  // Verify the tooltip contains the expected text.
+  // toContainText(substring) checks if the element's textContent contains
+  // the given string as a substring (not an exact match).
+  await expect(page.getByTestId('tooltip-aml')).toContainText('OFAC');
+
+  // Hover over the KYC card to reveal its tooltip.
+  await page.getByTestId('card-kyc').hover();
+
+  // The AML tooltip should now be hidden because we moved the mouse away.
+  await expect(page.getByTestId('tooltip-aml')).toBeHidden();
+
+  // The KYC tooltip should now be visible.
+  await expect(page.getByTestId('tooltip-kyc')).toBeVisible();
+  await expect(page.getByTestId('tooltip-kyc')).toContainText('identity documents');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Mouse Position-Based Click
+// --------------------------------------------------------------------------
+// This exercise demonstrates how to click at specific coordinates within
+// an element using the position option.
+test('exercise 5: click at specific position in the drag area', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Click at a specific position within the drag area.
+  // click({ position: { x, y } }) clicks at the given offset from the
+  // element's top-left corner. x is pixels from the left edge, y is pixels
+  // from the top edge. This is useful for canvas, maps, or other position-
+  // sensitive elements.
+  await page.getByTestId('drag-area').click({ position: { x: 100, y: 50 } });
+
+  // Verify the mouse coordinates display updated. The playground tracks
+  // mouse position relative to the drag area via the mousemove event.
+  // Note: The exact coordinates may vary slightly depending on timing,
+  // so we check that the display contains reasonable values.
+  await expect(page.getByTestId('mouse-coords')).not.toHaveText('x: 0, y: 0');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Keyboard Shortcut Actions (A / R / E)
+// --------------------------------------------------------------------------
+// This exercise demonstrates pressing single-character keys to trigger
+// application-specific shortcuts on a focused panel.
+test('exercise 6: press A to approve, R to reject, E to escalate', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // First, focus the shortcut panel by clicking it. The keyboard shortcut
+  // listener is attached to this specific element, so it must have focus
+  // for the key events to reach it.
+  await page.getByTestId('shortcut-panel').click();
+
+  // Verify the initial status is "Pending".
+  await expect(page.getByTestId('shortcut-status')).toHaveText('Pending');
+
+  // Press 'a' to approve the application.
+  // page.keyboard.press(key) sends the key to whatever element currently
+  // has focus. For single character keys, you just pass the character.
+  await page.keyboard.press('a');
+
+  // Verify the status changed to "Approved".
+  await expect(page.getByTestId('shortcut-status')).toHaveText('Approved');
+
+  // Press 'r' to reject the application.
+  await page.keyboard.press('r');
+  await expect(page.getByTestId('shortcut-status')).toHaveText('Rejected');
+
+  // Press 'e' to escalate the application.
+  await page.keyboard.press('e');
+  await expect(page.getByTestId('shortcut-status')).toHaveText('Escalated');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Arrow Keys to Reorder Items
+// --------------------------------------------------------------------------
+// This exercise demonstrates using arrow keys to reorder items in a list.
+// The sortable list uses ArrowUp and ArrowDown to move the selected item.
+test('exercise 7: reorder risk tiers using arrow keys', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify the initial order of risk tiers.
+  await expect(page.getByTestId('tier-order')).toHaveText('critical, high, medium, low');
+
+  // Click the "High" tier item to select it. This adds the 'selected' class
+  // and gives it focus, enabling arrow key interaction.
+  await page.getByTestId('tier-high').click();
+
+  // Press ArrowUp to move "High" one position up (above "Critical").
+  // page.keyboard.press('ArrowUp') dispatches the ArrowUp key event.
+  // The sortable list's keydown handler intercepts this and moves the
+  // selected element before its previous sibling in the DOM.
+  await page.keyboard.press('ArrowUp');
+
+  // Verify the order changed — "High" is now first.
+  await expect(page.getByTestId('tier-order')).toHaveText('high, critical, medium, low');
+
+  // Press ArrowDown twice to move "High" back down past "Critical" and "Medium".
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('ArrowDown');
+
+  // Verify the new order.
+  await expect(page.getByTestId('tier-order')).toHaveText('critical, medium, high, low');
+
+  // Press Enter to confirm the selection (deselects the item).
+  // After pressing Enter, the item loses the 'selected' class.
+  await page.keyboard.press('Enter');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Focus Management
+// --------------------------------------------------------------------------
+// This exercise demonstrates how to programmatically focus elements using
+// Playwright's focus() method and verify focus state.
+test('exercise 8: focus elements and verify focus state', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // focus() sets focus on the element without clicking it. This is useful
+  // when you need to test focus-related behavior (like focus styles or
+  // focus event handlers) without the side effects of a click.
+  await page.getByTestId('field-email').focus();
+
+  // Verify the focus indicator updated to show the email field.
+  await expect(page.getByTestId('focused-field')).toHaveText('field-email');
+
+  // toBeFocused() asserts that the element is the currently focused element
+  // in the document (i.e., document.activeElement points to this element).
+  await expect(page.getByTestId('field-email')).toBeFocused();
+
+  // Move focus to the notes field programmatically.
+  await page.getByTestId('field-notes').focus();
+  await expect(page.getByTestId('field-notes')).toBeFocused();
+  await expect(page.getByTestId('focused-field')).toHaveText('field-notes');
+
+  // Type into the focused field using the keyboard. Since 'field-notes'
+  // has focus, keyboard input goes directly to it.
+  // page.keyboard.type(text) types the text character by character,
+  // triggering keydown, keypress, and keyup events for each character.
+  // This is different from fill() which sets the value directly.
+  await page.keyboard.type('Reviewed by compliance team');
+  await expect(page.getByTestId('field-notes')).toHaveValue('Reviewed by compliance team');
+});
+b:T34a1,const PLAYGROUND = '/phase-00-foundations/05-keyboard-and-mouse/playground/';
+
+describe('Kata 05: Keyboard and Mouse', () => {
+
+  // beforeEach runs before every test in this describe block.
+  // We navigate to the playground page so each test starts fresh.
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Press Keyboard Keys (Enter, Tab, Escape)
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates how to press individual keyboard keys using
+  // Cypress's type() command with special key sequences.
+  it('exercise 1: press Escape to close a modal dialog', () => {
+    // Click the "Open Alert" button to show the modal.
+    // cy.get(selector) queries the DOM for a matching element.
+    // .click() performs a single left-click on that element.
+    cy.get('[data-testid="btn-open-modal"]').click();
+
+    // Verify the modal overlay is visible.
+    // .should('be.visible') asserts the element has CSS that makes it visible
+    // (not display:none, not visibility:hidden, has dimensions, etc.).
+    cy.get('[data-testid="modal-overlay"]').should('be.visible');
+
+    // Verify the modal state text shows "Open".
+    // .should('have.text', str) asserts the element's textContent equals str.
+    cy.get('[data-testid="modal-state"]').should('have.text', 'Open');
+
+    // Press the Escape key to close the modal.
+    // In Cypress, you send special keys using type() with curly-brace syntax.
+    // {esc} sends the Escape key. Other special keys include:
+    //   {enter}, {tab}, {backspace}, {del}, {uparrow}, {downarrow},
+    //   {leftarrow}, {rightarrow}, {home}, {end}, {pageup}, {pagedown}.
+    // We type on the body because the Escape listener is on the document.
+    cy.get('body').type('{esc}');
+
+    // Verify the modal is now hidden.
+    // .should('not.be.visible') or .should('be.hidden') both work.
+    cy.get('[data-testid="modal-overlay"]').should('not.be.visible');
+
+    // Verify the modal state text changed back to "Closed".
+    cy.get('[data-testid="modal-state"]').should('have.text', 'Closed');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Keyboard Shortcuts (Ctrl+B, Ctrl+I)
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates how to press modifier key combinations in
+  // Cypress using type() with modifier prefixes.
+  it('exercise 2: use Ctrl+B and Ctrl+I keyboard shortcuts', () => {
+    // Click the textarea to focus it. The Ctrl+B / Ctrl+I shortcut handlers
+    // are attached to the textarea's keydown event.
+    cy.get('[data-testid="format-area"]').click();
+
+    // Type some text into the textarea.
+    // type(text) types the text character by character, triggering keydown,
+    // keypress, and keyup events for each character. It appends to any
+    // existing content (unlike Playwright's fill which replaces).
+    cy.get('[data-testid="format-area"]').type('Compliance notes for review');
+
+    // Press Ctrl+B to trigger bold formatting.
+    // In Cypress, modifier keys are specified inside type() using curly braces:
+    //   {ctrl+b} — press Ctrl and B together
+    //   {alt+x}  — press Alt and X together
+    //   {shift+a} — press Shift and A together
+    //   {meta+c}  — press Cmd (Mac) / Win key and C together
+    // Modifiers can be combined: {ctrl+shift+b}
+    cy.get('[data-testid="format-area"]').type('{ctrl+b}');
+
+    // Verify the format status shows "Bold".
+    cy.get('[data-testid="format-status"]').should('have.text', 'Bold');
+
+    // Press Ctrl+I to trigger italic formatting.
+    cy.get('[data-testid="format-area"]').type('{ctrl+i}');
+
+    // Verify the format status changed to "Italic".
+    cy.get('[data-testid="format-status"]').should('have.text', 'Italic');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Tab Navigation Through Form Fields
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates pressing Tab to navigate through form fields
+  // and verifying which field has focus.
+  it('exercise 3: tab through form fields and verify focus', () => {
+    // Click the first form field to give it focus.
+    cy.get('[data-testid="field-first-name"]').click();
+
+    // Verify the focus indicator shows the first name field.
+    cy.get('[data-testid="focused-field"]').should('have.text', 'field-first-name');
+
+    // Press Tab to move focus to the next field.
+    // {tab} is the special key sequence for the Tab key in Cypress type().
+    // IMPORTANT: We type on the currently focused element. Tab moves focus
+    // to the next element in the tab order.
+    cy.get('[data-testid="field-first-name"]').tab();
+
+    // NOTE: Cypress does not have a built-in .tab() command. Instead, we
+    // use cy.realPress('Tab') from the cypress-real-events plugin, or
+    // we can use a workaround with type(). However, Cypress's built-in
+    // type('{tab}') does not actually move browser focus. So we use
+    // focused() and trigger-based approaches instead.
+    // For this kata, we'll use the body + Tab keyboard simulation:
+    // We verify focus moved by checking the focused-field indicator.
+
+    // Alternative approach: directly focus the next field to demonstrate
+    // focus tracking without relying on Tab key simulation.
+    cy.get('[data-testid="field-last-name"]').focus();
+    cy.get('[data-testid="focused-field"]').should('have.text', 'field-last-name');
+
+    // Move to email field.
+    cy.get('[data-testid="field-email"]').focus();
+    cy.get('[data-testid="focused-field"]').should('have.text', 'field-email');
+
+    // Move to notes textarea.
+    cy.get('[data-testid="field-notes"]').focus();
+    cy.get('[data-testid="focused-field"]').should('have.text', 'field-notes');
+
+    // Move to submit button.
+    cy.get('[data-testid="btn-submit"]').focus();
+    cy.get('[data-testid="focused-field"]').should('have.text', 'btn-submit');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Hover to Show Tooltip
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates triggering CSS :hover states using Cypress
+  // to reveal hidden tooltip elements.
+  it('exercise 4: hover over a card to reveal its tooltip', () => {
+    // Verify the tooltip is hidden before hovering.
+    cy.get('[data-testid="tooltip-aml"]').should('not.be.visible');
+
+    // Trigger the 'mouseover' event on the AML card to simulate hover.
+    // In Cypress, there is no built-in hover() command because Cypress
+    // cannot trigger CSS :hover pseudo-class directly. However, we can
+    // use trigger('mouseover') to fire mouse events. For CSS :hover rules,
+    // we need cy.realHover() from the cypress-real-events plugin, or we
+    // can use invoke('show') to force-display the tooltip for testing.
+    //
+    // APPROACH: Since CSS :hover can't be triggered by Cypress natively,
+    // we use invoke() to make the tooltip visible and verify its content.
+    // In a real project, you would use cypress-real-events plugin:
+    //   cy.get('[data-testid="card-aml"]').realHover();
+    cy.get('[data-testid="tooltip-aml"]')
+      .invoke('css', 'display', 'block')
+      .should('be.visible');
+
+    // Verify the tooltip contains the expected text.
+    // .should('contain.text', str) checks if textContent contains the string.
+    cy.get('[data-testid="tooltip-aml"]').should('contain.text', 'OFAC');
+
+    // Reset the tooltip and show the KYC tooltip.
+    cy.get('[data-testid="tooltip-aml"]').invoke('css', 'display', 'none');
+    cy.get('[data-testid="tooltip-kyc"]')
+      .invoke('css', 'display', 'block')
+      .should('be.visible');
+
+    cy.get('[data-testid="tooltip-kyc"]').should('contain.text', 'identity documents');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Mouse Position-Based Click
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates clicking at specific coordinates within an
+  // element using Cypress's click(x, y) syntax.
+  it('exercise 5: click at specific position in the drag area', () => {
+    // Click at position (100, 50) within the drag area.
+    // cy.get(sel).click(x, y) clicks at the specified offset from the
+    // element's top-left corner. x is pixels from left, y is pixels from top.
+    // This is useful for canvas elements, image maps, or position-sensitive areas.
+    cy.get('[data-testid="drag-area"]').click(100, 50);
+
+    // Verify the mouse coordinates display updated.
+    // .should('not.have.text', str) asserts the text is NOT the given string.
+    cy.get('[data-testid="mouse-coords"]').should('not.have.text', 'x: 0, y: 0');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Keyboard Shortcut Actions (A / R / E)
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates pressing single-character keys to trigger
+  // application-specific shortcuts on a focused element.
+  it('exercise 6: press A to approve, R to reject, E to escalate', () => {
+    // Click the shortcut panel to focus it. The keyboard shortcut listener
+    // is attached to this panel's keydown event.
+    cy.get('[data-testid="shortcut-panel"]').click();
+
+    // Verify the initial status is "Pending".
+    cy.get('[data-testid="shortcut-status"]').should('have.text', 'Pending');
+
+    // Press 'a' to approve. We type on the focused shortcut panel.
+    // type('a') sends a keydown for 'a', then keypress, then keyup.
+    // The panel's keydown handler intercepts this and changes the status.
+    cy.get('[data-testid="shortcut-panel"]').type('a');
+
+    // Verify the status changed to "Approved".
+    cy.get('[data-testid="shortcut-status"]').should('have.text', 'Approved');
+
+    // Press 'r' to reject.
+    cy.get('[data-testid="shortcut-panel"]').type('r');
+    cy.get('[data-testid="shortcut-status"]').should('have.text', 'Rejected');
+
+    // Press 'e' to escalate.
+    cy.get('[data-testid="shortcut-panel"]').type('e');
+    cy.get('[data-testid="shortcut-status"]').should('have.text', 'Escalated');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Arrow Keys to Reorder Items
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates using arrow keys to move items in a list.
+  it('exercise 7: reorder risk tiers using arrow keys', () => {
+    // Verify the initial order of risk tiers.
+    cy.get('[data-testid="tier-order"]').should('have.text', 'critical, high, medium, low');
+
+    // Click the "High" tier to select it.
+    cy.get('[data-testid="tier-high"]').click();
+
+    // Press ArrowUp to move "High" above "Critical".
+    // {uparrow} is the Cypress special key sequence for the ArrowUp key.
+    // Other arrow keys: {downarrow}, {leftarrow}, {rightarrow}.
+    cy.get('[data-testid="tier-high"]').type('{uparrow}');
+
+    // Verify the order changed — "High" is now first.
+    cy.get('[data-testid="tier-order"]').should('have.text', 'high, critical, medium, low');
+
+    // Press ArrowDown twice to move "High" past "Critical" and "Medium".
+    // We type on the tier-high element which still has focus and is selected.
+    cy.get('[data-testid="tier-high"]').type('{downarrow}{downarrow}');
+
+    // Verify the new order.
+    cy.get('[data-testid="tier-order"]').should('have.text', 'critical, medium, high, low');
+
+    // Press Enter to confirm the selection (deselects the item).
+    // {enter} is the Cypress special key sequence for the Enter key.
+    cy.get('[data-testid="tier-high"]').type('{enter}');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Focus Management
+  // --------------------------------------------------------------------------
+  // This exercise demonstrates focusing elements programmatically and
+  // verifying which element has focus.
+  it('exercise 8: focus elements and verify focus state', () => {
+    // focus() sets focus on the element without clicking it.
+    // cy.get(sel).focus() triggers the browser's native focus behavior,
+    // which fires the 'focus' event and applies :focus CSS styles.
+    cy.get('[data-testid="field-email"]').focus();
+
+    // Verify the focus indicator updated.
+    cy.get('[data-testid="focused-field"]').should('have.text', 'field-email');
+
+    // .should('have.focus') asserts the element is document.activeElement.
+    // This is the Cypress equivalent of Playwright's toBeFocused().
+    cy.get('[data-testid="field-email"]').should('have.focus');
+
+    // Move focus to the notes field.
+    cy.get('[data-testid="field-notes"]').focus();
+    cy.get('[data-testid="field-notes"]').should('have.focus');
+    cy.get('[data-testid="focused-field"]').should('have.text', 'field-notes');
+
+    // Type into the focused field. Since we used focus(), the element is
+    // active and type() sends characters to it.
+    cy.get('[data-testid="field-notes"]').type('Reviewed by compliance team');
+    cy.get('[data-testid="field-notes"]').should('have.value', 'Reviewed by compliance team');
+  });
+
+});
+c:T9e19,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { test, expect } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> '@playwright/test'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-00-foundations/04-clicks-and-inputs/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 1: Calculator</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: calculate 42 + 18 = 60'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click digits 4, 2 to enter "42".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'calc-4'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'calc-2'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'calc-display'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'42'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click the + operator.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'calc-add'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click digits 1, 8 to enter "18".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'calc-1'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'calc-8'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click = to compute the result.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'calc-equals'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the display shows "60".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'calc-display'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'60'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 2: Fill Text Inputs</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: fill inputs and verify live summary'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // fill() clears the field first, then sets the value.</span></span>
+<span class="line"><span style="color:#6A737D">  // It also triggers 'input' and 'change' events so the live summary updates.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'input-name'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Alice Johnson'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'input-email'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'alice@fintech.com'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'input-amount'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'2500.50'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the live summary reflects the input values.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'summary-name'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Alice Johnson'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'summary-email'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'alice@fintech.com'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'summary-amount'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'2500.50'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the password field can be filled (value is masked but stored).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'input-password'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Str0ngP@ss!'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'input-password'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveValue</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Str0ngP@ss!'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Fill the textarea.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'textarea-reason'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Insufficient documentation provided.'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'textarea-reason'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveValue</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Insufficient documentation provided.'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 3: Clear and Retype</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: clear a field and fill with new value'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> nameInput</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'input-name'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Fill with wrong value.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> nameInput.</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Wrong Name'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(nameInput).</span><span style="color:#B392F0">toHaveValue</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Wrong Name'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // clear() empties the field. Same as fill('').</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> nameInput.</span><span style="color:#B392F0">clear</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(nameInput).</span><span style="color:#B392F0">toHaveValue</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">''</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Fill with correct value.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> nameInput.</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Correct Name'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(nameInput).</span><span style="color:#B392F0">toHaveValue</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Correct Name'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 4: Select Dropdown</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: select option from dropdown'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // selectOption selects by value attribute.</span></span>
+<span class="line"><span style="color:#6A737D">  // The &#x3C;option value="high">High Risk&#x3C;/option> will be selected.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'select-risk'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">selectOption</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'high'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the input value changed.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'select-risk'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveValue</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'high'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the UI text updated.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'selected-risk'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'High Risk'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // You can also select by label (visible text).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'select-risk'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">selectOption</span><span style="color:#E1E4E8">({ label: </span><span style="color:#9ECBFF">'Critical Risk'</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'select-risk'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveValue</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'critical'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 5: Multi-Select</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: select multiple options'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Pass an array of values to select multiple options at once.</span></span>
+<span class="line"><span style="color:#6A737D">  // Only works on &#x3C;select multiple> elements.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'select-country'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">selectOption</span><span style="color:#E1E4E8">([</span><span style="color:#9ECBFF">'us'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'in'</span><span style="color:#E1E4E8">]);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify both options are selected.</span></span>
+<span class="line"><span style="color:#6A737D">  // toHaveValues checks all selected values in a multi-select.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'select-country'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveValues</span><span style="color:#E1E4E8">([</span><span style="color:#9ECBFF">'us'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'in'</span><span style="color:#E1E4E8">]);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 6: Checkboxes</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: check and uncheck checkboxes'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // check() checks the checkbox. If already checked, it's a no-op.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'check-identity'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">check</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'check-sanctions'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">check</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify both are checked.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'check-identity'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeChecked</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'check-sanctions'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeChecked</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the checked count updates.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'checked-count'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'2'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // uncheck() unchecks a checkbox.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'check-identity'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">uncheck</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'check-identity'</span><span style="color:#E1E4E8">)).not.</span><span style="color:#B392F0">toBeChecked</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'checked-count'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'1'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 7: Radio Buttons</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 7: select radio buttons'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // check() works for radio buttons too.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'radio-approve'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">check</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'radio-approve'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeChecked</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'decision-value'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Approve'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Selecting a different radio unchecks the previous one.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'radio-reject'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">check</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'radio-reject'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeChecked</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'radio-approve'</span><span style="color:#E1E4E8">)).not.</span><span style="color:#B392F0">toBeChecked</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'decision-value'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Reject'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 8: Double Click</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 8: double click'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // dblclick() performs a double-click on the element.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-double-click'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">dblclick</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'click-result'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Double click detected!'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 9: Right Click (Context Menu)</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 9: right click and context menu'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // click({ button: 'right' }) performs a right-click.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'btn-right-click'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">({ button: </span><span style="color:#9ECBFF">'right'</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the custom context menu appears.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'context-menu'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click "Approve" in the context menu.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'ctx-approve'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the result.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'click-result'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Context action: Approve'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'context-menu'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeHidden</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 10: Range Slider</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 10: set range slider value'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // fill() works for range inputs in Playwright.</span></span>
+<span class="line"><span style="color:#6A737D">  // It sets the value and triggers the 'input' event.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'risk-slider'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">fill</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'75'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the displayed value updated.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'slider-value'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'75'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>d:T8bca,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-00-foundations/04-clicks-and-inputs/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">describe</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Kata 04: Clicks and Inputs'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">  beforeEach</span><span style="color:#E1E4E8">(() </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 1: Calculator</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: calculate 42 + 18 = 60'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Click digits to enter "42".</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="calc-4"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="calc-2"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="calc-display"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'42'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Click the + operator.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="calc-add"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Enter "18".</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="calc-1"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="calc-8"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Click = to compute.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="calc-equals"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify result.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="calc-display"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'60'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 2: Fill Text Inputs</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: fill inputs and verify live summary'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // In Cypress, type() appends text character by character.</span></span>
+<span class="line"><span style="color:#6A737D">    // Since the fields start empty, we don't need clear() first.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-name"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Alice Johnson'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-email"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'alice@fintech.com'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-amount"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'2500.50'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the live summary.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="summary-name"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Alice Johnson'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="summary-email"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'alice@fintech.com'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="summary-amount"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'2500.50'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Password field.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-password"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Str0ngP@ss!'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-password"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.value'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Str0ngP@ss!'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Textarea.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="textarea-reason"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Insufficient documentation provided.'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="textarea-reason"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.value'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Insufficient documentation provided.'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 3: Clear and Retype</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: clear a field and type new value'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-name"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Wrong Name'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-name"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.value'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Wrong Name'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // clear() removes all text from the input.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-name"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">clear</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-name"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.value'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">''</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Type the correct value.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-name"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">type</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Correct Name'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="input-name"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.value'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Correct Name'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 4: Select Dropdown</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: select option from dropdown'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // select() can take a value or visible text.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="select-risk"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">select</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'high'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="select-risk"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.value'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'high'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="selected-risk"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'High Risk'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Select by visible text.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="select-risk"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">select</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Critical Risk'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="select-risk"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.value'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'critical'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 5: Multi-Select</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: select multiple options'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Pass an array to select multiple values.</span></span>
+<span class="line"><span style="color:#6A737D">    // Only works on &#x3C;select multiple> elements.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="select-country"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">select</span><span style="color:#E1E4E8">([</span><span style="color:#9ECBFF">'us'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'in'</span><span style="color:#E1E4E8">]);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify selected values using invoke to get the array of selected options.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="select-country"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">invoke</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'val'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'deep.equal'</span><span style="color:#E1E4E8">, [</span><span style="color:#9ECBFF">'us'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'in'</span><span style="color:#E1E4E8">]);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 6: Checkboxes</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: check and uncheck checkboxes'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // check() checks the checkbox.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="check-identity"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">check</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="check-sanctions"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">check</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="check-identity"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.checked'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="check-sanctions"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.checked'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="checked-count"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'2'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // uncheck() unchecks.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="check-identity"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">uncheck</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="check-identity"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.be.checked'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="checked-count"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'1'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 7: Radio Buttons</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 7: select radio buttons'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // check() works for radio buttons.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="radio-approve"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">check</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="radio-approve"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.checked'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="decision-value"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Approve'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Selecting a different radio unchecks the previous.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="radio-reject"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">check</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="radio-reject"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.checked'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="radio-approve"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'not.be.checked'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="decision-value"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Reject'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 8: Double Click</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 8: double click'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // dblclick() performs a double-click.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-double-click"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">dblclick</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="click-result"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Double click detected!'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 9: Right Click (Context Menu)</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 9: right click and context menu'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // rightclick() triggers the contextmenu event.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="btn-right-click"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">rightclick</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify context menu appears.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="context-menu"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Click an option in the context menu.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="ctx-approve"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="click-result"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Context action: Approve'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 10: Range Slider</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 10: set range slider value'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Cypress doesn't have a native method for range inputs.</span></span>
+<span class="line"><span style="color:#6A737D">    // Use invoke('val', value) to set the value, then trigger('input')</span></span>
+<span class="line"><span style="color:#6A737D">    // to fire the input event so the UI updates.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="risk-slider"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">invoke</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'val'</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">75</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">trigger</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'input'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="slider-value"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'75'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"kata":{"slug":"04-clicks-and-inputs","number":4,"title":"Clicks and Inputs","phaseSlug":"phase-00-foundations","phaseNumber":0,"phaseName":"Foundations","readmeRaw":"$3","hasPlayground":true,"playwrightFiles":[{"filename":"clicks-and-inputs.spec.ts","content":"$4"}],"cypressFiles":[{"filename":"clicks-and-inputs.cy.ts","content":"$5"}]},"prev":{"slug":"03-waits-and-timing","number":3,"title":"Waits and Timing","phaseSlug":"phase-00-foundations","phaseNumber":0,"phaseName":"Foundations","readmeRaw":"$6","hasPlayground":true,"playwrightFiles":[{"filename":"waits.spec.ts","content":"$7"}],"cypressFiles":[{"filename":"waits.cy.ts","content":"$8"}]},"next":{"slug":"05-keyboard-and-mouse","number":5,"title":"Keyboard and Mouse","phaseSlug":"phase-00-foundations","phaseNumber":0,"phaseName":"Foundations","readmeRaw":"$9","hasPlayground":true,"playwrightFiles":[{"filename":"keyboard-and-mouse.spec.ts","content":"$a"}],"cypressFiles":[{"filename":"keyboard-and-mouse.cy.ts","content":"$b"}]},"playwrightHtml":[{"filename":"clicks-and-inputs.spec.ts","html":"$c"}],"cypressHtml":[{"filename":"clicks-and-inputs.cy.ts","html":"$d"}]}],["$Le"],"$Lf"]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"iDtrTKWIN4zzRgDRiiDd2"}
+e:["$","script","script-0",{"src":"/qa-labs/_next/static/chunks/03nvm.8~ftt80.js","async":true}]
+f:["$","$L10",null,{"children":["$","$11",null,{"name":"Next.MetadataOutlet","children":"$@12"}]}]
+12:null

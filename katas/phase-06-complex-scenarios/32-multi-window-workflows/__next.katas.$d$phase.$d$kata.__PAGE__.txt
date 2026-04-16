@@ -1,0 +1,2276 @@
+1:"$Sreact.fragment"
+2:I[31749,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js","/qa-labs/_next/static/chunks/03nvm.8~ftt80.js"],"KataPageClient"]
+10:I[49583,["/qa-labs/_next/static/chunks/0gbqj4ilpyp~r.js","/qa-labs/_next/static/chunks/0_mp~aegrnhx9.js","/qa-labs/_next/static/chunks/0miomnm2_p-.6.js"],"OutletBoundary"]
+11:"$Sreact.suspense"
+3:T10c3,# Kata 32: Multi-Window Workflows
+
+## What You Will Learn
+
+- How to open and interact with popup windows spawned by window.open()
+- How to switch between multiple browser windows/tabs in your tests
+- How to verify content inside a popup window
+- How to test cross-window communication via postMessage
+- How to handle popup lifecycle (open, interact, close) in both Playwright and Cypress
+- Differences between Playwright's multi-page context model and Cypress's single-tab limitation
+
+## Prerequisites
+
+- Completed Katas 01-31
+- Understanding of browser window.open() and postMessage APIs
+
+## Concepts Explained
+
+### window.open() and Popups
+
+```
+window.open(url, target, features) opens a new browser window or tab.
+
+  url      — the URL to load in the new window
+  target   — a name for the window (reuses if a window with that name exists)
+  features — a comma-separated string like "width=500,height=400"
+
+The returned value is a Window object (or null if blocked).
+The popup can communicate with its opener via:
+  - window.opener   — reference to the window that opened the popup
+  - postMessage()   — safe cross-origin messaging between windows
+```
+
+### postMessage for Cross-Window Communication
+
+```
+window.postMessage(data, targetOrigin) sends a message to another window.
+
+The receiving window listens with:
+  window.addEventListener('message', (event) => {
+    event.data         — the data sent
+    event.origin       — the origin of the sender
+    event.source       — reference to the sending Window
+  });
+
+In our playground:
+  1. Main page opens a popup with applicant details as URL params
+  2. Admin acts (approve/reject) in the popup
+  3. Popup sends postMessage to window.opener
+  4. Main page receives the message and updates the applicant status
+```
+
+### Playwright: Handling Multiple Pages
+
+```typescript
+// PLAYWRIGHT
+// Playwright represents each browser tab/window as a separate Page object.
+// When window.open() is called, Playwright fires a 'popup' event on the
+// page that triggered it. You can wait for this event:
+
+const [popup] = await Promise.all([
+  page.waitForEvent('popup'),           // wait for the popup event
+  page.getByTestId('review-1').click(), // click triggers window.open()
+]);
+
+// Now 'popup' is a full Page object — you can interact with it just
+// like the main page:
+await popup.waitForLoadState();
+await popup.getByTestId('approve-btn').click();
+```
+
+### Cypress: Popup Limitations and Workarounds
+
+```typescript
+// CYPRESS
+// Cypress runs inside a single browser tab and cannot natively switch
+// to popup windows. The recommended approach is to:
+//
+//   1. Stub window.open() to prevent the popup from actually opening
+//   2. Instead, visit the popup URL directly in the same Cypress tab
+//   3. Or use cy.origin() for cross-origin scenarios (Cypress 12+)
+//
+// Approach: Stub window.open and capture the URL
+
+cy.window().then(win => {
+  cy.stub(win, 'open').as('windowOpen');
+});
+cy.get('[data-testid="review-1"]').click();
+cy.get('@windowOpen').should('have.been.called');
+
+// To test the popup content, visit the captured URL:
+cy.get('@windowOpen').then(stub => {
+  const url = stub.getCall(0).args[0];
+  cy.visit(url);
+});
+```
+
+## Playground Overview
+
+The playground has two pages:
+
+**index.html** — Main page with an applicant list table. Each row has a "Review" button that opens a popup window.
+
+**admin-panel.html** — Popup page showing applicant details with Approve/Reject buttons. When the admin acts, the popup sends a postMessage back to the main page.
+
+## Exercises
+
+1. **Open review window** — Click the Review button and verify a popup opens
+2. **Interact with popup** — Click a button inside the popup window
+3. **Verify popup content** — Check that the popup displays the correct applicant details
+4. **Approve in popup, verify main page** — Approve an applicant and verify the main page status updates
+5. **Reject in popup** — Reject an applicant and verify the main page shows "rejected"
+6. **Close popup, verify main state** — Close the popup and verify the main page state is preserved
+7. **Handle multiple popups** — Open review windows for two different applicants
+8. **Synchronize state between windows** — Act in one popup and verify another popup still works correctly
+4:T288a,import { test, expect } from '@playwright/test';
+
+// Base URL for the main playground page.
+const PLAYGROUND = '/phase-06-complex-scenarios/32-multi-window-workflows/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Open Review Window
+// --------------------------------------------------------------------------
+// Demonstrates how to wait for a popup event when window.open() is called.
+// Playwright fires a 'popup' event on the page that triggered the open.
+test('exercise 1: open review window', async ({ page }) => {
+  // Navigate to the main applicant list page.
+  await page.goto(PLAYGROUND);
+
+  // Verify the status bar shows no action taken yet.
+  await expect(page.getByTestId('last-action')).toHaveText('None');
+
+  // Promise.all ensures we start waiting for the popup BEFORE the click
+  // triggers window.open(). If we clicked first, the popup event might
+  // fire before we start listening, causing a timeout.
+  const [popup] = await Promise.all([
+    // waitForEvent('popup') resolves with the new Page object when
+    // a new window/tab is opened by this page.
+    page.waitForEvent('popup'),
+    // Click the Review button for applicant 1 (Alice Johnson).
+    page.getByTestId('review-1').click(),
+  ]);
+
+  // Wait for the popup to finish loading its HTML and scripts.
+  // waitForLoadState() defaults to 'load', meaning the page's load event.
+  await popup.waitForLoadState();
+
+  // Verify the popup opened by checking its title.
+  await expect(popup).toHaveTitle(/Admin Review Panel/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Interact with Popup
+// --------------------------------------------------------------------------
+// Shows how to click buttons inside a popup window. The popup is a full
+// Page object, so all Playwright locator methods work on it.
+test('exercise 2: interact with popup window', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  const [popup] = await Promise.all([
+    page.waitForEvent('popup'),
+    page.getByTestId('review-1').click(),
+  ]);
+  await popup.waitForLoadState();
+
+  // Verify the Approve button is visible and enabled in the popup.
+  await expect(popup.getByTestId('approve-btn')).toBeVisible();
+  await expect(popup.getByTestId('approve-btn')).toBeEnabled();
+
+  // Click the Approve button inside the popup.
+  await popup.getByTestId('approve-btn').click();
+
+  // Verify the decision banner appears in the popup after clicking.
+  // The popup shows a success/error banner confirming the action.
+  await expect(popup.getByTestId('decision-banner')).toBeVisible();
+  await expect(popup.getByTestId('decision-banner')).toContainText('approved');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Verify Popup Content
+// --------------------------------------------------------------------------
+// Checks that the popup displays the correct applicant details by reading
+// the data-testid elements in the popup page.
+test('exercise 3: verify popup shows correct applicant details', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Open the review popup for applicant 1 (Alice Johnson).
+  const [popup] = await Promise.all([
+    page.waitForEvent('popup'),
+    page.getByTestId('review-1').click(),
+  ]);
+  await popup.waitForLoadState();
+
+  // Verify each field in the popup matches the data from the main page.
+  // The popup reads applicant data from URL search parameters.
+  await expect(popup.getByTestId('applicant-name')).toHaveText('Alice Johnson');
+  await expect(popup.getByTestId('applicant-email')).toHaveText('alice@example.com');
+  await expect(popup.getByTestId('applicant-position')).toHaveText('Engineer');
+  await expect(popup.getByTestId('applicant-risk')).toHaveText('low');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Approve in Popup, Verify Main Page Updates
+// --------------------------------------------------------------------------
+// The core cross-window test: act in the popup, verify the main page
+// received the postMessage and updated the applicant status.
+test('exercise 4: approve in popup and verify main page updates', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify Alice starts with "pending" status on the main page.
+  await expect(page.getByTestId('status-1')).toHaveText('pending');
+
+  // Open the review popup for Alice.
+  const [popup] = await Promise.all([
+    page.waitForEvent('popup'),
+    page.getByTestId('review-1').click(),
+  ]);
+  await popup.waitForLoadState();
+
+  // Click Approve in the popup. This calls postMessage on window.opener.
+  await popup.getByTestId('approve-btn').click();
+
+  // Switch focus back to the main page and verify the status updated.
+  // Playwright does not require an explicit "switch" — we simply use the
+  // main page's locators. The postMessage handler on the main page updates
+  // the DOM asynchronously, so we rely on Playwright's auto-waiting.
+  await expect(page.getByTestId('status-1')).toHaveText('approved');
+
+  // Verify the status bar also updated.
+  await expect(page.getByTestId('last-action')).toContainText('Alice Johnson');
+  await expect(page.getByTestId('last-action')).toContainText('approved');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Reject in Popup
+// --------------------------------------------------------------------------
+// Same cross-window flow as exercise 4, but with the Reject action.
+test('exercise 5: reject in popup and verify main page updates', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Open the review popup for applicant 2 (Bob Smith).
+  const [popup] = await Promise.all([
+    page.waitForEvent('popup'),
+    page.getByTestId('review-2').click(),
+  ]);
+  await popup.waitForLoadState();
+
+  // Click Reject in the popup.
+  await popup.getByTestId('reject-btn').click();
+
+  // Verify the popup shows the rejection banner.
+  await expect(popup.getByTestId('decision-banner')).toContainText('rejected');
+
+  // Verify the main page updated Bob's status to "rejected".
+  await expect(page.getByTestId('status-2')).toHaveText('rejected');
+
+  // Verify the Review button for Bob is now disabled on the main page
+  // (you cannot review an already-decided applicant).
+  await expect(page.getByTestId('review-2')).toBeDisabled();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Close Popup, Verify Main State
+// --------------------------------------------------------------------------
+// Tests that closing a popup without taking action preserves the main
+// page state (applicant stays pending).
+test('exercise 6: close popup without action preserves main state', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Open a review popup for applicant 3 (Clara Nguyen).
+  const [popup] = await Promise.all([
+    page.waitForEvent('popup'),
+    page.getByTestId('review-3').click(),
+  ]);
+  await popup.waitForLoadState();
+
+  // Close the popup without approving or rejecting.
+  // popup.close() closes the browser tab/window.
+  await popup.close();
+
+  // Verify Clara's status is still "pending" on the main page.
+  await expect(page.getByTestId('status-3')).toHaveText('pending');
+
+  // Verify the last action is still "None" (no decision was made).
+  await expect(page.getByTestId('last-action')).toHaveText('None');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Handle Multiple Popups
+// --------------------------------------------------------------------------
+// Opens two review popups simultaneously and interacts with both.
+test('exercise 7: handle multiple popups', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Open popup for applicant 1 (Alice).
+  const [popup1] = await Promise.all([
+    page.waitForEvent('popup'),
+    page.getByTestId('review-1').click(),
+  ]);
+  await popup1.waitForLoadState();
+
+  // Open popup for applicant 2 (Bob).
+  const [popup2] = await Promise.all([
+    page.waitForEvent('popup'),
+    page.getByTestId('review-2').click(),
+  ]);
+  await popup2.waitForLoadState();
+
+  // Verify both popups show the correct applicant names.
+  await expect(popup1.getByTestId('applicant-name')).toHaveText('Alice Johnson');
+  await expect(popup2.getByTestId('applicant-name')).toHaveText('Bob Smith');
+
+  // Approve Alice in popup1.
+  await popup1.getByTestId('approve-btn').click();
+  await expect(page.getByTestId('status-1')).toHaveText('approved');
+
+  // Reject Bob in popup2.
+  await popup2.getByTestId('reject-btn').click();
+  await expect(page.getByTestId('status-2')).toHaveText('rejected');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Synchronize State Between Windows
+// --------------------------------------------------------------------------
+// Approves one applicant, then opens another popup and verifies the
+// first applicant's decision is reflected on the main page throughout.
+test('exercise 8: synchronize state between windows', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Approve applicant 4 (David Park) via popup.
+  const [popup4] = await Promise.all([
+    page.waitForEvent('popup'),
+    page.getByTestId('review-4').click(),
+  ]);
+  await popup4.waitForLoadState();
+  await popup4.getByTestId('approve-btn').click();
+
+  // Wait for the main page to update.
+  await expect(page.getByTestId('status-4')).toHaveText('approved');
+
+  // Close the first popup.
+  await popup4.close();
+
+  // Now open a popup for applicant 5 (Eva Martinez).
+  const [popup5] = await Promise.all([
+    page.waitForEvent('popup'),
+    page.getByTestId('review-5').click(),
+  ]);
+  await popup5.waitForLoadState();
+
+  // Verify David's status is still "approved" on the main page
+  // (state was not lost when we opened a new popup).
+  await expect(page.getByTestId('status-4')).toHaveText('approved');
+
+  // Reject Eva in her popup.
+  await popup5.getByTestId('reject-btn').click();
+  await expect(page.getByTestId('status-5')).toHaveText('rejected');
+
+  // Verify both decisions are reflected on the main page.
+  await expect(page.getByTestId('status-4')).toHaveText('approved');
+  await expect(page.getByTestId('status-5')).toHaveText('rejected');
+});
+5:T2551,const PLAYGROUND = '/phase-06-complex-scenarios/32-multi-window-workflows/playground/';
+
+describe('Kata 32: Multi-Window Workflows', () => {
+
+  // -----------------------------------------------------------------------
+  // IMPORTANT: Cypress runs inside a single browser tab and cannot natively
+  // interact with popup windows opened by window.open(). The standard
+  // workaround is to stub window.open() and then visit the popup URL
+  // directly in the Cypress-controlled tab. This lets us test the popup
+  // content and simulate postMessage communication back to the main page.
+  // -----------------------------------------------------------------------
+
+  // Helper: Stub window.open and return the URL it would have opened.
+  // This prevents a real popup from opening (which Cypress can't control)
+  // and captures the URL so we can visit it later.
+  function stubWindowOpen() {
+    cy.window().then(win => {
+      // cy.stub(object, method) replaces the method with a spy/stub.
+      // .callsFake(fn) provides a custom implementation that records
+      // the URL and returns a fake window object.
+      cy.stub(win, 'open').callsFake((url: string) => {
+        // Store the URL on the window so tests can retrieve it.
+        (win as any).__lastPopupUrl = url;
+        // Return a minimal fake Window object to avoid errors in the
+        // main page's code that checks if the popup opened.
+        return { closed: false } as Window;
+      }).as('windowOpen');
+    });
+  }
+
+  // Helper: Simulate a postMessage from the popup back to the main page.
+  // Since we can't actually have two windows, we send the message directly.
+  function simulatePopupDecision(id: string, decision: string) {
+    cy.window().then(win => {
+      // Dispatch a 'message' event on the main page's window, mimicking
+      // what the popup's postMessage would do.
+      win.postMessage(
+        { type: 'applicant-decision', id, decision },
+        '*'
+      );
+    });
+  }
+
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Open Review Window
+  // --------------------------------------------------------------------------
+  // Verifies that clicking Review calls window.open() with the correct URL.
+  it('exercise 1: open review window', () => {
+    // Stub window.open before clicking the button.
+    stubWindowOpen();
+
+    // Click the Review button for applicant 1 (Alice).
+    cy.get('[data-testid="review-1"]').click();
+
+    // Verify window.open was called.
+    // .should('have.been.calledOnce') uses Sinon assertion syntax since
+    // cy.stub creates a Sinon stub under the hood.
+    cy.get('@windowOpen').should('have.been.calledOnce');
+
+    // Verify the URL contains the admin-panel.html path and Alice's data.
+    cy.get('@windowOpen').then((stub: any) => {
+      const url: string = stub.getCall(0).args[0];
+      expect(url).to.include('admin-panel.html');
+      expect(url).to.include('name=Alice');
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Interact with Popup (Visit Popup URL)
+  // --------------------------------------------------------------------------
+  // Since Cypress can't switch to a popup, we visit the popup URL directly
+  // and interact with the admin panel page.
+  it('exercise 2: interact with popup page', () => {
+    // Visit the admin panel directly with query params for applicant 1.
+    cy.visit(
+      PLAYGROUND + 'admin-panel.html?id=1&name=Alice+Johnson&email=alice%40example.com&position=Engineer&risk=low&date=2025-01-15'
+    );
+
+    // Verify the Approve button is visible and click it.
+    cy.get('[data-testid="approve-btn"]').should('be.visible').click();
+
+    // Verify the decision banner appears.
+    cy.get('[data-testid="decision-banner"]')
+      .should('be.visible')
+      .and('contain.text', 'approved');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Verify Popup Content
+  // --------------------------------------------------------------------------
+  // Visits the popup URL and verifies all applicant fields are displayed.
+  it('exercise 3: verify popup shows correct applicant details', () => {
+    // Visit the admin panel with Bob's data.
+    cy.visit(
+      PLAYGROUND + 'admin-panel.html?id=2&name=Bob+Smith&email=bob%40example.com&position=Manager&risk=medium&date=2025-02-01'
+    );
+
+    // Verify each detail field matches the URL parameters.
+    cy.get('[data-testid="applicant-name"]').should('have.text', 'Bob Smith');
+    cy.get('[data-testid="applicant-email"]').should('have.text', 'bob@example.com');
+    cy.get('[data-testid="applicant-position"]').should('have.text', 'Manager');
+    cy.get('[data-testid="applicant-risk"]').should('have.text', 'medium');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Approve in Popup, Verify Main Page Updates
+  // --------------------------------------------------------------------------
+  // Simulates the approve flow using postMessage to update the main page.
+  it('exercise 4: approve and verify main page updates via postMessage', () => {
+    // Verify Alice starts as "pending".
+    cy.get('[data-testid="status-1"]').should('have.text', 'pending');
+
+    // Simulate the popup sending an "approved" postMessage for applicant 1.
+    // In a real scenario, the popup's Approve button triggers this message.
+    simulatePopupDecision('1', 'approved');
+
+    // Verify the main page updated Alice's status to "approved".
+    cy.get('[data-testid="status-1"]').should('have.text', 'approved');
+
+    // Verify the status bar shows the last action.
+    cy.get('[data-testid="last-action"]').should('contain.text', 'Alice Johnson');
+    cy.get('[data-testid="last-action"]').should('contain.text', 'approved');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Reject in Popup
+  // --------------------------------------------------------------------------
+  // Similar to exercise 4 but with the reject decision.
+  it('exercise 5: reject and verify main page updates', () => {
+    // Verify Bob starts as "pending".
+    cy.get('[data-testid="status-2"]').should('have.text', 'pending');
+
+    // Simulate the popup sending a "rejected" postMessage for applicant 2.
+    simulatePopupDecision('2', 'rejected');
+
+    // Verify the main page updated Bob's status to "rejected".
+    cy.get('[data-testid="status-2"]').should('have.text', 'rejected');
+
+    // Verify the Review button for Bob is now disabled.
+    cy.get('[data-testid="review-2"]').should('be.disabled');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Close Popup, Verify Main State
+  // --------------------------------------------------------------------------
+  // Tests that if no postMessage is sent (popup closed without action),
+  // the main page state remains unchanged.
+  it('exercise 6: no action preserves main page state', () => {
+    // Stub window.open so the "popup" opens.
+    stubWindowOpen();
+
+    // Click Review — this opens the popup (stubbed).
+    cy.get('[data-testid="review-3"]').click();
+
+    // No postMessage is sent (admin closed popup without acting).
+
+    // Verify Clara's status is still "pending".
+    cy.get('[data-testid="status-3"]').should('have.text', 'pending');
+
+    // Verify last action is still "None".
+    cy.get('[data-testid="last-action"]').should('have.text', 'None');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Handle Multiple Popups
+  // --------------------------------------------------------------------------
+  // Opens two review popups (stubbed) and sends decisions for both.
+  it('exercise 7: handle multiple popup decisions', () => {
+    // Simulate approving Alice and rejecting Bob via postMessage.
+    simulatePopupDecision('1', 'approved');
+    cy.get('[data-testid="status-1"]').should('have.text', 'approved');
+
+    simulatePopupDecision('2', 'rejected');
+    cy.get('[data-testid="status-2"]').should('have.text', 'rejected');
+
+    // Verify both statuses are correct simultaneously.
+    cy.get('[data-testid="status-1"]').should('have.text', 'approved');
+    cy.get('[data-testid="status-2"]').should('have.text', 'rejected');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Synchronize State Between Windows
+  // --------------------------------------------------------------------------
+  // Approves one applicant, then processes another, verifying the first
+  // decision is preserved throughout.
+  it('exercise 8: state persists across multiple decisions', () => {
+    // Approve David (applicant 4).
+    simulatePopupDecision('4', 'approved');
+    cy.get('[data-testid="status-4"]').should('have.text', 'approved');
+
+    // Reject Eva (applicant 5).
+    simulatePopupDecision('5', 'rejected');
+    cy.get('[data-testid="status-5"]').should('have.text', 'rejected');
+
+    // Verify David's approval was not overwritten when Eva was rejected.
+    cy.get('[data-testid="status-4"]').should('have.text', 'approved');
+
+    // Verify all other applicants are still pending.
+    cy.get('[data-testid="status-1"]').should('have.text', 'pending');
+    cy.get('[data-testid="status-2"]').should('have.text', 'pending');
+    cy.get('[data-testid="status-3"]').should('have.text', 'pending');
+  });
+});
+6:T1f83,# Kata 31: Approval & Rejection Flows
+
+## What You Will Learn
+
+- How to test admin review panels with approve/reject/escalate workflows
+- How to interact with confirmation dialogs (modal overlays)
+- How to verify required fields in rejection forms
+- How to test status changes after admin actions
+- How to verify action history logs
+- How to test bulk selection and bulk actions
+- How to test list filtering by status
+- How to verify UI state after multiple sequential actions
+
+## Prerequisites
+
+- Completed Katas 1-30
+- Understanding of dialog/modal interaction testing
+- Familiarity with checkbox-based selection patterns
+
+## Concepts Explained
+
+### Admin Review Panel Pattern
+
+```
+In fintech, admin review panels allow compliance officers or analysts
+to review, approve, reject, or escalate pending applications.
+
+Common features:
+  - List of applications with status badges
+  - Action buttons per application (Approve, Reject, Escalate)
+  - Confirmation dialogs before actions take effect
+  - Rejection requires a reason (mandatory field)
+  - Action history/audit log
+  - Bulk actions (select multiple, approve all)
+  - Filter by status
+
+Testing must verify:
+  - Status changes correctly after each action
+  - Confirmation dialogs appear and work correctly
+  - Rejection is blocked without a reason
+  - History log records every action
+  - Bulk actions affect all selected items
+  - Filters show the correct subset
+```
+
+### Testing Modal Dialogs
+
+```
+Modal dialogs overlay the page and require user interaction before
+returning to the main content.
+
+Playwright:
+  // Click Approve to open the dialog.
+  await page.getByTestId('btn-approve-APP-001').click();
+  // Verify the dialog is visible.
+  await expect(page.getByTestId('approve-dialog')).toBeVisible();
+  // Click the confirm button inside the dialog.
+  await page.getByTestId('approve-dialog-confirm').click();
+  // Verify the dialog closes.
+  await expect(page.getByTestId('approve-dialog')).toBeHidden();
+
+Cypress:
+  cy.get('[data-testid="btn-approve-APP-001"]').click();
+  cy.get('[data-testid="approve-dialog"]').should('be.visible');
+  cy.get('[data-testid="approve-dialog-confirm"]').click();
+  cy.get('[data-testid="approve-dialog"]').should('not.be.visible');
+```
+
+### Testing Bulk Actions
+
+```
+Bulk actions require:
+  1. Select individual checkboxes (or "Select All")
+  2. Verify the selected count updates
+  3. Click the bulk action button
+  4. Verify all selected items changed status
+
+Playwright:
+  await page.getByTestId('select-all').check();
+  await expect(page.getByTestId('selected-count')).toContainText('5 selected');
+  await page.getByTestId('btn-bulk-approve').click();
+
+Cypress:
+  cy.get('[data-testid="select-all"]').check();
+  cy.get('[data-testid="selected-count"]').should('contain.text', '5 selected');
+  cy.get('[data-testid="btn-bulk-approve"]').click();
+```
+
+## Playground
+
+The playground is an admin review panel with:
+
+1. **Filter Bar** — dropdown to filter applications by status (All, Pending, Approved, Rejected, Escalated) with a count of visible/total applications
+2. **Bulk Actions Bar** — "Select All" checkbox, selected count, and "Approve Selected" button (disabled until at least one is selected)
+3. **Application List** — five applications (APP-001 through APP-005) each with:
+   - Checkbox for bulk selection (disabled for non-pending apps)
+   - Name, ID, email, risk score
+   - Status badge (Pending, Approved, Rejected, Escalated)
+   - Action buttons (Approve, Reject, Escalate) — only shown for pending apps
+4. **Approval Dialog** — confirmation dialog with Cancel/Approve buttons
+5. **Rejection Dialog** — dialog with required reason textarea, validation error, Cancel/Reject buttons
+6. **Escalation Dialog** — dialog with optional notes textarea, Cancel/Escalate buttons
+7. **Action History** — chronological log of all actions taken, showing action type, applicant name/ID, and reason if applicable
+
+## Exercises
+
+### Exercise 1: Approve Application and Verify Status Change
+Click "Approve" on APP-001. Verify the confirmation dialog appears. Click "Approve" in the dialog. Verify the status badge changes to "Approved" and the action buttons disappear.
+
+### Exercise 2: Reject With Reason
+Click "Reject" on APP-002. Verify the rejection dialog appears. Type a reason and click "Reject". Verify the status changes to "Rejected".
+
+### Exercise 3: Escalate Application
+Click "Escalate" on APP-003. Add notes in the escalation dialog and confirm. Verify the status changes to "Escalated".
+
+### Exercise 4: Verify Action History
+Approve one application and reject another. Verify the action history shows both entries with the correct details.
+
+### Exercise 5: Bulk Select and Approve
+Select all pending applications using the "Select All" checkbox. Click "Approve Selected". Verify all selected applications change to "Approved".
+
+### Exercise 6: Verify Confirmation Dialog
+Click "Approve" on APP-001. Verify the dialog text mentions the applicant name. Click "Cancel". Verify the dialog closes and the status is still "Pending".
+
+### Exercise 7: Verify Rejection Requires Reason
+Click "Reject" on APP-002. Click "Reject" without entering a reason. Verify the error message appears. Then enter a reason and verify it succeeds.
+
+### Exercise 8: Filter by Status
+Approve one application, reject another. Filter by "Pending" and verify only pending apps show. Filter by "Approved" and verify only approved apps show. Filter by "All" and verify all apps show.
+
+## Solutions
+
+### Playwright Solution
+
+See `playwright/approval-rejection-flows.spec.ts`
+
+### Cypress Solution
+
+See `cypress/approval-rejection-flows.cy.ts`
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Clicking action buttons on non-pending apps | Action buttons are only rendered for pending applications | Verify the app is pending before trying to click Approve/Reject |
+| Forgetting to confirm in the dialog | Clicking "Approve" opens a dialog; the actual approval happens on confirm | Click the dialog's confirm button after opening the dialog |
+| Not clearing the reject reason from a previous test | The textarea may retain values from a prior dialog opening | Each `openRejectDialog()` call resets the textarea, but tests should navigate fresh |
+| Asserting on checkboxes after status change | Approved/rejected apps have disabled checkboxes | After changing status, the checkbox for that app is disabled |
+| Not waiting for re-render after bulk approve | `bulkApprove()` triggers `renderApplications()` which rebuilds the DOM | Wait for the status badges to update before asserting |
+
+## Quick Reference
+
+### Playwright Dialog Testing
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Open dialog | `locator.click()` | `await page.getByTestId('btn-approve-APP-001').click()` |
+| Verify dialog visible | `toBeVisible()` | `await expect(dialog).toBeVisible()` |
+| Type in textarea | `locator.fill()` | `await textarea.fill('Reason text')` |
+| Confirm action | `locator.click()` | `await page.getByTestId('approve-dialog-confirm').click()` |
+| Cancel action | `locator.click()` | `await page.getByTestId('approve-dialog-cancel').click()` |
+| Check dialog hidden | `toBeHidden()` | `await expect(dialog).toBeHidden()` |
+| Check checkbox | `locator.check()` | `await page.getByTestId('select-all').check()` |
+
+### Cypress Dialog Testing
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Open dialog | `cy.get().click()` | `cy.get('[data-testid="btn-approve-APP-001"]').click()` |
+| Verify dialog visible | `.should('be.visible')` | `cy.get(dialog).should('be.visible')` |
+| Type in textarea | `.type()` | `cy.get(textarea).type('Reason text')` |
+| Confirm action | `.click()` | `cy.get('[data-testid="approve-dialog-confirm"]').click()` |
+| Cancel action | `.click()` | `cy.get('[data-testid="approve-dialog-cancel"]').click()` |
+| Check dialog hidden | `.should('not.be.visible')` | `cy.get(dialog).should('not.be.visible')` |
+| Check checkbox | `.check()` | `cy.get('[data-testid="select-all"]').check()` |
+7:T2b23,import { test, expect } from '@playwright/test';
+
+// The base URL for our playground page.
+const PLAYGROUND = '/phase-05-fintech-domain/31-approval-rejection-flows/playground/';
+
+// --------------------------------------------------------------------------
+// Exercise 1: Approve Application and Verify Status Change
+// --------------------------------------------------------------------------
+// Click Approve on APP-001, confirm in dialog, verify status changes.
+test('exercise 1: approve application and verify status change', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify APP-001 is initially pending.
+  await expect(page.getByTestId('status-APP-001')).toHaveText('Pending');
+
+  // Click the Approve button for APP-001.
+  await page.getByTestId('btn-approve-APP-001').click();
+
+  // Verify the approval confirmation dialog appears.
+  // toBeVisible() checks the dialog overlay is displayed.
+  await expect(page.getByTestId('approve-dialog')).toBeVisible();
+
+  // Verify the dialog mentions the applicant name.
+  await expect(page.getByTestId('approve-dialog-text')).toContainText('Alice Johnson');
+
+  // Click the "Approve" button in the dialog to confirm.
+  await page.getByTestId('approve-dialog-confirm').click();
+
+  // Verify the dialog closes.
+  await expect(page.getByTestId('approve-dialog')).toBeHidden();
+
+  // Verify the status badge changed to "Approved".
+  await expect(page.getByTestId('status-APP-001')).toHaveText('Approved');
+
+  // Verify the app card has the approved border styling.
+  await expect(page.getByTestId('app-card-APP-001')).toHaveClass(/status-approved/);
+
+  // Verify the action buttons are gone (only shown for pending apps).
+  await expect(page.getByTestId('btn-approve-APP-001')).toHaveCount(0);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Reject With Reason
+// --------------------------------------------------------------------------
+// Reject APP-002 with a reason, verify status changes.
+test('exercise 2: reject with reason', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Click Reject for APP-002.
+  await page.getByTestId('btn-reject-APP-002').click();
+
+  // Verify the rejection dialog appears.
+  await expect(page.getByTestId('reject-dialog')).toBeVisible();
+
+  // Type a rejection reason.
+  // locator.fill(value) clears the textarea and types the new value.
+  await page.getByTestId('reject-reason').fill('Insufficient documentation provided');
+
+  // Click Reject in the dialog.
+  await page.getByTestId('reject-dialog-confirm').click();
+
+  // Verify the dialog closes.
+  await expect(page.getByTestId('reject-dialog')).toBeHidden();
+
+  // Verify the status changed to "Rejected".
+  await expect(page.getByTestId('status-APP-002')).toHaveText('Rejected');
+  await expect(page.getByTestId('app-card-APP-002')).toHaveClass(/status-rejected/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Escalate Application
+// --------------------------------------------------------------------------
+// Escalate APP-003 with notes, verify status changes.
+test('exercise 3: escalate application', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Click Escalate for APP-003.
+  await page.getByTestId('btn-escalate-APP-003').click();
+
+  // Verify the escalation dialog appears.
+  await expect(page.getByTestId('escalate-dialog')).toBeVisible();
+
+  // Add escalation notes.
+  await page.getByTestId('escalate-notes').fill('High risk score requires senior review');
+
+  // Confirm escalation.
+  await page.getByTestId('escalate-dialog-confirm').click();
+
+  // Verify the dialog closes and status changed.
+  await expect(page.getByTestId('escalate-dialog')).toBeHidden();
+  await expect(page.getByTestId('status-APP-003')).toHaveText('Escalated');
+  await expect(page.getByTestId('app-card-APP-003')).toHaveClass(/status-escalated/);
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Verify Action History
+// --------------------------------------------------------------------------
+// Approve one app, reject another, then verify the history log.
+test('exercise 4: verify action history', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Approve APP-001.
+  await page.getByTestId('btn-approve-APP-001').click();
+  await page.getByTestId('approve-dialog-confirm').click();
+
+  // Reject APP-002.
+  await page.getByTestId('btn-reject-APP-002').click();
+  await page.getByTestId('reject-reason').fill('Failed identity check');
+  await page.getByTestId('reject-dialog-confirm').click();
+
+  // Verify the history list has 2 entries.
+  // locator.count() returns the number of matching elements.
+  const historyItems = page.locator('[data-testid^="history-item-"]');
+  await expect(historyItems).toHaveCount(2);
+
+  // Verify the history contains the approval (newest first).
+  // The second entry (index 1) is the first action (approval).
+  const historyList = page.getByTestId('history-list');
+  await expect(historyList).toContainText('Approved');
+  await expect(historyList).toContainText('Alice Johnson');
+  await expect(historyList).toContainText('Rejected');
+  await expect(historyList).toContainText('Bob Williams');
+  await expect(historyList).toContainText('Failed identity check');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Bulk Select and Approve
+// --------------------------------------------------------------------------
+// Select all pending apps, bulk approve, verify all change status.
+test('exercise 5: bulk select and approve', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Click "Select All" checkbox.
+  // locator.check() checks a checkbox element.
+  await page.getByTestId('select-all').check();
+
+  // Verify the selected count shows all 5 (all are pending initially).
+  await expect(page.getByTestId('selected-count')).toHaveText('5 selected');
+
+  // Verify the bulk approve button is enabled.
+  await expect(page.getByTestId('btn-bulk-approve')).toBeEnabled();
+
+  // Click "Approve Selected".
+  await page.getByTestId('btn-bulk-approve').click();
+
+  // Verify all applications changed to "Approved".
+  for (const id of ['APP-001', 'APP-002', 'APP-003', 'APP-004', 'APP-005']) {
+    await expect(page.getByTestId(`status-${id}`)).toHaveText('Approved');
+  }
+
+  // Verify the history has 5 bulk approval entries.
+  const historyList = page.getByTestId('history-list');
+  await expect(historyList).toContainText('Approved (Bulk)');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Verify Confirmation Dialog
+// --------------------------------------------------------------------------
+// Open the approve dialog, verify content, then cancel and verify no change.
+test('exercise 6: verify confirmation dialog', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Click Approve for APP-001.
+  await page.getByTestId('btn-approve-APP-001').click();
+
+  // Verify dialog is visible and mentions the applicant.
+  await expect(page.getByTestId('approve-dialog')).toBeVisible();
+  await expect(page.getByTestId('approve-dialog-text')).toContainText('Alice Johnson');
+  await expect(page.getByTestId('approve-dialog-text')).toContainText('APP-001');
+
+  // Click Cancel.
+  await page.getByTestId('approve-dialog-cancel').click();
+
+  // Verify dialog closes.
+  await expect(page.getByTestId('approve-dialog')).toBeHidden();
+
+  // Verify the status is still "Pending" (action was canceled).
+  await expect(page.getByTestId('status-APP-001')).toHaveText('Pending');
+
+  // Verify the approve button is still available.
+  await expect(page.getByTestId('btn-approve-APP-001')).toBeVisible();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Verify Rejection Requires Reason
+// --------------------------------------------------------------------------
+// Try to reject without a reason, verify error, then add reason and succeed.
+test('exercise 7: verify rejection requires reason', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Open the rejection dialog for APP-002.
+  await page.getByTestId('btn-reject-APP-002').click();
+  await expect(page.getByTestId('reject-dialog')).toBeVisible();
+
+  // Click Reject without entering a reason.
+  await page.getByTestId('reject-dialog-confirm').click();
+
+  // Verify the error message appears.
+  await expect(page.getByTestId('reject-error')).toBeVisible();
+  await expect(page.getByTestId('reject-error')).toHaveText('Rejection reason is required');
+
+  // Verify the dialog is still open (rejection was blocked).
+  await expect(page.getByTestId('reject-dialog')).toBeVisible();
+
+  // Now enter a reason and try again.
+  await page.getByTestId('reject-reason').fill('Documents are forged');
+  await page.getByTestId('reject-dialog-confirm').click();
+
+  // Verify the dialog closes and status changed.
+  await expect(page.getByTestId('reject-dialog')).toBeHidden();
+  await expect(page.getByTestId('status-APP-002')).toHaveText('Rejected');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Filter by Status
+// --------------------------------------------------------------------------
+// Approve and reject apps, then filter and verify the correct subset shows.
+test('exercise 8: filter by status', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Approve APP-001.
+  await page.getByTestId('btn-approve-APP-001').click();
+  await page.getByTestId('approve-dialog-confirm').click();
+
+  // Reject APP-002.
+  await page.getByTestId('btn-reject-APP-002').click();
+  await page.getByTestId('reject-reason').fill('Duplicate application');
+  await page.getByTestId('reject-dialog-confirm').click();
+
+  // Filter by "Pending" — should show 3 apps.
+  // locator.selectOption(value) selects the option with the matching value.
+  await page.getByTestId('filter-status').selectOption('pending');
+  await expect(page.getByTestId('filter-count')).toHaveText('Showing 3 of 5');
+  // Verify APP-001 (approved) is not in the list.
+  await expect(page.getByTestId('app-card-APP-001')).toHaveCount(0);
+  // Verify APP-003 (pending) is in the list.
+  await expect(page.getByTestId('app-card-APP-003')).toBeVisible();
+
+  // Filter by "Approved" — should show 1 app.
+  await page.getByTestId('filter-status').selectOption('approved');
+  await expect(page.getByTestId('filter-count')).toHaveText('Showing 1 of 5');
+  await expect(page.getByTestId('app-card-APP-001')).toBeVisible();
+
+  // Filter by "Rejected" — should show 1 app.
+  await page.getByTestId('filter-status').selectOption('rejected');
+  await expect(page.getByTestId('filter-count')).toHaveText('Showing 1 of 5');
+  await expect(page.getByTestId('app-card-APP-002')).toBeVisible();
+
+  // Filter by "All" — should show all 5.
+  await page.getByTestId('filter-status').selectOption('all');
+  await expect(page.getByTestId('filter-count')).toHaveText('Showing 5 of 5');
+});
+8:T253d,const PLAYGROUND = '/phase-05-fintech-domain/31-approval-rejection-flows/playground/';
+
+describe('Kata 31: Approval & Rejection Flows', () => {
+
+  beforeEach(() => {
+    cy.visit(PLAYGROUND);
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Approve Application and Verify Status Change
+  // --------------------------------------------------------------------------
+  it('exercise 1: approve application and verify status change', () => {
+    // Verify initial pending status.
+    cy.get('[data-testid="status-APP-001"]').should('have.text', 'Pending');
+
+    // Click Approve for APP-001.
+    cy.get('[data-testid="btn-approve-APP-001"]').click();
+
+    // Verify the approval dialog is visible.
+    // .should('be.visible') checks the element is displayed.
+    cy.get('[data-testid="approve-dialog"]').should('be.visible');
+
+    // Verify dialog text mentions the applicant.
+    cy.get('[data-testid="approve-dialog-text"]').should('contain.text', 'Alice Johnson');
+
+    // Confirm approval.
+    cy.get('[data-testid="approve-dialog-confirm"]').click();
+
+    // Verify dialog closes.
+    cy.get('[data-testid="approve-dialog"]').should('not.be.visible');
+
+    // Verify status changed to "Approved".
+    cy.get('[data-testid="status-APP-001"]').should('have.text', 'Approved');
+    cy.get('[data-testid="app-card-APP-001"]').should('have.class', 'status-approved');
+
+    // Verify action buttons are gone.
+    cy.get('[data-testid="btn-approve-APP-001"]').should('not.exist');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Reject With Reason
+  // --------------------------------------------------------------------------
+  it('exercise 2: reject with reason', () => {
+    // Click Reject for APP-002.
+    cy.get('[data-testid="btn-reject-APP-002"]').click();
+
+    // Verify the dialog appears.
+    cy.get('[data-testid="reject-dialog"]').should('be.visible');
+
+    // Type a rejection reason.
+    // cy.get().type() types text into the textarea.
+    cy.get('[data-testid="reject-reason"]').type('Insufficient documentation provided');
+
+    // Confirm rejection.
+    cy.get('[data-testid="reject-dialog-confirm"]').click();
+
+    // Verify dialog closes and status changed.
+    cy.get('[data-testid="reject-dialog"]').should('not.be.visible');
+    cy.get('[data-testid="status-APP-002"]').should('have.text', 'Rejected');
+    cy.get('[data-testid="app-card-APP-002"]').should('have.class', 'status-rejected');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Escalate Application
+  // --------------------------------------------------------------------------
+  it('exercise 3: escalate application', () => {
+    // Click Escalate for APP-003.
+    cy.get('[data-testid="btn-escalate-APP-003"]').click();
+
+    // Verify dialog appears.
+    cy.get('[data-testid="escalate-dialog"]').should('be.visible');
+
+    // Add notes.
+    cy.get('[data-testid="escalate-notes"]').type('High risk score requires senior review');
+
+    // Confirm.
+    cy.get('[data-testid="escalate-dialog-confirm"]').click();
+
+    // Verify dialog closes and status changed.
+    cy.get('[data-testid="escalate-dialog"]').should('not.be.visible');
+    cy.get('[data-testid="status-APP-003"]').should('have.text', 'Escalated');
+    cy.get('[data-testid="app-card-APP-003"]').should('have.class', 'status-escalated');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Verify Action History
+  // --------------------------------------------------------------------------
+  it('exercise 4: verify action history', () => {
+    // Approve APP-001.
+    cy.get('[data-testid="btn-approve-APP-001"]').click();
+    cy.get('[data-testid="approve-dialog-confirm"]').click();
+
+    // Reject APP-002.
+    cy.get('[data-testid="btn-reject-APP-002"]').click();
+    cy.get('[data-testid="reject-reason"]').type('Failed identity check');
+    cy.get('[data-testid="reject-dialog-confirm"]').click();
+
+    // Verify the history list has 2 entries.
+    // .should('have.length', n) checks the number of matched elements.
+    cy.get('[data-testid^="history-item-"]').should('have.length', 2);
+
+    // Verify history content.
+    cy.get('[data-testid="history-list"]').should('contain.text', 'Approved');
+    cy.get('[data-testid="history-list"]').should('contain.text', 'Alice Johnson');
+    cy.get('[data-testid="history-list"]').should('contain.text', 'Rejected');
+    cy.get('[data-testid="history-list"]').should('contain.text', 'Bob Williams');
+    cy.get('[data-testid="history-list"]').should('contain.text', 'Failed identity check');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Bulk Select and Approve
+  // --------------------------------------------------------------------------
+  it('exercise 5: bulk select and approve', () => {
+    // Click "Select All".
+    // .check() checks a checkbox element.
+    cy.get('[data-testid="select-all"]').check();
+
+    // Verify selected count.
+    cy.get('[data-testid="selected-count"]').should('have.text', '5 selected');
+
+    // Verify bulk approve is enabled.
+    cy.get('[data-testid="btn-bulk-approve"]').should('not.be.disabled');
+
+    // Bulk approve.
+    cy.get('[data-testid="btn-bulk-approve"]').click();
+
+    // Verify all apps are approved.
+    ['APP-001', 'APP-002', 'APP-003', 'APP-004', 'APP-005'].forEach(id => {
+      cy.get(`[data-testid="status-${id}"]`).should('have.text', 'Approved');
+    });
+
+    // Verify history has bulk entries.
+    cy.get('[data-testid="history-list"]').should('contain.text', 'Approved (Bulk)');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Verify Confirmation Dialog
+  // --------------------------------------------------------------------------
+  it('exercise 6: verify confirmation dialog', () => {
+    // Open dialog.
+    cy.get('[data-testid="btn-approve-APP-001"]').click();
+
+    // Verify dialog content.
+    cy.get('[data-testid="approve-dialog"]').should('be.visible');
+    cy.get('[data-testid="approve-dialog-text"]')
+      .should('contain.text', 'Alice Johnson')
+      .and('contain.text', 'APP-001');
+
+    // Cancel.
+    cy.get('[data-testid="approve-dialog-cancel"]').click();
+
+    // Verify dialog closes and status unchanged.
+    cy.get('[data-testid="approve-dialog"]').should('not.be.visible');
+    cy.get('[data-testid="status-APP-001"]').should('have.text', 'Pending');
+    cy.get('[data-testid="btn-approve-APP-001"]').should('be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Verify Rejection Requires Reason
+  // --------------------------------------------------------------------------
+  it('exercise 7: verify rejection requires reason', () => {
+    // Open rejection dialog.
+    cy.get('[data-testid="btn-reject-APP-002"]').click();
+    cy.get('[data-testid="reject-dialog"]').should('be.visible');
+
+    // Try to reject without a reason.
+    cy.get('[data-testid="reject-dialog-confirm"]').click();
+
+    // Verify error message appears.
+    cy.get('[data-testid="reject-error"]')
+      .should('be.visible')
+      .and('have.text', 'Rejection reason is required');
+
+    // Verify dialog is still open.
+    cy.get('[data-testid="reject-dialog"]').should('be.visible');
+
+    // Now enter a reason and submit.
+    cy.get('[data-testid="reject-reason"]').type('Documents are forged');
+    cy.get('[data-testid="reject-dialog-confirm"]').click();
+
+    // Verify success.
+    cy.get('[data-testid="reject-dialog"]').should('not.be.visible');
+    cy.get('[data-testid="status-APP-002"]').should('have.text', 'Rejected');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Filter by Status
+  // --------------------------------------------------------------------------
+  it('exercise 8: filter by status', () => {
+    // Approve APP-001.
+    cy.get('[data-testid="btn-approve-APP-001"]').click();
+    cy.get('[data-testid="approve-dialog-confirm"]').click();
+
+    // Reject APP-002.
+    cy.get('[data-testid="btn-reject-APP-002"]').click();
+    cy.get('[data-testid="reject-reason"]').type('Duplicate application');
+    cy.get('[data-testid="reject-dialog-confirm"]').click();
+
+    // Filter by "Pending" — should show 3 apps.
+    // .select(value) selects the option with the matching value attribute.
+    cy.get('[data-testid="filter-status"]').select('pending');
+    cy.get('[data-testid="filter-count"]').should('have.text', 'Showing 3 of 5');
+    cy.get('[data-testid="app-card-APP-001"]').should('not.exist');
+    cy.get('[data-testid="app-card-APP-003"]').should('be.visible');
+
+    // Filter by "Approved" — should show 1.
+    cy.get('[data-testid="filter-status"]').select('approved');
+    cy.get('[data-testid="filter-count"]').should('have.text', 'Showing 1 of 5');
+    cy.get('[data-testid="app-card-APP-001"]').should('be.visible');
+
+    // Filter by "Rejected" — should show 1.
+    cy.get('[data-testid="filter-status"]').select('rejected');
+    cy.get('[data-testid="filter-count"]').should('have.text', 'Showing 1 of 5');
+    cy.get('[data-testid="app-card-APP-002"]').should('be.visible');
+
+    // Filter by "All" — should show 5.
+    cy.get('[data-testid="filter-status"]').select('all');
+    cy.get('[data-testid="filter-count"]').should('have.text', 'Showing 5 of 5');
+  });
+});
+9:T17cd,# Kata 33: Session Management
+
+## What You Will Learn
+
+- How to test login flows that create timed sessions
+- How to handle session timeout warnings and expiration overlays
+- How to test token refresh flows (simulated JWT)
+- How to use clock manipulation (fake timers) to fast-forward session timeouts
+- How to verify session state persists across page reloads
+- How to test re-login after session expiry
+
+## Prerequisites
+
+- Completed Katas 01-32
+- Understanding of authentication flows and session concepts
+
+## Concepts Explained
+
+### Session Lifecycle
+
+```
+Login  -->  Active  -->  Warning (10s)  -->  Expired (15s)
+                |                               |
+                +--- Refresh (resets to 15s)     +--- Re-login
+                |                               
+                +--- Interact (resets timer)    
+                |
+                +--- Logout (ends session)
+```
+
+### Mock JWT Tokens
+
+```
+A JSON Web Token (JWT) has three parts separated by dots:
+  header.payload.signature
+
+Our playground generates mock JWTs with:
+  header:    { alg: "HS256", typ: "JWT" }
+  payload:   { sub: "admin", iat: ..., exp: ..., jti: ... }
+  signature: random base64 string
+
+Each token refresh generates a new JWT with an updated expiry.
+```
+
+### Playwright: Fake Timers
+
+```typescript
+// PLAYWRIGHT
+// Playwright can control the browser's clock to fast-forward timers.
+// This avoids waiting real seconds for session timeouts.
+
+// Install fake timers before navigation:
+await page.clock.install();
+
+// Advance time by 10 seconds (triggers any setTimeout/setInterval
+// callbacks that would fire within that period):
+await page.clock.fastForward(10000);
+
+// Or set a specific time:
+await page.clock.setFixedTime(new Date('2025-01-01T00:00:15Z'));
+```
+
+### Cypress: cy.clock() and cy.tick()
+
+```typescript
+// CYPRESS
+// cy.clock() overrides the browser's Date, setTimeout, setInterval, etc.
+// cy.tick(ms) advances the fake clock by the given milliseconds.
+
+cy.clock();                    // install fake timers
+cy.tick(10000);                // advance 10 seconds
+cy.clock().invoke('restore');  // restore real timers
+```
+
+## Playground Overview
+
+A single-page app with login, session management, and timeout:
+
+- **Login form**: Username "admin", password "password123"
+- **Dashboard**: Shows session timer, status, token, refresh count
+- **Warning banner**: Appears at 10s remaining
+- **Session expiry**: Overlay appears at 15s with "Sign In Again" button
+- **Refresh button**: Resets timer and generates new token
+- **Interact button**: Simulates user activity, resets timer
+- **Session storage**: Session survives page reload if not expired
+
+## Exercises
+
+1. **Login and verify session active** — Sign in and verify the dashboard appears with "Active" status
+2. **Wait for session warning** — Use fake timers to advance to the warning threshold
+3. **Refresh session before expiry** — Refresh the session and verify timer resets
+4. **Let session expire, verify overlay** — Wait for full timeout and verify expired overlay
+5. **Re-login after expiry** — Click "Sign In Again" on the expired overlay and log in again
+6. **Verify token refresh** — Refresh the session and verify a new token is generated
+7. **Rapid interactions keep session alive** — Click Interact repeatedly before timeout
+8. **Verify session state across page reload** — Reload the page and verify session is restored
+
+## Common Mistakes
+
+| Mistake | Why it's wrong | Fix |
+|---------|---------------|-----|
+| Installing fake timers after page navigation | Fake timers must be installed before the page loads, otherwise real timers are already running | Call `page.clock.install()` (Playwright) or `cy.clock()` (Cypress) before visiting the page |
+| Advancing time without waiting for UI updates | `fastForward()` / `cy.tick()` triggers callbacks but the DOM update is asynchronous | After advancing time, wait for the expected UI element (warning banner, expiry overlay) to appear |
+| Forgetting to log in before testing session features | The dashboard is only visible after login; interacting with session controls before login fails | Always complete the login flow first, then test session behavior |
+| Comparing exact token strings without accounting for refresh | Each token refresh generates a new JWT; storing the old token and comparing with `toBe()` will pass only if you compare correctly | Store the token before refresh, then assert the new token is different (`not.toBe(oldToken)`) |
+| Not restoring real timers before page reload tests | Fake timers can interfere with page reload behavior and navigation timing | Restore real timers (`cy.clock().invoke('restore')`) before testing reload scenarios |
+
+## Quick Reference
+
+### Playwright Fake Timers
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Install fake timers | `page.clock.install()` | `await page.clock.install()` |
+| Fast-forward time | `page.clock.fastForward(ms)` | `await page.clock.fastForward(10000)` |
+| Set fixed time | `page.clock.setFixedTime()` | `await page.clock.setFixedTime(new Date('2025-01-01T00:00:15Z'))` |
+| Fill login form | `locator.fill()` | `await page.getByTestId('username').fill('admin')` |
+| Click button | `locator.click()` | `await page.getByTestId('login-btn').click()` |
+| Check text content | `expect().toHaveText()` | `await expect(status).toHaveText('Active')` |
+| Verify visibility | `expect().toBeVisible()` | `await expect(overlay).toBeVisible()` |
+
+### Cypress Fake Timers
+
+| Action | Method | Example |
+|--------|--------|---------|
+| Install fake timers | `cy.clock()` | `cy.clock()` |
+| Advance time | `cy.tick(ms)` | `cy.tick(10000)` |
+| Restore real timers | `.invoke('restore')` | `cy.clock().invoke('restore')` |
+| Fill login form | `.type()` | `cy.get('[data-testid="username"]').type('admin')` |
+| Click button | `.click()` | `cy.get('[data-testid="login-btn"]').click()` |
+| Check text content | `.should('have.text')` | `cy.get(status).should('have.text', 'Active')` |
+| Verify visibility | `.should('be.visible')` | `cy.get(overlay).should('be.visible')` |
+a:T27a5,import { test, expect } from '@playwright/test';
+
+// Base URL for the playground page.
+const PLAYGROUND = '/phase-06-complex-scenarios/33-session-management/playground/';
+
+// Helper: Log in with the default credentials.
+// Fills the username and password fields, clicks Sign In, and waits for
+// the dashboard to become visible.
+async function login(page: import('@playwright/test').Page) {
+  await page.getByTestId('username-input').fill('admin');
+  await page.getByTestId('password-input').fill('password123');
+  await page.getByTestId('login-btn').click();
+  await expect(page.getByTestId('dashboard')).toBeVisible();
+}
+
+// --------------------------------------------------------------------------
+// Exercise 1: Login and Verify Session Active
+// --------------------------------------------------------------------------
+// Signs in with valid credentials and verifies the dashboard shows an
+// active session with the correct user.
+test('exercise 1: login and verify session active', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+
+  // Verify the login panel is visible before signing in.
+  await expect(page.getByTestId('login-panel')).toBeVisible();
+
+  // Fill in credentials and click Sign In.
+  await page.getByTestId('username-input').fill('admin');
+  await page.getByTestId('password-input').fill('password123');
+  await page.getByTestId('login-btn').click();
+
+  // Verify the dashboard is now visible and shows correct session info.
+  await expect(page.getByTestId('dashboard')).toBeVisible();
+  await expect(page.getByTestId('session-status')).toHaveText('Active');
+  await expect(page.getByTestId('session-user')).toHaveText('admin');
+
+  // Verify a token was generated (should contain dots like a JWT).
+  const token = await page.getByTestId('token-display').textContent();
+  expect(token).toContain('.');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 2: Wait for Session Warning
+// --------------------------------------------------------------------------
+// Uses Playwright's clock API to fast-forward time to the warning threshold
+// (10 seconds) without waiting real seconds.
+test('exercise 2: wait for session warning', async ({ page }) => {
+  // Install fake timers BEFORE navigating so all timers are captured.
+  // page.clock.install() replaces setTimeout, setInterval, and Date
+  // with controllable versions.
+  await page.clock.install();
+  await page.goto(PLAYGROUND);
+  await login(page);
+
+  // Verify the warning banner is not visible initially.
+  await expect(page.getByTestId('session-warning')).not.toBeVisible();
+
+  // Advance the clock by 10 seconds. This triggers all setInterval
+  // callbacks that would have fired in that period, including the
+  // session timer's tick function.
+  await page.clock.fastForward(10000);
+
+  // Verify the warning banner is now visible.
+  await expect(page.getByTestId('session-warning')).toBeVisible();
+
+  // Verify the session status changed to "Warning".
+  await expect(page.getByTestId('session-status')).toHaveText('Warning');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 3: Refresh Session Before Expiry
+// --------------------------------------------------------------------------
+// Advances to the warning state, then clicks Refresh to reset the timer.
+test('exercise 3: refresh session before expiry', async ({ page }) => {
+  await page.clock.install();
+  await page.goto(PLAYGROUND);
+  await login(page);
+
+  // Advance to warning state (10 seconds).
+  await page.clock.fastForward(10000);
+  await expect(page.getByTestId('session-warning')).toBeVisible();
+
+  // Click the Refresh Session button to reset the timer.
+  await page.getByTestId('refresh-session-btn').click();
+
+  // Verify the warning banner disappeared (timer was reset).
+  await expect(page.getByTestId('session-warning')).not.toBeVisible();
+
+  // Verify the session is back to "Active".
+  await expect(page.getByTestId('session-status')).toHaveText('Active');
+
+  // Verify the timer reset to 15s.
+  await expect(page.getByTestId('session-timer')).toHaveText('15s');
+
+  // Verify the refresh count incremented.
+  await expect(page.getByTestId('refresh-count')).toHaveText('1');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 4: Let Session Expire, Verify Overlay
+// --------------------------------------------------------------------------
+// Advances the clock past the full timeout (15 seconds) and verifies the
+// expired overlay appears.
+test('exercise 4: let session expire and verify overlay', async ({ page }) => {
+  await page.clock.install();
+  await page.goto(PLAYGROUND);
+  await login(page);
+
+  // Advance the clock by 15 seconds (full session timeout).
+  await page.clock.fastForward(15000);
+
+  // Verify the expired overlay is visible.
+  await expect(page.getByTestId('expired-overlay')).toBeVisible();
+
+  // Verify the overlay shows the expired message.
+  await expect(page.getByTestId('expired-message')).toContainText('timed out');
+
+  // Verify the session status shows "Expired".
+  await expect(page.getByTestId('session-status')).toHaveText('Expired');
+
+  // Verify the timer shows 0s.
+  await expect(page.getByTestId('session-timer')).toHaveText('0s');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 5: Re-login After Expiry
+// --------------------------------------------------------------------------
+// Lets the session expire, clicks "Sign In Again", and logs in again.
+test('exercise 5: re-login after session expiry', async ({ page }) => {
+  await page.clock.install();
+  await page.goto(PLAYGROUND);
+  await login(page);
+
+  // Let the session expire.
+  await page.clock.fastForward(15000);
+  await expect(page.getByTestId('expired-overlay')).toBeVisible();
+
+  // Click the "Sign In Again" button on the overlay.
+  await page.getByTestId('relogin-btn').click();
+
+  // Verify the overlay is hidden and the login panel reappears.
+  await expect(page.getByTestId('expired-overlay')).not.toBeVisible();
+  await expect(page.getByTestId('login-panel')).toBeVisible();
+
+  // Log in again with the same credentials.
+  // Need to reinstall clock for the new session timers.
+  await page.getByTestId('username-input').fill('admin');
+  await page.getByTestId('password-input').fill('password123');
+  await page.getByTestId('login-btn').click();
+
+  // Verify the new session is active.
+  await expect(page.getByTestId('dashboard')).toBeVisible();
+  await expect(page.getByTestId('session-status')).toHaveText('Active');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 6: Verify Token Refresh
+// --------------------------------------------------------------------------
+// Refreshes the session and verifies a new token is generated (different
+// from the original).
+test('exercise 6: verify token refresh generates new token', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+  await login(page);
+
+  // Capture the initial token.
+  const initialToken = await page.getByTestId('token-display').textContent();
+
+  // Click Refresh Session to generate a new token.
+  await page.getByTestId('refresh-session-btn').click();
+
+  // Verify a new token was generated (different from the initial).
+  // toHaveText with a negation: we get the new text and compare.
+  const newToken = await page.getByTestId('token-display').textContent();
+  expect(newToken).not.toBe(initialToken);
+
+  // Verify the refresh count incremented to 1.
+  await expect(page.getByTestId('refresh-count')).toHaveText('1');
+});
+
+// --------------------------------------------------------------------------
+// Exercise 7: Rapid Interactions Keep Session Alive
+// --------------------------------------------------------------------------
+// Clicks the Interact button repeatedly to keep the session timer from
+// reaching the warning or expiry threshold.
+test('exercise 7: rapid interactions keep session alive', async ({ page }) => {
+  await page.clock.install();
+  await page.goto(PLAYGROUND);
+  await login(page);
+
+  // Advance 8 seconds (close to warning at 10s).
+  await page.clock.fastForward(8000);
+
+  // Click Interact to reset the timer.
+  await page.getByTestId('interact-btn').click();
+
+  // Verify the session is still Active (not Warning).
+  await expect(page.getByTestId('session-status')).toHaveText('Active');
+  await expect(page.getByTestId('session-timer')).toHaveText('15s');
+
+  // Advance another 8 seconds (would have expired without interaction).
+  await page.clock.fastForward(8000);
+
+  // Click Interact again.
+  await page.getByTestId('interact-btn').click();
+
+  // Verify the session is still active.
+  await expect(page.getByTestId('session-status')).toHaveText('Active');
+
+  // Verify the expired overlay never appeared.
+  await expect(page.getByTestId('expired-overlay')).not.toBeVisible();
+});
+
+// --------------------------------------------------------------------------
+// Exercise 8: Verify Session State Across Page Reload
+// --------------------------------------------------------------------------
+// Logs in, reloads the page, and verifies the session is restored from
+// sessionStorage.
+test('exercise 8: session state persists across page reload', async ({ page }) => {
+  await page.goto(PLAYGROUND);
+  await login(page);
+
+  // Verify the session is active before reload.
+  await expect(page.getByTestId('session-status')).toHaveText('Active');
+
+  // Reload the page. The session should be restored from sessionStorage.
+  // page.reload() navigates the page to its current URL.
+  await page.reload();
+
+  // Verify the dashboard is still visible (not the login panel).
+  await expect(page.getByTestId('dashboard')).toBeVisible();
+
+  // Verify the session user is still "admin".
+  await expect(page.getByTestId('session-user')).toHaveText('admin');
+
+  // Verify the session status is Active (restored from storage).
+  await expect(page.getByTestId('session-status')).toHaveText('Active');
+
+  // Verify the token was restored.
+  const token = await page.getByTestId('token-display').textContent();
+  expect(token).toContain('.');
+});
+b:T227b,const PLAYGROUND = '/phase-06-complex-scenarios/33-session-management/playground/';
+
+describe('Kata 33: Session Management', () => {
+
+  // Helper: Log in with default credentials.
+  // Fills the form and clicks Sign In. Uses Cypress command chaining.
+  function login() {
+    // cy.get(selector).type(text) types into an input field.
+    cy.get('[data-testid="username-input"]').type('admin');
+    cy.get('[data-testid="password-input"]').type('password123');
+    cy.get('[data-testid="login-btn"]').click();
+    // Wait for the dashboard to appear.
+    cy.get('[data-testid="dashboard"]').should('be.visible');
+  }
+
+  // --------------------------------------------------------------------------
+  // Exercise 1: Login and Verify Session Active
+  // --------------------------------------------------------------------------
+  // Signs in and verifies the dashboard shows an active session.
+  it('exercise 1: login and verify session active', () => {
+    cy.visit(PLAYGROUND);
+
+    // Verify login panel is visible.
+    cy.get('[data-testid="login-panel"]').should('be.visible');
+
+    // Log in.
+    login();
+
+    // Verify session info is displayed correctly.
+    cy.get('[data-testid="session-status"]').should('have.text', 'Active');
+    cy.get('[data-testid="session-user"]').should('have.text', 'admin');
+
+    // Verify a token was generated (contains dots like a JWT).
+    cy.get('[data-testid="token-display"]')
+      .invoke('text')
+      .should('include', '.');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 2: Wait for Session Warning
+  // --------------------------------------------------------------------------
+  // Uses cy.clock() and cy.tick() to fast-forward time to the warning.
+  it('exercise 2: wait for session warning', () => {
+    // cy.clock() installs fake timers (overrides setTimeout, setInterval,
+    // and Date). Must be called before cy.visit() to capture all timers.
+    cy.clock();
+    cy.visit(PLAYGROUND);
+    login();
+
+    // Verify the warning banner is not visible initially.
+    cy.get('[data-testid="session-warning"]').should('not.be.visible');
+
+    // cy.tick(ms) advances the fake clock by the given milliseconds.
+    // This triggers any setInterval/setTimeout callbacks that would
+    // fire within that period.
+    cy.tick(10000);
+
+    // Verify the warning banner appeared.
+    cy.get('[data-testid="session-warning"]').should('be.visible');
+
+    // Verify session status changed to "Warning".
+    cy.get('[data-testid="session-status"]').should('have.text', 'Warning');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 3: Refresh Session Before Expiry
+  // --------------------------------------------------------------------------
+  // Advances to warning, refreshes, and verifies the timer reset.
+  it('exercise 3: refresh session before expiry', () => {
+    cy.clock();
+    cy.visit(PLAYGROUND);
+    login();
+
+    // Advance to warning state.
+    cy.tick(10000);
+    cy.get('[data-testid="session-warning"]').should('be.visible');
+
+    // Click Refresh Session.
+    cy.get('[data-testid="refresh-session-btn"]').click();
+
+    // Verify warning disappeared and timer reset.
+    cy.get('[data-testid="session-warning"]').should('not.be.visible');
+    cy.get('[data-testid="session-status"]').should('have.text', 'Active');
+    cy.get('[data-testid="session-timer"]').should('have.text', '15s');
+    cy.get('[data-testid="refresh-count"]').should('have.text', '1');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 4: Let Session Expire, Verify Overlay
+  // --------------------------------------------------------------------------
+  // Advances the clock past the full 15-second timeout.
+  it('exercise 4: let session expire and verify overlay', () => {
+    cy.clock();
+    cy.visit(PLAYGROUND);
+    login();
+
+    // Advance 15 seconds (full timeout).
+    cy.tick(15000);
+
+    // Verify the expired overlay is visible.
+    cy.get('[data-testid="expired-overlay"]').should('be.visible');
+
+    // Verify the expired message content.
+    cy.get('[data-testid="expired-message"]').should('contain.text', 'timed out');
+
+    // Verify session status is "Expired" and timer shows 0s.
+    cy.get('[data-testid="session-status"]').should('have.text', 'Expired');
+    cy.get('[data-testid="session-timer"]').should('have.text', '0s');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 5: Re-login After Expiry
+  // --------------------------------------------------------------------------
+  // Lets session expire, clicks re-login, and signs in again.
+  it('exercise 5: re-login after session expiry', () => {
+    cy.clock();
+    cy.visit(PLAYGROUND);
+    login();
+
+    // Let session expire.
+    cy.tick(15000);
+    cy.get('[data-testid="expired-overlay"]').should('be.visible');
+
+    // Click "Sign In Again".
+    cy.get('[data-testid="relogin-btn"]').click();
+
+    // Verify overlay hidden and login panel visible.
+    cy.get('[data-testid="expired-overlay"]').should('not.be.visible');
+    cy.get('[data-testid="login-panel"]').should('be.visible');
+
+    // Restore real timers before logging in again so the new session
+    // timers work. cy.clock().invoke('restore') removes the fake timers.
+    cy.clock().invoke('restore');
+
+    // Log in again.
+    login();
+
+    // Verify new session is active.
+    cy.get('[data-testid="session-status"]').should('have.text', 'Active');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 6: Verify Token Refresh
+  // --------------------------------------------------------------------------
+  // Refreshes the session and verifies a new token was generated.
+  it('exercise 6: verify token refresh generates new token', () => {
+    cy.visit(PLAYGROUND);
+    login();
+
+    // Capture the initial token using .invoke('text') and .then().
+    cy.get('[data-testid="token-display"]')
+      .invoke('text')
+      .then(initialToken => {
+        // Click Refresh Session.
+        cy.get('[data-testid="refresh-session-btn"]').click();
+
+        // Verify the new token is different from the initial one.
+        // .invoke('text') gets the current text, .should() asserts.
+        cy.get('[data-testid="token-display"]')
+          .invoke('text')
+          .should('not.eq', initialToken);
+      });
+
+    // Verify refresh count is 1.
+    cy.get('[data-testid="refresh-count"]').should('have.text', '1');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 7: Rapid Interactions Keep Session Alive
+  // --------------------------------------------------------------------------
+  // Clicks Interact before timeout to keep the session alive.
+  it('exercise 7: rapid interactions keep session alive', () => {
+    cy.clock();
+    cy.visit(PLAYGROUND);
+    login();
+
+    // Advance 8 seconds (close to warning at 10s).
+    cy.tick(8000);
+
+    // Click Interact to reset the timer.
+    cy.get('[data-testid="interact-btn"]').click();
+
+    // Verify session is still Active.
+    cy.get('[data-testid="session-status"]').should('have.text', 'Active');
+    cy.get('[data-testid="session-timer"]').should('have.text', '15s');
+
+    // Advance another 8 seconds (total 16s from login, would have expired).
+    cy.tick(8000);
+
+    // Click Interact again.
+    cy.get('[data-testid="interact-btn"]').click();
+
+    // Verify session is still active (interactions kept it alive).
+    cy.get('[data-testid="session-status"]').should('have.text', 'Active');
+
+    // Verify the expired overlay never appeared.
+    cy.get('[data-testid="expired-overlay"]').should('not.be.visible');
+  });
+
+  // --------------------------------------------------------------------------
+  // Exercise 8: Verify Session State Across Page Reload
+  // --------------------------------------------------------------------------
+  // Logs in, reloads the page, and verifies the session is restored.
+  it('exercise 8: session state persists across page reload', () => {
+    cy.visit(PLAYGROUND);
+    login();
+
+    // Verify session is active.
+    cy.get('[data-testid="session-status"]').should('have.text', 'Active');
+
+    // Reload the page. cy.reload() is equivalent to pressing F5.
+    cy.reload();
+
+    // Verify the dashboard is still visible (session restored from
+    // sessionStorage by the page's JavaScript).
+    cy.get('[data-testid="dashboard"]').should('be.visible');
+    cy.get('[data-testid="session-user"]').should('have.text', 'admin');
+    cy.get('[data-testid="session-status"]').should('have.text', 'Active');
+
+    // Verify the token was restored.
+    cy.get('[data-testid="token-display"]')
+      .invoke('text')
+      .should('include', '.');
+  });
+});
+c:Tb8b1,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { test, expect } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> '@playwright/test'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// Base URL for the main playground page.</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-06-complex-scenarios/32-multi-window-workflows/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 1: Open Review Window</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Demonstrates how to wait for a popup event when window.open() is called.</span></span>
+<span class="line"><span style="color:#6A737D">// Playwright fires a 'popup' event on the page that triggered the open.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: open review window'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">  // Navigate to the main applicant list page.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the status bar shows no action taken yet.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'last-action'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'None'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Promise.all ensures we start waiting for the popup BEFORE the click</span></span>
+<span class="line"><span style="color:#6A737D">  // triggers window.open(). If we clicked first, the popup event might</span></span>
+<span class="line"><span style="color:#6A737D">  // fire before we start listening, causing a timeout.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#E1E4E8"> [</span><span style="color:#79B8FF">popup</span><span style="color:#E1E4E8">] </span><span style="color:#F97583">=</span><span style="color:#F97583"> await</span><span style="color:#79B8FF"> Promise</span><span style="color:#E1E4E8">.</span><span style="color:#B392F0">all</span><span style="color:#E1E4E8">([</span></span>
+<span class="line"><span style="color:#6A737D">    // waitForEvent('popup') resolves with the new Page object when</span></span>
+<span class="line"><span style="color:#6A737D">    // a new window/tab is opened by this page.</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">waitForEvent</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'popup'</span><span style="color:#E1E4E8">),</span></span>
+<span class="line"><span style="color:#6A737D">    // Click the Review button for applicant 1 (Alice Johnson).</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'review-1'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">(),</span></span>
+<span class="line"><span style="color:#E1E4E8">  ]);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Wait for the popup to finish loading its HTML and scripts.</span></span>
+<span class="line"><span style="color:#6A737D">  // waitForLoadState() defaults to 'load', meaning the page's load event.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> popup.</span><span style="color:#B392F0">waitForLoadState</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the popup opened by checking its title.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(popup).</span><span style="color:#B392F0">toHaveTitle</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#DBEDFF">Admin Review Panel</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 2: Interact with Popup</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Shows how to click buttons inside a popup window. The popup is a full</span></span>
+<span class="line"><span style="color:#6A737D">// Page object, so all Playwright locator methods work on it.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: interact with popup window'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#E1E4E8"> [</span><span style="color:#79B8FF">popup</span><span style="color:#E1E4E8">] </span><span style="color:#F97583">=</span><span style="color:#F97583"> await</span><span style="color:#79B8FF"> Promise</span><span style="color:#E1E4E8">.</span><span style="color:#B392F0">all</span><span style="color:#E1E4E8">([</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">waitForEvent</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'popup'</span><span style="color:#E1E4E8">),</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'review-1'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">(),</span></span>
+<span class="line"><span style="color:#E1E4E8">  ]);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> popup.</span><span style="color:#B392F0">waitForLoadState</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the Approve button is visible and enabled in the popup.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(popup.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'approve-btn'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(popup.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'approve-btn'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeEnabled</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click the Approve button inside the popup.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> popup.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'approve-btn'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the decision banner appears in the popup after clicking.</span></span>
+<span class="line"><span style="color:#6A737D">  // The popup shows a success/error banner confirming the action.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(popup.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'decision-banner'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeVisible</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(popup.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'decision-banner'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'approved'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 3: Verify Popup Content</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Checks that the popup displays the correct applicant details by reading</span></span>
+<span class="line"><span style="color:#6A737D">// the data-testid elements in the popup page.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: verify popup shows correct applicant details'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Open the review popup for applicant 1 (Alice Johnson).</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#E1E4E8"> [</span><span style="color:#79B8FF">popup</span><span style="color:#E1E4E8">] </span><span style="color:#F97583">=</span><span style="color:#F97583"> await</span><span style="color:#79B8FF"> Promise</span><span style="color:#E1E4E8">.</span><span style="color:#B392F0">all</span><span style="color:#E1E4E8">([</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">waitForEvent</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'popup'</span><span style="color:#E1E4E8">),</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'review-1'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">(),</span></span>
+<span class="line"><span style="color:#E1E4E8">  ]);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> popup.</span><span style="color:#B392F0">waitForLoadState</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify each field in the popup matches the data from the main page.</span></span>
+<span class="line"><span style="color:#6A737D">  // The popup reads applicant data from URL search parameters.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(popup.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'applicant-name'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Alice Johnson'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(popup.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'applicant-email'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'alice@example.com'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(popup.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'applicant-position'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Engineer'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(popup.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'applicant-risk'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'low'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 4: Approve in Popup, Verify Main Page Updates</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// The core cross-window test: act in the popup, verify the main page</span></span>
+<span class="line"><span style="color:#6A737D">// received the postMessage and updated the applicant status.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: approve in popup and verify main page updates'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify Alice starts with "pending" status on the main page.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'status-1'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'pending'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Open the review popup for Alice.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#E1E4E8"> [</span><span style="color:#79B8FF">popup</span><span style="color:#E1E4E8">] </span><span style="color:#F97583">=</span><span style="color:#F97583"> await</span><span style="color:#79B8FF"> Promise</span><span style="color:#E1E4E8">.</span><span style="color:#B392F0">all</span><span style="color:#E1E4E8">([</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">waitForEvent</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'popup'</span><span style="color:#E1E4E8">),</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'review-1'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">(),</span></span>
+<span class="line"><span style="color:#E1E4E8">  ]);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> popup.</span><span style="color:#B392F0">waitForLoadState</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click Approve in the popup. This calls postMessage on window.opener.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> popup.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'approve-btn'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Switch focus back to the main page and verify the status updated.</span></span>
+<span class="line"><span style="color:#6A737D">  // Playwright does not require an explicit "switch" — we simply use the</span></span>
+<span class="line"><span style="color:#6A737D">  // main page's locators. The postMessage handler on the main page updates</span></span>
+<span class="line"><span style="color:#6A737D">  // the DOM asynchronously, so we rely on Playwright's auto-waiting.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'status-1'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'approved'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the status bar also updated.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'last-action'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Alice Johnson'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'last-action'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'approved'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 5: Reject in Popup</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Same cross-window flow as exercise 4, but with the Reject action.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: reject in popup and verify main page updates'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Open the review popup for applicant 2 (Bob Smith).</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#E1E4E8"> [</span><span style="color:#79B8FF">popup</span><span style="color:#E1E4E8">] </span><span style="color:#F97583">=</span><span style="color:#F97583"> await</span><span style="color:#79B8FF"> Promise</span><span style="color:#E1E4E8">.</span><span style="color:#B392F0">all</span><span style="color:#E1E4E8">([</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">waitForEvent</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'popup'</span><span style="color:#E1E4E8">),</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'review-2'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">(),</span></span>
+<span class="line"><span style="color:#E1E4E8">  ]);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> popup.</span><span style="color:#B392F0">waitForLoadState</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Click Reject in the popup.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> popup.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'reject-btn'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the popup shows the rejection banner.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(popup.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'decision-banner'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toContainText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'rejected'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the main page updated Bob's status to "rejected".</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'status-2'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'rejected'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the Review button for Bob is now disabled on the main page</span></span>
+<span class="line"><span style="color:#6A737D">  // (you cannot review an already-decided applicant).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'review-2'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toBeDisabled</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 6: Close Popup, Verify Main State</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Tests that closing a popup without taking action preserves the main</span></span>
+<span class="line"><span style="color:#6A737D">// page state (applicant stays pending).</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: close popup without action preserves main state'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Open a review popup for applicant 3 (Clara Nguyen).</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#E1E4E8"> [</span><span style="color:#79B8FF">popup</span><span style="color:#E1E4E8">] </span><span style="color:#F97583">=</span><span style="color:#F97583"> await</span><span style="color:#79B8FF"> Promise</span><span style="color:#E1E4E8">.</span><span style="color:#B392F0">all</span><span style="color:#E1E4E8">([</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">waitForEvent</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'popup'</span><span style="color:#E1E4E8">),</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'review-3'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">(),</span></span>
+<span class="line"><span style="color:#E1E4E8">  ]);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> popup.</span><span style="color:#B392F0">waitForLoadState</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Close the popup without approving or rejecting.</span></span>
+<span class="line"><span style="color:#6A737D">  // popup.close() closes the browser tab/window.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> popup.</span><span style="color:#B392F0">close</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify Clara's status is still "pending" on the main page.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'status-3'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'pending'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify the last action is still "None" (no decision was made).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'last-action'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'None'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 7: Handle Multiple Popups</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Opens two review popups simultaneously and interacts with both.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 7: handle multiple popups'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Open popup for applicant 1 (Alice).</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#E1E4E8"> [</span><span style="color:#79B8FF">popup1</span><span style="color:#E1E4E8">] </span><span style="color:#F97583">=</span><span style="color:#F97583"> await</span><span style="color:#79B8FF"> Promise</span><span style="color:#E1E4E8">.</span><span style="color:#B392F0">all</span><span style="color:#E1E4E8">([</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">waitForEvent</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'popup'</span><span style="color:#E1E4E8">),</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'review-1'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">(),</span></span>
+<span class="line"><span style="color:#E1E4E8">  ]);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> popup1.</span><span style="color:#B392F0">waitForLoadState</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Open popup for applicant 2 (Bob).</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#E1E4E8"> [</span><span style="color:#79B8FF">popup2</span><span style="color:#E1E4E8">] </span><span style="color:#F97583">=</span><span style="color:#F97583"> await</span><span style="color:#79B8FF"> Promise</span><span style="color:#E1E4E8">.</span><span style="color:#B392F0">all</span><span style="color:#E1E4E8">([</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">waitForEvent</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'popup'</span><span style="color:#E1E4E8">),</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'review-2'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">(),</span></span>
+<span class="line"><span style="color:#E1E4E8">  ]);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> popup2.</span><span style="color:#B392F0">waitForLoadState</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify both popups show the correct applicant names.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(popup1.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'applicant-name'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Alice Johnson'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(popup2.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'applicant-name'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Bob Smith'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Approve Alice in popup1.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> popup1.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'approve-btn'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'status-1'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'approved'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Reject Bob in popup2.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> popup2.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'reject-btn'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'status-2'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'rejected'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Exercise 8: Synchronize State Between Windows</span></span>
+<span class="line"><span style="color:#6A737D">// --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">// Approves one applicant, then opens another popup and verifies the</span></span>
+<span class="line"><span style="color:#6A737D">// first applicant's decision is reflected on the main page throughout.</span></span>
+<span class="line"><span style="color:#B392F0">test</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 8: synchronize state between windows'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">async</span><span style="color:#E1E4E8"> ({ </span><span style="color:#FFAB70">page</span><span style="color:#E1E4E8"> }) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> page.</span><span style="color:#B392F0">goto</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Approve applicant 4 (David Park) via popup.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#E1E4E8"> [</span><span style="color:#79B8FF">popup4</span><span style="color:#E1E4E8">] </span><span style="color:#F97583">=</span><span style="color:#F97583"> await</span><span style="color:#79B8FF"> Promise</span><span style="color:#E1E4E8">.</span><span style="color:#B392F0">all</span><span style="color:#E1E4E8">([</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">waitForEvent</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'popup'</span><span style="color:#E1E4E8">),</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'review-4'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">(),</span></span>
+<span class="line"><span style="color:#E1E4E8">  ]);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> popup4.</span><span style="color:#B392F0">waitForLoadState</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> popup4.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'approve-btn'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Wait for the main page to update.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'status-4'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'approved'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Close the first popup.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> popup4.</span><span style="color:#B392F0">close</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Now open a popup for applicant 5 (Eva Martinez).</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#E1E4E8"> [</span><span style="color:#79B8FF">popup5</span><span style="color:#E1E4E8">] </span><span style="color:#F97583">=</span><span style="color:#F97583"> await</span><span style="color:#79B8FF"> Promise</span><span style="color:#E1E4E8">.</span><span style="color:#B392F0">all</span><span style="color:#E1E4E8">([</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">waitForEvent</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'popup'</span><span style="color:#E1E4E8">),</span></span>
+<span class="line"><span style="color:#E1E4E8">    page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'review-5'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">(),</span></span>
+<span class="line"><span style="color:#E1E4E8">  ]);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> popup5.</span><span style="color:#B392F0">waitForLoadState</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify David's status is still "approved" on the main page</span></span>
+<span class="line"><span style="color:#6A737D">  // (state was not lost when we opened a new popup).</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'status-4'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'approved'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Reject Eva in her popup.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#E1E4E8"> popup5.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'reject-btn'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'status-5'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'rejected'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify both decisions are reflected on the main page.</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'status-4'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'approved'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  await</span><span style="color:#B392F0"> expect</span><span style="color:#E1E4E8">(page.</span><span style="color:#B392F0">getByTestId</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'status-5'</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">toHaveText</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'rejected'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>d:T9156,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLAYGROUND</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> '/phase-06-complex-scenarios/32-multi-window-workflows/playground/'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">describe</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'Kata 32: Multi-Window Workflows'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // -----------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // IMPORTANT: Cypress runs inside a single browser tab and cannot natively</span></span>
+<span class="line"><span style="color:#6A737D">  // interact with popup windows opened by window.open(). The standard</span></span>
+<span class="line"><span style="color:#6A737D">  // workaround is to stub window.open() and then visit the popup URL</span></span>
+<span class="line"><span style="color:#6A737D">  // directly in the Cypress-controlled tab. This lets us test the popup</span></span>
+<span class="line"><span style="color:#6A737D">  // content and simulate postMessage communication back to the main page.</span></span>
+<span class="line"><span style="color:#6A737D">  // -----------------------------------------------------------------------</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Helper: Stub window.open and return the URL it would have opened.</span></span>
+<span class="line"><span style="color:#6A737D">  // This prevents a real popup from opening (which Cypress can't control)</span></span>
+<span class="line"><span style="color:#6A737D">  // and captures the URL so we can visit it later.</span></span>
+<span class="line"><span style="color:#F97583">  function</span><span style="color:#B392F0"> stubWindowOpen</span><span style="color:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">window</span><span style="color:#E1E4E8">().</span><span style="color:#B392F0">then</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">win</span><span style="color:#F97583"> =></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">      // cy.stub(object, method) replaces the method with a spy/stub.</span></span>
+<span class="line"><span style="color:#6A737D">      // .callsFake(fn) provides a custom implementation that records</span></span>
+<span class="line"><span style="color:#6A737D">      // the URL and returns a fake window object.</span></span>
+<span class="line"><span style="color:#E1E4E8">      cy.</span><span style="color:#B392F0">stub</span><span style="color:#E1E4E8">(win, </span><span style="color:#9ECBFF">'open'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">callsFake</span><span style="color:#E1E4E8">((</span><span style="color:#FFAB70">url</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> string</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">        // Store the URL on the window so tests can retrieve it.</span></span>
+<span class="line"><span style="color:#E1E4E8">        (win </span><span style="color:#F97583">as</span><span style="color:#79B8FF"> any</span><span style="color:#E1E4E8">).__lastPopupUrl </span><span style="color:#F97583">=</span><span style="color:#E1E4E8"> url;</span></span>
+<span class="line"><span style="color:#6A737D">        // Return a minimal fake Window object to avoid errors in the</span></span>
+<span class="line"><span style="color:#6A737D">        // main page's code that checks if the popup opened.</span></span>
+<span class="line"><span style="color:#F97583">        return</span><span style="color:#E1E4E8"> { closed: </span><span style="color:#79B8FF">false</span><span style="color:#E1E4E8"> } </span><span style="color:#F97583">as</span><span style="color:#B392F0"> Window</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#E1E4E8">      }).</span><span style="color:#B392F0">as</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'windowOpen'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"><span style="color:#E1E4E8">  }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Helper: Simulate a postMessage from the popup back to the main page.</span></span>
+<span class="line"><span style="color:#6A737D">  // Since we can't actually have two windows, we send the message directly.</span></span>
+<span class="line"><span style="color:#F97583">  function</span><span style="color:#B392F0"> simulatePopupDecision</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">id</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> string</span><span style="color:#E1E4E8">, </span><span style="color:#FFAB70">decision</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> string</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">window</span><span style="color:#E1E4E8">().</span><span style="color:#B392F0">then</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">win</span><span style="color:#F97583"> =></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">      // Dispatch a 'message' event on the main page's window, mimicking</span></span>
+<span class="line"><span style="color:#6A737D">      // what the popup's postMessage would do.</span></span>
+<span class="line"><span style="color:#E1E4E8">      win.</span><span style="color:#B392F0">postMessage</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#E1E4E8">        { type: </span><span style="color:#9ECBFF">'applicant-decision'</span><span style="color:#E1E4E8">, id, decision },</span></span>
+<span class="line"><span style="color:#9ECBFF">        '*'</span></span>
+<span class="line"><span style="color:#E1E4E8">      );</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"><span style="color:#E1E4E8">  }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">  beforeEach</span><span style="color:#E1E4E8">(() </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">PLAYGROUND</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 1: Open Review Window</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Verifies that clicking Review calls window.open() with the correct URL.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 1: open review window'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Stub window.open before clicking the button.</span></span>
+<span class="line"><span style="color:#B392F0">    stubWindowOpen</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Click the Review button for applicant 1 (Alice).</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="review-1"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify window.open was called.</span></span>
+<span class="line"><span style="color:#6A737D">    // .should('have.been.calledOnce') uses Sinon assertion syntax since</span></span>
+<span class="line"><span style="color:#6A737D">    // cy.stub creates a Sinon stub under the hood.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'@windowOpen'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.been.calledOnce'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the URL contains the admin-panel.html path and Alice's data.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'@windowOpen'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">then</span><span style="color:#E1E4E8">((</span><span style="color:#FFAB70">stub</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> any</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">      const</span><span style="color:#79B8FF"> url</span><span style="color:#F97583">:</span><span style="color:#79B8FF"> string</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> stub.</span><span style="color:#B392F0">getCall</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">).args[</span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">];</span></span>
+<span class="line"><span style="color:#B392F0">      expect</span><span style="color:#E1E4E8">(url).to.</span><span style="color:#B392F0">include</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'admin-panel.html'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#B392F0">      expect</span><span style="color:#E1E4E8">(url).to.</span><span style="color:#B392F0">include</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'name=Alice'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 2: Interact with Popup (Visit Popup URL)</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Since Cypress can't switch to a popup, we visit the popup URL directly</span></span>
+<span class="line"><span style="color:#6A737D">  // and interact with the admin panel page.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 2: interact with popup page'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Visit the admin panel directly with query params for applicant 1.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#79B8FF">      PLAYGROUND</span><span style="color:#F97583"> +</span><span style="color:#9ECBFF"> 'admin-panel.html?id=1&#x26;name=Alice+Johnson&#x26;email=alice%40example.com&#x26;position=Engineer&#x26;risk=low&#x26;date=2025-01-15'</span></span>
+<span class="line"><span style="color:#E1E4E8">    );</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the Approve button is visible and click it.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="approve-btn"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the decision banner appears.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="decision-banner"]'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.visible'</span><span style="color:#E1E4E8">)</span></span>
+<span class="line"><span style="color:#E1E4E8">      .</span><span style="color:#B392F0">and</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'approved'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 3: Verify Popup Content</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Visits the popup URL and verifies all applicant fields are displayed.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 3: verify popup shows correct applicant details'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Visit the admin panel with Bob's data.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">visit</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#79B8FF">      PLAYGROUND</span><span style="color:#F97583"> +</span><span style="color:#9ECBFF"> 'admin-panel.html?id=2&#x26;name=Bob+Smith&#x26;email=bob%40example.com&#x26;position=Manager&#x26;risk=medium&#x26;date=2025-02-01'</span></span>
+<span class="line"><span style="color:#E1E4E8">    );</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify each detail field matches the URL parameters.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="applicant-name"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Bob Smith'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="applicant-email"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'bob@example.com'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="applicant-position"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Manager'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="applicant-risk"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'medium'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 4: Approve in Popup, Verify Main Page Updates</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Simulates the approve flow using postMessage to update the main page.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 4: approve and verify main page updates via postMessage'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Verify Alice starts as "pending".</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="status-1"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'pending'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Simulate the popup sending an "approved" postMessage for applicant 1.</span></span>
+<span class="line"><span style="color:#6A737D">    // In a real scenario, the popup's Approve button triggers this message.</span></span>
+<span class="line"><span style="color:#B392F0">    simulatePopupDecision</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'1'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'approved'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the main page updated Alice's status to "approved".</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="status-1"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'approved'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the status bar shows the last action.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="last-action"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'Alice Johnson'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="last-action"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'contain.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'approved'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 5: Reject in Popup</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Similar to exercise 4 but with the reject decision.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 5: reject and verify main page updates'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Verify Bob starts as "pending".</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="status-2"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'pending'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Simulate the popup sending a "rejected" postMessage for applicant 2.</span></span>
+<span class="line"><span style="color:#B392F0">    simulatePopupDecision</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'2'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'rejected'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the main page updated Bob's status to "rejected".</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="status-2"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'rejected'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify the Review button for Bob is now disabled.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="review-2"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'be.disabled'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 6: Close Popup, Verify Main State</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Tests that if no postMessage is sent (popup closed without action),</span></span>
+<span class="line"><span style="color:#6A737D">  // the main page state remains unchanged.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 6: no action preserves main page state'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Stub window.open so the "popup" opens.</span></span>
+<span class="line"><span style="color:#B392F0">    stubWindowOpen</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Click Review — this opens the popup (stubbed).</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="review-3"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">click</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // No postMessage is sent (admin closed popup without acting).</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify Clara's status is still "pending".</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="status-3"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'pending'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify last action is still "None".</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="last-action"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'None'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 7: Handle Multiple Popups</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Opens two review popups (stubbed) and sends decisions for both.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 7: handle multiple popup decisions'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Simulate approving Alice and rejecting Bob via postMessage.</span></span>
+<span class="line"><span style="color:#B392F0">    simulatePopupDecision</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'1'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'approved'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="status-1"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'approved'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">    simulatePopupDecision</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'2'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'rejected'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="status-2"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'rejected'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify both statuses are correct simultaneously.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="status-1"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'approved'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="status-2"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'rejected'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Exercise 8: Synchronize State Between Windows</span></span>
+<span class="line"><span style="color:#6A737D">  // --------------------------------------------------------------------------</span></span>
+<span class="line"><span style="color:#6A737D">  // Approves one applicant, then processes another, verifying the first</span></span>
+<span class="line"><span style="color:#6A737D">  // decision is preserved throughout.</span></span>
+<span class="line"><span style="color:#B392F0">  it</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'exercise 8: state persists across multiple decisions'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">    // Approve David (applicant 4).</span></span>
+<span class="line"><span style="color:#B392F0">    simulatePopupDecision</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'4'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'approved'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="status-4"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'approved'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Reject Eva (applicant 5).</span></span>
+<span class="line"><span style="color:#B392F0">    simulatePopupDecision</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'5'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'rejected'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="status-5"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'rejected'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify David's approval was not overwritten when Eva was rejected.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="status-4"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'approved'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Verify all other applicants are still pending.</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="status-1"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'pending'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="status-2"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'pending'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    cy.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'[data-testid="status-3"]'</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">should</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'have.text'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'pending'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span></code></pre>0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"kata":{"slug":"32-multi-window-workflows","number":32,"title":"Multi-Window Workflows","phaseSlug":"phase-06-complex-scenarios","phaseNumber":6,"phaseName":"Complex Scenarios","readmeRaw":"$3","hasPlayground":true,"playwrightFiles":[{"filename":"multi-window-workflows.spec.ts","content":"$4"}],"cypressFiles":[{"filename":"multi-window-workflows.cy.ts","content":"$5"}]},"prev":{"slug":"31-approval-rejection-flows","number":31,"title":"Approval & Rejection Flows","phaseSlug":"phase-05-fintech-domain","phaseNumber":5,"phaseName":"Fintech Domain","readmeRaw":"$6","hasPlayground":true,"playwrightFiles":[{"filename":"approval-rejection-flows.spec.ts","content":"$7"}],"cypressFiles":[{"filename":"approval-rejection-flows.cy.ts","content":"$8"}]},"next":{"slug":"33-session-management","number":33,"title":"Session Management","phaseSlug":"phase-06-complex-scenarios","phaseNumber":6,"phaseName":"Complex Scenarios","readmeRaw":"$9","hasPlayground":true,"playwrightFiles":[{"filename":"session-management.spec.ts","content":"$a"}],"cypressFiles":[{"filename":"session-management.cy.ts","content":"$b"}]},"playwrightHtml":[{"filename":"multi-window-workflows.spec.ts","html":"$c"}],"cypressHtml":[{"filename":"multi-window-workflows.cy.ts","html":"$d"}]}],["$Le"],"$Lf"]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"iDtrTKWIN4zzRgDRiiDd2"}
+e:["$","script","script-0",{"src":"/qa-labs/_next/static/chunks/03nvm.8~ftt80.js","async":true}]
+f:["$","$L10",null,{"children":["$","$11",null,{"name":"Next.MetadataOutlet","children":"$@12"}]}]
+12:null
