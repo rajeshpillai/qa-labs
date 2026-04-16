@@ -97,22 +97,25 @@
     <div class="section-title">KYC Application Form</div>
     <form data-testid="kyc-form" id="kyc-form">
 
-      <!-- ISSUE 1a: No <label> for this input -->
+      <!-- ISSUE 1a: No <label> for this input.
+           NOTE: no placeholder either — a placeholder would let axe-core's
+           label rule pass via its "non-empty-placeholder" sub-check, which
+           would hide the real violation from learners. -->
       <div class="form-group">
         <!-- FIX: Add <label for="full-name">Full Name</label> -->
-        <input type="text" id="full-name" data-testid="full-name-input" placeholder="Full Name">
+        <input type="text" id="full-name" data-testid="full-name-input">
       </div>
 
       <!-- ISSUE 1b: No <label> for this input -->
       <div class="form-group">
         <!-- FIX: Add <label for="email">Email Address</label> -->
-        <input type="email" id="email" data-testid="email-input" placeholder="Email Address">
+        <input type="email" id="email" data-testid="email-input">
       </div>
 
       <!-- ISSUE 1c: No <label> for this input -->
       <div class="form-group">
         <!-- FIX: Add <label for="phone">Phone Number</label> -->
-        <input type="tel" id="phone" data-testid="phone-input" placeholder="Phone Number">
+        <input type="tel" id="phone" data-testid="phone-input">
       </div>
 
       <!-- ISSUE 1d: No <label> for this select -->
@@ -138,7 +141,7 @@
       <!-- ISSUE 1e: No <label> for this textarea -->
       <div class="form-group">
         <!-- FIX: Add <label for="notes">Additional Notes</label> -->
-        <textarea id="notes" data-testid="notes-input" rows="3" placeholder="Additional notes (optional)" style="width:100%;max-width:400px;padding:0.5rem;border:1px solid #cbd5e1;border-radius:6px;font-size:0.9rem;"></textarea>
+        <textarea id="notes" data-testid="notes-input" rows="3" style="width:100%;max-width:400px;padding:0.5rem;border:1px solid #cbd5e1;border-radius:6px;font-size:0.9rem;"></textarea>
       </div>
 
       <!-- ISSUE 4: Button without accessible name or ARIA label -->
