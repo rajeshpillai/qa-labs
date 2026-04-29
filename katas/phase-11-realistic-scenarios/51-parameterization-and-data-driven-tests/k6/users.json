@@ -1,0 +1,22 @@
+[
+  { "username": "alice",    "password": "p1" },
+  { "username": "bob",      "password": "p2" },
+  { "username": "carol",    "password": "p3" },
+  { "username": "dave",     "password": "p4" },
+  { "username": "eve",      "password": "p5" },
+  { "username": "frank",    "password": "p6" },
+  { "username": "grace",    "password": "p7" },
+  { "username": "heidi",    "password": "p8" },
+  { "username": "ivan",     "password": "p9" },
+  { "username": "judy",     "password": "p10" },
+  { "username": "mallory",  "password": "p11" },
+  { "username": "niaj",     "password": "p12" },
+  { "username": "olivia",   "password": "p13" },
+  { "username": "peggy",    "password": "p14" },
+  { "username": "quentin",  "password": "p15" },
+  { "username": "rupert",   "password": "p16" },
+  { "username": "sybil",    "password": "p17" },
+  { "username": "trent",    "password": "p18" },
+  { "username": "victor",   "password": "p19" },
+  { "username": "walter",   "password": "p20" }
+]

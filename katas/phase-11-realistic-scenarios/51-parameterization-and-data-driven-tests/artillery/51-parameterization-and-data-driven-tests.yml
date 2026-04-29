@@ -1,0 +1,48 @@
+# Kata 51 — Parameterization and Data-Driven Tests (Artillery solution)
+#
+# Demonstrates two strategies side-by-side:
+# 1. Fixed CSV dataset, random selection per iteration (`payload.order: random`)
+# 2. Synthetic generation per request via Artillery's built-in helpers
+#
+# Run:  artillery run 51-parameterization-and-data-driven-tests.yml
+
+config:
+  target: "http://localhost:3000"
+  payload:
+    path: "./users.csv"
+    fields:
+      - "username"
+      - "password"
+    order: random
+  phases:
+    - duration: 20
+      arrivalRate: 10
+      name: "main"
+  ensure:
+    p95: 300
+    maxErrorRate: 1
+
+scenarios:
+  - name: "fixed-dataset login"
+    weight: 50
+    flow:
+      - post:
+          url: "/lab/auth/login"
+          json:
+            username: "{{ username }}"
+            password: "{{ password }}"
+          expect:
+            - statusCode: 200
+            - hasProperty: "token"
+
+  - name: "synthetic login"
+    weight: 50
+    flow:
+      - post:
+          url: "/lab/auth/login"
+          # $randomString() and $timestamp() are Artillery built-ins
+          json:
+            username: "synth-{{ $randomString() }}-{{ $timestamp() }}"
+            password: "pw"
+          expect:
+            - statusCode: 200

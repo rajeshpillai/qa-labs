@@ -1,0 +1,71 @@
+# Kata 52 — Authentication Flows (Artillery solution)
+#
+# Artillery's `flow` is per-scenario; every scenario starts fresh, so the
+# "login once per VU" pattern from k6 maps to "login at scenario start,
+# capture token, use across remaining steps". This is the realistic default.
+#
+# The three approaches the kata covers:
+# - login_then_many_calls: login → many calls (idiomatic Artillery)
+# - login_per_iteration:   each "iteration" is its own scenario (Artillery
+#                          re-runs scenarios per arrival, so login happens
+#                          on every arrival — equivalent to per-iter)
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 20
+      arrivalRate: 10
+      name: "main"
+  ensure:
+    p95: 300
+    maxErrorRate: 1
+
+scenarios:
+  # Idiomatic: each VU logs in once, then makes several /me calls.
+  # This is the closest Artillery equivalent of "login once per VU".
+  - name: "login then many calls"
+    weight: 70
+    flow:
+      - post:
+          url: "/lab/auth/login"
+          json:
+            username: "burst-{{ $randomString() }}"
+            password: "pw"
+          capture:
+            - json: "$.token"
+              as: "token"
+          expect:
+            - statusCode: 200
+
+      # Reuse the captured token for several /me calls before the VU exits.
+      - loop:
+          - get:
+              url: "/lab/auth/me"
+              headers:
+                Authorization: "Bearer {{ token }}"
+              expect:
+                - statusCode: 200
+        count: 5
+
+  # Anti-pattern: each "iteration" (here, scenario invocation) does
+  # exactly one login + one /me. Useful only when login is the focus.
+  - name: "login per iteration"
+    weight: 30
+    flow:
+      - post:
+          url: "/lab/auth/login"
+          json:
+            username: "per-iter-{{ $randomString() }}"
+            password: "pw"
+          capture:
+            - json: "$.token"
+              as: "token"
+          expect:
+            - statusCode: 200
+
+      - get:
+          url: "/lab/auth/me"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          expect:
+            - statusCode: 200

@@ -1,0 +1,93 @@
+# Kata 53 — Fintech KYC at Scale (Artillery solution)
+#
+# Same weighted-funnel idea as the k6 solution, but using Artillery's
+# scenario `weight` to model drop-off. Artillery doesn't have first-class
+# custom metrics like k6, so per-step latency observability is weaker —
+# this is a deliberate teaching point in the kata.
+#
+# Each scenario captures the application id and chains requests with
+# `think` blocks for realistic pacing.
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 30
+      arrivalRate: 50
+      name: "main"
+  ensure:
+    p95: 1500
+    maxErrorRate: 1
+
+scenarios:
+  - name: "full flow"
+    weight: 75
+    flow:
+      - post:
+          url: "/lab/kyc/apply"
+          json:
+            user: "applicant-{{ $randomString() }}"
+          capture:
+            - json: "$.id"
+              as: "appId"
+          expect:
+            - statusCode: 200
+      - think: 2
+
+      - post:
+          url: "/lab/kyc/{{ appId }}/documents"
+          expect:
+            - statusCode: 200
+      - think: 5
+
+      - post:
+          url: "/lab/kyc/{{ appId }}/video"
+          expect:
+            - statusCode: 200
+      - think: 3
+
+      - post:
+          url: "/lab/kyc/{{ appId }}/decision"
+          expect:
+            - statusCode: 200
+
+  - name: "bail at video"
+    weight: 5
+    flow:
+      - post:
+          url: "/lab/kyc/apply"
+          json:
+            user: "applicant-{{ $randomString() }}"
+          capture:
+            - json: "$.id"
+              as: "appId"
+      - think: 2
+      - post:
+          url: "/lab/kyc/{{ appId }}/documents"
+      - think: 5
+      - post:
+          url: "/lab/kyc/{{ appId }}/video"
+      # User abandons — no decision call
+
+  - name: "bail at documents"
+    weight: 15
+    flow:
+      - post:
+          url: "/lab/kyc/apply"
+          json:
+            user: "applicant-{{ $randomString() }}"
+          capture:
+            - json: "$.id"
+              as: "appId"
+      - think: 2
+      - post:
+          url: "/lab/kyc/{{ appId }}/documents"
+      # User abandons after upload
+
+  - name: "bail at apply"
+    weight: 5
+    flow:
+      - post:
+          url: "/lab/kyc/apply"
+          json:
+            user: "applicant-{{ $randomString() }}"
+      # Started but never uploaded
