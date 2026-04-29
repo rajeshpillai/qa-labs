@@ -1,0 +1,64 @@
+# Kata 74 — Capstone (Artillery solution)
+#
+# Simplified version of the k6 capstone — Artillery covers HTTP load,
+# the KYC funnel, and rate-limit probing. For browser sample + custom
+# trace IDs, see the k6 solution; in real engagements you'd combine
+# Artillery (HTTP) + Playwright (browser) + Lighthouse CI (web vitals).
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 30
+      arrivalRate: 100
+      name: "main"
+  ensure:
+    p95: 500
+    maxErrorRate: 5
+
+scenarios:
+  # 60% API load — capacity
+  - name: "echo hammer"
+    weight: 60
+    flow:
+      - get:
+          url: "/lab/echo"
+          expect:
+            - statusCode: 200
+
+  # 30% KYC funnel — realistic flow
+  - name: "kyc full flow"
+    weight: 30
+    flow:
+      - post:
+          url: "/lab/kyc/apply"
+          json:
+            user: "capstone-{{ $randomString() }}"
+          capture:
+            - json: "$.id"
+              as: "appId"
+          expect:
+            - statusCode: 200
+      - think: 1
+      - post:
+          url: "/lab/kyc/{{ appId }}/documents"
+          expect:
+            - statusCode: 200
+      - think: 1
+      - post:
+          url: "/lab/kyc/{{ appId }}/video"
+          expect:
+            - statusCode: 200
+      - think: 0.5
+      - post:
+          url: "/lab/kyc/{{ appId }}/decision"
+          expect:
+            - statusCode: 200
+
+  # 10% rate-limit probes — verify limiter works
+  - name: "rate limit probe"
+    weight: 10
+    flow:
+      - get:
+          url: "/lab/limit"
+          expect:
+            - statusCode: [200, 429]

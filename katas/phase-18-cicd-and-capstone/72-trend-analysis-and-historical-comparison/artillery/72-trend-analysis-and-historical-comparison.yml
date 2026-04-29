@@ -1,0 +1,23 @@
+# Kata 72 — Trend Analysis (Artillery solution)
+#
+# Same workload as the k6 solution. The analytical work is in scripts
+# that walk historical run outputs — Artillery's `--output report.json`
+# captures one run's data; aggregation across runs is your tooling.
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 20
+      arrivalRate: 50
+      name: "trend snapshot"
+  ensure:
+    p95: 300
+    maxErrorRate: 1
+
+scenarios:
+  - name: "trend probe"
+    flow:
+      - get:
+          url: "/lab/echo"
+          expect:
+            - statusCode: 200

@@ -52,7 +52,7 @@ After all 44 katas you'll be able to automate e2e tests for any website or app �
 | **17 — Chaos & Resilience** *(new)* | 69-70 | Toxiproxy fault injection, retry storms, circuit breakers |
 | **18 — CI/CD + Capstone** *(new)* | 71-74 | CI gates, baselines, JMeter awareness, full perf engagement |
 
-> **New: Performance curriculum (phases 9–18).** Adds ~30 katas using **k6** (primary), **Artillery** (parallel solutions), **JMeter** (awareness), Playwright + Lighthouse CI (browser-side perf). Targets are tunable HTTP endpoints exposed by the local `server/` under `/lab/*`. Functional curriculum (phases 0–8) is unchanged.
+> **Performance curriculum (phases 9–18).** 30 katas using **k6** (primary), **Artillery** (parallel solutions), **JMeter** (awareness), Playwright + Lighthouse CI (browser-side perf). Targets are tunable HTTP endpoints exposed by the local `server/` under `/lab/*` (incl. `/lab/auth`, `/lab/kyc`, `/lab/headers`, `/lab/ws`). Functional curriculum (phases 0–8) is unchanged.
 
 ---
 

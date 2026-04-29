@@ -1,0 +1,36 @@
+# Kata 69 — Fault Injection (Artillery solution)
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 10
+      arrivalRate: 30
+      name: "clean baseline"
+    - duration: 15
+      arrivalRate: 30
+      name: "chaos"
+
+scenarios:
+  - name: "clean"
+    weight: 40
+    flow:
+      - get:
+          url: "/lab/echo"
+          expect:
+            - statusCode: 200
+
+  - name: "latency injection"
+    weight: 30
+    flow:
+      - get:
+          url: "/lab/slow?ms=300"
+          expect:
+            - statusCode: 200
+
+  - name: "error injection"
+    weight: 30
+    flow:
+      - get:
+          url: "/lab/flaky?errorRate=0.15"
+          expect:
+            - statusCode: [200, 500]

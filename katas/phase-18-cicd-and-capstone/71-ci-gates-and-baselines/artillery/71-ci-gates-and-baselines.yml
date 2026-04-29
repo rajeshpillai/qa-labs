@@ -1,0 +1,25 @@
+# Kata 71 — CI Gates and Baselines (Artillery solution)
+#
+# Artillery's `ensure` block is the equivalent of k6 thresholds — failed
+# ensures exit non-zero, gating the CI build. For baseline comparison,
+# Artillery has artillery.io/cloud or you can pipe `--output report.json`
+# into a custom script (same pattern as the k6 solution's compare-baseline.js).
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 30
+      arrivalRate: 50
+      name: "ci smoke"
+  ensure:
+    p95: 200    # 80% of SLO budget (250ms)
+    p99: 400    # 80% of SLO budget (500ms)
+    maxErrorRate: 0.1
+
+scenarios:
+  - name: "ci smoke probe"
+    flow:
+      - get:
+          url: "/lab/echo"
+          expect:
+            - statusCode: 200

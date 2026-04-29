@@ -1,0 +1,27 @@
+# Kata 73 — JMeter Awareness (Artillery equivalent)
+#
+# Same workload as the kata's 73-smoke-test.jmx, in Artillery YAML.
+# JMeter Thread Group becomes Artillery `phases`. JMX Sampler becomes
+# `flow` step. ResponseAssertion becomes `expect`.
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 5
+      arrivalRate: 1
+      rampTo: 50
+      name: "ramp"
+    - duration: 30
+      arrivalRate: 50
+      name: "smoke"
+  ensure:
+    p95: 500
+    maxErrorRate: 1
+
+scenarios:
+  - name: "echo"
+    flow:
+      - get:
+          url: "/lab/echo"
+          expect:
+            - statusCode: 200

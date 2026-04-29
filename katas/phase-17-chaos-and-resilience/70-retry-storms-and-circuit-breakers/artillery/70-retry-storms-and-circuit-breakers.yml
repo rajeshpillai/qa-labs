@@ -1,0 +1,22 @@
+# Kata 70 — Retry Storms and Circuit Breakers (Artillery solution)
+#
+# Artillery doesn't have first-class retry config or circuit-breaker
+# state. Implementing those would require a custom JS processor.
+# This file just demonstrates the chaos load against /lab/flaky;
+# for the strategy comparisons (naive vs backoff vs breaker), see
+# the k6 solution which has per-VU state.
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 15
+      arrivalRate: 30
+      name: "chaos load"
+
+scenarios:
+  - name: "flaky probe"
+    flow:
+      - get:
+          url: "/lab/flaky?errorRate=0.4"
+          expect:
+            - statusCode: [200, 500]
