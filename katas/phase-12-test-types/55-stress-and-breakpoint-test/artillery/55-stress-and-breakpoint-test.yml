@@ -1,0 +1,55 @@
+# Kata 55 — Stress and Breakpoint Test (Artillery solution)
+#
+# Same staircase pattern as the k6 solution. Each phase is a step in the
+# staircase. Artillery doesn't have a built-in "abort on error rate"
+# mechanism — if the system breaks at step 6 you'll keep pushing until
+# the test ends naturally. For abort-on-fail, prefer k6.
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 30
+      arrivalRate: 50
+      name: "step-50"
+    - duration: 30
+      arrivalRate: 100
+      name: "step-100"
+    - duration: 30
+      arrivalRate: 150
+      name: "step-150"
+    - duration: 30
+      arrivalRate: 200
+      name: "step-200"
+    - duration: 30
+      arrivalRate: 250
+      name: "step-250"
+    - duration: 30
+      arrivalRate: 300
+      name: "step-300"
+    - duration: 30
+      arrivalRate: 350
+      name: "step-350"
+    - duration: 30
+      arrivalRate: 400
+      name: "step-400"
+    - duration: 30
+      arrivalRate: 450
+      name: "step-450"
+    - duration: 30
+      arrivalRate: 500
+      name: "step-500"
+
+  ensure:
+    # Whole-test ensure — informational. Real analysis needs per-step
+    # data which Artillery prints in the summary but doesn't expose
+    # cleanly to ensure rules.
+    p95: 5000
+    maxErrorRate: 50
+
+scenarios:
+  - name: "stress probe"
+    flow:
+      - get:
+          url: "/lab/jitter?p50=50&p95=200"
+          expect:
+            - statusCode: 200

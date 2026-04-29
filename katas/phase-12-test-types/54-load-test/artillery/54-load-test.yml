@@ -1,0 +1,45 @@
+# Kata 54 — Load Test (Artillery solution)
+#
+# Same shape as the k6 solution — warm-up, plateau, drain. Artillery's
+# `phases` are open-model by default, which is what you want for a
+# load test. The `ensure` block at the end uses overall test stats
+# (Artillery doesn't support per-phase tagged thresholds the way k6 does).
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 20
+      arrivalRate: 5
+      rampTo: 100
+      name: "warm-up"
+
+    - duration: 90
+      arrivalRate: 100
+      name: "plateau"
+
+    - duration: 20
+      arrivalRate: 100
+      rampTo: 0
+      name: "drain"
+
+  ensure:
+    # SLO-aligned threshold (whole-test, can't slice by phase here)
+    p95: 300
+    maxErrorRate: 1
+
+scenarios:
+  - name: "fast endpoint"
+    weight: 70
+    flow:
+      - get:
+          url: "/lab/echo"
+          expect:
+            - statusCode: 200
+
+  - name: "slower endpoint"
+    weight: 30
+    flow:
+      - get:
+          url: "/lab/jitter?p50=80&p95=200"
+          expect:
+            - statusCode: 200

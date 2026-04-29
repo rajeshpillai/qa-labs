@@ -1,0 +1,44 @@
+# Kata 56 — Spike Test (Artillery solution)
+#
+# Same single-spike profile as the k6 solution. Artillery's `phases`
+# can do `rampTo` for sharp transitions. ensure block is whole-test
+# (Artillery doesn't support phase-tagged ensures).
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 30
+      arrivalRate: 50
+      name: "steady"
+
+    - duration: 5
+      arrivalRate: 50
+      rampTo: 500
+      name: "ramp-up (the spike)"
+
+    - duration: 30
+      arrivalRate: 500
+      name: "peak"
+
+    - duration: 5
+      arrivalRate: 500
+      rampTo: 50
+      name: "ramp-down"
+
+    - duration: 30
+      arrivalRate: 50
+      name: "recovery"
+
+  ensure:
+    # Whole-test threshold — generous to allow spike degradation. For
+    # tighter per-phase asserts, use k6.
+    p95: 2000
+    maxErrorRate: 5
+
+scenarios:
+  - name: "spike probe"
+    flow:
+      - get:
+          url: "/lab/echo"
+          expect:
+            - statusCode: 200

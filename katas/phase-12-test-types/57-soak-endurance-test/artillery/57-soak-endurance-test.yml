@@ -1,0 +1,25 @@
+# Kata 57 — Soak / Endurance Test (Artillery solution)
+#
+# Single sustained phase at production-baseline RPS. Default is 60s;
+# extend by editing the duration or supplying `--config '{ phases: [...] }'`.
+# For a real soak (hours), Artillery's per-second resolution is overkill —
+# k6 with custom slice tagging is more useful for analyzing drift.
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 60
+      arrivalRate: 50
+      name: "soak baseline"
+
+  ensure:
+    p95: 300
+    maxErrorRate: 1
+
+scenarios:
+  - name: "soak probe"
+    flow:
+      - get:
+          url: "/lab/echo"
+          expect:
+            - statusCode: 200
