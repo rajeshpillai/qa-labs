@@ -182,6 +182,18 @@ router.get('/lab/kyc/:id', (req: Request, res: Response) => {
   res.json(app);
 });
 
+// /lab/headers — echoes back the request headers + a synthetic trace id so
+// load tests can verify that distributed-tracing headers (X-Trace-Id,
+// traceparent, X-Request-Id) propagate correctly through the load generator.
+router.get('/lab/headers', (req: Request, res: Response) => {
+  const traceId = req.header('x-trace-id') || req.header('traceparent') || crypto.randomBytes(8).toString('hex');
+  res.json({
+    receivedHeaders: req.headers,
+    serverTraceId: traceId,
+    ts: Date.now(),
+  });
+});
+
 // /lab/health — perf-lab specific health (separate from /api/health which the test runner uses)
 router.get('/lab/health', (_req: Request, res: Response) => {
   res.json({

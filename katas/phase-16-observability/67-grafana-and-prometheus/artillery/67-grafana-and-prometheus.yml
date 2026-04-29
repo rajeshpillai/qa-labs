@@ -1,0 +1,43 @@
+# Kata 67 — Grafana + Prometheus (Artillery solution)
+#
+# Artillery to Prometheus typically goes via the artillery-engine-statsd
+# plugin or a custom processor publishing to a Prometheus pushgateway.
+# k6's first-class Prometheus output is significantly simpler.
+#
+# This file is the HTTP load body — the integration story is in the readme.
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 15
+      arrivalRate: 5
+      rampTo: 30
+      name: "warm-up"
+    - duration: 30
+      arrivalRate: 30
+      name: "plateau"
+    - duration: 10
+      arrivalRate: 30
+      rampTo: 0
+      name: "drain"
+
+scenarios:
+  - name: "echo"
+    weight: 25
+    flow:
+      - get: { url: "/lab/echo" }
+  - name: "slow"
+    weight: 25
+    flow:
+      - get: { url: "/lab/slow?ms=200" }
+  - name: "jitter"
+    weight: 25
+    flow:
+      - get: { url: "/lab/jitter?p50=80&p95=300" }
+  - name: "rate-limited"
+    weight: 25
+    flow:
+      - get:
+          url: "/lab/limit"
+          expect:
+            - statusCode: [200, 429]

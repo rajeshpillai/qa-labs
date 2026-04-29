@@ -1,0 +1,37 @@
+# Kata 68 — Distributed Tracing Correlation (Artillery solution)
+#
+# Artillery can inject custom headers per request, but generating a fresh
+# W3C traceparent per iteration requires a custom processor (JS function).
+# A static traceparent across all requests defeats the purpose.
+#
+# This file demonstrates the basic header injection. For per-request
+# trace IDs in Artillery, you'd need a `processor:` block with a function
+# that returns a unique header per call. See the kata's k6 solution for
+# the cleaner equivalent.
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 15
+      arrivalRate: 20
+      name: "main"
+
+scenarios:
+  - name: "traced jitter probe"
+    flow:
+      - get:
+          url: "/lab/jitter?p50=50&p95=400"
+          headers:
+            # Static — same id for every request. Real implementations need
+            # a processor function. Documenting the limitation here.
+            traceparent: "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01"
+
+  - name: "verify propagation"
+    flow:
+      - get:
+          url: "/lab/headers"
+          headers:
+            traceparent: "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01"
+          expect:
+            - statusCode: 200
+            - hasProperty: "receivedHeaders"

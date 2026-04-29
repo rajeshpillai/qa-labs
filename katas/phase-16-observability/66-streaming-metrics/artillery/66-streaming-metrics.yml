@@ -1,0 +1,36 @@
+# Kata 66 — Streaming Metrics (Artillery solution)
+#
+# Artillery's equivalents to k6's --out flags:
+#  --output report.json     — single end-of-test JSON (similar to --summary-export)
+#  --quiet                  — suppresses real-time stdout updates
+#  Custom plugins: artillery-plugin-statsd, artillery-plugin-cloudwatch, etc.
+#
+# For real-time streaming to Prometheus or InfluxDB, k6's built-in outputs
+# are significantly more capable. This file shows the basic Artillery
+# pattern with output captured to JSON.
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 20
+      arrivalRate: 30
+      name: "main"
+
+scenarios:
+  - name: "echo"
+    weight: 33
+    flow:
+      - get:
+          url: "/lab/echo"
+
+  - name: "slow"
+    weight: 33
+    flow:
+      - get:
+          url: "/lab/slow?ms=100"
+
+  - name: "jitter"
+    weight: 34
+    flow:
+      - get:
+          url: "/lab/jitter?p50=50&p95=200"
