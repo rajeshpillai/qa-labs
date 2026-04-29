@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronDown, ChevronRight, CheckCircle2 } from 'lucide-react';
@@ -11,13 +11,35 @@ interface SidebarClientProps {
   phases: Phase[];
 }
 
+const SCROLL_STORAGE_KEY = 'qa-labs-sidebar-scroll';
+
 export function SidebarClient({ phases }: SidebarClientProps) {
   const pathname = usePathname();
+  const navRef = useRef<HTMLElement>(null);
   const [expandedPhases, setExpandedPhases] = useState<Set<string>>(() => {
     // Start with all phases expanded
     return new Set(phases.map((p) => p.slug));
   });
   const [completedKatas, setCompletedKatas] = useState<Set<string>>(new Set());
+
+  // Restore scroll position on mount, then keep sessionStorage in sync as the
+  // user scrolls. Survives full page reloads and SPA navigations alike.
+  useEffect(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+
+    const stored = sessionStorage.getItem(SCROLL_STORAGE_KEY);
+    if (stored) {
+      const top = parseInt(stored, 10);
+      if (Number.isFinite(top)) nav.scrollTop = top;
+    }
+
+    const onScroll = () => {
+      sessionStorage.setItem(SCROLL_STORAGE_KEY, String(nav.scrollTop));
+    };
+    nav.addEventListener('scroll', onScroll, { passive: true });
+    return () => nav.removeEventListener('scroll', onScroll);
+  }, []);
 
   // Load progress from localStorage
   useEffect(() => {
@@ -62,7 +84,7 @@ export function SidebarClient({ phases }: SidebarClientProps) {
   }
 
   return (
-    <nav className="flex-1 overflow-y-auto px-3 py-3 space-y-1">
+    <nav ref={navRef} className="flex-1 overflow-y-auto px-3 py-3 space-y-1">
       {phases.map((phase) => {
         const isExpanded = expandedPhases.has(phase.slug);
         const completedCount = phase.katas.filter((k) =>

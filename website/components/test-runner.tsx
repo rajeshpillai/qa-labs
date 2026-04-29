@@ -37,6 +37,7 @@ export function TestRunner({
   const [running, setRunning] = useState(false);
   const [results, setResults] = useState<ExerciseResult[]>([]);
   const [summary, setSummary] = useState<ExecutionSummary | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [expandedErrors, setExpandedErrors] = useState<Set<number>>(new Set());
   const abortRef = useRef<AbortController | null>(null);
 
@@ -75,6 +76,7 @@ export function TestRunner({
     setRunning(true);
     setResults([]);
     setSummary(null);
+    setErrorMessage(null);
     setExpandedErrors(new Set());
 
     const controller = new AbortController();
@@ -88,7 +90,23 @@ export function TestRunner({
         signal: controller.signal,
       });
 
-      if (!response.ok || !response.body) {
+      if (!response.ok) {
+        let detail = '';
+        try {
+          const json = await response.json();
+          detail = json?.error ? String(json.error) : '';
+        } catch {
+          detail = await response.text();
+        }
+        setErrorMessage(
+          `Server returned ${response.status}${detail ? `: ${detail}` : ''}`
+        );
+        setRunning(false);
+        return;
+      }
+
+      if (!response.body) {
+        setErrorMessage('Server returned an empty response body');
         setRunning(false);
         return;
       }
@@ -140,6 +158,8 @@ export function TestRunner({
               });
             } else if (eventType === 'error') {
               setSummary(null);
+              const message = typeof data?.message === 'string' ? data.message : 'Unknown error';
+              setErrorMessage(message);
             }
           } catch {
             // ignore malformed JSON
@@ -147,8 +167,9 @@ export function TestRunner({
         }
       }
     } catch (err) {
-      if ((err as Error).name !== 'AbortError') {
-        // unexpected error
+      const error = err as Error;
+      if (error.name !== 'AbortError') {
+        setErrorMessage(error.message || 'Network error while running tests');
       }
     } finally {
       setRunning(false);
@@ -236,7 +257,24 @@ export function TestRunner({
 
       {/* Results area */}
       <div className="rounded-b-lg border border-t-0 border-border bg-background min-h-[300px]">
-        {results.length === 0 && !running ? (
+        {errorMessage ? (
+          <div className="flex flex-col items-start gap-2 min-h-[300px] p-4">
+            <div className="flex items-center gap-2 text-red-600 dark:text-red-400">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              <span className="text-sm font-medium">Test runner failed</span>
+            </div>
+            <pre className="text-xs font-mono leading-relaxed p-3 rounded-md bg-red-50 dark:bg-red-950/30 text-red-800 dark:text-red-300 border border-red-200 dark:border-red-900/50 w-full overflow-x-auto whitespace-pre-wrap break-words">
+              {errorMessage}
+            </pre>
+            <p className="text-xs text-muted mt-1">
+              Common causes:{' '}
+              {framework === 'k6' && 'k6 not installed (try `k6 version`); '}
+              {framework === 'artillery' && 'Artillery runner not yet implemented in this server build; '}
+              {framework === 'jmeter' && 'JMeter runner not yet implemented in this server build; '}
+              server is stale (restart it after pulling new runners).
+            </p>
+          </div>
+        ) : results.length === 0 && !running ? (
           <div className="flex items-center justify-center min-h-[300px] text-muted text-sm">
             Click &ldquo;Run Tests&rdquo; to execute the {framework} tests for
             this kata.
