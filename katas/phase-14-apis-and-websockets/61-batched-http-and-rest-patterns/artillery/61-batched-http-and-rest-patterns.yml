@@ -1,0 +1,62 @@
+# Kata 61 — Batched HTTP and REST Patterns (Artillery solution)
+#
+# Artillery's flow steps are sequential by default. There's no first-class
+# `parallel` block in the YAML config — for true parallelism within a flow,
+# use the engine: 'http' with custom JS, or just run multiple parallel
+# scenarios at the config level. This file shows both.
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 15
+      arrivalRate: 5
+      name: "main"
+  ensure:
+    p95: 1500
+    maxErrorRate: 1
+
+scenarios:
+  - name: "sequential dashboard load"
+    weight: 50
+    flow:
+      # Login (must be sequential — token feeds subsequent requests)
+      - post:
+          url: "/lab/auth/login"
+          json:
+            username: "dash-{{ $randomString() }}"
+            password: "pw"
+          capture:
+            - json: "$.token"
+              as: "token"
+          expect:
+            - statusCode: 200
+
+      # Sequential widget calls — each waits for the previous.
+      # Note total iteration time = sum of all latencies.
+      - get:
+          url: "/lab/echo?widget=a"
+          headers:
+            Authorization: "Bearer {{ token }}"
+      - get:
+          url: "/lab/echo?widget=b"
+          headers:
+            Authorization: "Bearer {{ token }}"
+      - get:
+          url: "/lab/echo?widget=c"
+          headers:
+            Authorization: "Bearer {{ token }}"
+      - get:
+          url: "/lab/echo?widget=d"
+          headers:
+            Authorization: "Bearer {{ token }}"
+
+  # To approximate parallelism, run a separate scenario that fires single
+  # widget requests at a higher arrival rate. Different test, same workload
+  # in aggregate. For real parallel-within-flow, use k6.
+  - name: "concurrent widget loads"
+    weight: 50
+    flow:
+      - get:
+          url: "/lab/echo?widget=concurrent"
+          expect:
+            - statusCode: 200

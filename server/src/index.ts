@@ -1,8 +1,10 @@
 import express from 'express';
+import http from 'http';
 import cors from 'cors';
 import path from 'path';
 import executeRouter from './routes/execute.js';
 import labRouter from './routes/lab.js';
+import { attachLabWebSocket } from './lab-ws.js';
 
 const app = express();
 const PORT = 3000;
@@ -36,9 +38,12 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(websiteDir, 'index.html'));
 });
 
-// Start main server
-app.listen(PORT, () => {
+// Start main server (over a manual http.Server so we can attach a WS upgrade handler)
+const httpServer = http.createServer(app);
+attachLabWebSocket(httpServer);
+httpServer.listen(PORT, () => {
   console.log(`QA Labs server running at http://localhost:${PORT}`);
+  console.log(`WebSocket lab endpoint at ws://localhost:${PORT}/lab/ws`);
 });
 
 // Internal playground server for test runners

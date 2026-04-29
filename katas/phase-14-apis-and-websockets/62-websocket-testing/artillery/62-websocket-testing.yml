@@ -1,0 +1,27 @@
+# Kata 62 — WebSocket Testing (Artillery solution)
+#
+# Artillery's WebSocket engine is much simpler than k6's. Each scenario
+# opens a connection, sends/receives a sequence of frames, then closes.
+# No first-class roundtrip-latency metric — Artillery reports overall
+# session_length but not message-level RTT. For real WS perf work, k6.
+
+config:
+  target: "ws://localhost:3000/lab/ws"
+  engine: ws
+  phases:
+    - duration: 15
+      arrivalRate: 5
+      name: "main"
+
+scenarios:
+  - name: "echo session"
+    flow:
+      # Send a frame; Artillery doesn't await responses by default,
+      # but the connection stays open and the server's echo arrives
+      # back asynchronously.
+      - send: '{"seq":1,"text":"hello"}'
+      - think: 0.2
+      - send: '{"seq":2,"text":"hello again"}'
+      - think: 0.2
+      - send: '{"seq":3,"text":"final"}'
+      - think: 0.5

@@ -1,0 +1,26 @@
+# Kata 63 — Rate Limit Handling (Artillery solution)
+#
+# Artillery doesn't have built-in retry-with-backoff. Each scenario hits
+# /lab/limit at a different rate so you can observe the rate limiter's
+# response. For implementing backoff in Artillery you'd use a custom
+# JS function via `processor:` — out of scope for this kata.
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 10
+      arrivalRate: 4    # Under the 5/sec limit — should mostly succeed
+      name: "respect"
+    - duration: 10
+      arrivalRate: 20   # Over the limit — expect many 429s
+      name: "hammer"
+
+scenarios:
+  - name: "rate-limited probe"
+    flow:
+      - get:
+          url: "/lab/limit"
+          # Accept either 200 (served) or 429 (limited) as expected outcomes —
+          # we WANT to see both to verify the rate limiter works.
+          expect:
+            - statusCode: [200, 429]
