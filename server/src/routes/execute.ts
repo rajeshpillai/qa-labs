@@ -5,6 +5,7 @@ import { resolveTestFile, type Framework } from '../utils/kata-resolver.js';
 import { runPlaywright } from '../runners/playwright-runner.js';
 import { runCypress } from '../runners/cypress-runner.js';
 import { runK6 } from '../runners/k6-runner.js';
+import { runArtillery } from '../runners/artillery-runner.js';
 import type { EmitFn, RunEvent } from '../runners/types.js';
 
 const semaphore = new Semaphore(2);
@@ -16,7 +17,8 @@ const RUNNERS: Partial<Record<Framework, RunnerFn>> = {
   playwright: runPlaywright,
   cypress: runCypress,
   k6: runK6,
-  // artillery, jmeter — not implemented yet; will return 501 below
+  artillery: runArtillery,
+  // jmeter — not implemented yet; will return 501 below
 };
 
 router.post('/execute', async (req: Request, res: Response) => {

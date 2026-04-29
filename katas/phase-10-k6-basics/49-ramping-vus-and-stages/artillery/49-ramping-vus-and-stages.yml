@@ -1,0 +1,42 @@
+# Kata 49 — Ramping VUs and Stages (Artillery solution)
+#
+# Same shape as the k6 solution: warm-up → plateau → ramp → plateau → drain.
+# Artillery's `phases` are open-model (arrivalRate) by default.
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 20
+      arrivalRate: 1
+      rampTo: 50
+      name: "warm-up"
+
+    - duration: 60
+      arrivalRate: 50
+      name: "plateau-low"
+
+    - duration: 20
+      arrivalRate: 50
+      rampTo: 100
+      name: "ramp-up"
+
+    - duration: 40
+      arrivalRate: 100
+      name: "plateau-high"
+
+    - duration: 20
+      arrivalRate: 100
+      rampTo: 0
+      name: "drain"
+
+  ensure:
+    p95: 800
+    maxErrorRate: 1
+
+scenarios:
+  - name: "jitter under load"
+    flow:
+      - get:
+          url: "/lab/jitter?p50=50&p95=200"
+          expect:
+            - statusCode: 200

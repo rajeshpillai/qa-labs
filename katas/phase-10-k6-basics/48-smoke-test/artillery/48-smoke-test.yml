@@ -1,0 +1,43 @@
+# Kata 48 — Smoke Test (Artillery solution)
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 30
+      arrivalRate: 1
+      name: "smoke"
+  ensure:
+    p95: 500
+    maxErrorRate: 1
+
+scenarios:
+  - name: "echo smoke"
+    weight: 1
+    flow:
+      - get:
+          url: "/lab/echo"
+          expect:
+            - statusCode: 200
+            - hasProperty: "ok"
+
+  - name: "auth flow smoke"
+    weight: 1
+    flow:
+      - post:
+          url: "/lab/auth/login"
+          json:
+            username: "smoke-user"
+            password: "anything-works"
+          capture:
+            - json: "$.token"
+              as: "token"
+          expect:
+            - statusCode: 200
+
+      - get:
+          url: "/lab/auth/me"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          expect:
+            - statusCode: 200
+            - hasProperty: "user"

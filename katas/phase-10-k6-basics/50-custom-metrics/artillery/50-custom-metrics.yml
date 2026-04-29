@@ -1,0 +1,65 @@
+# Kata 50 — Custom Metrics (Artillery solution)
+#
+# Artillery 2.x doesn't have first-class custom metrics like k6. The
+# closest equivalents:
+#  - `capture`  — extracts values from responses
+#  - `expect`   — per-response assertions
+#  - `metrics-by-endpoint` plugin — aggregated stats per URL
+#
+# This file demonstrates each, but for a real custom-metric workflow,
+# k6 is the better tool. See the kata readme for why.
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 20
+      arrivalRate: 5
+      name: "warm-up"
+    - duration: 30
+      arrivalRate: 10
+      name: "main"
+  plugins:
+    metrics-by-endpoint:
+      useOnlyRequestNames: false
+  ensure:
+    p95: 800
+    maxErrorRate: 50  # generous — we hit flaky/limited endpoints
+
+scenarios:
+  - name: "auth flow"
+    weight: 40
+    flow:
+      - post:
+          url: "/lab/auth/login"
+          json:
+            username: "kata-50-{{ $randomString() }}"
+            password: "pw"
+          capture:
+            - json: "$.token"
+              as: "token"
+          expect:
+            - statusCode: 200
+            - hasProperty: "token"
+      - get:
+          url: "/lab/auth/me"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          expect:
+            - statusCode: 200
+
+  - name: "rate-limited probes"
+    weight: 30
+    flow:
+      - get:
+          url: "/lab/limit"
+          # Don't fail the scenario on 429 — we expect them.
+          expect:
+            - statusCode: [200, 429]
+
+  - name: "flaky endpoint"
+    weight: 30
+    flow:
+      - get:
+          url: "/lab/flaky?errorRate=0.1"
+          expect:
+            - statusCode: [200, 500]
