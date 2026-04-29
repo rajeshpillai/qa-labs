@@ -1,0 +1,23 @@
+# Kata 65 — Hybrid Load and Browser (Artillery solution)
+#
+# Artillery 2.x cannot drive real browsers and run HTTP load in the
+# same test the way k6 can. This file demonstrates the HTTP-only
+# half of the kata. For the browser half, see the k6 solution.
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 20
+      arrivalRate: 100
+      name: "api hammer (HTTP-only — see k6 for hybrid)"
+  ensure:
+    p95: 300
+    maxErrorRate: 1
+
+scenarios:
+  - name: "api stress"
+    flow:
+      - get:
+          url: "/lab/echo"
+          expect:
+            - statusCode: 200

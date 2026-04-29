@@ -1,0 +1,26 @@
+# Kata 64 — k6 Browser Basics (Artillery solution)
+#
+# Artillery has no browser-driving capability. The closest equivalent
+# is `engine: playwright` (the artillery-engine-playwright plugin),
+# which is functional-only — no Web Vitals collection.
+#
+# This file is a placeholder demonstrating that for browser-driven
+# load testing, k6 is significantly more capable than Artillery. We
+# include an HTTP-only smoke as a fallback so the kata's Run Tests
+# tab still produces results.
+
+config:
+  target: "http://localhost:8080"
+  phases:
+    - duration: 5
+      arrivalRate: 1
+      name: "smoke"
+
+scenarios:
+  - name: "smoke: page loads"
+    flow:
+      - get:
+          url: "/phase-13-frontend-perf/58-lighthouse-basics/playground/"
+          expect:
+            - statusCode: 200
+            - contentType: "text/html"
