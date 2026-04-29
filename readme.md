@@ -41,6 +41,18 @@ After all 44 katas you'll be able to automate e2e tests for any website or app �
 | **6 — Complex Scenarios** | 32-36 | Multi-window, session management, long flows, error recovery, notifications |
 | **7 — Advanced Patterns** | 37-40 | Page object model, visual regression, accessibility, test data/fixtures |
 | **8 — Parallel & CI/CD** | 41-44 | Parallel testing, loop-parallel, CI/CD, reporting & debugging |
+| **9 — Perf Foundations** *(new)* | 45-47 | HTTP basics, percentiles, throughput, Little's Law |
+| **10 — k6 Basics** *(new)* | 48-50 | Smoke tests, VUs, ramping, thresholds, custom metrics |
+| **11 — Realistic Scenarios** *(new)* | 51-53 | Parameterization, auth flows, fintech KYC at scale |
+| **12 — Test Types** *(new)* | 54-57 | Load, stress, spike, soak, breakpoint |
+| **13 — Frontend Perf** *(new)* | 58-60 | Lighthouse, Web Vitals, perf budgets, Lighthouse CI |
+| **14 — APIs + WebSockets at Scale** *(new)* | 61-63 | k6 WS module, REST batching, rate-limit handling |
+| **15 — Hybrid (k6 browser)** *(new)* | 64-65 | k6 browser module, Playwright traces for perf |
+| **16 — Observability** *(new)* | 66-68 | Grafana dashboards, Prometheus, distributed tracing |
+| **17 — Chaos & Resilience** *(new)* | 69-70 | Toxiproxy fault injection, retry storms, circuit breakers |
+| **18 — CI/CD + Capstone** *(new)* | 71-74 | CI gates, baselines, JMeter awareness, full perf engagement |
+
+> **New: Performance curriculum (phases 9–18).** Adds ~30 katas using **k6** (primary), **Artillery** (parallel solutions), **JMeter** (awareness), Playwright + Lighthouse CI (browser-side perf). Targets are tunable HTTP endpoints exposed by the local `server/` under `/lab/*`. Functional curriculum (phases 0–8) is unchanged.
 
 ---
 
@@ -141,9 +153,10 @@ Each kata is self-contained. Open a kata's folder and you'll find:
 ## Tech Stack
 
 - **Katas**: Vanilla HTML/CSS/JS playgrounds (zero dependencies)
-- **Tests**: Playwright 1.52+ and Cypress 14+ (TypeScript)
+- **Functional tests**: Playwright 1.52+ and Cypress 14+ (TypeScript)
+- **Performance tests**: k6 (primary), Artillery (parallel), JMeter (awareness), Lighthouse CI (frontend perf), k6 browser (hybrid)
 - **Website**: Next.js 15, Tailwind CSS v4, shadcn/ui components, shiki (syntax highlighting), react-markdown
-- **Server**: Express 4, SSE for live test result streaming
+- **Server**: Express 4, SSE for live test result streaming, `/lab/*` endpoints as load-test targets
 - **Deploy**: GitHub Pages for static site, `npm run deploy` script
 
 ---

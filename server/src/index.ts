@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import executeRouter from './routes/execute.js';
+import labRouter from './routes/lab.js';
 
 const app = express();
 const PORT = 3000;
@@ -18,6 +19,9 @@ app.get('/api/health', (_req, res) => {
 
 // Execute API
 app.use('/api', executeRouter);
+
+// Performance lab targets — endpoints that load tests hammer
+app.use(labRouter);
 
 // Serve website static files
 const websiteDir = path.join(process.cwd(), '..', 'website', 'out');

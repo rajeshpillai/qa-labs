@@ -12,26 +12,27 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { ExerciseResult, ExecutionSummary } from '@/lib/types';
+import type { ExerciseResult, ExecutionSummary, FrameworkId } from '@/lib/types';
 
-type Framework = 'playwright' | 'cypress';
+interface FrameworkChoice {
+  id: FrameworkId;
+  label: string;
+}
 
 interface TestRunnerProps {
   phaseSlug: string;
   kataSlug: string;
-  hasPlaywright: boolean;
-  hasCypress: boolean;
+  frameworks: FrameworkChoice[];
 }
 
 export function TestRunner({
   phaseSlug,
   kataSlug,
-  hasPlaywright,
-  hasCypress,
+  frameworks,
 }: TestRunnerProps) {
   const [serverAvailable, setServerAvailable] = useState<boolean | null>(null);
-  const [framework, setFramework] = useState<Framework>(
-    hasPlaywright ? 'playwright' : 'cypress'
+  const [framework, setFramework] = useState<FrameworkId>(
+    frameworks[0]?.id ?? 'playwright'
   );
   const [running, setRunning] = useState(false);
   const [results, setResults] = useState<ExerciseResult[]>([]);
@@ -193,37 +194,23 @@ export function TestRunner({
     <div className="flex flex-col gap-0">
       {/* Framework tabs + action buttons */}
       <div className="flex items-center justify-between border-b border-border">
-        <div className="flex items-center gap-0">
-          {hasPlaywright && (
+        <div className="flex items-center gap-0 overflow-x-auto">
+          {frameworks.map((fw) => (
             <button
-              onClick={() => !running && setFramework('playwright')}
+              key={fw.id}
+              onClick={() => !running && setFramework(fw.id)}
               disabled={running}
               className={cn(
-                'px-4 py-2 text-sm font-medium border-b-2 transition-colors',
-                framework === 'playwright'
+                'px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap',
+                framework === fw.id
                   ? 'border-green-600 text-green-700 dark:border-green-400 dark:text-green-400'
                   : 'border-transparent text-muted hover:text-foreground',
                 running && 'opacity-50 cursor-not-allowed'
               )}
             >
-              Playwright
+              {fw.label}
             </button>
-          )}
-          {hasCypress && (
-            <button
-              onClick={() => !running && setFramework('cypress')}
-              disabled={running}
-              className={cn(
-                'px-4 py-2 text-sm font-medium border-b-2 transition-colors',
-                framework === 'cypress'
-                  ? 'border-green-600 text-green-700 dark:border-green-400 dark:text-green-400'
-                  : 'border-transparent text-muted hover:text-foreground',
-                running && 'opacity-50 cursor-not-allowed'
-              )}
-            >
-              Cypress
-            </button>
-          )}
+          ))}
         </div>
 
         <div className="pr-3">

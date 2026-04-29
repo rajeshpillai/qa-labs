@@ -1,29 +1,6 @@
 import Link from 'next/link';
 import { getAllPhases } from '@/lib/katas';
-
-const PHASE_COLORS: Record<number, string> = {
-  0: 'bg-blue-600',
-  1: 'bg-emerald-600',
-  2: 'bg-violet-600',
-  3: 'bg-amber-600',
-  4: 'bg-rose-600',
-  5: 'bg-cyan-600',
-  6: 'bg-pink-600',
-  7: 'bg-teal-600',
-  8: 'bg-indigo-600',
-};
-
-const PHASE_BORDERS: Record<number, string> = {
-  0: 'border-blue-200 dark:border-blue-900',
-  1: 'border-emerald-200 dark:border-emerald-900',
-  2: 'border-violet-200 dark:border-violet-900',
-  3: 'border-amber-200 dark:border-amber-900',
-  4: 'border-rose-200 dark:border-rose-900',
-  5: 'border-cyan-200 dark:border-cyan-900',
-  6: 'border-pink-200 dark:border-pink-900',
-  7: 'border-teal-200 dark:border-teal-900',
-  8: 'border-indigo-200 dark:border-indigo-900',
-};
+import { phaseColor, phaseBorder } from '@/lib/phase-colors';
 
 export default function Home() {
   const phases = getAllPhases();
@@ -63,8 +40,8 @@ export default function Home() {
       <section className="max-w-5xl mx-auto px-4 pb-20">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {phases.map((phase) => {
-            const color = PHASE_COLORS[phase.number] ?? 'bg-zinc-600';
-            const border = PHASE_BORDERS[phase.number] ?? 'border-zinc-200 dark:border-zinc-800';
+            const color = phaseColor(phase.number);
+            const border = phaseBorder(phase.number);
 
             return (
               <div

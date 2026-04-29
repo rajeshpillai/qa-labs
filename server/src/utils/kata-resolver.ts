@@ -4,6 +4,16 @@ import fs from 'fs';
 const SLUG_REGEX = /^[a-z0-9-]+$/;
 const KATAS_DIR = path.join(process.cwd(), '..', 'katas');
 
+export type Framework = 'playwright' | 'cypress' | 'k6' | 'artillery' | 'jmeter';
+
+const FRAMEWORK_EXTENSIONS: Record<Framework, string[]> = {
+  playwright: ['.spec.ts'],
+  cypress: ['.cy.ts'],
+  k6: ['.test.js', '.test.ts', '.js', '.ts'],
+  artillery: ['.yml', '.yaml'],
+  jmeter: ['.jmx'],
+};
+
 function validateSlug(slug: string): boolean {
   return SLUG_REGEX.test(slug);
 }
@@ -11,7 +21,7 @@ function validateSlug(slug: string): boolean {
 export function resolveTestFile(
   phaseSlug: string,
   kataSlug: string,
-  framework: 'playwright' | 'cypress',
+  framework: Framework,
   testFile?: string
 ): string {
   if (!validateSlug(phaseSlug)) {
@@ -28,7 +38,7 @@ export function resolveTestFile(
   }
 
   const frameworkDir = path.join(kataDir, framework);
-  const extension = framework === 'playwright' ? '.spec.ts' : '.cy.ts';
+  const extensions = FRAMEWORK_EXTENSIONS[framework];
 
   if (!fs.existsSync(frameworkDir)) {
     throw new Error(`No ${framework} directory found in ${phaseSlug}/${kataSlug}`);
@@ -45,13 +55,15 @@ export function resolveTestFile(
     return filePath;
   }
 
-  const files = fs.readdirSync(frameworkDir).filter((f) => f.endsWith(extension));
-
-  if (files.length === 0) {
-    throw new Error(
-      `No ${framework} test files (${extension}) found in ${phaseSlug}/${kataSlug}`
-    );
+  // Pick the first matching extension that has files (preserves preferred order).
+  for (const ext of extensions) {
+    const files = fs.readdirSync(frameworkDir).filter((f) => f.endsWith(ext));
+    if (files.length > 0) {
+      return path.join(frameworkDir, files[0]);
+    }
   }
 
-  return path.join(frameworkDir, files[0]);
+  throw new Error(
+    `No ${framework} test files (${extensions.join(', ')}) found in ${phaseSlug}/${kataSlug}`
+  );
 }

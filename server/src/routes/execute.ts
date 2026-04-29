@@ -1,14 +1,23 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
 import { Semaphore } from '../utils/semaphore.js';
-import { resolveTestFile } from '../utils/kata-resolver.js';
+import { resolveTestFile, type Framework } from '../utils/kata-resolver.js';
 import { runPlaywright } from '../runners/playwright-runner.js';
 import { runCypress } from '../runners/cypress-runner.js';
-import type { RunEvent } from '../runners/types.js';
+import { runK6 } from '../runners/k6-runner.js';
+import type { EmitFn, RunEvent } from '../runners/types.js';
 
 const semaphore = new Semaphore(2);
 const router = Router();
 
+type RunnerFn = (testFilePath: string, emit: EmitFn) => Promise<void>;
+
+const RUNNERS: Partial<Record<Framework, RunnerFn>> = {
+  playwright: runPlaywright,
+  cypress: runCypress,
+  k6: runK6,
+  // artillery, jmeter — not implemented yet; will return 501 below
+};
 
 router.post('/execute', async (req: Request, res: Response) => {
   const { framework, phaseSlug, kataSlug, testFile } = req.body as {
@@ -18,8 +27,19 @@ router.post('/execute', async (req: Request, res: Response) => {
     testFile?: string;
   };
 
-  if (!framework || (framework !== 'playwright' && framework !== 'cypress')) {
-    res.status(400).json({ error: 'framework must be "playwright" or "cypress"' });
+  const validFrameworks: Framework[] = ['playwright', 'cypress', 'k6', 'artillery', 'jmeter'];
+  if (!framework || !validFrameworks.includes(framework as Framework)) {
+    res.status(400).json({
+      error: `framework must be one of: ${validFrameworks.join(', ')}`,
+    });
+    return;
+  }
+
+  const runner = RUNNERS[framework as Framework];
+  if (!runner) {
+    res.status(501).json({
+      error: `Runner for "${framework}" is not implemented yet on this server`,
+    });
     return;
   }
 
@@ -35,14 +55,13 @@ router.post('/execute', async (req: Request, res: Response) => {
 
   let testFilePath: string;
   try {
-    testFilePath = resolveTestFile(phaseSlug, kataSlug, framework, testFile);
+    testFilePath = resolveTestFile(phaseSlug, kataSlug, framework as Framework, testFile);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Failed to resolve test file';
     res.status(400).json({ error: message });
     return;
   }
 
-  // Set SSE headers
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
@@ -54,11 +73,7 @@ router.post('/execute', async (req: Request, res: Response) => {
 
   await semaphore.acquire();
   try {
-    if (framework === 'playwright') {
-      await runPlaywright(testFilePath, emit);
-    } else {
-      await runCypress(testFilePath, emit);
-    }
+    await runner(testFilePath, emit);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     emit({ type: 'error', data: { message } });

@@ -30,7 +30,7 @@ function parseKataTitle(readmeContent: string): string {
   return match ? match[1].trim() : 'Untitled';
 }
 
-function readFilesRecursively(dir: string): KataFile[] {
+function readFilesRecursively(dir: string, extensions: string[]): KataFile[] {
   const files: KataFile[] = [];
   if (!fs.existsSync(dir)) return files;
 
@@ -40,7 +40,7 @@ function readFilesRecursively(dir: string): KataFile[] {
       const fullPath = path.join(currentDir, entry.name);
       if (entry.isDirectory()) {
         walk(fullPath);
-      } else if (entry.name.endsWith('.ts')) {
+      } else if (extensions.some((ext) => entry.name.endsWith(ext))) {
         files.push({
           filename: path.relative(dir, fullPath),
           content: fs.readFileSync(fullPath, 'utf-8'),
@@ -61,8 +61,11 @@ function readKata(phaseSlug: string, kataSlug: string): Kata {
     : '';
 
   const hasPlayground = fs.existsSync(path.join(kataDir, 'playground', 'index.html'));
-  const playwrightFiles = readFilesRecursively(path.join(kataDir, 'playwright'));
-  const cypressFiles = readFilesRecursively(path.join(kataDir, 'cypress'));
+  const playwrightFiles = readFilesRecursively(path.join(kataDir, 'playwright'), ['.ts']);
+  const cypressFiles = readFilesRecursively(path.join(kataDir, 'cypress'), ['.ts']);
+  const k6Files = readFilesRecursively(path.join(kataDir, 'k6'), ['.js', '.ts']);
+  const artilleryFiles = readFilesRecursively(path.join(kataDir, 'artillery'), ['.yml', '.yaml', '.js']);
+  const jmeterFiles = readFilesRecursively(path.join(kataDir, 'jmeter'), ['.jmx']);
 
   return {
     slug: kataSlug,
@@ -75,6 +78,9 @@ function readKata(phaseSlug: string, kataSlug: string): Kata {
     hasPlayground,
     playwrightFiles,
     cypressFiles,
+    k6Files,
+    artilleryFiles,
+    jmeterFiles,
   };
 }
 

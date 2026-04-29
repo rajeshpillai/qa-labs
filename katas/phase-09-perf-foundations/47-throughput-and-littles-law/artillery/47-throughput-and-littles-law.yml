@@ -1,0 +1,22 @@
+# Kata 47 — Throughput and Little's Law (Artillery solution)
+#
+# Artillery's `arrivalRate` is open-model by default — exactly what we want.
+# Same target as the k6 solution: 200 RPS for 15 seconds against /lab/slow.
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 15
+      arrivalRate: 200
+      name: "200 rps steady"
+  ensure:
+    p95: 300
+    maxErrorRate: 1
+
+scenarios:
+  - name: "constant rps against 100ms endpoint"
+    flow:
+      - get:
+          url: "/lab/slow?ms=100"
+          expect:
+            - statusCode: 200

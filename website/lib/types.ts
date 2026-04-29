@@ -3,6 +3,13 @@ export interface KataFile {
   content: string;  // raw source code
 }
 
+export type FrameworkId =
+  | 'playwright'
+  | 'cypress'
+  | 'k6'
+  | 'artillery'
+  | 'jmeter';
+
 export interface Kata {
   slug: string;           // "01-selectors-and-locators"
   number: number;         // 1
@@ -14,6 +21,9 @@ export interface Kata {
   hasPlayground: boolean;
   playwrightFiles: KataFile[];
   cypressFiles: KataFile[];
+  k6Files: KataFile[];
+  artilleryFiles: KataFile[];
+  jmeterFiles: KataFile[];
 }
 
 export interface Phase {

@@ -1,0 +1,23 @@
+# Kata 46 — Percentiles and Distribution (Artillery solution)
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 15
+      arrivalRate: 5
+      name: "distribution sampling"
+  ensure:
+    # Per-percentile assertions. Artillery exits non-zero if any breach.
+    p50: 100
+    p95: 600
+    p99: 1500
+    maxErrorRate: 1
+
+scenarios:
+  - name: "jitter sampling"
+    flow:
+      - get:
+          url: "/lab/jitter?p50=50&p95=400"
+          expect:
+            - statusCode: 200
+            - hasProperty: "latencyMs"

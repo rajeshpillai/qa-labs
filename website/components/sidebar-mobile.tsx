@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Menu, X, BookOpen } from 'lucide-react';
 import { ThemeToggle } from './theme-toggle';
@@ -44,12 +45,12 @@ export function MobileHeader({ phases }: MobileHeaderProps) {
           <Menu className="h-5 w-5" />
         </button>
 
-        <div className="flex items-center gap-2">
+        <Link href="/" className="flex items-center gap-2 hover:opacity-80 transition-opacity">
           <BookOpen className="h-5 w-5 text-accent" />
           <span className="text-base font-bold bg-gradient-to-r from-accent to-secondary bg-clip-text text-transparent">
             QA Labs
           </span>
-        </div>
+        </Link>
 
         <ThemeToggle />
       </div>
@@ -73,12 +74,12 @@ export function MobileHeader({ phases }: MobileHeaderProps) {
       >
         {/* Drawer header */}
         <div className="flex items-center justify-between border-b border-border px-5 py-5">
-          <div className="flex items-center gap-2.5">
+          <Link href="/" className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
             <BookOpen className="h-6 w-6 text-accent" />
             <span className="text-xl font-bold bg-gradient-to-r from-accent to-secondary bg-clip-text text-transparent">
               QA Labs
             </span>
-          </div>
+          </Link>
           <button
             onClick={() => setIsOpen(false)}
             className="rounded-lg p-1.5 text-muted hover:bg-surface hover:text-foreground transition-colors"

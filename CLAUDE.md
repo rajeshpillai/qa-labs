@@ -61,5 +61,7 @@ Fintech focus: KYC onboarding, video-based verification, document verification, 
 ## Tech Stack
 
 - **Katas**: Vanilla HTML/CSS/JS playgrounds, Playwright + Cypress tests (TypeScript)
+- **Performance katas (phases 9–18)**: k6 (primary), Artillery (parallel), JMeter (awareness only), Lighthouse CI, k6 browser
+- **Server**: Express 4 — `/api/*` runs tests, `/lab/*` exposes tunable HTTP/WS endpoints as load-test targets
 - **Website**: Next.js 15, Tailwind CSS v4, shiki, react-markdown, next-themes
 - **Deploy**: GitHub Pages via `scripts/deploy-gh-pages.sh`

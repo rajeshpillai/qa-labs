@@ -1,0 +1,32 @@
+# Kata 45 — HTTP and Latency Basics (Artillery solution)
+#
+# Run locally:
+#   artillery run 45-http-and-latency-basics.yml
+#
+# Artillery's model: define `phases` (arrival rate over time) and `scenarios`
+# (the steps each virtual user takes). We're keeping it minimal: 1 user/sec
+# for 5 seconds, hitting /lab/echo and asserting on the response.
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 5
+      arrivalRate: 5
+      name: "smoke"
+  ensure:
+    # CI-style assertions on aggregated metrics. Test fails if any breach.
+    p95: 200          # p95 response time must be under 200ms
+    maxErrorRate: 1   # less than 1% of requests may fail
+
+scenarios:
+  - name: "echo baseline"
+    flow:
+      - get:
+          url: "/lab/echo"
+          # Per-response checks. Failing checks count toward errors.
+          expect:
+            - statusCode: 200
+            - hasProperty: "ok"
+            - equals:
+                - "{{ ok }}"
+                - true
