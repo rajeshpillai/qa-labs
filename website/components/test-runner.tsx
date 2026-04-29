@@ -219,7 +219,14 @@ export function TestRunner({
           {frameworks.map((fw) => (
             <button
               key={fw.id}
-              onClick={() => !running && setFramework(fw.id)}
+              onClick={() => {
+                if (running || fw.id === framework) return;
+                setFramework(fw.id);
+                setResults([]);
+                setSummary(null);
+                setErrorMessage(null);
+                setExpandedErrors(new Set());
+              }}
               disabled={running}
               className={cn(
                 'px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap',
@@ -278,6 +285,18 @@ export function TestRunner({
           <div className="flex items-center justify-center min-h-[300px] text-muted text-sm">
             Click &ldquo;Run Tests&rdquo; to execute the {framework} tests for
             this kata.
+          </div>
+        ) : results.length === 0 && running ? (
+          <div className="flex flex-col items-center justify-center gap-2 min-h-[300px] text-muted">
+            <Loader2 className="w-6 h-6 animate-spin text-accent" />
+            <span className="text-sm font-medium text-foreground">
+              Running {framework} tests…
+            </span>
+            <span className="text-xs">
+              {framework === 'k6' || framework === 'artillery' || framework === 'jmeter'
+                ? 'Load tests can take 15–60 seconds. Results stream in as checks/thresholds complete.'
+                : 'Results will stream in as each test finishes.'}
+            </span>
           </div>
         ) : (
           <div className="divide-y divide-border">

@@ -81,6 +81,44 @@ cd playwright && npx playwright test
 cd cypress && npx cypress open
 ```
 
+### Performance tools (phases 9+ only)
+
+The performance curriculum requires three additional CLIs. None of these are managed via npm — they're standalone binaries.
+
+```bash
+# k6 (primary tool — required for all perf katas)
+# macOS:
+brew install k6
+# Ubuntu/Debian:
+sudo gpg -k && sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+sudo apt-get update && sudo apt-get install k6
+# Verify:
+k6 version
+
+# Artillery (parallel solutions — required to run the .yml katas)
+npm install -g artillery
+artillery --version
+
+# JMeter (awareness only — needed for kata 73)
+# Download from https://jmeter.apache.org/download_jmeter.cgi and unzip
+# Add bin/ to PATH, then:
+jmeter --version
+```
+
+**Run a perf kata directly (without the website UI):**
+
+```bash
+# Start the lab targets (server exposes /lab/* endpoints)
+cd server && npm start &
+
+# Then in another terminal:
+k6 run katas/phase-09-perf-foundations/45-http-and-latency-basics/k6/45-http-and-latency-basics.test.js
+
+# Or with Artillery:
+artillery run katas/phase-09-perf-foundations/45-http-and-latency-basics/artillery/45-http-and-latency-basics.yml
+```
+
 ### Option 3: Run the interactive site locally
 
 The site can run in two modes. **Pick based on whether you need the "Run Tests" tab.**
