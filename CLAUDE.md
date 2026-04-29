@@ -17,6 +17,7 @@ qa-labs/
 ├── playwright/               # Playwright project config
 ├── cypress/                  # Cypress project config
 ├── website/                  # Next.js interactive learning site
+├── server/                   # Express backend: test execution API + serves built website
 ├── scripts/                  # build and deploy scripts
 └── playground/               # GitHub Pages landing (aggregated)
 ```

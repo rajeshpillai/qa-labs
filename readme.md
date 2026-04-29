@@ -69,18 +69,31 @@ cd playwright && npx playwright test
 cd cypress && npx cypress open
 ```
 
-### Option 3: Run the full interactive site locally (with test execution)
+### Option 3: Run the interactive site locally
+
+The site can run in two modes. **Pick based on whether you need the "Run Tests" tab.**
+
+| Mode | Command | URL | Run Tests tab? |
+|------|---------|-----|----------------|
+| **Next dev** (fast reload, no test execution) | `cd website && npm run dev` | http://localhost:3000 | ❌ Shows fallback message |
+| **Server mode** (full experience, test execution works) | build website + run server (below) | http://localhost:3000 | ✅ |
+
+> **Heads up:** both modes use port 3000 — don't run them at the same time. The Express server also serves the built website, so in server mode you do **not** need Next dev running.
+
+#### Server mode (full experience)
 
 ```bash
-# Build the website
+# 1. Build the website (static export)
 cd website && npm install && npm run build
 
-# Start the server (website + test execution API)
+# 2. Start the server (serves website/out + test execution API on :3000)
 cd ../server && npm install && npm start
 
 # Open http://localhost:3000
 # Navigate to any kata → "Run Tests" tab → execute tests live
 ```
+
+If port 3000 is already in use, stop your Next dev server first (`Ctrl+C` in that terminal, or `lsof -ti:3000 | xargs kill`).
 
 ---
 

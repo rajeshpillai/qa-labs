@@ -17,7 +17,10 @@ export function LayoutWrapper({ phases, children }: LayoutWrapperProps) {
   const [collapsed, setCollapsed] = useState(false);
 
   return (
-    <div className="flex min-h-screen">
+    <div
+      className="flex min-h-screen"
+      style={{ ['--qa-sidebar-w' as string]: collapsed ? '0px' : '280px' }}
+    >
       {/* Desktop sidebar */}
       <aside
         className={cn(
@@ -60,9 +63,7 @@ export function LayoutWrapper({ phases, children }: LayoutWrapperProps) {
           collapsed ? 'lg:pl-0' : 'lg:pl-[280px]'
         )}
       >
-        <div className="mx-auto max-w-4xl px-6 py-8 lg:py-12">
-          {children}
-        </div>
+        {children}
       </main>
     </div>
   );

@@ -73,7 +73,7 @@ export function TableOfContents() {
   if (headings.length < 2) return null;
 
   return (
-    <nav className="hidden xl:block fixed right-[max(1rem,calc((100vw-64rem)/2-14rem))] top-36 w-56 max-h-[calc(100vh-10rem)] overflow-y-auto">
+    <nav className="hidden 2xl:block fixed right-[max(1rem,calc((100vw-var(--qa-sidebar-w,0px)-64rem)/2-15rem))] top-36 w-56 max-h-[calc(100vh-10rem)] overflow-y-auto">
       <p className="text-xs font-semibold uppercase tracking-wider text-muted mb-3">
         On this page
       </p>
