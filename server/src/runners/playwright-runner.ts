@@ -55,32 +55,37 @@ export async function runPlaywright(
         const report = JSON.parse(stdout);
         const results: ExerciseResult[] = [];
 
-        // Playwright JSON reporter: suites contain specs
-        const suites = report.suites ?? [];
-        for (const suite of suites) {
-          const specs = suite.specs ?? [];
-          for (const spec of specs) {
-            const test = spec.tests?.[0];
-            const result = test?.results?.[0];
+        // Playwright JSON reporter: suites contain specs AND nested suites
+        // (e.g., test.describe() blocks). Walk recursively so describe-wrapped
+        // tests aren't missed.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        function walkSuites(suites: any[]): void {
+          for (const suite of suites ?? []) {
+            for (const spec of suite.specs ?? []) {
+              const test = spec.tests?.[0];
+              const result = test?.results?.[0];
 
-            const status =
-              result?.status === 'passed'
-                ? 'passed'
-                : result?.status === 'skipped'
-                  ? 'skipped'
-                  : 'failed';
+              const status: ExerciseResult['status'] =
+                result?.status === 'passed'
+                  ? 'passed'
+                  : result?.status === 'skipped'
+                    ? 'skipped'
+                    : 'failed';
 
-            const exerciseResult: ExerciseResult = {
-              exercise: spec.title ?? 'unknown',
-              status,
-              duration: result?.duration,
-              error: result?.error?.message,
-            };
+              const exerciseResult: ExerciseResult = {
+                exercise: spec.title ?? 'unknown',
+                status,
+                duration: result?.duration,
+                error: result?.error?.message,
+              };
 
-            results.push(exerciseResult);
-            emit({ type: 'result', data: exerciseResult as unknown as Record<string, unknown> });
+              results.push(exerciseResult);
+              emit({ type: 'result', data: exerciseResult as unknown as Record<string, unknown> });
+            }
+            if (suite.suites?.length) walkSuites(suite.suites);
           }
         }
+        walkSuites(report.suites ?? []);
 
         const summary: ExecutionSummary = {
           passed: results.filter((r) => r.status === 'passed').length,
