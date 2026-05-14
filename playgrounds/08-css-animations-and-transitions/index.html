@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kata 08: CSS Animations and Transitions | QA Labs</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #1e293b; padding: 2rem; }
+    .header { background: #0f172a; color: white; padding: 1rem 2rem; margin: -2rem -2rem 2rem; }
+    .header h1 { font-size: 1.25rem; }
+    .kata-badge { display: inline-block; background: #38bdf8; color: #0f172a; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 4px; margin-right: 0.5rem; }
+    button { padding: 0.5rem 1rem; border: none; border-radius: 6px; font-size: 0.875rem; cursor: pointer; margin-right: 0.5rem; margin-bottom: 0.5rem; }
+    .btn-primary { background: #3b82f6; color: white; }
+    .btn-success { background: #22c55e; color: white; }
+    .btn-warning { background: #f59e0b; color: white; }
+
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+    .section { margin-bottom: 2rem; padding: 1.5rem; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .section h2 { font-size: 1rem; color: #475569; margin-bottom: 1rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.5rem; }
+
+    /* 1. Card Flip Animation */
+    .flip-container {
+      perspective: 800px; width: 280px; height: 180px; cursor: pointer;
+    }
+    .flip-card {
+      width: 100%; height: 100%; position: relative;
+      transition: transform 0.6s ease;
+      transform-style: preserve-3d;
+    }
+    .flip-card.flipped {
+      transform: rotateY(180deg);
+    }
+    .flip-front, .flip-back {
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      backface-visibility: hidden; border-radius: 8px; padding: 1.25rem;
+      display: flex; flex-direction: column; justify-content: center;
+    }
+    .flip-front {
+      background: linear-gradient(135deg, #3b82f6, #1d4ed8);
+      color: white;
+    }
+    .flip-back {
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      color: white; transform: rotateY(180deg);
+    }
+    .flip-front h3, .flip-back h3 { margin-bottom: 0.5rem; font-size: 1rem; }
+    .flip-front p, .flip-back p { font-size: 0.8rem; opacity: 0.9; }
+
+    /* 2. Slide-in Sidebar */
+    .sidebar-wrapper { position: relative; height: 200px; overflow: hidden; border: 1px solid #e2e8f0; border-radius: 8px; }
+    .sidebar-main { padding: 1rem; }
+    .sidebar-panel {
+      position: absolute; top: 0; right: 0; width: 240px; height: 100%;
+      background: #0f172a; color: white; padding: 1.25rem;
+      transform: translateX(100%);
+      transition: transform 0.4s ease;
+    }
+    .sidebar-panel.open {
+      transform: translateX(0);
+    }
+    .sidebar-panel h3 { font-size: 0.9rem; margin-bottom: 0.75rem; }
+    .sidebar-panel p { font-size: 0.8rem; opacity: 0.8; }
+
+    /* 3. Loading Spinner */
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    .spinner {
+      width: 40px; height: 40px; border: 4px solid #e2e8f0;
+      border-top-color: #3b82f6; border-radius: 50%;
+      animation: spin 1s linear infinite;
+      display: none;
+    }
+    .spinner.active {
+      display: block;
+    }
+
+    /* 4. Fade-in/out Element */
+    .fade-element {
+      padding: 1rem; background: #dbeafe; border-radius: 8px;
+      margin-top: 0.75rem; font-size: 0.875rem; color: #1e40af;
+      opacity: 0;
+      transition: opacity 0.5s ease;
+    }
+    .fade-element.visible {
+      opacity: 1;
+    }
+
+    /* 5. Progress Bar */
+    .progress-track {
+      width: 100%; height: 24px; background: #e2e8f0; border-radius: 12px;
+      overflow: hidden; margin-top: 0.75rem;
+    }
+    .progress-fill {
+      height: 100%; background: linear-gradient(90deg, #22c55e, #16a34a);
+      border-radius: 12px; width: 0%;
+      transition: width 0.8s ease;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.7rem; font-weight: 700; color: white;
+      min-width: fit-content; padding: 0 0.5rem;
+    }
+
+    /* 6. Accordion */
+    .accordion-item { border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 0.5rem; overflow: hidden; }
+    .accordion-header {
+      padding: 0.75rem 1rem; background: #f8fafc; cursor: pointer;
+      font-weight: 600; font-size: 0.875rem; display: flex;
+      justify-content: space-between; align-items: center;
+      border: none; width: 100%; text-align: left;
+    }
+    .accordion-header:hover { background: #f1f5f9; }
+    .accordion-arrow { transition: transform 0.3s ease; display: inline-block; }
+    .accordion-arrow.open { transform: rotate(180deg); }
+    .accordion-body {
+      max-height: 0; overflow: hidden;
+      transition: max-height 0.4s ease;
+    }
+    .accordion-body.open {
+      max-height: 200px;
+    }
+    .accordion-content { padding: 1rem; font-size: 0.85rem; color: #475569; }
+
+    /* 7. Processing Overlay */
+    .processing-overlay {
+      position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+      background: rgba(15, 23, 42, 0.7); display: flex;
+      align-items: center; justify-content: center; z-index: 100;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.3s ease;
+    }
+    .processing-overlay.active {
+      opacity: 1; pointer-events: auto;
+    }
+    .processing-box {
+      background: white; padding: 2rem; border-radius: 12px;
+      text-align: center; box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+    }
+    .processing-box h3 { margin-bottom: 0.5rem; }
+    .processing-box p { font-size: 0.85rem; color: #64748b; }
+
+    /* Status displays */
+    .status-text { font-size: 0.8rem; color: #64748b; margin-top: 0.5rem; }
+  </style>
+</head>
+<body>
+
+  <header class="header" data-testid="page-header">
+    <span class="kata-badge">KATA 08</span>
+    <h1>Compliance Dashboard - CSS Animations and Transitions</h1>
+  </header>
+
+  <div class="grid">
+    <!-- LEFT COLUMN -->
+    <div>
+
+      <!-- 1: Card Flip Animation -->
+      <div class="section" data-testid="flip-section">
+        <h2>Applicant Card (Click to Flip)</h2>
+        <div class="flip-container" data-testid="flip-container" id="flip-container">
+          <div class="flip-card" data-testid="flip-card" id="flip-card">
+            <div class="flip-front" data-testid="flip-front">
+              <h3>Aisha Patel</h3>
+              <p>KYC Application #4821</p>
+              <p>Status: Pending Review</p>
+            </div>
+            <div class="flip-back" data-testid="flip-back">
+              <h3>Details</h3>
+              <p>Risk Level: High</p>
+              <p>Country: United Kingdom</p>
+              <p>Submitted: 2026-04-10</p>
+            </div>
+          </div>
+        </div>
+        <p class="status-text">
+          Card state: <strong data-testid="flip-state" id="flip-state">front</strong>
+        </p>
+      </div>
+
+      <!-- 2: Slide-in Sidebar -->
+      <div class="section" data-testid="sidebar-section">
+        <h2>Filter Panel (Slide-in Sidebar)</h2>
+        <button class="btn-primary" data-testid="btn-toggle-sidebar" id="btn-toggle-sidebar">Toggle Filters</button>
+        <div class="sidebar-wrapper" data-testid="sidebar-wrapper">
+          <div class="sidebar-main">
+            <p style="font-size: 0.85rem; color: #64748b;">Click "Toggle Filters" to slide in the filter panel from the right.</p>
+          </div>
+          <div class="sidebar-panel" data-testid="sidebar-panel" id="sidebar-panel">
+            <h3>Filters</h3>
+            <p>Risk Level: High</p>
+            <p>Status: Pending</p>
+            <p>Region: EMEA</p>
+          </div>
+        </div>
+        <p class="status-text">
+          Sidebar state: <strong data-testid="sidebar-state" id="sidebar-state">closed</strong>
+        </p>
+      </div>
+
+      <!-- 3: Loading Spinner -->
+      <div class="section" data-testid="spinner-section">
+        <h2>Data Loading Spinner</h2>
+        <button class="btn-primary" data-testid="btn-toggle-spinner" id="btn-toggle-spinner">Start Loading</button>
+        <div style="margin-top: 0.75rem; display: flex; align-items: center; gap: 1rem;">
+          <div class="spinner" data-testid="spinner" id="spinner"></div>
+          <span data-testid="spinner-status" id="spinner-status" style="font-size: 0.85rem; color: #64748b;">Idle</span>
+        </div>
+      </div>
+
+      <!-- 4: Fade-in/out Element -->
+      <div class="section" data-testid="fade-section">
+        <h2>Alert Notification (Fade In/Out)</h2>
+        <button class="btn-warning" data-testid="btn-fade-in" id="btn-fade-in">Show Alert</button>
+        <button class="btn-primary" data-testid="btn-fade-out" id="btn-fade-out">Hide Alert</button>
+        <div class="fade-element" data-testid="fade-element" id="fade-element">
+          Suspicious activity detected on account #7392. Manual review required.
+        </div>
+        <p class="status-text">
+          Opacity: <strong data-testid="fade-opacity" id="fade-opacity">0</strong>
+        </p>
+      </div>
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div>
+
+      <!-- 5: Progress Bar -->
+      <div class="section" data-testid="progress-section">
+        <h2>Verification Progress</h2>
+        <button class="btn-success" data-testid="btn-progress-25" id="btn-progress-25">25%</button>
+        <button class="btn-success" data-testid="btn-progress-50" id="btn-progress-50">50%</button>
+        <button class="btn-success" data-testid="btn-progress-75" id="btn-progress-75">75%</button>
+        <button class="btn-success" data-testid="btn-progress-100" id="btn-progress-100">100%</button>
+        <div class="progress-track" data-testid="progress-track">
+          <div class="progress-fill" data-testid="progress-fill" id="progress-fill"></div>
+        </div>
+        <p class="status-text">
+          Progress: <strong data-testid="progress-value" id="progress-value">0%</strong>
+        </p>
+      </div>
+
+      <!-- 6: Accordion -->
+      <div class="section" data-testid="accordion-section">
+        <h2>Compliance Checklist (Accordion)</h2>
+
+        <div class="accordion-item" data-testid="accordion-item-1">
+          <button class="accordion-header" data-testid="accordion-header-1" id="accordion-header-1">
+            Identity Verification
+            <span class="accordion-arrow" data-testid="accordion-arrow-1" id="accordion-arrow-1">&#9660;</span>
+          </button>
+          <div class="accordion-body" data-testid="accordion-body-1" id="accordion-body-1">
+            <div class="accordion-content">
+              Government-issued photo ID verified. Biometric check passed.
+              Document expiry date: 2028-11-30. Liveness check: completed.
+            </div>
+          </div>
+        </div>
+
+        <div class="accordion-item" data-testid="accordion-item-2">
+          <button class="accordion-header" data-testid="accordion-header-2" id="accordion-header-2">
+            Address Verification
+            <span class="accordion-arrow" data-testid="accordion-arrow-2" id="accordion-arrow-2">&#9660;</span>
+          </button>
+          <div class="accordion-body" data-testid="accordion-body-2" id="accordion-body-2">
+            <div class="accordion-content">
+              Utility bill from last 3 months provided. Address matches records.
+              Country risk assessment: Low. Verified via third-party service.
+            </div>
+          </div>
+        </div>
+
+        <div class="accordion-item" data-testid="accordion-item-3">
+          <button class="accordion-header" data-testid="accordion-header-3" id="accordion-header-3">
+            Source of Funds
+            <span class="accordion-arrow" data-testid="accordion-arrow-3" id="accordion-arrow-3">&#9660;</span>
+          </button>
+          <div class="accordion-body" data-testid="accordion-body-3" id="accordion-body-3">
+            <div class="accordion-content">
+              Employment income declared. Bank statements reviewed for 6 months.
+              No unusual patterns detected. Consistent with declared occupation.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 7: Processing Overlay -->
+      <div class="section" data-testid="processing-section">
+        <h2>Submit for Processing</h2>
+        <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 0.75rem;">
+          Click "Process" to trigger the overlay. It fades in, shows for 2 seconds, then fades out.
+        </p>
+        <button class="btn-primary" data-testid="btn-process" id="btn-process">Process Application</button>
+        <p class="status-text">
+          Processing state: <strong data-testid="processing-state" id="processing-state">idle</strong>
+        </p>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Processing overlay (positioned fixed, outside the grid) -->
+  <div class="processing-overlay" data-testid="processing-overlay" id="processing-overlay">
+    <div class="processing-box" data-testid="processing-box">
+      <h3>Processing Application</h3>
+      <p>Please wait while we verify all compliance checks...</p>
+    </div>
+  </div>
+
+  <script>
+    // -----------------------------------------------------------------------
+    // 1. Card Flip — Toggle between front and back on click
+    // -----------------------------------------------------------------------
+    // The flip animation is driven entirely by CSS. When we add the 'flipped'
+    // class, the .flip-card element rotates 180 degrees on the Y axis,
+    // revealing the back face.
+    const flipContainer = document.getElementById('flip-container');
+    const flipCard = document.getElementById('flip-card');
+    const flipState = document.getElementById('flip-state');
+
+    flipContainer.addEventListener('click', () => {
+      // Toggle the 'flipped' class on the card.
+      flipCard.classList.toggle('flipped');
+      // Update the state text for test verification.
+      flipState.textContent = flipCard.classList.contains('flipped') ? 'back' : 'front';
+    });
+
+    // -----------------------------------------------------------------------
+    // 2. Slide-in Sidebar — Toggle with a button click
+    // -----------------------------------------------------------------------
+    // The sidebar slides in from the right using a CSS transform transition.
+    // translateX(100%) hides it off-screen; translateX(0) slides it in.
+    const sidebarPanel = document.getElementById('sidebar-panel');
+    const sidebarState = document.getElementById('sidebar-state');
+
+    document.getElementById('btn-toggle-sidebar').addEventListener('click', () => {
+      sidebarPanel.classList.toggle('open');
+      sidebarState.textContent = sidebarPanel.classList.contains('open') ? 'open' : 'closed';
+    });
+
+    // -----------------------------------------------------------------------
+    // 3. Loading Spinner — Toggle visibility
+    // -----------------------------------------------------------------------
+    // The spinner uses a CSS @keyframes animation called 'spin' that rotates
+    // the element 360 degrees continuously. We toggle its display between
+    // none and block.
+    const spinner = document.getElementById('spinner');
+    const spinnerStatus = document.getElementById('spinner-status');
+    const btnSpinner = document.getElementById('btn-toggle-spinner');
+
+    btnSpinner.addEventListener('click', () => {
+      const isActive = spinner.classList.contains('active');
+      spinner.classList.toggle('active');
+      spinnerStatus.textContent = isActive ? 'Idle' : 'Loading...';
+      btnSpinner.textContent = isActive ? 'Start Loading' : 'Stop Loading';
+    });
+
+    // -----------------------------------------------------------------------
+    // 4. Fade-in/out — Opacity transition
+    // -----------------------------------------------------------------------
+    // The fade element transitions opacity from 0 to 1 (and back) over 0.5s.
+    // Adding/removing the 'visible' class triggers the CSS transition.
+    const fadeElement = document.getElementById('fade-element');
+    const fadeOpacity = document.getElementById('fade-opacity');
+
+    document.getElementById('btn-fade-in').addEventListener('click', () => {
+      fadeElement.classList.add('visible');
+      fadeOpacity.textContent = '1';
+    });
+
+    document.getElementById('btn-fade-out').addEventListener('click', () => {
+      fadeElement.classList.remove('visible');
+      fadeOpacity.textContent = '0';
+    });
+
+    // Listen for the transitionend event to update the opacity display
+    // with the actual computed value after the transition completes.
+    fadeElement.addEventListener('transitionend', () => {
+      const computed = window.getComputedStyle(fadeElement).opacity;
+      fadeOpacity.textContent = computed;
+    });
+
+    // -----------------------------------------------------------------------
+    // 5. Progress Bar — Width transition
+    // -----------------------------------------------------------------------
+    // The progress bar fill changes width via a CSS transition (0.8s ease).
+    // We set the width property directly and the browser animates it.
+    const progressFill = document.getElementById('progress-fill');
+    const progressValue = document.getElementById('progress-value');
+
+    function setProgress(pct) {
+      progressFill.style.width = pct + '%';
+      progressFill.textContent = pct + '%';
+      progressValue.textContent = pct + '%';
+    }
+
+    document.getElementById('btn-progress-25').addEventListener('click', () => setProgress(25));
+    document.getElementById('btn-progress-50').addEventListener('click', () => setProgress(50));
+    document.getElementById('btn-progress-75').addEventListener('click', () => setProgress(75));
+    document.getElementById('btn-progress-100').addEventListener('click', () => setProgress(100));
+
+    // -----------------------------------------------------------------------
+    // 6. Accordion — Smooth height transition
+    // -----------------------------------------------------------------------
+    // Each accordion body uses max-height to animate open/close. When the
+    // 'open' class is added, max-height transitions from 0 to 200px.
+    document.querySelectorAll('.accordion-header').forEach(header => {
+      header.addEventListener('click', () => {
+        const bodyId = header.id.replace('header', 'body');
+        const arrowId = header.id.replace('header', 'arrow');
+        const body = document.getElementById(bodyId);
+        const arrow = document.getElementById(arrowId);
+
+        // Toggle the open class on both the body and arrow.
+        body.classList.toggle('open');
+        arrow.classList.toggle('open');
+      });
+    });
+
+    // -----------------------------------------------------------------------
+    // 7. Processing Overlay — Fade in, wait, fade out
+    // -----------------------------------------------------------------------
+    // The overlay uses an opacity transition. We fade it in, wait 2 seconds,
+    // then fade it out. The 'active' class controls visibility.
+    const overlay = document.getElementById('processing-overlay');
+    const processingState = document.getElementById('processing-state');
+
+    document.getElementById('btn-process').addEventListener('click', () => {
+      // Fade in the overlay by adding the 'active' class.
+      overlay.classList.add('active');
+      processingState.textContent = 'processing';
+
+      // After 2 seconds, fade out the overlay by removing the class.
+      setTimeout(() => {
+        overlay.classList.remove('active');
+        processingState.textContent = 'complete';
+      }, 2000);
+    });
+  </script>
+
+</body>
+</html>

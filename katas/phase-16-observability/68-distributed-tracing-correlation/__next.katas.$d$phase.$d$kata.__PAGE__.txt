@@ -1,0 +1,1017 @@
+1:"$Sreact.fragment"
+2:I[76750,["/qa-labs/_next/static/chunks/012xw9ydea0yn.js","/qa-labs/_next/static/chunks/0t2xr05rlu96l.js","/qa-labs/_next/static/chunks/0a55m.6s3qp~-.js","/qa-labs/_next/static/chunks/01luku1w1f06_.js"],"KataPageClient"]
+f:I[97367,["/qa-labs/_next/static/chunks/012xw9ydea0yn.js","/qa-labs/_next/static/chunks/0t2xr05rlu96l.js","/qa-labs/_next/static/chunks/0a55m.6s3qp~-.js"],"OutletBoundary"]
+10:"$Sreact.suspense"
+3:T2375,# Kata 68: Distributed Tracing Correlation
+
+## What You Will Learn
+
+- What **distributed tracing** is and how it relates to load testing
+- The **W3C Trace Context** standard: `traceparent` and `tracestate` headers
+- How to inject **trace IDs from k6** so load-test requests show up alongside production traces
+- The "**find the slow request**" workflow: load test fails → grab trace ID from k6 → open trace in your APM
+- Difference between **trace propagation** (header passing) and **trace generation** (creating the IDs)
+- Patterns for injecting OpenTelemetry-compatible headers in k6 / Artillery
+
+## Prerequisites
+
+- Completed [Kata 67 (Grafana + Prometheus)](../67-grafana-and-prometheus/)
+- Familiarity with **distributed tracing concepts** (spans, traces, parent/child relationships)
+- The QA Labs server running — exposes `/lab/headers` which echoes back received request headers (for verifying propagation)
+
+## Concepts Explained
+
+### What's distributed tracing?
+
+A **trace** is a record of a single request as it flows through multiple services. Each service contributes a **span** to the trace. The full trace tells you:
+
+- Which services were involved
+- How long each took
+- Which one was slow
+- What errors propagated
+
+Tools: **OpenTelemetry** (the standard), **Jaeger** / **Tempo** (storage), **Grafana** / **Honeycomb** / **Datadog** (UI).
+
+### Why this matters in load testing
+
+When your test reports "p99 was 2 seconds, p50 was 50ms," **the slow requests are different requests from the fast ones**. Aggregated metrics tell you *that* there's a tail; they don't tell you *what's causing it*.
+
+If your k6 test passes a trace ID with each request, you can:
+
+1. Run the load test
+2. See which iterations were slow (in the test output or Grafana)
+3. Look up those specific trace IDs in your APM (Tempo / Jaeger / Datadog)
+4. See the full span tree for that exact request — find the bottleneck
+
+This is the **bridge between load testing and APM**.
+
+### W3C Trace Context
+
+The standard format. Two headers:
+
+```
+traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+             │  │                                │                │
+             │  │                                │                └─ flags (sampled, etc.)
+             │  │                                └─ parent span id
+             │  └─ trace id (16 bytes hex)
+             └─ version
+
+tracestate: rojo=00f067aa0ba902b7,congo=t61rcWkgMzE
+            └─ vendor-specific extensions (optional)
+```
+
+Most APMs honor this format; many also accept legacy `X-Trace-Id` / `X-B3-TraceId` (Zipkin's B3 format).
+
+### Injecting trace IDs from k6
+
+```javascript
+function makeTraceparent() {
+  // Generate 16 random bytes for trace id, 8 for parent span id.
+  const hex = (n) => Array.from({ length: n }, () =>
+    Math.floor(Math.random() * 16).toString(16)).join('');
+  const traceId = hex(32);    // 16 bytes
+  const spanId = hex(16);     //  8 bytes
+  return { traceparent: `00-${traceId}-${spanId}-01`, traceId };
+}
+
+const { traceparent, traceId } = makeTraceparent();
+const res = http.get(url, {
+  headers: { traceparent },
+  tags: { trace_id: traceId },  // also tag the metric so we can find it
+});
+```
+
+Now every request in your load test:
+- Sends a unique `traceparent` header — the server creates a span linked to it
+- Tags the k6 metric with `trace_id` — you can find the slow ones in your output
+
+### Pattern: log slow trace IDs
+
+Combine k6 metrics with the trace IDs:
+
+```javascript
+const start = Date.now();
+const res = http.get(url, { headers: { traceparent }, tags: { trace_id: traceId } });
+const duration = Date.now() - start;
+
+if (duration > 1000) {
+  // Print the slow trace ID — paste into your APM to see what happened
+  console.warn(`slow request: trace_id=${traceId} duration=${duration}ms url=${url}`);
+}
+```
+
+In CI, scrape these warn lines. The slow trace IDs are your debug starting points.
+
+### The QA Labs `/lab/headers` endpoint
+
+To verify your trace headers actually reach the server, the lab server exposes:
+
+```
+GET /lab/headers
+→ { receivedHeaders: { ... your headers ... }, serverTraceId: "<id>", ts: <ts> }
+```
+
+Send a `traceparent` header → the response includes it back so you can confirm propagation.
+
+### Realistic perf-test + APM workflow
+
+```
+1. Run load test                       k6 → server (with trace IDs)
+                                            │
+                                       (server emits spans)
+                                            │
+2. Test fails: p99 = 2s                Grafana
+                                            │
+                                       (you click on slow request)
+                                            │
+3. Click trace ID → APM                Tempo / Jaeger
+                                            │
+                                       (you see the slow span)
+                                            │
+4. "Database query took 1.8s"         You file a bug.
+```
+
+Without trace ID propagation in step 1, step 3 isn't possible.
+
+### Sampling
+
+In production APMs, you typically sample only a small fraction of traces (1%, 0.1%) for cost reasons. In load tests, **sample every request** — the whole point is to investigate later. The `traceparent` flags field controls this:
+
+- `00` = not sampled (won't be stored)
+- `01` = sampled (will be stored)
+
+For load tests: always send `01`.
+
+### k6 has experimental built-in tracing
+
+k6's experimental `k6/x/tracing` extension can auto-inject W3C trace headers without manual code:
+
+```javascript
+import tracing from 'k6/experimental/tracing';
+
+const httpWithTracing = tracing.instrumentHTTP({
+  propagator: 'w3c',
+});
+
+httpWithTracing.get(url);  // automatically gets traceparent
+```
+
+Available in k6 v0.45+. The kata uses manual injection so you understand what's happening; once you do, the `instrumentHTTP` shortcut is fine.
+
+### Artillery tracing
+
+Artillery has the [`artillery-plugin-fake-data`](https://www.artillery.io/docs/reference/plugins/fake-data) and various plugins, plus `engine-http`'s `beforeRequest` hook for header injection. Less first-class than k6's experimental support.
+
+## Exercises
+
+1. **Verify propagation.** Send a `traceparent` header to `/lab/headers`, parse the response. Does `receivedHeaders.traceparent` match what you sent?
+2. **Generate unique trace IDs per iteration.** Use the `makeTraceparent()` helper from the cheat sheet. Run a 30s test against `/lab/jitter?p50=50&p95=500`. How many unique trace IDs did you generate?
+3. **Find the slow ones.** Add the slow-warning logic from above. After a run, grep stdout for `slow request:`. How many slow trace IDs did you log?
+4. **Use `instrumentHTTP` (experimental).** Replace your manual injection with `import tracing from 'k6/experimental/tracing'`. Does the response from `/lab/headers` still show propagation?
+5. **Combine with Grafana (kata 67).** Run the test with Prometheus output AND tag-based trace IDs. In Grafana, filter by `trace_id` for slow requests — does the dashboard let you click through to a specific trace?
+
+## Common Mistakes
+
+- **Forgetting the flags byte.** `00-{trace}-{span}-00` (last byte 00) means "not sampled" — your APM won't store it. Use `01`.
+- **Reusing trace IDs across iterations.** Each request should have its own. Otherwise you can't disambiguate which iteration was slow.
+- **Tagging by trace_id in metric tags.** This is the cardinality explosion warned about in kata 66 — every request has its own trace, every trace creates a series. Don't tag your metric this way; *log* the IDs instead.
+- **Sampling at 1% in load tests.** Defeats the purpose. Always sample 100% during load testing.
+- **Using B3 in modern stacks.** Most modern APMs prefer W3C `traceparent` over Zipkin's `X-B3-TraceId`. Send both for safety, but lead with W3C.
+
+## Cheat Sheet
+
+```javascript
+// Generate W3C traceparent
+function newTraceparent() {
+  const hex = (n) => Array.from({ length: n }, () =>
+    Math.floor(Math.random() * 16).toString(16)).join('');
+  const traceId = hex(32);
+  const spanId = hex(16);
+  return {
+    header: `00-${traceId}-${spanId}-01`,
+    traceId,
+    spanId,
+  };
+}
+
+// Apply per-request
+const tp = newTraceparent();
+const res = http.get(url, {
+  headers: { traceparent: tp.header },
+});
+
+if (res.timings.duration > 1000) {
+  console.warn(`slow: trace_id=${tp.traceId} url=${url}`);
+}
+```
+
+| Header | Standard | Use |
+|--------|----------|-----|
+| `traceparent` | W3C | Modern default, OpenTelemetry-native |
+| `tracestate` | W3C | Vendor extensions (optional) |
+| `X-B3-TraceId` | Zipkin | Legacy services / B3-only systems |
+| `X-Request-Id` | Convention | Request-level correlation, not trace-level |
+
+| Pattern | Where it lives |
+|---------|----------------|
+| Inject `traceparent` | k6 test code |
+| Pass through services | Server-side OpenTelemetry SDK |
+| Store traces | Tempo / Jaeger / vendor APM |
+| Visualize | Grafana / Datadog / Honeycomb |
+| Find from k6 output | Log slow trace IDs to stdout / metrics |
+4:Tb94,// Kata 68 — Distributed Tracing Correlation
+//
+// Generates a fresh W3C traceparent per request, sends it to /lab/headers
+// (which echoes it back so we can verify propagation), and logs slow
+// trace IDs so they can be looked up in an APM.
+
+import http from 'k6/http';
+import { check } from 'k6';
+import { Counter, Trend } from 'k6/metrics';
+
+const BASE_URL = __ENV.K6_BASE_URL || 'http://localhost:3000';
+
+const slowTraces = new Counter('slow_trace_ids_logged');
+const propagationOk = new Counter('trace_propagation_verified');
+const traceLatency = new Trend('trace_endpoint_latency_ms', true);
+
+export const options = {
+  scenarios: {
+    traced: {
+      executor: 'constant-arrival-rate',
+      rate: 20,
+      timeUnit: '1s',
+      duration: '15s',
+      preAllocatedVUs: 20,
+    },
+  },
+  thresholds: {
+    'http_req_failed': ['rate<0.01'],
+    'trace_propagation_verified': ['count>50'],
+    // Aligned with the lab endpoint's configured jitter (p95=400ms)
+    // plus modest network overhead. Setting tighter would be aspiration,
+    // not measurement.
+    'trace_endpoint_latency_ms': ['p(95)<600'],
+  },
+};
+
+// Build a W3C traceparent: version=00, trace_id=16 bytes hex, span_id=8 bytes hex, flags=01 (sampled)
+function newTraceparent() {
+  const hex = (n) =>
+    Array.from({ length: n }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+  const traceId = hex(32);
+  const spanId = hex(16);
+  return {
+    header: `00-${traceId}-${spanId}-01`,
+    traceId,
+    spanId,
+  };
+}
+
+export default function () {
+  const tp = newTraceparent();
+
+  // Hit a slow-ish endpoint for some realistic latency variance.
+  // Use /lab/jitter so some requests cross the "slow" threshold.
+  const start = Date.now();
+  const res = http.get(`${BASE_URL}/lab/jitter?p50=50&p95=400`, {
+    headers: {
+      traceparent: tp.header,
+      'x-trace-id': tp.traceId,  // legacy fallback
+    },
+    // NOTE: deliberately NOT tagging metric by trace_id — that's the
+    // cardinality-explosion antipattern. Log slow ones to stdout instead.
+  });
+  const duration = Date.now() - start;
+  traceLatency.add(duration);
+
+  if (duration > 700) {
+    // Log slow trace IDs — these are your APM jump-off points.
+    console.warn(`slow: trace_id=${tp.traceId} duration=${duration}ms`);
+    slowTraces.add(1);
+  }
+
+  // Verify propagation by hitting /lab/headers (which echoes back).
+  // Real production code wouldn't hit two endpoints — this is just to
+  // demonstrate the propagation pattern works end-to-end.
+  const verify = http.get(`${BASE_URL}/lab/headers`, {
+    headers: { traceparent: tp.header, 'x-trace-id': tp.traceId },
+  });
+
+  const echoed = verify.json('receivedHeaders');
+  // The lab server lowercases header names (Express convention).
+  if (echoed?.['traceparent'] === tp.header) {
+    propagationOk.add(1);
+  }
+
+  check(res, { 'status is 200': (r) => r.status === 200 });
+  check(verify, { 'verify status is 200': (r) => r.status === 200 });
+}
+5:T4fe,# Kata 68 — Distributed Tracing Correlation (Artillery solution)
+#
+# Artillery can inject custom headers per request, but generating a fresh
+# W3C traceparent per iteration requires a custom processor (JS function).
+# A static traceparent across all requests defeats the purpose.
+#
+# This file demonstrates the basic header injection. For per-request
+# trace IDs in Artillery, you'd need a `processor:` block with a function
+# that returns a unique header per call. See the kata's k6 solution for
+# the cleaner equivalent.
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 15
+      arrivalRate: 20
+      name: "main"
+
+scenarios:
+  - name: "traced jitter probe"
+    flow:
+      - get:
+          url: "/lab/jitter?p50=50&p95=400"
+          headers:
+            # Static — same id for every request. Real implementations need
+            # a processor function. Documenting the limitation here.
+            traceparent: "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01"
+
+  - name: "verify propagation"
+    flow:
+      - get:
+          url: "/lab/headers"
+          headers:
+            traceparent: "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01"
+          expect:
+            - statusCode: 200
+            - hasProperty: "receivedHeaders"
+6:T1f0c,# Kata 67: Grafana + Prometheus Integration
+
+## What You Will Learn
+
+- The full **k6 → Prometheus → Grafana** pipeline for live perf dashboards
+- A working **docker-compose** stack you can spin up locally in 60 seconds
+- The k6 metrics that show up in Prometheus and how to query them with **PromQL**
+- Building three essential dashboards: **per-endpoint latency**, **error rate over time**, **VU/RPS**
+- How to **import a community dashboard** instead of building from scratch
+- Tying alerts to **threshold breaches** so a regression pages someone
+
+## Prerequisites
+
+- Completed [Kata 66 (Streaming Metrics)](../66-streaming-metrics/)
+- Docker installed (we'll use docker-compose to run Prometheus + Grafana)
+- The QA Labs server running
+
+## Concepts Explained
+
+### The architecture
+
+```
+┌─────────┐  remote-write   ┌────────────┐  scrape    ┌─────────┐
+│ k6 test │───────────────→│ Prometheus │←──────────│ Grafana │
+└─────────┘                  └────────────┘            └─────────┘
+                                                          │
+                                                       (you view)
+```
+
+- k6 sends metrics to Prometheus's **remote-write** endpoint as the test runs
+- Prometheus stores them as time series
+- Grafana queries Prometheus and renders dashboards
+
+### Stand up the stack: docker-compose
+
+Save this as `docker-compose.yml` in the kata folder:
+
+```yaml
+services:
+  prometheus:
+    image: prom/prometheus:v2.55.0
+    ports:
+      - "9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--web.enable-remote-write-receiver'
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+
+  grafana:
+    image: grafana/grafana:11.0.0
+    ports:
+      - "3001:3000"  # Grafana on 3001 (3000 is QA Labs)
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+```
+
+And `prometheus.yml`:
+
+```yaml
+global:
+  scrape_interval: 15s
+```
+
+(No scrape config needed — Prometheus is in remote-write-receiver mode, k6 pushes data in directly.)
+
+Run: `docker compose up -d`. Grafana is now at http://localhost:3001 (admin / admin), Prometheus at http://localhost:9090.
+
+### Send k6 metrics to Prometheus
+
+```bash
+K6_PROMETHEUS_RW_SERVER_URL=http://localhost:9090/api/v1/write \
+K6_PROMETHEUS_RW_TREND_STATS=p(50),p(95),p(99),avg,min,max \
+k6 run --out experimental-prometheus-rw your-test.js
+```
+
+The `K6_PROMETHEUS_RW_TREND_STATS` env var controls which percentiles k6 sends. Default is just avg+max — useless for tail analysis. Override to get p95 and p99 in your dashboards.
+
+### What metrics show up in Prometheus
+
+After a test run, query in Prometheus / Grafana:
+
+| Metric | Description |
+|--------|-------------|
+| `k6_http_reqs` | Counter of total HTTP requests |
+| `k6_http_req_duration` | Trend: response time (with `_p95`, `_p99` suffixes) |
+| `k6_http_req_failed_rate` | Error rate |
+| `k6_iterations_total` | VU iterations completed |
+| `k6_vus` | Currently active VUs |
+| `k6_data_received_total` | Bytes received |
+| `k6_<custom_metric>_*` | Your custom Trends/Counters/Rates |
+
+All metrics include the **tags you set in k6** as Prometheus labels.
+
+### Three essential PromQL queries
+
+#### 1. p95 latency per endpoint, over time
+
+```promql
+k6_http_req_duration_p95{endpoint=~".+"}
+```
+
+In Grafana: time-series panel, instant query disabled. You see one line per endpoint.
+
+#### 2. Error rate over time
+
+```promql
+rate(k6_http_reqs{status=~"5.."}[1m])
+  / rate(k6_http_reqs[1m])
+```
+
+Shows the fraction of 5xx responses, smoothed over 1-minute windows.
+
+#### 3. Throughput per second
+
+```promql
+rate(k6_http_reqs[1m])
+```
+
+The actual RPS the test achieved (different from your `arrival_rate` setting if the system slows down).
+
+### Pre-built dashboards
+
+You don't need to build all dashboards from scratch — Grafana has community templates.
+
+The official **k6 Prometheus dashboard** is at Grafana.com dashboard ID **19665**. Import it:
+
+1. Grafana → Dashboards → New → Import
+2. Enter ID `19665`, click Load
+3. Pick your Prometheus data source
+
+Now you have 30+ pre-built panels covering all the standard k6 metrics.
+
+### Alerting
+
+Once metrics are in Prometheus, you can alert on regressions:
+
+```yaml
+# alerts.yml
+groups:
+  - name: perf-alerts
+    rules:
+      - alert: HighP95Latency
+        expr: max_over_time(k6_http_req_duration_p95[5m]) > 500
+        for: 1m
+        annotations:
+          summary: "p95 latency exceeded 500ms during load test"
+```
+
+Wire to PagerDuty / Slack / Discord via Alertmanager. Now a load-test regression actually wakes someone up — same as a production alert.
+
+### When to use this vs k6 Cloud
+
+| Local docker stack | k6 Cloud |
+|-------------------|----------|
+| Free | Paid (free tier limits) |
+| Self-hosted, full control | Hosted, no infra |
+| Need ops effort to keep up | Maintained by Grafana Labs |
+| One machine | Distributed across regions |
+| Custom dashboards | Pre-built |
+
+For solo / small teams: Cloud (free tier is enough for many use cases). For mature orgs already on Prometheus: docker-compose stack mirrors prod observability and integrates with existing alerts.
+
+## Exercises
+
+1. **Spin up the stack.** Save the docker-compose.yml + prometheus.yml from above. Run `docker compose up -d`. Visit http://localhost:9090 and http://localhost:3001 to confirm both are alive.
+2. **Send a kata-66 test to Prometheus.** Copy the k6 file from kata 66 to this folder, run with `K6_PROMETHEUS_RW_SERVER_URL=http://localhost:9090/api/v1/write k6 run --out experimental-prometheus-rw 66-streaming-metrics.test.js`. Open Prometheus and query `k6_http_reqs`. Should see counts per endpoint.
+3. **Import dashboard 19665.** Get a polished view of the run without building anything.
+4. **Build a custom panel.** In Grafana, create a panel showing `k6_http_req_duration_p95{region="us-east"}` over time. What happens during your test?
+5. **Add an alert.** Set a threshold rule for p95 > 500ms and run a test against `/lab/slow?ms=600`. Alert should fire.
+
+## Common Mistakes
+
+- **Forgetting `--web.enable-remote-write-receiver`.** Without this Prometheus flag, remote-write requests are rejected.
+- **Using port 3000 for Grafana.** That's QA Labs's port. Map Grafana to 3001 in docker-compose to avoid conflict.
+- **Default Trend stats.** Without `K6_PROMETHEUS_RW_TREND_STATS`, you only get `avg` and `max` — no percentiles in your dashboard.
+- **Cardinality explosion in production.** As kata 66 warned: high-cardinality tags will overwhelm Prometheus over time.
+- **Treating dashboards as "set and forget."** When endpoints change, dashboard queries need updating too. Pin a version of your dashboard JSON in Git.
+
+## Cheat Sheet
+
+```bash
+# Stand up the stack
+docker compose up -d
+
+# Run k6 with Prometheus output + better trend stats
+K6_PROMETHEUS_RW_SERVER_URL=http://localhost:9090/api/v1/write \
+K6_PROMETHEUS_RW_TREND_STATS=p(50),p(95),p(99),avg,min,max \
+k6 run --out experimental-prometheus-rw test.js
+
+# Verify metrics arrived
+curl 'http://localhost:9090/api/v1/query?query=k6_http_reqs'
+
+# Tear down
+docker compose down -v   # -v wipes the data volumes too
+```
+
+| Tool | Default port | Use |
+|------|--------------|-----|
+| QA Labs server | 3000 | Test runner + lab targets |
+| QA Labs playground | 8080 | Static kata pages |
+| Prometheus | 9090 | Time series storage + scrape |
+| Grafana | 3001 | Dashboards (mapped, not 3000) |
+
+| PromQL helper | What |
+|---------------|------|
+| `rate(metric[1m])` | Per-second rate over 1m window |
+| `histogram_quantile(0.95, ...)` | p95 from histogram buckets |
+| `max_over_time(metric[5m])` | Max value in 5m window |
+| `metric{label=~"regex"}` | Filter by label regex |
+7:T882,// Kata 67 — Grafana + Prometheus Integration
+//
+// This script is the same shape as kata 66 — the magic is in HOW you run
+// it, not what's in the file. To stream live metrics to your local
+// Prometheus + Grafana stack:
+//
+//   docker compose up -d
+//   K6_PROMETHEUS_RW_SERVER_URL=http://localhost:9090/api/v1/write \
+//   K6_PROMETHEUS_RW_TREND_STATS=p(50),p(95),p(99),avg,min,max \
+//   k6 run --out experimental-prometheus-rw 67-grafana-and-prometheus.test.js
+//
+// Then open http://localhost:3001 (Grafana) and import dashboard 19665.
+
+import http from 'k6/http';
+import { check } from 'k6';
+
+const BASE_URL = __ENV.K6_BASE_URL || 'http://localhost:3000';
+
+const ENDPOINTS = [
+  { url: `${BASE_URL}/lab/echo`, name: 'echo' },
+  { url: `${BASE_URL}/lab/slow?ms=200`, name: 'slow_200' },
+  { url: `${BASE_URL}/lab/jitter?p50=80&p95=300`, name: 'jitter' },
+  { url: `${BASE_URL}/lab/limit`, name: 'rate_limited' },
+];
+
+export const options = {
+  scenarios: {
+    realistic_mix: {
+      executor: 'ramping-arrival-rate',
+      startRate: 0,
+      timeUnit: '1s',
+      preAllocatedVUs: 30,
+      maxVUs: 100,
+      stages: [
+        { duration: '15s', target: 30 },   // ramp up
+        { duration: '30s', target: 30 },   // plateau
+        { duration: '10s', target: 0 },    // drain
+      ],
+    },
+  },
+  thresholds: {
+    'http_req_duration{endpoint:echo}': ['p(95)<200'],
+    'http_req_duration{endpoint:slow_200}': ['p(95)<400'],
+    'http_req_duration{endpoint:jitter}': ['p(95)<800'],
+    // No threshold on rate_limited — we WANT to see 429s in the dashboard.
+    'http_req_failed{endpoint:echo}': ['rate<0.01'],
+  },
+};
+
+export default function () {
+  const ep = ENDPOINTS[Math.floor(Math.random() * ENDPOINTS.length)];
+  const res = http.get(ep.url, {
+    tags: {
+      endpoint: ep.name,
+      // Status class makes for great dashboard splits — query by `status_class:5xx`.
+      // We can't tag based on response status before the request, so this stays
+      // generic; Prometheus auto-derives from the `status` tag k6 already sets.
+    },
+  });
+  check(res, {
+    'status acceptable (200 or 429)': (r) => r.status === 200 || r.status === 429,
+  });
+}
+8:T405,# Kata 67 — Grafana + Prometheus (Artillery solution)
+#
+# Artillery to Prometheus typically goes via the artillery-engine-statsd
+# plugin or a custom processor publishing to a Prometheus pushgateway.
+# k6's first-class Prometheus output is significantly simpler.
+#
+# This file is the HTTP load body — the integration story is in the readme.
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 15
+      arrivalRate: 5
+      rampTo: 30
+      name: "warm-up"
+    - duration: 30
+      arrivalRate: 30
+      name: "plateau"
+    - duration: 10
+      arrivalRate: 30
+      rampTo: 0
+      name: "drain"
+
+scenarios:
+  - name: "echo"
+    weight: 25
+    flow:
+      - get: { url: "/lab/echo" }
+  - name: "slow"
+    weight: 25
+    flow:
+      - get: { url: "/lab/slow?ms=200" }
+  - name: "jitter"
+    weight: 25
+    flow:
+      - get: { url: "/lab/jitter?p50=80&p95=300" }
+  - name: "rate-limited"
+    weight: 25
+    flow:
+      - get:
+          url: "/lab/limit"
+          expect:
+            - statusCode: [200, 429]
+9:T1d36,# Kata 69: Fault Injection with Toxiproxy
+
+## What You Will Learn
+
+- Why **chaos testing** belongs alongside load testing — not as a separate discipline
+- **Toxiproxy** as a small, scriptable network-fault proxy you can put in front of any TCP service
+- The seven Toxiproxy "toxics" that simulate real-world failures: latency, slow_close, timeout, slicer, bandwidth, etc.
+- The **inject → measure → recover** test pattern
+- Why "chaos in dev" is cheap and "chaos in prod" needs a bigger stack (Gremlin, AWS FIS, chaos-mesh)
+- Using QA Labs's `/lab/flaky` and `/lab/slow` as a simpler simulation when you don't want to spin up Toxiproxy
+
+## Prerequisites
+
+- Phase 16 (you have a sense of how to observe perf during a test)
+- Optional: [Toxiproxy installed](https://github.com/Shopify/toxiproxy) — `brew install toxiproxy` or download from releases
+- The QA Labs server running (we'll use `/lab/flaky` + `/lab/slow` as the kata's primary fault source — Toxiproxy patterns covered in the readme as the production-grade upgrade)
+
+## Concepts Explained
+
+### Why fault inject during load tests?
+
+Most perf tests assume a happy path: the network is fine, the database is up, downstream services respond. **Production isn't like that.** Real perf properties only show up under faults:
+
+- "p95 is 200ms when everything works" — meaningless
+- "p95 is 250ms when 5% of requests fail" — useful
+- "p95 stays under 500ms when the DB has 500ms added latency" — what you actually want to know
+
+Combining load + faults is **chaos load testing**: how does your system behave when stressed AND broken simultaneously?
+
+### Toxiproxy: the smallest chaos tool
+
+Toxiproxy is a TCP proxy with toggleable "toxics." Sit it between client and server, then add toxics via a CLI or HTTP API:
+
+```bash
+toxiproxy-cli create -l :26379 -u :6379 my-redis
+toxiproxy-cli toxic add -t latency -a latency=500 my-redis  # +500ms on every response
+toxiproxy-cli toxic add -t timeout -a timeout=1000 my-redis # close after 1s
+```
+
+Tests connect to `localhost:26379` instead of `localhost:6379`. Toxiproxy adds the chaos.
+
+### The seven toxics
+
+| Toxic | What it does |
+|-------|--------------|
+| `latency` | Adds fixed delay (with optional jitter) |
+| `bandwidth` | Limits throughput |
+| `slow_close` | Delays connection close (forces clients to wait) |
+| `timeout` | Closes the connection after N ms |
+| `slicer` | Splits TCP packets to simulate slow networks |
+| `down` | Drops all packets — service appears down |
+| `limit_data` | Sets a maximum bytes-per-connection budget |
+
+Each can be added/removed via API at runtime — perfect for "inject, measure, remove" patterns inside a test.
+
+### Inject → measure → recover
+
+```javascript
+// Pseudo-pattern; real code calls Toxiproxy's HTTP API
+beforeAll(() => addToxic('redis', 'latency', { latency: 500 }));
+afterAll(() => removeToxic('redis', 'latency'));
+
+// During the test, your service is talking to Redis with +500ms.
+// Measure how the service degrades.
+```
+
+In k6, you'd add an `setup()` function that calls Toxiproxy's HTTP API before VUs start, and `teardown()` that cleans up. This way the chaos is part of the test definition.
+
+### When you don't want to run Toxiproxy
+
+For a workshop or quick experiments, the QA Labs server bakes some of the same chaos into endpoints:
+
+- `/lab/slow?ms=500` — fixed latency injection (toxic: latency)
+- `/lab/jitter?p50=&p95=` — distribution-based latency
+- `/lab/flaky?errorRate=0.1` — random errors (toxic: down, partial)
+- `/lab/limit` — rate-limit responses
+
+The kata's solution uses these for runnable katas. The **readme exercises** include real Toxiproxy setup for when you want to do this against your own infra.
+
+### What chaos load tests find
+
+Bugs invisible without faults:
+
+| Bug | How chaos testing exposes it |
+|-----|------------------------------|
+| **No connection timeout** | When the dependency is slow, your service threads pile up forever |
+| **No retry budget** | A flaky dep triggers infinite retries, amplifying the load 10× |
+| **Cascading failure** | One slow dep makes another time out, cascade to system-wide outage |
+| **Bad fallback** | Fallback path is slower than primary; worse than a timely failure |
+| **Bad health checks** | Service marks itself healthy while dependency is down |
+| **Memory growth on errors** | Each failed request leaks memory; minutes-long fault → OOM |
+
+### From Toxiproxy to production chaos
+
+Toxiproxy is great for dev/CI. For production-grade chaos:
+
+| Tool | Scope |
+|------|-------|
+| **Toxiproxy** | TCP-level, single host, scripted |
+| **chaos-mesh** | Kubernetes-native, pod/network/IO faults |
+| **Gremlin** | Hosted, multi-cloud, scheduled |
+| **AWS Fault Injection Simulator** | AWS-native, aware of AZs/regions |
+| **Litmus** | OSS K8s chaos with predefined experiments |
+
+Concepts transfer; depth and integration differ.
+
+## Exercises
+
+1. **Latency injection.** Run the kata's k6 spec. It hits `/lab/slow?ms=500`. Measure p95 — should be ~500ms+ (server-side delay + network). Now hit `/lab/echo` and compare.
+2. **Random errors.** Modify the spec to hit `/lab/flaky?errorRate=0.1` for 30 seconds. What's `http_req_failed`? Does it match the configured 10%? (Within a few percent due to small samples.)
+3. **Compounding faults.** Hit `/lab/slow?ms=200` *and* `/lab/flaky?errorRate=0.05` in a 50/50 split. Now you have BOTH high latency and errors. p95 and error rate should both reflect.
+4. **Real Toxiproxy.** Install Toxiproxy and put it in front of `/lab/echo`. Add `+200ms` latency via the CLI. Hit it from k6. Does latency match?
+5. **Recovery test.** Inject a fault for 15s, remove it for 15s. Compare p95 in each phase via tags `phase:injected` vs `phase:clean`.
+
+## Common Mistakes
+
+- **Forgetting to remove toxics.** A toxic added in `setup()` and not removed in `teardown()` will haunt the next test run.
+- **Injecting too much fault at once.** "Everything's broken" tests rarely reflect reality. Inject one fault at a time, see how the system reacts, layer up.
+- **Asserting same SLO under chaos.** Of course p95 is worse with +500ms latency injected. Tag the chaos period and assert *recovery* SLO, not in-chaos SLO.
+- **Testing chaos in prod without coordination.** Different blast radius — needs careful scoping, not "let's break some pods."
+
+## Cheat Sheet
+
+```bash
+# Toxiproxy CLI quick start
+toxiproxy-server &                                  # daemon on :8474
+toxiproxy-cli create -l :26379 -u :6379 my-cache    # proxy redis on :26379
+toxiproxy-cli toxic add -t latency -a latency=500 my-cache
+toxiproxy-cli toxic add -t down my-cache            # take it offline
+toxiproxy-cli toxic remove -n latency_downstream my-cache
+toxiproxy-cli list
+```
+
+```javascript
+// k6 with HTTP-API-driven Toxiproxy (real version)
+import http from 'k6/http';
+
+export function setup() {
+  http.post('http://localhost:8474/proxies/my-cache/toxics', JSON.stringify({
+    name: 'latency_downstream',
+    type: 'latency',
+    attributes: { latency: 500 },
+  }), { headers: { 'Content-Type': 'application/json' } });
+}
+
+export function teardown() {
+  http.del('http://localhost:8474/proxies/my-cache/toxics/latency_downstream');
+}
+```
+
+| Toxic | Real-world equivalent |
+|-------|------------------------|
+| `latency` | DB slow-down, network congestion |
+| `down` | Service crash |
+| `slicer` | Slow client / phone on 3G |
+| `timeout` | Half-open connections, NAT drops |
+| `slow_close` | Server backend stuck closing |
+a:T832,// Kata 69 — Fault Injection (k6 solution)
+//
+// Two scenarios run sequentially: a "clean" baseline against /lab/echo,
+// then a "chaos" phase against /lab/slow + /lab/flaky. Per-phase tagged
+// thresholds let us require strict SLO during clean and looser SLO
+// during chaos — but assert that error rate during chaos is bounded.
+
+import http from 'k6/http';
+import { check } from 'k6';
+
+const BASE_URL = __ENV.K6_BASE_URL || 'http://localhost:3000';
+
+export const options = {
+  scenarios: {
+    clean: {
+      executor: 'constant-arrival-rate',
+      rate: 30,
+      timeUnit: '1s',
+      duration: '10s',
+      preAllocatedVUs: 30,
+      exec: 'cleanRequest',
+      tags: { phase: 'clean' },
+      startTime: '0s',
+    },
+    chaos: {
+      executor: 'constant-arrival-rate',
+      rate: 30,
+      timeUnit: '1s',
+      duration: '15s',
+      preAllocatedVUs: 30,
+      exec: 'chaosRequest',
+      tags: { phase: 'chaos' },
+      startTime: '12s',
+    },
+  },
+  thresholds: {
+    // Clean phase: tight SLO
+    'http_req_duration{phase:clean}': ['p(95)<200'],
+    'http_req_failed{phase:clean}': ['rate<0.01'],
+    // Chaos phase: looser latency, bounded error rate
+    'http_req_duration{phase:chaos}': ['p(95)<800'],
+    'http_req_failed{phase:chaos}': ['rate<0.20'],   // <20% failures expected from /lab/flaky
+  },
+};
+
+export function cleanRequest() {
+  const res = http.get(`${BASE_URL}/lab/echo`, { tags: { phase: 'clean' } });
+  check(res, { 'clean status is 200': (r) => r.status === 200 });
+}
+
+export function chaosRequest() {
+  // 50/50 split: slow endpoint (latency) and flaky endpoint (errors).
+  // Real Toxiproxy would inject these via toxics on a single endpoint;
+  // we simulate via the lab server's built-in chaos endpoints.
+  const slowMode = Math.random() < 0.5;
+  const url = slowMode
+    ? `${BASE_URL}/lab/slow?ms=300`
+    : `${BASE_URL}/lab/flaky?errorRate=0.15`;
+
+  const res = http.get(url, {
+    tags: { phase: 'chaos', mode: slowMode ? 'latency' : 'errors' },
+  });
+  check(res, {
+    'chaos status acceptable': (r) => r.status === 200 || r.status === 500,
+  });
+}
+b:T3c12,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#6A737D">// Kata 68 — Distributed Tracing Correlation</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// Generates a fresh W3C traceparent per request, sends it to /lab/headers</span></span>
+<span class="line"><span style="color:#6A737D">// (which echoes it back so we can verify propagation), and logs slow</span></span>
+<span class="line"><span style="color:#6A737D">// trace IDs so they can be looked up in an APM.</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> http </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> 'k6/http'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { check } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> 'k6'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { Counter, Trend } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> 'k6/metrics'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> BASE_URL</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> __ENV.</span><span style="color:#79B8FF">K6_BASE_URL</span><span style="color:#F97583"> ||</span><span style="color:#9ECBFF"> 'http://localhost:3000'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> slowTraces</span><span style="color:#F97583"> =</span><span style="color:#F97583"> new</span><span style="color:#B392F0"> Counter</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'slow_trace_ids_logged'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> propagationOk</span><span style="color:#F97583"> =</span><span style="color:#F97583"> new</span><span style="color:#B392F0"> Counter</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'trace_propagation_verified'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> traceLatency</span><span style="color:#F97583"> =</span><span style="color:#F97583"> new</span><span style="color:#B392F0"> Trend</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'trace_endpoint_latency_ms'</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">true</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> const</span><span style="color:#79B8FF"> options</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">  scenarios: {</span></span>
+<span class="line"><span style="color:#E1E4E8">    traced: {</span></span>
+<span class="line"><span style="color:#E1E4E8">      executor: </span><span style="color:#9ECBFF">'constant-arrival-rate'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      rate: </span><span style="color:#79B8FF">20</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      timeUnit: </span><span style="color:#9ECBFF">'1s'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      duration: </span><span style="color:#9ECBFF">'15s'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      preAllocatedVUs: </span><span style="color:#79B8FF">20</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">    },</span></span>
+<span class="line"><span style="color:#E1E4E8">  },</span></span>
+<span class="line"><span style="color:#E1E4E8">  thresholds: {</span></span>
+<span class="line"><span style="color:#9ECBFF">    'http_req_failed'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'rate&#x3C;0.01'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#9ECBFF">    'trace_propagation_verified'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'count>50'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#6A737D">    // Aligned with the lab endpoint's configured jitter (p95=400ms)</span></span>
+<span class="line"><span style="color:#6A737D">    // plus modest network overhead. Setting tighter would be aspiration,</span></span>
+<span class="line"><span style="color:#6A737D">    // not measurement.</span></span>
+<span class="line"><span style="color:#9ECBFF">    'trace_endpoint_latency_ms'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'p(95)&#x3C;600'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#E1E4E8">  },</span></span>
+<span class="line"><span style="color:#E1E4E8">};</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// Build a W3C traceparent: version=00, trace_id=16 bytes hex, span_id=8 bytes hex, flags=01 (sampled)</span></span>
+<span class="line"><span style="color:#F97583">function</span><span style="color:#B392F0"> newTraceparent</span><span style="color:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#B392F0"> hex</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> (</span><span style="color:#FFAB70">n</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span></span>
+<span class="line"><span style="color:#E1E4E8">    Array.</span><span style="color:#B392F0">from</span><span style="color:#E1E4E8">({ length: n }, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> Math.</span><span style="color:#B392F0">floor</span><span style="color:#E1E4E8">(Math.</span><span style="color:#B392F0">random</span><span style="color:#E1E4E8">() </span><span style="color:#F97583">*</span><span style="color:#79B8FF"> 16</span><span style="color:#E1E4E8">).</span><span style="color:#B392F0">toString</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">16</span><span style="color:#E1E4E8">)).</span><span style="color:#B392F0">join</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">''</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> traceId</span><span style="color:#F97583"> =</span><span style="color:#B392F0"> hex</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">32</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> spanId</span><span style="color:#F97583"> =</span><span style="color:#B392F0"> hex</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">16</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  return</span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    header: </span><span style="color:#9ECBFF">`00-${</span><span style="color:#E1E4E8">traceId</span><span style="color:#9ECBFF">}-${</span><span style="color:#E1E4E8">spanId</span><span style="color:#9ECBFF">}-01`</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">    traceId,</span></span>
+<span class="line"><span style="color:#E1E4E8">    spanId,</span></span>
+<span class="line"><span style="color:#E1E4E8">  };</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> default</span><span style="color:#F97583"> function</span><span style="color:#E1E4E8"> () {</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> tp</span><span style="color:#F97583"> =</span><span style="color:#B392F0"> newTraceparent</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Hit a slow-ish endpoint for some realistic latency variance.</span></span>
+<span class="line"><span style="color:#6A737D">  // Use /lab/jitter so some requests cross the "slow" threshold.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> start</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> Date.</span><span style="color:#B392F0">now</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> res</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> http.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/jitter?p50=50&#x26;p95=400`</span><span style="color:#E1E4E8">, {</span></span>
+<span class="line"><span style="color:#E1E4E8">    headers: {</span></span>
+<span class="line"><span style="color:#E1E4E8">      traceparent: tp.header,</span></span>
+<span class="line"><span style="color:#9ECBFF">      'x-trace-id'</span><span style="color:#E1E4E8">: tp.traceId,  </span><span style="color:#6A737D">// legacy fallback</span></span>
+<span class="line"><span style="color:#E1E4E8">    },</span></span>
+<span class="line"><span style="color:#6A737D">    // NOTE: deliberately NOT tagging metric by trace_id — that's the</span></span>
+<span class="line"><span style="color:#6A737D">    // cardinality-explosion antipattern. Log slow ones to stdout instead.</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> duration</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> Date.</span><span style="color:#B392F0">now</span><span style="color:#E1E4E8">() </span><span style="color:#F97583">-</span><span style="color:#E1E4E8"> start;</span></span>
+<span class="line"><span style="color:#E1E4E8">  traceLatency.</span><span style="color:#B392F0">add</span><span style="color:#E1E4E8">(duration);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  if</span><span style="color:#E1E4E8"> (duration </span><span style="color:#F97583">></span><span style="color:#79B8FF"> 700</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#6A737D">    // Log slow trace IDs — these are your APM jump-off points.</span></span>
+<span class="line"><span style="color:#E1E4E8">    console.</span><span style="color:#B392F0">warn</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`slow: trace_id=${</span><span style="color:#E1E4E8">tp</span><span style="color:#9ECBFF">.</span><span style="color:#E1E4E8">traceId</span><span style="color:#9ECBFF">} duration=${</span><span style="color:#E1E4E8">duration</span><span style="color:#9ECBFF">}ms`</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    slowTraces.</span><span style="color:#B392F0">add</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">1</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Verify propagation by hitting /lab/headers (which echoes back).</span></span>
+<span class="line"><span style="color:#6A737D">  // Real production code wouldn't hit two endpoints — this is just to</span></span>
+<span class="line"><span style="color:#6A737D">  // demonstrate the propagation pattern works end-to-end.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> verify</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> http.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/headers`</span><span style="color:#E1E4E8">, {</span></span>
+<span class="line"><span style="color:#E1E4E8">    headers: { traceparent: tp.header, </span><span style="color:#9ECBFF">'x-trace-id'</span><span style="color:#E1E4E8">: tp.traceId },</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> echoed</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> verify.</span><span style="color:#B392F0">json</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'receivedHeaders'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#6A737D">  // The lab server lowercases header names (Express convention).</span></span>
+<span class="line"><span style="color:#F97583">  if</span><span style="color:#E1E4E8"> (echoed?.[</span><span style="color:#9ECBFF">'traceparent'</span><span style="color:#E1E4E8">] </span><span style="color:#F97583">===</span><span style="color:#E1E4E8"> tp.header) {</span></span>
+<span class="line"><span style="color:#E1E4E8">    propagationOk.</span><span style="color:#B392F0">add</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">1</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">  check</span><span style="color:#E1E4E8">(res, { </span><span style="color:#9ECBFF">'status is 200'</span><span style="color:#E1E4E8">: (</span><span style="color:#FFAB70">r</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> r.status </span><span style="color:#F97583">===</span><span style="color:#79B8FF"> 200</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"><span style="color:#B392F0">  check</span><span style="color:#E1E4E8">(verify, { </span><span style="color:#9ECBFF">'verify status is 200'</span><span style="color:#E1E4E8">: (</span><span style="color:#FFAB70">r</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> r.status </span><span style="color:#F97583">===</span><span style="color:#79B8FF"> 200</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span></code></pre>c:T138e,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#6A737D"># Kata 68 — Distributed Tracing Correlation (Artillery solution)</span></span>
+<span class="line"><span style="color:#6A737D">#</span></span>
+<span class="line"><span style="color:#6A737D"># Artillery can inject custom headers per request, but generating a fresh</span></span>
+<span class="line"><span style="color:#6A737D"># W3C traceparent per iteration requires a custom processor (JS function).</span></span>
+<span class="line"><span style="color:#6A737D"># A static traceparent across all requests defeats the purpose.</span></span>
+<span class="line"><span style="color:#6A737D">#</span></span>
+<span class="line"><span style="color:#6A737D"># This file demonstrates the basic header injection. For per-request</span></span>
+<span class="line"><span style="color:#6A737D"># trace IDs in Artillery, you'd need a `processor:` block with a function</span></span>
+<span class="line"><span style="color:#6A737D"># that returns a unique header per call. See the kata's k6 solution for</span></span>
+<span class="line"><span style="color:#6A737D"># the cleaner equivalent.</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#85E89D">config</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">  target</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"http://localhost:3000"</span></span>
+<span class="line"><span style="color:#85E89D">  phases</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">    - </span><span style="color:#85E89D">duration</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">15</span></span>
+<span class="line"><span style="color:#85E89D">      arrivalRate</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">20</span></span>
+<span class="line"><span style="color:#85E89D">      name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"main"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#85E89D">scenarios</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">  - </span><span style="color:#85E89D">name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"traced jitter probe"</span></span>
+<span class="line"><span style="color:#85E89D">    flow</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">get</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">          url</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"/lab/jitter?p50=50&#x26;p95=400"</span></span>
+<span class="line"><span style="color:#85E89D">          headers</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#6A737D">            # Static — same id for every request. Real implementations need</span></span>
+<span class="line"><span style="color:#6A737D">            # a processor function. Documenting the limitation here.</span></span>
+<span class="line"><span style="color:#85E89D">            traceparent</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">  - </span><span style="color:#85E89D">name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"verify propagation"</span></span>
+<span class="line"><span style="color:#85E89D">    flow</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">get</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">          url</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"/lab/headers"</span></span>
+<span class="line"><span style="color:#85E89D">          headers</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">            traceparent</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01"</span></span>
+<span class="line"><span style="color:#85E89D">          expect</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">            - </span><span style="color:#85E89D">statusCode</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">200</span></span>
+<span class="line"><span style="color:#E1E4E8">            - </span><span style="color:#85E89D">hasProperty</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"receivedHeaders"</span></span>
+<span class="line"></span></code></pre>0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"kata":{"slug":"68-distributed-tracing-correlation","number":68,"title":"Distributed Tracing Correlation","phaseSlug":"phase-16-observability","phaseNumber":16,"phaseName":"Observability","readmeRaw":"$3","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"68-distributed-tracing-correlation.test.js","content":"$4"}],"artilleryFiles":[{"filename":"68-distributed-tracing-correlation.yml","content":"$5"}],"jmeterFiles":[]},"prev":{"slug":"67-grafana-and-prometheus","number":67,"title":"Grafana + Prometheus Integration","phaseSlug":"phase-16-observability","phaseNumber":16,"phaseName":"Observability","readmeRaw":"$6","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"67-grafana-and-prometheus.test.js","content":"$7"}],"artilleryFiles":[{"filename":"67-grafana-and-prometheus.yml","content":"$8"}],"jmeterFiles":[]},"next":{"slug":"69-fault-injection-with-toxiproxy","number":69,"title":"Fault Injection with Toxiproxy","phaseSlug":"phase-17-chaos-and-resilience","phaseNumber":17,"phaseName":"Chaos And Resilience","readmeRaw":"$9","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"69-fault-injection-with-toxiproxy.test.js","content":"$a"}],"artilleryFiles":[{"filename":"69-fault-injection-with-toxiproxy.yml","content":"# Kata 69 — Fault Injection (Artillery solution)\n\nconfig:\n  target: \"http://localhost:3000\"\n  phases:\n    - duration: 10\n      arrivalRate: 30\n      name: \"clean baseline\"\n    - duration: 15\n      arrivalRate: 30\n      name: \"chaos\"\n\nscenarios:\n  - name: \"clean\"\n    weight: 40\n    flow:\n      - get:\n          url: \"/lab/echo\"\n          expect:\n            - statusCode: 200\n\n  - name: \"latency injection\"\n    weight: 30\n    flow:\n      - get:\n          url: \"/lab/slow?ms=300\"\n          expect:\n            - statusCode: 200\n\n  - name: \"error injection\"\n    weight: 30\n    flow:\n      - get:\n          url: \"/lab/flaky?errorRate=0.15\"\n          expect:\n            - statusCode: [200, 500]\n"}],"jmeterFiles":[]},"frameworks":[{"id":"k6","label":"k6","files":[{"filename":"68-distributed-tracing-correlation.test.js","html":"$b"}]},{"id":"artillery","label":"Artillery","files":[{"filename":"68-distributed-tracing-correlation.yml","html":"$c"}]},{"id":"jmeter","label":"JMeter","files":[]},{"id":"playwright","label":"Playwright","files":[]},{"id":"cypress","label":"Cypress","files":[]}]}],["$Ld"],"$Le"]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"UzMlu93LkryOOruE2pxnW"}
+d:["$","script","script-0",{"src":"/qa-labs/_next/static/chunks/01luku1w1f06_.js","async":true}]
+e:["$","$Lf",null,{"children":["$","$10",null,{"name":"Next.MetadataOutlet","children":"$@11"}]}]
+11:null

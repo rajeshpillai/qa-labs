@@ -1,0 +1,936 @@
+1:"$Sreact.fragment"
+2:I[76750,["/qa-labs/_next/static/chunks/012xw9ydea0yn.js","/qa-labs/_next/static/chunks/0t2xr05rlu96l.js","/qa-labs/_next/static/chunks/0a55m.6s3qp~-.js","/qa-labs/_next/static/chunks/01luku1w1f06_.js"],"KataPageClient"]
+f:I[97367,["/qa-labs/_next/static/chunks/012xw9ydea0yn.js","/qa-labs/_next/static/chunks/0t2xr05rlu96l.js","/qa-labs/_next/static/chunks/0a55m.6s3qp~-.js"],"OutletBoundary"]
+10:"$Sreact.suspense"
+3:T1734,# Kata 50: Custom Metrics
+
+## What You Will Learn
+
+- The four built-in metric types in k6: **Counter**, **Gauge**, **Rate**, **Trend** — and when to use each
+- How to define and record a custom metric from inside test code
+- How custom metrics interact with **thresholds** (you can assert on your own metrics)
+- Tagging metrics for slice-and-dice analysis
+- How Artillery's `expect`/`capture` differs (it doesn't have user-defined metrics in the same way)
+
+## Prerequisites
+
+- Completed [Kata 48 (Smoke Test)](../48-smoke-test/) and [Kata 49 (Ramping)](../49-ramping-vus-and-stages/)
+- The QA Labs server running
+
+## Concepts Explained
+
+### Why custom metrics?
+
+The built-in metrics (`http_req_duration`, `http_reqs`, etc.) tell you *what k6 saw at the HTTP layer*. Custom metrics tell you *what your test logic measured*. Examples:
+
+- "Time from login click to dashboard render" — spans multiple requests
+- "Cart-abandonment ratio" — derived from your scenario logic
+- "Bytes processed per request" — extracted from response body
+- "How many users hit the rate limit" — counter incremented when you see a 429
+
+Without custom metrics, you'd have to post-process logs. With them, k6 streams the values into the same threshold/summary machinery as the built-ins.
+
+### The four metric types
+
+#### `Counter` — monotonically increasing total
+
+```javascript
+import { Counter } from 'k6/metrics';
+const rateLimitHits = new Counter('rate_limit_hits');
+
+// inside test:
+if (res.status === 429) rateLimitHits.add(1);
+```
+
+Summary shows `count` and `rate`. Use for **counting events**: errors, retries, cache misses.
+
+#### `Gauge` — last value wins
+
+```javascript
+import { Gauge } from 'k6/metrics';
+const queueDepth = new Gauge('queue_depth');
+
+queueDepth.add(res.json('queue_depth')); // overwrites
+```
+
+Summary shows `min`, `max`, last `value`. Use for **point-in-time snapshots**: queue size, active sessions.
+
+#### `Rate` — boolean true/false ratio
+
+```javascript
+import { Rate } from 'k6/metrics';
+const successRate = new Rate('successful_logins');
+
+successRate.add(res.status === 200);  // boolean
+```
+
+Summary shows `rate` (0.0–1.0). Use for **success ratios**: "X% of logins succeeded."
+
+#### `Trend` — full distribution
+
+```javascript
+import { Trend } from 'k6/metrics';
+const loginDuration = new Trend('login_duration_ms', true); // true = time
+
+loginDuration.add(res.timings.duration);
+```
+
+Summary shows `min`, `max`, `avg`, `med`, `p(90)`, `p(95)`, `p(99)`. Use for **measurements that have a distribution**: custom timings, byte sizes.
+
+### Thresholds on custom metrics
+
+The killer feature: thresholds work on custom metrics same as built-ins.
+
+```javascript
+export const options = {
+  thresholds: {
+    'login_duration_ms': ['p(95)<300'],
+    'successful_logins': ['rate>0.99'],
+    'rate_limit_hits': ['count<5'],
+  },
+};
+```
+
+This means you can write business-meaningful assertions: "p95 of the login flow must be under 300ms" or "fewer than 5 rate-limit hits in the whole test."
+
+### Tagging custom metrics
+
+Tags let you slice metrics by dimension. Useful when one metric is recorded across multiple paths:
+
+```javascript
+loginDuration.add(res.timings.duration, { provider: 'oauth' });
+loginDuration.add(res.timings.duration, { provider: 'password' });
+
+// threshold can target a specific tag:
+'login_duration_ms{provider:oauth}': ['p(95)<200'],
+```
+
+### Artillery doesn't have this
+
+Artillery 2.x has plugins (`metrics-by-endpoint`) and `capture`/`expect`, but not the same first-class custom-metric system. For Artillery, the equivalent is:
+
+```yaml
+- get:
+    url: "/api/login"
+    capture:
+      - json: "$.duration_ms"
+        as: "loginMs"
+    expect:
+      - statusCode: 200
+```
+
+You can use `capture` to extract values, but they're per-request snapshots, not aggregated metrics. For meaningful custom-metric workflows, **k6 wins** — this is a common reason teams pick k6 over Artillery.
+
+## Exercises
+
+1. **Track auth-flow latency end-to-end.** Make a request to `/lab/auth/login` then `/lab/auth/me`. Record a `Trend` named `auth_flow_total_ms` that captures the *sum* of both request durations. Set a threshold of `p(95)<400`.
+2. **Count rate-limit hits.** Hit `/lab/limit` at 50 RPS for 10 seconds. Define a `Counter` for 429 responses and assert `count<400` (you'll exceed it because the limit is 5/sec).
+3. **Compute a success rate.** Hit `/lab/flaky?errorRate=0.1` 100 times. Track success rate via a `Rate` metric. Assert `rate>0.85`.
+4. **Tag by status code class.** Record a `Trend` of response sizes tagged with `class:2xx` / `class:4xx` / `class:5xx`. Threshold only on the 2xx class.
+
+## Common Mistakes
+
+- **Counter when you want Trend.** `Counter` only counts events; it can't tell you the latency distribution. If you want percentiles, use `Trend`.
+- **Forgetting `true` flag on Trend for time values.** `new Trend('foo')` shows raw numbers; `new Trend('foo', true)` formats as ms in the summary.
+- **Defining metrics inside the default function.** Create them at module scope. Otherwise k6 creates a new metric each iteration and nothing aggregates.
+- **Asserting before the metric has data.** A threshold on a custom metric that's never recorded will show `no data`; some test runners treat that as a failure, others as a pass.
+
+## Cheat Sheet
+
+| Want to track... | Type | Why |
+|------------------|------|-----|
+| "How many times X happened" | `Counter` | Just a tally |
+| "What's the current value of Y" | `Gauge` | Point-in-time |
+| "What % of Z events were successful" | `Rate` | Boolean ratio |
+| "How long does op W take" | `Trend(name, true)` | Distribution |
+
+| Threshold syntax | Meaning |
+|------------------|---------|
+| `'metric_name': ['p(95)<300']` | 95th percentile under 300 |
+| `'metric_name': ['rate>0.99']` | Rate (success) over 99% |
+| `'metric_name': ['count<10']` | Counter total under 10 |
+| `'metric_name{tag:value}': [...]` | Threshold on tagged subset only |
+4:Tbea,// Kata 50 — Custom Metrics (k6 solution)
+//
+// Demonstrates all four custom-metric types in one test:
+// - Trend:   end-to-end auth-flow timing
+// - Counter: rate-limit hit count
+// - Rate:    flaky-endpoint success ratio
+// - Gauge:   server-reported queue depth (synthesized from /lab/health)
+//
+// The test exercises three endpoints in parallel scenarios so each metric
+// has data to populate.
+
+import http from 'k6/http';
+import { check } from 'k6';
+import { Counter, Gauge, Rate, Trend } from 'k6/metrics';
+
+const BASE_URL = __ENV.K6_BASE_URL || 'http://localhost:3000';
+
+// Custom metrics — defined ONCE at module scope, not inside default().
+const authFlowTotalMs = new Trend('auth_flow_total_ms', true);
+const rateLimitHits = new Counter('rate_limit_hits');
+const flakySuccess = new Rate('flaky_success');
+const labActiveTokens = new Gauge('lab_active_tokens');
+
+export const options = {
+  scenarios: {
+    auth: { executor: 'constant-vus', vus: 2, duration: '30s', exec: 'authFlow' },
+    limited: { executor: 'constant-arrival-rate', rate: 50, timeUnit: '1s', duration: '10s', preAllocatedVUs: 10, exec: 'rateLimited' },
+    flaky: { executor: 'per-vu-iterations', vus: 5, iterations: 20, exec: 'flakyCalls' },
+    health: { executor: 'constant-vus', vus: 1, duration: '30s', exec: 'sampleHealth' },
+  },
+  thresholds: {
+    // These thresholds operate on the CUSTOM metrics — same syntax as built-ins.
+    'auth_flow_total_ms': ['p(95)<400'],
+    'rate_limit_hits': ['count<400'],   // we expect MANY 429s; this asserts they don't go wild
+    'flaky_success': ['rate>0.85'],     // 10% errorRate → 90% expected, allow slack
+    // No threshold on the gauge — gauges are typically informational
+    'http_req_failed': ['rate<0.50'],   // we deliberately hit flaky/limited endpoints
+  },
+};
+
+export function authFlow() {
+  const start = Date.now();
+
+  const loginRes = http.post(
+    `${BASE_URL}/lab/auth/login`,
+    JSON.stringify({ username: `u-${__VU}-${__ITER}`, password: 'pw' }),
+    { headers: { 'Content-Type': 'application/json' } }
+  );
+  if (loginRes.status !== 200) return;
+
+  const token = loginRes.json('token');
+  http.get(`${BASE_URL}/lab/auth/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+
+  // Record total auth-flow time.
+  authFlowTotalMs.add(Date.now() - start);
+}
+
+export function rateLimited() {
+  const res = http.get(`${BASE_URL}/lab/limit`);
+  // Counter: tally 429 responses.
+  if (res.status === 429) rateLimitHits.add(1);
+}
+
+export function flakyCalls() {
+  const res = http.get(`${BASE_URL}/lab/flaky?errorRate=0.1`);
+  // Rate: boolean — was this call successful?
+  flakySuccess.add(res.status === 200);
+  check(res, {
+    'status is 200 or 500': (r) => r.status === 200 || r.status === 500,
+  });
+}
+
+export function sampleHealth() {
+  const res = http.get(`${BASE_URL}/lab/health`);
+  if (res.status === 200) {
+    // Gauge: snapshot of server-reported state.
+    const tokens = res.json('activeTokens');
+    if (typeof tokens === 'number') labActiveTokens.add(tokens);
+  }
+}
+5:T67e,# Kata 50 — Custom Metrics (Artillery solution)
+#
+# Artillery 2.x doesn't have first-class custom metrics like k6. The
+# closest equivalents:
+#  - `capture`  — extracts values from responses
+#  - `expect`   — per-response assertions
+#  - `metrics-by-endpoint` plugin — aggregated stats per URL
+#
+# This file demonstrates each, but for a real custom-metric workflow,
+# k6 is the better tool. See the kata readme for why.
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 20
+      arrivalRate: 5
+      name: "warm-up"
+    - duration: 30
+      arrivalRate: 10
+      name: "main"
+  plugins:
+    metrics-by-endpoint:
+      useOnlyRequestNames: false
+  ensure:
+    p95: 800
+    maxErrorRate: 50  # generous — we hit flaky/limited endpoints
+
+scenarios:
+  - name: "auth flow"
+    weight: 40
+    flow:
+      - post:
+          url: "/lab/auth/login"
+          json:
+            username: "kata-50-{{ $randomString() }}"
+            password: "pw"
+          capture:
+            - json: "$.token"
+              as: "token"
+          expect:
+            - statusCode: 200
+            - hasProperty: "token"
+      - get:
+          url: "/lab/auth/me"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          expect:
+            - statusCode: 200
+
+  - name: "rate-limited probes"
+    weight: 30
+    flow:
+      - get:
+          url: "/lab/limit"
+          # Don't fail the scenario on 429 — we expect them.
+          expect:
+            - statusCode: [200, 429]
+
+  - name: "flaky endpoint"
+    weight: 30
+    flow:
+      - get:
+          url: "/lab/flaky?errorRate=0.1"
+          expect:
+            - statusCode: [200, 500]
+6:T144b,# Kata 49: Ramping VUs and Stages
+
+## What You Will Learn
+
+- Why a flat constant load misses real-world bugs
+- How to use **stages** in k6 (and **phases** in Artillery) to ramp users up and down
+- Three classic shapes: **gradual ramp**, **sustained plateau**, **graceful drain**
+- The difference between `ramping-vus` (closed model) and `ramping-arrival-rate` (open model) — and when to pick each
+- How ramp shape affects what bugs you find
+
+## Prerequisites
+
+- Completed [Kata 47 (Throughput and Little's Law)](../../phase-09-perf-foundations/47-throughput-and-littles-law/) — closed vs open workload
+- The QA Labs server running
+
+## Concepts Explained
+
+### Why ramps matter
+
+Real traffic doesn't appear all at once. Customers wake up, marketing emails fire, a viral tweet hits — load builds and recedes. A flat "100 VUs for 5 minutes" test misses two whole categories of bug:
+
+1. **Cold-start bugs** — slow connection-pool warm-up, lazy DB index, JIT warm-up. A flat test with `vus: 100, duration: '5m'` punishes the system harder at the start than at the end. A ramp gives the system a fair chance to settle.
+
+2. **Drain bugs** — what happens when traffic recedes? Stale connections, leaked goroutines, half-closed sockets. A test that ends abruptly never exercises drain. A ramp-down does.
+
+### Stages in k6
+
+A "stage" is `{ duration, target }` — k6 linearly interpolates VUs from the *current* count to `target` over `duration`.
+
+```javascript
+export const options = {
+  stages: [
+    { duration: '30s', target: 50 },   // ramp 0 → 50 over 30s
+    { duration: '2m',  target: 50 },   // hold at 50 for 2m
+    { duration: '30s', target: 100 },  // ramp 50 → 100 over 30s
+    { duration: '2m',  target: 100 },  // hold at 100 for 2m
+    { duration: '30s', target: 0 },    // ramp down 100 → 0 over 30s
+  ],
+};
+```
+
+Total duration: 5min 30s. Three classic patterns visible: **ramp**, **plateau**, **drain**.
+
+### Stages: closed vs open
+
+`stages` defaults to closed model (target VU count). For open model, use `executor: 'ramping-arrival-rate'` with `stages` having `target` as RPS:
+
+```javascript
+export const options = {
+  scenarios: {
+    realistic: {
+      executor: 'ramping-arrival-rate',
+      startRate: 0,
+      timeUnit: '1s',
+      preAllocatedVUs: 100,
+      maxVUs: 200,
+      stages: [
+        { duration: '30s', target: 100 },  // 0 → 100 RPS
+        { duration: '2m',  target: 100 },  // hold 100 RPS
+        { duration: '30s', target: 0 },    // drain
+      ],
+    },
+  },
+};
+```
+
+### Phases in Artillery
+
+Artillery's `phases` are similar but use **arrival rate** by default (open model — better for most use cases):
+
+```yaml
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 30
+      arrivalRate: 1
+      rampTo: 50
+      name: "warm-up"
+    - duration: 120
+      arrivalRate: 50
+      name: "plateau"
+    - duration: 30
+      arrivalRate: 50
+      rampTo: 0
+      name: "drain"
+```
+
+`arrivalRate` is the start rate, `rampTo` is the end rate. Without `rampTo`, the rate is constant for the phase.
+
+### Pitfalls
+
+**Ramp too steep.** Going from 0 → 1000 VUs in 1 second is a *spike*, not a ramp. Spike tests have their own kata (54 in phase 12); a normal ramp should take at least 30s per 100 VU step.
+
+**No drain.** Ending the test with the system at full load and immediately killing the test misses graceful-shutdown bugs. Always include a drain step.
+
+**Ignoring the warm-up window.** Don't include the first 30s of latency data in your assertions — caches are cold, JITs aren't warm. Either drop those samples or assert only on the plateau period using `tags`.
+
+## Exercises
+
+1. **Build a 5-minute ramp test** against `/lab/jitter?p50=50&p95=200`: 30s ramp 0→50, 3min plateau at 50, 1min ramp to 100, 30s drain. Plot `http_req_duration` vs time mentally — what should it look like?
+2. **Add a per-stage assertion.** Tag the plateau stage and assert `p(95)<300` only on samples from that stage (drop the warm-up). Hint: k6 stage tags via custom tags.
+3. **Compare closed vs open.** Run the same shape once with `stages` (closed) and once with `ramping-arrival-rate` (open). At what RPS do they diverge?
+4. **Find a drain bug.** Hit `/lab/limit` (rate-limited) with a ramp 0→100 over 30s. The bucket gets exhausted partway through. What does the drain phase look like? Are errors recovering?
+
+## Common Mistakes
+
+- **Treating `stages` as cumulative VUs added per stage.** It's the *target*, not the delta. `[{target:50}, {target:50}]` means "ramp to 50, then hold at 50" — not "ramp to 50, then ramp another 50 to 100."
+- **Mixing `vus`/`duration` with `stages` in the same options.** k6 will warn — pick one.
+- **Asserting on the whole test including warm-up.** Cold cache + JIT + connection pools makes early samples unrepresentative.
+
+## Cheat Sheet
+
+| Shape | When to use |
+|-------|-------------|
+| Pure ramp (0→N) | Capacity finding — see what RPS the system tops out at |
+| Ramp + plateau + drain | Realistic load profile, perf budget verification |
+| Sawtooth (ramps up + down repeatedly) | Resource leak hunting |
+| Spike (sharp ramp + immediate drain) | See kata 54 — spike tests deserve their own kata |
+7:T918,// Kata 49 — Ramping VUs and Stages (k6 solution)
+//
+// Demonstrates the classic ramp + plateau + drain shape using
+// `ramping-arrival-rate` (open model). Targets /lab/jitter to simulate
+// realistic latency variance.
+//
+// Total duration ~3 minutes. Reduce stages durations if iterating quickly.
+
+import http from 'k6/http';
+import { check } from 'k6';
+
+const BASE_URL = __ENV.K6_BASE_URL || 'http://localhost:3000';
+
+export const options = {
+  scenarios: {
+    realistic_ramp: {
+      executor: 'ramping-arrival-rate',
+      startRate: 0,
+      timeUnit: '1s',
+      preAllocatedVUs: 50,
+      maxVUs: 100,
+      stages: [
+        { duration: '20s', target: 50 },   // warm-up: 0 → 50 RPS
+        { duration: '60s', target: 50 },   // plateau: 50 RPS sustained
+        { duration: '20s', target: 100 },  // ramp: 50 → 100 RPS
+        { duration: '40s', target: 100 },  // plateau: 100 RPS sustained
+        { duration: '20s', target: 0 },    // drain: 100 → 0 RPS
+      ],
+      tags: { phase: 'unspecified' },
+    },
+  },
+  thresholds: {
+    'http_req_failed': ['rate<0.01'],
+    // Whole-test threshold — generous to absorb warm-up.
+    'http_req_duration': ['p(95)<800'],
+    // Tighter threshold on the plateau only — set the `plateau` tag inside
+    // the test function during plateau windows.
+    'http_req_duration{phase:plateau}': ['p(95)<400'],
+  },
+};
+
+export default function () {
+  // Tag this iteration based on test elapsed time, so we can assert on the
+  // plateau separately from warm-up and drain.
+  // k6 has no built-in current-time per-iteration tag, so we approximate
+  // by using `__ITER` and `__VU`. Cleaner option: use scenario.startTime
+  // metadata via `exec.scenario` (k6 v0.42+), but tagging by phase here
+  // keeps the example simple.
+  const elapsedMs = Date.now() - START_MS;
+  const phase =
+    elapsedMs < 20_000
+      ? 'warm-up'
+      : elapsedMs < 80_000
+        ? 'plateau'
+        : elapsedMs < 100_000
+          ? 'ramp'
+          : elapsedMs < 140_000
+            ? 'plateau'
+            : 'drain';
+
+  const res = http.get(`${BASE_URL}/lab/jitter?p50=50&p95=200`, {
+    tags: { phase },
+  });
+
+  check(res, {
+    'status is 200': (r) => r.status === 200,
+  });
+}
+
+// Captured at module load time — k6 evaluates this once per VU on init.
+const START_MS = Date.now();
+8:T16d2,# Kata 51: Parameterization and Data-Driven Tests
+
+## What You Will Learn
+
+- Why hammering the **same** request repeatedly is misleading — and what realistic tests do instead
+- **k6's `SharedArray`**: load test data once, share across VUs, no copy per VU
+- Loading users / payloads from JSON or CSV
+- Generating data on the fly: per-iteration unique IDs, random selections, sequential cycling
+- Picking the right strategy: **fixed dataset** vs **synthetic generation** vs **production sample**
+- Artillery's `payload` config for the same job
+
+## Prerequisites
+
+- Completed phase 10 (k6 basics)
+- The QA Labs server running
+
+## Concepts Explained
+
+### Why parameterize?
+
+A test that does this:
+
+```javascript
+http.get('/api/users/42');
+```
+
+… on every iteration is probably hitting one warm cache entry forever. Real traffic queries hundreds of different users. If your cache hit rate in the test is 100% and in production is 60%, you've measured the wrong thing.
+
+Three sources of variety you should care about:
+
+1. **Different inputs per iteration** — different users, products, cart contents.
+2. **Different inputs per VU** — each "user" should look like a separate session.
+3. **Realistic distributions** — long tail, not uniform random. Most queries hit popular items; a few hit obscure ones.
+
+### `SharedArray` — k6's data-loading primitive
+
+Naive approach (broken):
+
+```javascript
+const users = JSON.parse(open('./users.json')); // ← runs in EVERY VU init
+```
+
+With 200 VUs, this loads `users.json` 200 times into 200 separate memory regions. Memory blows up; loading is slow.
+
+Correct approach:
+
+```javascript
+import { SharedArray } from 'k6/data';
+
+const users = new SharedArray('users', function () {
+  return JSON.parse(open('./users.json'));
+});
+```
+
+`SharedArray` loads once, shares the underlying memory across all VUs, and exposes a read-only array. Suitable for thousands of records.
+
+### Selection patterns
+
+```javascript
+// 1. Random pick — every iteration grabs a random row
+const user = users[Math.floor(Math.random() * users.length)];
+
+// 2. Per-VU pick — each VU sticks to its own subset
+const user = users[__VU % users.length];
+
+// 3. Sequential cycle — every iteration moves forward
+const user = users[__ITER % users.length];
+
+// 4. Stratified — 70% common users, 30% long-tail
+const isHot = Math.random() < 0.7;
+const user = isHot ? hotUsers[__ITER % hotUsers.length] : longTail[Math.floor(Math.random() * longTail.length)];
+```
+
+`__VU` is the virtual-user ID, `__ITER` is the iteration counter (per VU). Both are k6-provided globals.
+
+### Generating data on the fly
+
+If you don't have fixed data:
+
+```javascript
+const username = `user-${__VU}-${__ITER}-${Date.now()}`; // unique per request
+const email = `qa-${__VU}@example.com`;
+const cartTotal = Math.floor(Math.random() * 1000);
+```
+
+Avoid `Date.now()` alone for uniqueness — it'll collide at high RPS. Combine with `__VU` and `__ITER`.
+
+### Artillery: `payload` config
+
+Artillery loads CSV via the `payload` block:
+
+```yaml
+config:
+  target: "http://localhost:3000"
+  payload:
+    path: "./users.csv"
+    fields: ["username", "password"]
+    order: random  # or "sequence"
+  phases:
+    - duration: 30
+      arrivalRate: 10
+```
+
+In scenarios, refer to fields with `{{ username }}` / `{{ password }}`.
+
+CSV format expected:
+```csv
+username,password
+alice,pw1
+bob,pw2
+```
+
+### When to use which
+
+| Source | When | Trade-off |
+|--------|------|-----------|
+| **Static JSON / CSV** | Have a fixed set of test accounts | Repeats — caches stay warm |
+| **Synthetic generation** | Need unique data per request | No realistic distribution |
+| **Production sample (anonymized)** | Highest fidelity | Privacy + maintenance cost |
+
+For the QA Labs server's `/lab/auth/login`, any non-empty username/password works, so we'll generate users on the fly.
+
+## Exercises
+
+1. **Load 100 users from JSON.** Create `users.json` with 100 fake accounts, load via `SharedArray`, hit `/lab/auth/login` per iteration with random selection. What's the test duration if each iteration takes ~50ms and you need every user to be hit at least once?
+2. **Per-VU stickiness.** Modify exercise 1 so each VU always uses the same user across iterations. Why might this matter for cache-based perf? (Hint: session state in the server.)
+3. **Stratified load.** 80% of iterations hit one of 10 "hot" users; 20% hit a long tail of 1000. Implement and observe how it changes the auth-flow latency distribution.
+4. **CSV vs JSON.** Replicate exercise 1 in Artillery using `payload` + CSV. Compare ergonomics.
+
+## Common Mistakes
+
+- **`open()` outside `SharedArray`.** Calling `open('./data.json')` directly in module scope works but copies into every VU. With large datasets, this blows up memory.
+- **Loading data inside `default()`.** The init code runs once per VU; the default function runs every iteration. Loading data inside the iteration is *very* slow.
+- **`Math.random()` without seeding.** Useful for variation; not for deterministic reproduction. If you need the test to be repeatable, seed with `__VU`/`__ITER`.
+- **CSVs with too many columns.** Artillery's `payload.fields` has to list every column you want to use.
+
+## Cheat Sheet
+
+```javascript
+// k6 — fixed data, shared across VUs
+import { SharedArray } from 'k6/data';
+const users = new SharedArray('users', () => JSON.parse(open('./users.json')));
+
+// k6 — synthetic per-iteration uniqueness
+const username = `u-${__VU}-${__ITER}-${Date.now()}`;
+
+// k6 — selection patterns
+users[Math.floor(Math.random() * users.length)];  // random
+users[__VU % users.length];                       // per-VU
+users[__ITER % users.length];                     // sequential
+```
+
+```yaml
+# Artillery — CSV payload
+config:
+  payload:
+    path: "./users.csv"
+    fields: ["username", "password"]
+    order: random
+```
+9:Tae5,// Kata 51 — Parameterization and Data-Driven Tests (k6 solution)
+//
+// Demonstrates three selection strategies in one test:
+// 1. Random pick from a fixed dataset (loaded via SharedArray)
+// 2. Per-VU stickiness (each VU uses the same user across iterations)
+// 3. Synthetic generation (unique per iteration, no fixed dataset)
+
+import http from 'k6/http';
+import { check } from 'k6';
+import { SharedArray } from 'k6/data';
+
+const BASE_URL = __ENV.K6_BASE_URL || 'http://localhost:3000';
+
+// Loaded ONCE in init context, shared across all VUs.
+// Without SharedArray, each VU would get its own copy in memory.
+const users = new SharedArray('users', function () {
+  return JSON.parse(open('./users.json'));
+});
+
+export const options = {
+  scenarios: {
+    random_pick: {
+      executor: 'constant-arrival-rate',
+      rate: 10,
+      timeUnit: '1s',
+      duration: '15s',
+      preAllocatedVUs: 10,
+      exec: 'randomPick',
+    },
+    per_vu: {
+      executor: 'constant-vus',
+      vus: 5,
+      duration: '15s',
+      exec: 'perVuPick',
+    },
+    synthetic: {
+      executor: 'constant-arrival-rate',
+      rate: 5,
+      timeUnit: '1s',
+      duration: '15s',
+      preAllocatedVUs: 10,
+      exec: 'syntheticUser',
+    },
+  },
+  thresholds: {
+    'http_req_failed': ['rate<0.01'],
+    'http_req_duration': ['p(95)<300'],
+  },
+};
+
+// Strategy 1: random pick from the fixed dataset.
+// Each iteration grabs a random user. Same user may be picked multiple
+// times — that's fine, mirrors real traffic patterns.
+export function randomPick() {
+  const user = users[Math.floor(Math.random() * users.length)];
+  login(user.username, user.password, 'random');
+}
+
+// Strategy 2: per-VU pick — each VU sticks to its own user.
+// Useful when the server keeps per-session state and you want each
+// "user" in the test to behave like a real session.
+export function perVuPick() {
+  const user = users[__VU % users.length];
+  login(user.username, user.password, 'per_vu');
+}
+
+// Strategy 3: synthetic — generate a fresh username per iteration.
+// Use when you don't have a fixed dataset, or when you specifically want
+// to force cache misses. Combine __VU + __ITER + Date.now() for uniqueness
+// at high RPS — Date.now() alone collides at ms boundaries.
+export function syntheticUser() {
+  const username = `synthetic-${__VU}-${__ITER}-${Date.now()}`;
+  login(username, 'pw', 'synthetic');
+}
+
+function login(username, password, strategy) {
+  const res = http.post(
+    `${BASE_URL}/lab/auth/login`,
+    JSON.stringify({ username, password }),
+    {
+      headers: { 'Content-Type': 'application/json' },
+      tags: { strategy },
+    }
+  );
+  check(res, {
+    'login status is 200': (r) => r.status === 200,
+    'response has token': (r) => typeof r.json('token') === 'string',
+  });
+}
+a:T4ca,# Kata 51 — Parameterization and Data-Driven Tests (Artillery solution)
+#
+# Demonstrates two strategies side-by-side:
+# 1. Fixed CSV dataset, random selection per iteration (`payload.order: random`)
+# 2. Synthetic generation per request via Artillery's built-in helpers
+#
+# Run:  artillery run 51-parameterization-and-data-driven-tests.yml
+
+config:
+  target: "http://localhost:3000"
+  payload:
+    path: "./users.csv"
+    fields:
+      - "username"
+      - "password"
+    order: random
+  phases:
+    - duration: 20
+      arrivalRate: 10
+      name: "main"
+  ensure:
+    p95: 300
+    maxErrorRate: 1
+
+scenarios:
+  - name: "fixed-dataset login"
+    weight: 50
+    flow:
+      - post:
+          url: "/lab/auth/login"
+          json:
+            username: "{{ username }}"
+            password: "{{ password }}"
+          expect:
+            - statusCode: 200
+            - hasProperty: "token"
+
+  - name: "synthetic login"
+    weight: 50
+    flow:
+      - post:
+          url: "/lab/auth/login"
+          # $randomString() and $timestamp() are Artillery built-ins
+          json:
+            username: "synth-{{ $randomString() }}-{{ $timestamp() }}"
+            password: "pw"
+          expect:
+            - statusCode: 200
+b:T4009,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#6A737D">// Kata 50 — Custom Metrics (k6 solution)</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// Demonstrates all four custom-metric types in one test:</span></span>
+<span class="line"><span style="color:#6A737D">// - Trend:   end-to-end auth-flow timing</span></span>
+<span class="line"><span style="color:#6A737D">// - Counter: rate-limit hit count</span></span>
+<span class="line"><span style="color:#6A737D">// - Rate:    flaky-endpoint success ratio</span></span>
+<span class="line"><span style="color:#6A737D">// - Gauge:   server-reported queue depth (synthesized from /lab/health)</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// The test exercises three endpoints in parallel scenarios so each metric</span></span>
+<span class="line"><span style="color:#6A737D">// has data to populate.</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> http </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> 'k6/http'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { check } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> 'k6'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { Counter, Gauge, Rate, Trend } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> 'k6/metrics'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> BASE_URL</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> __ENV.</span><span style="color:#79B8FF">K6_BASE_URL</span><span style="color:#F97583"> ||</span><span style="color:#9ECBFF"> 'http://localhost:3000'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// Custom metrics — defined ONCE at module scope, not inside default().</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> authFlowTotalMs</span><span style="color:#F97583"> =</span><span style="color:#F97583"> new</span><span style="color:#B392F0"> Trend</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'auth_flow_total_ms'</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">true</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> rateLimitHits</span><span style="color:#F97583"> =</span><span style="color:#F97583"> new</span><span style="color:#B392F0"> Counter</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'rate_limit_hits'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> flakySuccess</span><span style="color:#F97583"> =</span><span style="color:#F97583"> new</span><span style="color:#B392F0"> Rate</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'flaky_success'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> labActiveTokens</span><span style="color:#F97583"> =</span><span style="color:#F97583"> new</span><span style="color:#B392F0"> Gauge</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'lab_active_tokens'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> const</span><span style="color:#79B8FF"> options</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">  scenarios: {</span></span>
+<span class="line"><span style="color:#E1E4E8">    auth: { executor: </span><span style="color:#9ECBFF">'constant-vus'</span><span style="color:#E1E4E8">, vus: </span><span style="color:#79B8FF">2</span><span style="color:#E1E4E8">, duration: </span><span style="color:#9ECBFF">'30s'</span><span style="color:#E1E4E8">, exec: </span><span style="color:#9ECBFF">'authFlow'</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">    limited: { executor: </span><span style="color:#9ECBFF">'constant-arrival-rate'</span><span style="color:#E1E4E8">, rate: </span><span style="color:#79B8FF">50</span><span style="color:#E1E4E8">, timeUnit: </span><span style="color:#9ECBFF">'1s'</span><span style="color:#E1E4E8">, duration: </span><span style="color:#9ECBFF">'10s'</span><span style="color:#E1E4E8">, preAllocatedVUs: </span><span style="color:#79B8FF">10</span><span style="color:#E1E4E8">, exec: </span><span style="color:#9ECBFF">'rateLimited'</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">    flaky: { executor: </span><span style="color:#9ECBFF">'per-vu-iterations'</span><span style="color:#E1E4E8">, vus: </span><span style="color:#79B8FF">5</span><span style="color:#E1E4E8">, iterations: </span><span style="color:#79B8FF">20</span><span style="color:#E1E4E8">, exec: </span><span style="color:#9ECBFF">'flakyCalls'</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">    health: { executor: </span><span style="color:#9ECBFF">'constant-vus'</span><span style="color:#E1E4E8">, vus: </span><span style="color:#79B8FF">1</span><span style="color:#E1E4E8">, duration: </span><span style="color:#9ECBFF">'30s'</span><span style="color:#E1E4E8">, exec: </span><span style="color:#9ECBFF">'sampleHealth'</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">  },</span></span>
+<span class="line"><span style="color:#E1E4E8">  thresholds: {</span></span>
+<span class="line"><span style="color:#6A737D">    // These thresholds operate on the CUSTOM metrics — same syntax as built-ins.</span></span>
+<span class="line"><span style="color:#9ECBFF">    'auth_flow_total_ms'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'p(95)&#x3C;400'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#9ECBFF">    'rate_limit_hits'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'count&#x3C;400'</span><span style="color:#E1E4E8">],   </span><span style="color:#6A737D">// we expect MANY 429s; this asserts they don't go wild</span></span>
+<span class="line"><span style="color:#9ECBFF">    'flaky_success'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'rate>0.85'</span><span style="color:#E1E4E8">],     </span><span style="color:#6A737D">// 10% errorRate → 90% expected, allow slack</span></span>
+<span class="line"><span style="color:#6A737D">    // No threshold on the gauge — gauges are typically informational</span></span>
+<span class="line"><span style="color:#9ECBFF">    'http_req_failed'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'rate&#x3C;0.50'</span><span style="color:#E1E4E8">],   </span><span style="color:#6A737D">// we deliberately hit flaky/limited endpoints</span></span>
+<span class="line"><span style="color:#E1E4E8">  },</span></span>
+<span class="line"><span style="color:#E1E4E8">};</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> function</span><span style="color:#B392F0"> authFlow</span><span style="color:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> start</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> Date.</span><span style="color:#B392F0">now</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> loginRes</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> http.</span><span style="color:#B392F0">post</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#9ECBFF">    `${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/auth/login`</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#79B8FF">    JSON</span><span style="color:#E1E4E8">.</span><span style="color:#B392F0">stringify</span><span style="color:#E1E4E8">({ username: </span><span style="color:#9ECBFF">`u-${</span><span style="color:#E1E4E8">__VU</span><span style="color:#9ECBFF">}-${</span><span style="color:#E1E4E8">__ITER</span><span style="color:#9ECBFF">}`</span><span style="color:#E1E4E8">, password: </span><span style="color:#9ECBFF">'pw'</span><span style="color:#E1E4E8"> }),</span></span>
+<span class="line"><span style="color:#E1E4E8">    { headers: { </span><span style="color:#9ECBFF">'Content-Type'</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">'application/json'</span><span style="color:#E1E4E8"> } }</span></span>
+<span class="line"><span style="color:#E1E4E8">  );</span></span>
+<span class="line"><span style="color:#F97583">  if</span><span style="color:#E1E4E8"> (loginRes.status </span><span style="color:#F97583">!==</span><span style="color:#79B8FF"> 200</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">return</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> token</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> loginRes.</span><span style="color:#B392F0">json</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'token'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  http.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/auth/me`</span><span style="color:#E1E4E8">, {</span></span>
+<span class="line"><span style="color:#E1E4E8">    headers: { Authorization: </span><span style="color:#9ECBFF">`Bearer ${</span><span style="color:#E1E4E8">token</span><span style="color:#9ECBFF">}`</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Record total auth-flow time.</span></span>
+<span class="line"><span style="color:#E1E4E8">  authFlowTotalMs.</span><span style="color:#B392F0">add</span><span style="color:#E1E4E8">(Date.</span><span style="color:#B392F0">now</span><span style="color:#E1E4E8">() </span><span style="color:#F97583">-</span><span style="color:#E1E4E8"> start);</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> function</span><span style="color:#B392F0"> rateLimited</span><span style="color:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> res</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> http.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/limit`</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#6A737D">  // Counter: tally 429 responses.</span></span>
+<span class="line"><span style="color:#F97583">  if</span><span style="color:#E1E4E8"> (res.status </span><span style="color:#F97583">===</span><span style="color:#79B8FF"> 429</span><span style="color:#E1E4E8">) rateLimitHits.</span><span style="color:#B392F0">add</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">1</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> function</span><span style="color:#B392F0"> flakyCalls</span><span style="color:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> res</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> http.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/flaky?errorRate=0.1`</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#6A737D">  // Rate: boolean — was this call successful?</span></span>
+<span class="line"><span style="color:#E1E4E8">  flakySuccess.</span><span style="color:#B392F0">add</span><span style="color:#E1E4E8">(res.status </span><span style="color:#F97583">===</span><span style="color:#79B8FF"> 200</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#B392F0">  check</span><span style="color:#E1E4E8">(res, {</span></span>
+<span class="line"><span style="color:#9ECBFF">    'status is 200 or 500'</span><span style="color:#E1E4E8">: (</span><span style="color:#FFAB70">r</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> r.status </span><span style="color:#F97583">===</span><span style="color:#79B8FF"> 200</span><span style="color:#F97583"> ||</span><span style="color:#E1E4E8"> r.status </span><span style="color:#F97583">===</span><span style="color:#79B8FF"> 500</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> function</span><span style="color:#B392F0"> sampleHealth</span><span style="color:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> res</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> http.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/health`</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  if</span><span style="color:#E1E4E8"> (res.status </span><span style="color:#F97583">===</span><span style="color:#79B8FF"> 200</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#6A737D">    // Gauge: snapshot of server-reported state.</span></span>
+<span class="line"><span style="color:#F97583">    const</span><span style="color:#79B8FF"> tokens</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> res.</span><span style="color:#B392F0">json</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'activeTokens'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">    if</span><span style="color:#E1E4E8"> (</span><span style="color:#F97583">typeof</span><span style="color:#E1E4E8"> tokens </span><span style="color:#F97583">===</span><span style="color:#9ECBFF"> 'number'</span><span style="color:#E1E4E8">) labActiveTokens.</span><span style="color:#B392F0">add</span><span style="color:#E1E4E8">(tokens);</span></span>
+<span class="line"><span style="color:#E1E4E8">  }</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span></code></pre>c:T23e9,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#6A737D"># Kata 50 — Custom Metrics (Artillery solution)</span></span>
+<span class="line"><span style="color:#6A737D">#</span></span>
+<span class="line"><span style="color:#6A737D"># Artillery 2.x doesn't have first-class custom metrics like k6. The</span></span>
+<span class="line"><span style="color:#6A737D"># closest equivalents:</span></span>
+<span class="line"><span style="color:#6A737D">#  - `capture`  — extracts values from responses</span></span>
+<span class="line"><span style="color:#6A737D">#  - `expect`   — per-response assertions</span></span>
+<span class="line"><span style="color:#6A737D">#  - `metrics-by-endpoint` plugin — aggregated stats per URL</span></span>
+<span class="line"><span style="color:#6A737D">#</span></span>
+<span class="line"><span style="color:#6A737D"># This file demonstrates each, but for a real custom-metric workflow,</span></span>
+<span class="line"><span style="color:#6A737D"># k6 is the better tool. See the kata readme for why.</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#85E89D">config</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">  target</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"http://localhost:3000"</span></span>
+<span class="line"><span style="color:#85E89D">  phases</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">    - </span><span style="color:#85E89D">duration</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">20</span></span>
+<span class="line"><span style="color:#85E89D">      arrivalRate</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">5</span></span>
+<span class="line"><span style="color:#85E89D">      name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"warm-up"</span></span>
+<span class="line"><span style="color:#E1E4E8">    - </span><span style="color:#85E89D">duration</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">30</span></span>
+<span class="line"><span style="color:#85E89D">      arrivalRate</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">10</span></span>
+<span class="line"><span style="color:#85E89D">      name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"main"</span></span>
+<span class="line"><span style="color:#85E89D">  plugins</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">    metrics-by-endpoint</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">      useOnlyRequestNames</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">false</span></span>
+<span class="line"><span style="color:#85E89D">  ensure</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">    p95</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">800</span></span>
+<span class="line"><span style="color:#85E89D">    maxErrorRate</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">50</span><span style="color:#6A737D">  # generous — we hit flaky/limited endpoints</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#85E89D">scenarios</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">  - </span><span style="color:#85E89D">name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"auth flow"</span></span>
+<span class="line"><span style="color:#85E89D">    weight</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">40</span></span>
+<span class="line"><span style="color:#85E89D">    flow</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">post</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">          url</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"/lab/auth/login"</span></span>
+<span class="line"><span style="color:#85E89D">          json</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">            username</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"kata-50-{{ $randomString() }}"</span></span>
+<span class="line"><span style="color:#85E89D">            password</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"pw"</span></span>
+<span class="line"><span style="color:#85E89D">          capture</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">            - </span><span style="color:#85E89D">json</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"$.token"</span></span>
+<span class="line"><span style="color:#85E89D">              as</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"token"</span></span>
+<span class="line"><span style="color:#85E89D">          expect</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">            - </span><span style="color:#85E89D">statusCode</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">200</span></span>
+<span class="line"><span style="color:#E1E4E8">            - </span><span style="color:#85E89D">hasProperty</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"token"</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">get</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">          url</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"/lab/auth/me"</span></span>
+<span class="line"><span style="color:#85E89D">          headers</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">            Authorization</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"Bearer {{ token }}"</span></span>
+<span class="line"><span style="color:#85E89D">          expect</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">            - </span><span style="color:#85E89D">statusCode</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">200</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">  - </span><span style="color:#85E89D">name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"rate-limited probes"</span></span>
+<span class="line"><span style="color:#85E89D">    weight</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">30</span></span>
+<span class="line"><span style="color:#85E89D">    flow</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">get</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">          url</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"/lab/limit"</span></span>
+<span class="line"><span style="color:#6A737D">          # Don't fail the scenario on 429 — we expect them.</span></span>
+<span class="line"><span style="color:#85E89D">          expect</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">            - </span><span style="color:#85E89D">statusCode</span><span style="color:#E1E4E8">: [</span><span style="color:#79B8FF">200</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">429</span><span style="color:#E1E4E8">]</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">  - </span><span style="color:#85E89D">name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"flaky endpoint"</span></span>
+<span class="line"><span style="color:#85E89D">    weight</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">30</span></span>
+<span class="line"><span style="color:#85E89D">    flow</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">get</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">          url</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"/lab/flaky?errorRate=0.1"</span></span>
+<span class="line"><span style="color:#85E89D">          expect</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">            - </span><span style="color:#85E89D">statusCode</span><span style="color:#E1E4E8">: [</span><span style="color:#79B8FF">200</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">500</span><span style="color:#E1E4E8">]</span></span>
+<span class="line"></span></code></pre>0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"kata":{"slug":"50-custom-metrics","number":50,"title":"Custom Metrics","phaseSlug":"phase-10-k6-basics","phaseNumber":10,"phaseName":"K6 Basics","readmeRaw":"$3","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"50-custom-metrics.test.js","content":"$4"}],"artilleryFiles":[{"filename":"50-custom-metrics.yml","content":"$5"}],"jmeterFiles":[]},"prev":{"slug":"49-ramping-vus-and-stages","number":49,"title":"Ramping VUs and Stages","phaseSlug":"phase-10-k6-basics","phaseNumber":10,"phaseName":"K6 Basics","readmeRaw":"$6","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"49-ramping-vus-and-stages.test.js","content":"$7"}],"artilleryFiles":[{"filename":"49-ramping-vus-and-stages.yml","content":"# Kata 49 — Ramping VUs and Stages (Artillery solution)\n#\n# Same shape as the k6 solution: warm-up → plateau → ramp → plateau → drain.\n# Artillery's `phases` are open-model (arrivalRate) by default.\n\nconfig:\n  target: \"http://localhost:3000\"\n  phases:\n    - duration: 20\n      arrivalRate: 1\n      rampTo: 50\n      name: \"warm-up\"\n\n    - duration: 60\n      arrivalRate: 50\n      name: \"plateau-low\"\n\n    - duration: 20\n      arrivalRate: 50\n      rampTo: 100\n      name: \"ramp-up\"\n\n    - duration: 40\n      arrivalRate: 100\n      name: \"plateau-high\"\n\n    - duration: 20\n      arrivalRate: 100\n      rampTo: 0\n      name: \"drain\"\n\n  ensure:\n    p95: 800\n    maxErrorRate: 1\n\nscenarios:\n  - name: \"jitter under load\"\n    flow:\n      - get:\n          url: \"/lab/jitter?p50=50&p95=200\"\n          expect:\n            - statusCode: 200\n"}],"jmeterFiles":[]},"next":{"slug":"51-parameterization-and-data-driven-tests","number":51,"title":"Parameterization and Data-Driven Tests","phaseSlug":"phase-11-realistic-scenarios","phaseNumber":11,"phaseName":"Realistic Scenarios","readmeRaw":"$8","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"51-parameterization-and-data-driven-tests.test.js","content":"$9"}],"artilleryFiles":[{"filename":"51-parameterization-and-data-driven-tests.yml","content":"$a"}],"jmeterFiles":[]},"frameworks":[{"id":"k6","label":"k6","files":[{"filename":"50-custom-metrics.test.js","html":"$b"}]},{"id":"artillery","label":"Artillery","files":[{"filename":"50-custom-metrics.yml","html":"$c"}]},{"id":"jmeter","label":"JMeter","files":[]},{"id":"playwright","label":"Playwright","files":[]},{"id":"cypress","label":"Cypress","files":[]}]}],["$Ld"],"$Le"]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"UzMlu93LkryOOruE2pxnW"}
+d:["$","script","script-0",{"src":"/qa-labs/_next/static/chunks/01luku1w1f06_.js","async":true}]
+e:["$","$Lf",null,{"children":["$","$10",null,{"name":"Next.MetadataOutlet","children":"$@11"}]}]
+11:null

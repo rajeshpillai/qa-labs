@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kata 17: Dynamic Forms | QA Labs</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #1e293b; padding: 2rem; }
+    .header { background: #0f172a; color: white; padding: 1rem 2rem; margin: -2rem -2rem 2rem; }
+    .header h1 { font-size: 1.25rem; }
+    .kata-badge { display: inline-block; background: #38bdf8; color: #0f172a; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 4px; margin-right: 0.5rem; }
+
+    .form-container { max-width: 650px; margin: 0 auto; background: white; border-radius: 8px; padding: 2rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .form-title { font-size: 1.1rem; color: #334155; margin-bottom: 1.5rem; padding-bottom: 0.75rem; border-bottom: 2px solid #e2e8f0; }
+
+    .form-group { margin-bottom: 1.25rem; }
+    .form-group label { display: block; font-size: 0.85rem; font-weight: 600; color: #475569; margin-bottom: 0.3rem; }
+    .form-group input, .form-group select, .form-group textarea {
+      width: 100%; padding: 0.55rem 0.7rem; border: 2px solid #cbd5e1;
+      border-radius: 6px; font-size: 0.85rem; outline: none;
+    }
+    .form-group input:focus, .form-group select:focus, .form-group textarea:focus { border-color: #3b82f6; }
+    .form-group input.input-error { border-color: #ef4444; }
+    .form-group .error-message { display: none; font-size: 0.75rem; color: #ef4444; margin-top: 0.2rem; }
+    .form-group .error-message.visible { display: block; }
+
+    /* Checkbox group */
+    .checkbox-group { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem; }
+    .checkbox-group input[type="checkbox"] { width: auto; }
+    .checkbox-group label { margin-bottom: 0; }
+
+    /* Dynamic sections */
+    .dynamic-section {
+      margin-top: 1rem; padding: 1.25rem; background: #f8fafc;
+      border: 2px solid #e2e8f0; border-radius: 8px; margin-bottom: 1rem;
+    }
+    .dynamic-section.hidden { display: none; }
+    .dynamic-section h3 {
+      font-size: 0.9rem; color: #2563eb; margin-bottom: 1rem;
+      padding-bottom: 0.5rem; border-bottom: 1px solid #e2e8f0;
+    }
+
+    /* Beneficiary sections */
+    .beneficiary-section {
+      padding: 1rem; background: #fffbeb; border: 2px solid #fde68a;
+      border-radius: 8px; margin-bottom: 1rem; position: relative;
+    }
+    .beneficiary-section h3 {
+      font-size: 0.85rem; color: #92400e; margin-bottom: 0.75rem;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .btn-remove-beneficiary {
+      background: #fee2e2; color: #991b1b; border: none; padding: 0.25rem 0.6rem;
+      border-radius: 4px; cursor: pointer; font-size: 0.75rem; font-weight: 600;
+    }
+    .btn-remove-beneficiary:hover { background: #fca5a5; }
+
+    /* Buttons */
+    .btn {
+      padding: 0.6rem 1.2rem; font-size: 0.85rem; font-weight: 600;
+      border: none; border-radius: 6px; cursor: pointer; transition: background 0.2s;
+    }
+    .btn-add {
+      background: #dbeafe; color: #1e40af; margin-bottom: 1rem;
+    }
+    .btn-add:hover { background: #bfdbfe; }
+    .btn-submit { background: #2563eb; color: white; width: 100%; padding: 0.75rem; font-size: 0.95rem; }
+    .btn-submit:hover { background: #1d4ed8; }
+
+    .form-status { display: none; padding: 0.85rem 1rem; border-radius: 6px; margin-top: 1rem; font-size: 0.875rem; font-weight: 500; }
+    .form-status.success { display: block; background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+    .form-status.error { display: block; background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+  </style>
+</head>
+<body>
+
+  <header class="header" data-testid="page-header">
+    <span class="kata-badge">KATA 17</span>
+    <h1>KYC Application - Dynamic Forms</h1>
+  </header>
+
+  <div class="form-container" data-testid="form-container">
+    <h2 class="form-title">Account Application</h2>
+
+    <form id="kyc-form" data-testid="kyc-form" novalidate>
+
+      <!-- Account Type Selection -->
+      <div class="form-group">
+        <label for="account-type">Account Type</label>
+        <select id="account-type" data-testid="select-account-type">
+          <option value="individual">Individual</option>
+          <option value="business">Business</option>
+          <option value="joint">Joint Account</option>
+        </select>
+      </div>
+
+      <!-- Primary Applicant Name (always visible) -->
+      <div class="form-group">
+        <label>Primary Applicant Name <span style="color:#ef4444">*</span></label>
+        <input type="text" data-testid="input-primary-name" placeholder="e.g. Aisha Patel" required>
+        <div class="error-message" data-testid="error-primary-name">Primary applicant name is required.</div>
+      </div>
+
+      <!-- Business Fields Section (visible when account type = "business") -->
+      <div class="dynamic-section hidden" id="business-section" data-testid="business-section">
+        <h3>Business Details</h3>
+        <div class="form-group">
+          <label>Company Name <span style="color:#ef4444">*</span></label>
+          <input type="text" data-testid="input-company-name" placeholder="e.g. Acme Corp Ltd">
+          <div class="error-message" data-testid="error-company-name">Company name is required for business accounts.</div>
+        </div>
+        <div class="form-group">
+          <label>Registration Number <span style="color:#ef4444">*</span></label>
+          <input type="text" data-testid="input-reg-number" placeholder="e.g. RC-12345678">
+          <div class="error-message" data-testid="error-reg-number">Registration number is required.</div>
+        </div>
+        <div class="form-group">
+          <label>Business Type</label>
+          <select data-testid="select-business-type">
+            <option value="">-- Select --</option>
+            <option value="sole-proprietor">Sole Proprietor</option>
+            <option value="partnership">Partnership</option>
+            <option value="llc">LLC</option>
+            <option value="corporation">Corporation</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Joint Account Section (visible when account type = "joint") -->
+      <div class="dynamic-section hidden" id="joint-section" data-testid="joint-section">
+        <h3>Second Applicant Details</h3>
+        <div class="form-group">
+          <label>Second Applicant Name <span style="color:#ef4444">*</span></label>
+          <input type="text" data-testid="input-joint-name" placeholder="e.g. Ben Okafor">
+          <div class="error-message" data-testid="error-joint-name">Second applicant name is required for joint accounts.</div>
+        </div>
+        <div class="form-group">
+          <label>Second Applicant Email <span style="color:#ef4444">*</span></label>
+          <input type="email" data-testid="input-joint-email" placeholder="e.g. ben@example.com">
+          <div class="error-message" data-testid="error-joint-email">Second applicant email is required.</div>
+        </div>
+        <div class="form-group">
+          <label>Relationship</label>
+          <select data-testid="select-relationship">
+            <option value="">-- Select --</option>
+            <option value="spouse">Spouse</option>
+            <option value="parent">Parent</option>
+            <option value="sibling">Sibling</option>
+            <option value="business-partner">Business Partner</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- PEP Checkbox and Details -->
+      <div class="checkbox-group">
+        <input type="checkbox" id="pep-checkbox" data-testid="checkbox-pep">
+        <label for="pep-checkbox">I am a Politically Exposed Person (PEP)</label>
+      </div>
+
+      <div class="dynamic-section hidden" id="pep-section" data-testid="pep-section">
+        <h3>PEP Details</h3>
+        <div class="form-group">
+          <label>Position / Title <span style="color:#ef4444">*</span></label>
+          <input type="text" data-testid="input-pep-position" placeholder="e.g. Minister of Finance">
+          <div class="error-message" data-testid="error-pep-position">PEP position is required.</div>
+        </div>
+        <div class="form-group">
+          <label>Country of Office <span style="color:#ef4444">*</span></label>
+          <input type="text" data-testid="input-pep-country" placeholder="e.g. Singapore">
+          <div class="error-message" data-testid="error-pep-country">Country of office is required.</div>
+        </div>
+        <div class="form-group">
+          <label>Additional Notes</label>
+          <textarea data-testid="input-pep-notes" rows="2" placeholder="Any additional information..."></textarea>
+        </div>
+      </div>
+
+      <!-- Beneficiaries Section -->
+      <h3 style="font-size: 0.9rem; color: #475569; margin-bottom: 0.75rem; margin-top: 1rem;">
+        Beneficiaries
+        (<span data-testid="beneficiary-count" id="beneficiary-count">0</span>)
+      </h3>
+
+      <div id="beneficiary-container" data-testid="beneficiary-container"></div>
+
+      <button type="button" class="btn btn-add" data-testid="btn-add-beneficiary" id="btn-add-beneficiary">
+        + Add Beneficiary
+      </button>
+
+      <button type="submit" class="btn btn-submit" data-testid="btn-submit">Submit Application</button>
+    </form>
+
+    <div id="form-status" class="form-status" data-testid="form-status"></div>
+  </div>
+
+  <script>
+    // -----------------------------------------------------------------------
+    // Dynamic form logic: fields appear/disappear based on user selections.
+    // -----------------------------------------------------------------------
+
+    const accountTypeSelect = document.getElementById('account-type');
+    const businessSection = document.getElementById('business-section');
+    const jointSection = document.getElementById('joint-section');
+    const pepCheckbox = document.getElementById('pep-checkbox');
+    const pepSection = document.getElementById('pep-section');
+    const beneficiaryContainer = document.getElementById('beneficiary-container');
+    const beneficiaryCountEl = document.getElementById('beneficiary-count');
+    const form = document.getElementById('kyc-form');
+    const statusEl = document.getElementById('form-status');
+
+    let beneficiaryIndex = 0;
+
+    // --- Account Type Change Handler ---
+    // When the account type changes, show or hide the relevant sections.
+    // addEventListener('change', handler) fires when the select value changes.
+    accountTypeSelect.addEventListener('change', () => {
+      const type = accountTypeSelect.value;
+
+      // classList.toggle(className, force) adds the class if force is true,
+      // removes it if force is false.
+      // "hidden" class sets display:none on the section.
+      businessSection.classList.toggle('hidden', type !== 'business');
+      jointSection.classList.toggle('hidden', type !== 'joint');
+    });
+
+    // --- PEP Checkbox Change Handler ---
+    // When the PEP checkbox is checked, show PEP detail fields.
+    pepCheckbox.addEventListener('change', () => {
+      // .checked is a boolean property on checkbox elements.
+      // true = checked, false = unchecked.
+      pepSection.classList.toggle('hidden', !pepCheckbox.checked);
+    });
+
+    // --- Add Beneficiary Button ---
+    // Each click creates a new beneficiary form section with name and
+    // percentage fields.
+    document.getElementById('btn-add-beneficiary').addEventListener('click', () => {
+      beneficiaryIndex++;
+      const idx = beneficiaryIndex;
+
+      // createElement(tagName) creates a new DOM element.
+      const section = document.createElement('div');
+      section.className = 'beneficiary-section';
+      section.setAttribute('data-testid', `beneficiary-${idx}`);
+      section.setAttribute('data-beneficiary-id', idx);
+
+      // innerHTML sets the inner HTML content of the element.
+      section.innerHTML = `
+        <h3>
+          <span>Beneficiary #${idx}</span>
+          <button type="button" class="btn-remove-beneficiary" data-testid="btn-remove-beneficiary-${idx}">Remove</button>
+        </h3>
+        <div class="form-group">
+          <label>Beneficiary Name <span style="color:#ef4444">*</span></label>
+          <input type="text" data-testid="input-beneficiary-name-${idx}" placeholder="e.g. Clara Jansen">
+          <div class="error-message" data-testid="error-beneficiary-name-${idx}">Beneficiary name is required.</div>
+        </div>
+        <div class="form-group">
+          <label>Percentage (%)</label>
+          <input type="number" data-testid="input-beneficiary-pct-${idx}" placeholder="e.g. 50" min="1" max="100">
+        </div>
+        <div class="form-group">
+          <label>Relationship</label>
+          <select data-testid="select-beneficiary-rel-${idx}">
+            <option value="">-- Select --</option>
+            <option value="spouse">Spouse</option>
+            <option value="child">Child</option>
+            <option value="parent">Parent</option>
+            <option value="sibling">Sibling</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+      `;
+
+      // appendChild(node) adds the new section to the container.
+      beneficiaryContainer.appendChild(section);
+      updateBeneficiaryCount();
+
+      // Attach the Remove button's click handler.
+      section.querySelector('.btn-remove-beneficiary').addEventListener('click', () => {
+        // remove() removes the element from the DOM.
+        section.remove();
+        updateBeneficiaryCount();
+      });
+    });
+
+    // updateBeneficiaryCount() counts the current beneficiary sections.
+    function updateBeneficiaryCount() {
+      const count = beneficiaryContainer.querySelectorAll('.beneficiary-section').length;
+      beneficiaryCountEl.textContent = count;
+    }
+
+    // --- Form Submission with Conditional Validation ---
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+
+      // Clear previous errors.
+      form.querySelectorAll('.input-error').forEach(el => el.classList.remove('input-error'));
+      form.querySelectorAll('.error-message').forEach(el => el.classList.remove('visible'));
+      statusEl.className = 'form-status';
+      statusEl.textContent = '';
+
+      let isValid = true;
+      const type = accountTypeSelect.value;
+
+      // Validate primary name (always required).
+      const primaryName = form.querySelector('[data-testid="input-primary-name"]');
+      if (!primaryName.value.trim()) {
+        primaryName.classList.add('input-error');
+        form.querySelector('[data-testid="error-primary-name"]').classList.add('visible');
+        isValid = false;
+      }
+
+      // Conditional validation: business fields only when type = "business".
+      if (type === 'business') {
+        const companyName = form.querySelector('[data-testid="input-company-name"]');
+        if (!companyName.value.trim()) {
+          companyName.classList.add('input-error');
+          form.querySelector('[data-testid="error-company-name"]').classList.add('visible');
+          isValid = false;
+        }
+        const regNumber = form.querySelector('[data-testid="input-reg-number"]');
+        if (!regNumber.value.trim()) {
+          regNumber.classList.add('input-error');
+          form.querySelector('[data-testid="error-reg-number"]').classList.add('visible');
+          isValid = false;
+        }
+      }
+
+      // Conditional validation: joint fields only when type = "joint".
+      if (type === 'joint') {
+        const jointName = form.querySelector('[data-testid="input-joint-name"]');
+        if (!jointName.value.trim()) {
+          jointName.classList.add('input-error');
+          form.querySelector('[data-testid="error-joint-name"]').classList.add('visible');
+          isValid = false;
+        }
+        const jointEmail = form.querySelector('[data-testid="input-joint-email"]');
+        if (!jointEmail.value.trim()) {
+          jointEmail.classList.add('input-error');
+          form.querySelector('[data-testid="error-joint-email"]').classList.add('visible');
+          isValid = false;
+        }
+      }
+
+      // Conditional validation: PEP fields only when checkbox is checked.
+      if (pepCheckbox.checked) {
+        const pepPos = form.querySelector('[data-testid="input-pep-position"]');
+        if (!pepPos.value.trim()) {
+          pepPos.classList.add('input-error');
+          form.querySelector('[data-testid="error-pep-position"]').classList.add('visible');
+          isValid = false;
+        }
+        const pepCountry = form.querySelector('[data-testid="input-pep-country"]');
+        if (!pepCountry.value.trim()) {
+          pepCountry.classList.add('input-error');
+          form.querySelector('[data-testid="error-pep-country"]').classList.add('visible');
+          isValid = false;
+        }
+      }
+
+      // Validate beneficiary names.
+      beneficiaryContainer.querySelectorAll('.beneficiary-section').forEach(section => {
+        const idx = section.getAttribute('data-beneficiary-id');
+        const nameInput = section.querySelector(`[data-testid="input-beneficiary-name-${idx}"]`);
+        if (nameInput && !nameInput.value.trim()) {
+          nameInput.classList.add('input-error');
+          const errorEl = section.querySelector(`[data-testid="error-beneficiary-name-${idx}"]`);
+          if (errorEl) errorEl.classList.add('visible');
+          isValid = false;
+        }
+      });
+
+      if (isValid) {
+        statusEl.className = 'form-status success';
+        statusEl.textContent = 'Application submitted successfully!';
+      } else {
+        statusEl.className = 'form-status error';
+        statusEl.textContent = 'Please fix the errors above.';
+      }
+    });
+  </script>
+
+</body>
+</html>

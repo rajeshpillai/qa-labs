@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kata 20: Cookies and Auth State | QA Labs</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #1e293b; padding: 2rem; }
+    .header { background: #0f172a; color: white; padding: 1rem 2rem; margin: -2rem -2rem 2rem; }
+    .header h1 { font-size: 1.25rem; }
+    .kata-badge { display: inline-block; background: #38bdf8; color: #0f172a; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 4px; margin-right: 0.5rem; }
+
+    .container { max-width: 600px; margin: 0 auto; }
+
+    .section {
+      background: white; border-radius: 8px; padding: 1.5rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 1.5rem;
+    }
+    .section h2 { font-size: 1rem; color: #475569; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid #e2e8f0; }
+
+    /* Login form */
+    .form-group { margin-bottom: 1rem; }
+    .form-group label { display: block; font-weight: 600; font-size: 0.875rem; margin-bottom: 0.25rem; color: #334155; }
+    .form-group input[type="text"], .form-group input[type="password"] {
+      width: 100%; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 6px;
+      font-size: 0.875rem;
+    }
+    .checkbox-group { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem; }
+    .checkbox-group label { font-size: 0.875rem; color: #475569; cursor: pointer; }
+
+    .btn {
+      padding: 0.5rem 1.25rem; border: none; border-radius: 6px;
+      font-size: 0.875rem; font-weight: 600; cursor: pointer;
+      margin-right: 0.5rem;
+    }
+    .btn-primary { background: #3b82f6; color: white; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-danger { background: #ef4444; color: white; }
+    .btn-danger:hover { background: #dc2626; }
+
+    .error-message {
+      color: #dc2626; font-size: 0.8rem; margin-top: 0.5rem;
+      display: none;
+    }
+    .error-message.visible { display: block; }
+
+    /* Auth state display */
+    .auth-state {
+      padding: 1rem; border-radius: 8px; font-size: 0.875rem;
+      margin-bottom: 1rem;
+    }
+    .auth-state.logged-in { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+    .auth-state.logged-out { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+
+    /* Dashboard content */
+    .dashboard { display: none; }
+    .dashboard.visible { display: block; }
+    .login-form-container { display: block; }
+    .login-form-container.hidden { display: none; }
+
+    .dashboard-card {
+      background: #f8fafc; border-radius: 6px; padding: 1rem;
+      margin-bottom: 0.75rem; border: 1px solid #e2e8f0;
+    }
+    .dashboard-card h3 { font-size: 0.9rem; color: #334155; margin-bottom: 0.25rem; }
+    .dashboard-card p { font-size: 0.8rem; color: #64748b; }
+
+    .welcome-message { font-size: 1.1rem; font-weight: 600; color: #0f172a; margin-bottom: 1rem; }
+
+    /* Cookie display */
+    .cookie-viewer {
+      font-family: monospace; font-size: 0.8rem; background: #f8fafc;
+      border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.75rem;
+      max-height: 200px; overflow-y: auto; white-space: pre-wrap;
+      word-break: break-all;
+    }
+  </style>
+</head>
+<body>
+
+  <header class="header" data-testid="page-header">
+    <span class="kata-badge">KATA 20</span>
+    <h1>KYC Portal - Cookies and Auth State</h1>
+  </header>
+
+  <div class="container">
+
+    <!-- Auth State Display -->
+    <div class="auth-state logged-out" data-testid="auth-state" id="auth-state">
+      Status: <strong data-testid="auth-status-text" id="auth-status-text">Not Authenticated</strong>
+    </div>
+
+    <!-- Login Form -->
+    <div class="login-form-container" data-testid="login-form" id="login-form">
+      <div class="section">
+        <h2>Login to KYC Portal</h2>
+        <div class="form-group">
+          <label for="username">Username</label>
+          <input type="text" id="username" data-testid="input-username" placeholder="Enter username" autocomplete="off">
+        </div>
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input type="password" id="password" data-testid="input-password" placeholder="Enter password" autocomplete="off">
+        </div>
+        <div class="checkbox-group">
+          <input type="checkbox" id="remember-me" data-testid="checkbox-remember">
+          <label for="remember-me">Remember Me (stay logged in)</label>
+        </div>
+        <button class="btn btn-primary" data-testid="btn-login" id="btn-login">Log In</button>
+        <div class="error-message" data-testid="login-error" id="login-error">
+          Invalid username or password. Use admin / password123
+        </div>
+      </div>
+    </div>
+
+    <!-- Dashboard (shown after login) -->
+    <div class="dashboard" data-testid="dashboard" id="dashboard">
+      <div class="section">
+        <h2>Dashboard</h2>
+        <p class="welcome-message" data-testid="welcome-message" id="welcome-message">Welcome, admin!</p>
+        <div class="dashboard-card">
+          <h3>Pending Applications</h3>
+          <p data-testid="pending-count">5 applications awaiting review</p>
+        </div>
+        <div class="dashboard-card">
+          <h3>Approved Today</h3>
+          <p data-testid="approved-count">12 applications approved</p>
+        </div>
+        <div class="dashboard-card">
+          <h3>Risk Alerts</h3>
+          <p data-testid="risk-alerts">2 high-risk applications flagged</p>
+        </div>
+        <button class="btn btn-danger" data-testid="btn-logout" id="btn-logout">Log Out</button>
+      </div>
+    </div>
+
+    <!-- Cookie Inspector -->
+    <div class="section" data-testid="cookie-section">
+      <h2>Cookie Inspector</h2>
+      <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 0.75rem;">
+        View the current cookies for this page. Click "Refresh" to update.
+      </p>
+      <button class="btn btn-primary" data-testid="btn-refresh-cookies" id="btn-refresh-cookies" style="margin-bottom: 0.75rem;">Refresh</button>
+      <div class="cookie-viewer" data-testid="cookie-display" id="cookie-display">No cookies set</div>
+    </div>
+
+  </div>
+
+  <script>
+    // -----------------------------------------------------------------------
+    // Cookie Helper Functions
+    // -----------------------------------------------------------------------
+    // Cookies are small pieces of data stored by the browser and sent with
+    // every HTTP request to the same domain. They are used for session
+    // management, authentication, and tracking.
+    //
+    // document.cookie is a string containing all cookies for the current
+    // page, formatted as "key1=value1; key2=value2; key3=value3".
+    //
+    // To SET a cookie, assign a string to document.cookie:
+    //   document.cookie = "name=value; path=/; max-age=3600";
+    //
+    // To DELETE a cookie, set its max-age to 0 or expires to the past:
+    //   document.cookie = "name=; max-age=0; path=/";
+
+    // setCookie(name, value, options) creates or updates a cookie.
+    // options.maxAge: lifetime in seconds (omit for session cookie).
+    // options.path: URL path the cookie applies to (default: '/').
+    function setCookie(name, value, options = {}) {
+      let cookie = encodeURIComponent(name) + '=' + encodeURIComponent(value);
+
+      // path determines which URLs can access the cookie.
+      // '/' means the cookie is available on all pages of the site.
+      cookie += '; path=' + (options.path || '/');
+
+      if (options.maxAge) {
+        // max-age sets the cookie lifetime in seconds.
+        // A session cookie (no max-age) is deleted when the browser closes.
+        // A persistent cookie (with max-age) survives browser restarts.
+        cookie += '; max-age=' + options.maxAge;
+      }
+
+      // SameSite=Lax is a security attribute that prevents the cookie
+      // from being sent with cross-site requests (protects against CSRF).
+      cookie += '; SameSite=Lax';
+
+      document.cookie = cookie;
+    }
+
+    // getCookie(name) reads a specific cookie by name.
+    // Returns the value string or null if the cookie doesn't exist.
+    function getCookie(name) {
+      // document.cookie returns ALL cookies as a single string:
+      // "session=abc123; theme=dark; lang=en"
+      // We split by '; ' and search for the one with the matching name.
+      const cookies = document.cookie.split('; ');
+      for (const cookie of cookies) {
+        const [cookieName, ...rest] = cookie.split('=');
+        if (decodeURIComponent(cookieName) === name) {
+          return decodeURIComponent(rest.join('='));
+        }
+      }
+      return null;
+    }
+
+    // deleteCookie(name) removes a cookie by setting its max-age to 0.
+    function deleteCookie(name) {
+      document.cookie = encodeURIComponent(name) + '=; max-age=0; path=/; SameSite=Lax';
+    }
+
+    // -----------------------------------------------------------------------
+    // Auth State Management
+    // -----------------------------------------------------------------------
+    const authState = document.getElementById('auth-state');
+    const authStatusText = document.getElementById('auth-status-text');
+    const loginForm = document.getElementById('login-form');
+    const dashboard = document.getElementById('dashboard');
+    const loginError = document.getElementById('login-error');
+    const welcomeMessage = document.getElementById('welcome-message');
+
+    // Valid credentials for the playground (hardcoded for testing purposes).
+    const VALID_USERNAME = 'admin';
+    const VALID_PASSWORD = 'password123';
+
+    // showDashboard(username) switches the UI from the login form to the
+    // dashboard view and updates the auth state display.
+    function showDashboard(username) {
+      loginForm.classList.add('hidden');
+      dashboard.classList.add('visible');
+      authState.classList.remove('logged-out');
+      authState.classList.add('logged-in');
+      authStatusText.textContent = 'Authenticated as ' + username;
+      welcomeMessage.textContent = 'Welcome, ' + username + '!';
+      loginError.classList.remove('visible');
+    }
+
+    // showLoginForm() switches the UI back to the login form and updates
+    // the auth state display to "Not Authenticated".
+    function showLoginForm() {
+      loginForm.classList.remove('hidden');
+      dashboard.classList.remove('visible');
+      authState.classList.remove('logged-in');
+      authState.classList.add('logged-out');
+      authStatusText.textContent = 'Not Authenticated';
+      welcomeMessage.textContent = '';
+    }
+
+    // -----------------------------------------------------------------------
+    // Login Handler
+    // -----------------------------------------------------------------------
+    document.getElementById('btn-login').addEventListener('click', () => {
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
+      const rememberMe = document.getElementById('remember-me').checked;
+
+      // Validate credentials.
+      if (username !== VALID_USERNAME || password !== VALID_PASSWORD) {
+        loginError.classList.add('visible');
+        return;
+      }
+
+      if (rememberMe) {
+        // "Remember Me" checked: set a PERSISTENT cookie.
+        // max-age of 604800 seconds = 7 days.
+        // This cookie survives browser restarts.
+        setCookie('kyc-session', username, { maxAge: 604800 });
+      } else {
+        // Normal login: set a SESSION cookie (no max-age).
+        // This cookie is deleted when the browser is closed.
+        setCookie('kyc-session', username);
+      }
+
+      showDashboard(username);
+      refreshCookieDisplay();
+    });
+
+    // -----------------------------------------------------------------------
+    // Logout Handler
+    // -----------------------------------------------------------------------
+    document.getElementById('btn-logout').addEventListener('click', () => {
+      // Delete the session cookie by setting max-age to 0.
+      deleteCookie('kyc-session');
+
+      // Clear the form fields.
+      document.getElementById('username').value = '';
+      document.getElementById('password').value = '';
+      document.getElementById('remember-me').checked = false;
+
+      showLoginForm();
+      refreshCookieDisplay();
+    });
+
+    // -----------------------------------------------------------------------
+    // Cookie Inspector
+    // -----------------------------------------------------------------------
+    function refreshCookieDisplay() {
+      const cookieString = document.cookie;
+      const display = document.getElementById('cookie-display');
+
+      if (!cookieString) {
+        display.textContent = 'No cookies set';
+        return;
+      }
+
+      // Format cookies for display (one per line).
+      const formatted = cookieString.split('; ').map(c => {
+        const [name, ...rest] = c.split('=');
+        return decodeURIComponent(name) + ' = ' + decodeURIComponent(rest.join('='));
+      }).join('\n');
+
+      display.textContent = formatted;
+    }
+
+    document.getElementById('btn-refresh-cookies').addEventListener('click', refreshCookieDisplay);
+
+    // -----------------------------------------------------------------------
+    // On Page Load: Check for Existing Session Cookie
+    // -----------------------------------------------------------------------
+    // If a session cookie exists (e.g., from "Remember Me"), auto-login.
+    const existingSession = getCookie('kyc-session');
+    if (existingSession) {
+      showDashboard(existingSession);
+    }
+
+    // Initial cookie display.
+    refreshCookieDisplay();
+  </script>
+
+</body>
+</html>

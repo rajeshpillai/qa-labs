@@ -1,0 +1,725 @@
+1:"$Sreact.fragment"
+2:I[76750,["/qa-labs/_next/static/chunks/012xw9ydea0yn.js","/qa-labs/_next/static/chunks/0t2xr05rlu96l.js","/qa-labs/_next/static/chunks/0a55m.6s3qp~-.js","/qa-labs/_next/static/chunks/01luku1w1f06_.js"],"KataPageClient"]
+d:I[97367,["/qa-labs/_next/static/chunks/012xw9ydea0yn.js","/qa-labs/_next/static/chunks/0t2xr05rlu96l.js","/qa-labs/_next/static/chunks/0a55m.6s3qp~-.js"],"OutletBoundary"]
+e:"$Sreact.suspense"
+3:T184c,# Kata 57: Soak / Endurance Test
+
+## What You Will Learn
+
+- What a **soak test** finds that a 5-minute load test cannot — leaks, drift, degradation
+- The realistic duration spectrum: **CI smoke** (5 min) → **CI soak** (30 min) → **release soak** (4–24 hours)
+- Memory leaks, file-descriptor leaks, connection-pool drift, log-rotation issues
+- Why p95 over a 4-hour test is more meaningful than p95 over 5 minutes
+- How to run a soak in CI without burning hours of CI minutes
+
+## Prerequisites
+
+- Completed all earlier phase 12 katas (load, stress, spike)
+- The QA Labs server running
+
+## Concepts Explained
+
+### What soak tests find
+
+Imagine you ran kata 54's load test for 5 minutes and it passed. Production crashes 7 hours after deploy. The 5-minute test missed:
+
+| Bug class | Why short tests miss it |
+|-----------|-------------------------|
+| **Memory leak** | A few KB/min leak shows as hundreds of MB after hours, but invisible in 5 min |
+| **File descriptor leak** | Hits limit (typically 1024 or 65k) only after thousands of operations |
+| **Connection pool drift** | Pool slowly fills with stale connections that never get reaped |
+| **Log rotation bugs** | Log file fills disk, daemon crashes |
+| **Cache eviction storms** | Caches fill up over hours, then thrash on every request |
+| **DB index bloat** | Index size grows over time, queries slow proportionally |
+| **Time-based bugs** | Cron jobs, daily resets, rate-limit window resets |
+
+A soak test is the only way to find these in pre-production.
+
+### Duration spectrum
+
+| Duration | Use case | What you'll catch |
+|----------|----------|-------------------|
+| **5 min** (smoke) | Every CI commit | Crashes, immediate regressions |
+| **30 min** (load) | Per-PR or pre-merge | Most steady-state regressions, p95 stability |
+| **2 hours** (mini-soak) | Nightly | Slow leaks, queue drift |
+| **4 hours** | Pre-release | Memory leaks under sustained load |
+| **24 hours** | Release validation | Time-of-day bugs, log rotation, full leak realization |
+| **7 days** | Major release / capacity planning | Long-tail anomalies, full leak unrolled |
+
+Real teams run a 4-hour soak before every release and a 24-hour soak monthly.
+
+### What to monitor
+
+A soak test isn't just "the load test, but longer." You need to watch dimensions that don't matter in short tests:
+
+- **p95 over time** (not just final p95). A passing final p95 can mask drift if the trend is upward.
+- **Memory RSS** (resident set size) over time. Growing? You have a leak.
+- **Open file descriptors** over time.
+- **Connection counts** to backends.
+- **Error rate by hour.** If errors spike at hour 6, you have a time-based bug.
+
+In k6 you can record some of these as custom metrics if your service exposes them. Most observability comes from outside k6 (Prometheus, Grafana, your APM).
+
+### Soak in CI: the cost problem
+
+A 4-hour soak times your concurrent test runs costs significant CI minutes. Tactics:
+
+1. **Tiered cadence.** Smoke on every commit, 30-min soak nightly, 4-hour soak weekly.
+2. **Compressed soak.** Run for 30 min but at higher RPS than production peak. Doesn't catch all soak bugs but catches some at lower cost.
+3. **Run on dedicated soak hardware.** Don't tie up the main CI fleet.
+4. **Background scheduled jobs.** GitHub Actions schedules, cron in your CI.
+
+### Useful k6 patterns for soak
+
+#### Periodic checkpoints
+
+Add a "checkpoint" log every 10 minutes so you can scan the log and see whether p95 was stable:
+
+```javascript
+export default function () {
+  const minute = Math.floor((Date.now() - START) / 60_000);
+  if (minute % 10 === 0 && __ITER === 0) {
+    console.log(`Soak checkpoint: minute ${minute}`);
+  }
+  // ... actual test work ...
+}
+```
+
+#### Per-hour tagging
+
+Tag samples by hour so you can compare hour 1 vs hour 4:
+
+```javascript
+const hour = Math.floor((Date.now() - START) / 3_600_000);
+http.get(url, { tags: { hour: `h${hour}` } });
+```
+
+Then:
+```javascript
+'http_req_duration{hour:h0}': ['p(95)<300'],
+'http_req_duration{hour:h3}': ['p(95)<300'],  // must hold after 3 hours
+```
+
+If `h3` p95 is much worse than `h0` p95, you have drift.
+
+### The QA Labs kata is short by design
+
+The provided solution runs **60 seconds** by default — long enough to demonstrate the pattern, short enough to actually run during a workshop. To do a real soak, set `SOAK_DURATION=30m k6 run ...` (or hours) and run on a long-lived host.
+
+## Exercises
+
+1. **Run the kata as-shipped (60s).** Note p95. Re-run with `SOAK_DURATION=10m`. Did p95 change?
+2. **Add per-hour tagging.** Run for 30 min. Compare p95 across the three 10-minute slices. Stable? Drifting?
+3. **Find a synthetic leak.** Modify the kata to log requests to an in-memory array (which intentionally never gets cleared). Watch memory grow via `process.memoryUsage()` printed every minute.
+4. **Compressed soak.** What's the relationship between RPS multiplier and soak duration? Can a 30-min run at 2× production RPS substitute for a 1-hour run at 1×?
+
+## Common Mistakes
+
+- **Conflating soak with load.** A soak run is at *baseline* production RPS, not peak. The point is duration, not magnitude.
+- **No outside observability.** The k6 output alone won't show memory growth — you need APM/Prometheus.
+- **Assuming short test = soak.** A 5-minute test at high RPS finds different bugs than a 4-hour test at moderate RPS.
+- **Skipping the recovery period.** If your test ends at hour 4 with the system in a degraded state, you don't know whether it would have recovered or crashed.
+
+## Cheat Sheet
+
+| Want to find... | Run for... | At what load |
+|-----------------|------------|--------------|
+| Crashes | 5 min | Production peak |
+| Steady-state regression | 30 min | Production peak |
+| Memory leak | 4 hours | Production baseline |
+| FD leak | 4 hours | High request count |
+| Time-based bug | 24 hours | Production baseline |
+| Cache eviction storm | 4-12 hours | Production peak with realistic data variety |
+
+| Soak red flag | Likely cause |
+|---------------|--------------|
+| p95 climbing | Memory pressure → GC → slow paths |
+| RSS climbing | Leak |
+| Errors spiking after N hours | Quota / rate limit / disk full |
+| Throughput dropping | DB index bloat / cache eviction |
+4:T86e,// Kata 57 — Soak / Endurance Test (k6 solution)
+//
+// Steady production-baseline RPS for an extended duration. Default is
+// short (60s) to keep the kata runnable in a workshop; override with
+// SOAK_DURATION env var for a real soak:
+//
+//   SOAK_DURATION=30m k6 run 57-soak-endurance-test.test.js
+//   SOAK_DURATION=4h  k6 run 57-soak-endurance-test.test.js
+//
+// Tags samples by 10-minute slice so per-period thresholds reveal drift.
+
+import http from 'k6/http';
+import { check } from 'k6';
+
+const BASE_URL = __ENV.K6_BASE_URL || 'http://localhost:3000';
+const SOAK_DURATION = __ENV.SOAK_DURATION || '60s';
+
+export const options = {
+  scenarios: {
+    soak: {
+      executor: 'constant-arrival-rate',
+      rate: 50,                   // baseline production RPS — NOT peak
+      timeUnit: '1s',
+      duration: SOAK_DURATION,
+      preAllocatedVUs: 30,
+      maxVUs: 60,
+    },
+  },
+  thresholds: {
+    // Whole-test threshold — catches average degradation
+    'http_req_duration': ['p(95)<300'],
+    'http_req_failed': ['rate<0.01'],
+    // Per-slice threshold — same numbers must hold across the whole run.
+    // If slice0 passes but slice2 fails, you have drift.
+    'http_req_duration{slice:0}': ['p(95)<300'],
+    'http_req_duration{slice:1}': ['p(95)<300'],
+    'http_req_duration{slice:2}': ['p(95)<300'],
+  },
+};
+
+const TEST_START = Date.now();
+const SLICE_DURATION_MS = 10 * 60 * 1000; // 10 minutes per slice
+let lastCheckpointMin = -1;
+
+function currentSlice() {
+  const elapsed = Date.now() - TEST_START;
+  return Math.min(Math.floor(elapsed / SLICE_DURATION_MS), 2);
+}
+
+export default function () {
+  const slice = currentSlice();
+  const minute = Math.floor((Date.now() - TEST_START) / 60_000);
+
+  // Periodic checkpoint log so you can grep the run output and see
+  // whether each minute started healthy.
+  if (minute > lastCheckpointMin && minute % 5 === 0 && __ITER < 5) {
+    console.log(`[soak] minute=${minute} slice=${slice}`);
+    lastCheckpointMin = minute;
+  }
+
+  const res = http.get(`${BASE_URL}/lab/echo`, {
+    tags: { slice: String(slice) },
+  });
+  check(res, {
+    'status is 200': (r) => r.status === 200,
+  });
+}
+5:T1803,# Kata 56: Spike Test
+
+## What You Will Learn
+
+- What a **spike** is and why it's a different beast from gradual load
+- The two spike scenarios real systems face: **single sharp spike** and **repeated burst**
+- What an autoscaler can and can't catch (cold starts are the killer)
+- How to set thresholds that allow short-burst degradation but require recovery
+- Why a system that handles steady 1000 RPS can fall over at a 30-second spike to 500 RPS
+
+## Prerequisites
+
+- Completed [Kata 54 (Load)](../54-load-test/) and [Kata 55 (Stress)](../55-stress-and-breakpoint-test/)
+- The QA Labs server running
+
+## Concepts Explained
+
+### Spikes are not just "more load, faster"
+
+A gradual ramp gives the system time to:
+- Warm caches
+- Scale out (autoscaler reacts in seconds–minutes)
+- Stretch connection pools
+- JIT-compile hot paths
+
+A spike does **none** of that. Traffic appears, the system scrambles, and you find out fast whether it had headroom or whether it was running on fumes.
+
+### Real-world spike scenarios
+
+| Scenario | Profile |
+|----------|---------|
+| **Black Friday opening minute** | 1× → 10× in 60s |
+| **Marketing email send** | 0 → N over 30 seconds |
+| **Viral social post** | 1× → 50× in 2 minutes |
+| **Failover from another region** | 0 → full prod load instantly |
+| **Bot scrape detected and blocked, then retry storm** | Sharp burst followed by sharp drop |
+
+Each has its own profile, but the common signature is: **rate-of-change is high, autoscaler can't catch up**.
+
+### The single-spike pattern
+
+```
+RPS
+1000 │              ┌──┐
+     │              │  │
+     │              │  │
+ 100 │──────────────┘  └─────────────────
+     └────────────────────────────────────────►
+        steady     spike     recovery
+```
+
+- 30s steady at baseline (warm-up)
+- Sharp ramp to 10× over 30s
+- Hold at peak for 60s
+- Sharp ramp back to baseline
+- Hold for recovery observation
+
+The recovery period is where bugs live: did pending requests drain? Are connection counts back to normal? Are queues empty?
+
+### What thresholds make sense for a spike?
+
+You can't assert `p(95)<300` during a spike — even healthy systems degrade for the few seconds it takes the autoscaler to catch up. Instead:
+
+```javascript
+thresholds: {
+  // Recovery period must be back at SLO
+  'http_req_duration{phase:recovery}': ['p(95)<300'],
+  // During spike, allow up to 1s p95 — anything more means the system is
+  // genuinely struggling, not just rate-of-change pain
+  'http_req_duration{phase:spike}': ['p(95)<1000'],
+  // Errors during spike: allow up to 5% — but recovery should be clean
+  'http_req_failed{phase:spike}': ['rate<0.05'],
+  'http_req_failed{phase:recovery}': ['rate<0.005'],
+},
+```
+
+The pattern: **strict thresholds during steady-state, loose during spike, strict again during recovery**.
+
+### What you find with a spike test
+
+1. **Autoscale lag.** How long after RPS jumps does the system recover its SLO?
+2. **Connection pool exhaustion.** Sudden burst of new connections may exceed pool size. Latency spikes, then errors.
+3. **Cache cold start.** New instances have empty caches. First requests to them are slow.
+4. **Queue depth.** Did a queue build up that's still draining minutes after the spike? That's a backpressure bug.
+5. **Retry amplification.** A spike that causes some failures triggers client retries, amplifying the spike.
+
+### Repeated bursts (sawtooth)
+
+Some systems face **repeated** spikes — e.g., a cron-driven job that fires every 5 minutes and bursts traffic. The pattern:
+
+```
+RPS
+500 │  ┌──┐    ┌──┐    ┌──┐    ┌──┐
+    │  │  │    │  │    │  │    │  │
+100 │──┘  └────┘  └────┘  └────┘  └─
+    └─────────────────────────────────►
+```
+
+These find leaks: each burst should leave the system in the same state as the previous. If queue depth, memory, or open connections grow burst-over-burst, you have a leak that a single spike test won't catch.
+
+## Exercises
+
+1. **Build a single 10× spike** against `/lab/echo`: 30s steady at 50 RPS, sharp ramp to 500 RPS over 5s, hold for 30s, sharp drop to 50 RPS, recover for 30s. Compare p95 across the three tagged phases.
+2. **Sawtooth.** Repeat 4 cycles of: 30s at 50 RPS, 15s at 500 RPS, back to 50. Are the p95 values stable burst-over-burst? If they grow, you found a leak.
+3. **Spike against a slow endpoint.** Spike 5× against `/lab/slow?ms=200`. Why does this fail more dramatically than spiking `/lab/echo`? (Hint: Little's Law — required concurrency.)
+4. **Add a retry storm.** When a request fails during the spike, retry it once. Does this make the recovery period worse? By how much?
+
+## Common Mistakes
+
+- **Treating spike as load with a ramp.** A 60-second ramp is **not** a spike. Spikes are 0–30s.
+- **Asserting steady-state SLO during the spike itself.** Even healthy autoscaling systems briefly miss SLO during the scale-up window. Use phase-tagged thresholds.
+- **No recovery observation.** A spike test that ends right after the peak misses the queue drain, the cache thrash, the connection clean-up.
+- **One spike, one run.** Spike behavior is variable. Run 5+ times and report the worst-case (not average) — your customers experience the worst run.
+
+## Cheat Sheet
+
+| Phase | Goal | Threshold style |
+|-------|------|-----------------|
+| Steady (pre-spike) | Verify baseline | Strict (SLO) |
+| Spike | Survive the burst | Loose (degraded but no errors) |
+| Peak | Hold the new level | Moderate (SLO+50% latency) |
+| Recovery | Return to baseline | Strict (SLO) |
+
+| Common pre-spike check | Why |
+|-------------------------|-----|
+| Autoscale rule firing? | Without it, spike will overload |
+| Connection pool sized for peak × 2? | Spikes need headroom |
+| Circuit breakers tested? | Failures should fail fast, not pile up |
+| Retry budget capped? | Retry storms amplify spikes |
+6:T92a,// Kata 56 — Spike Test (k6 solution)
+//
+// Single sharp spike: 50 RPS baseline → 500 RPS in 5s → hold 30s → drop
+// back to 50 RPS in 5s → recover for 30s. Phase-tagged thresholds let us
+// require strict SLO during steady/recovery but allow degradation during
+// the spike itself.
+
+import http from 'k6/http';
+import { check } from 'k6';
+
+const BASE_URL = __ENV.K6_BASE_URL || 'http://localhost:3000';
+
+// Stage timeline (ms from test start). Used for phase tagging.
+const TS = {
+  steady_end:    30_000,   // 0–30s: baseline
+  ramp_up_end:   35_000,   // 30–35s: sharp ramp
+  spike_end:     65_000,   // 35–65s: peak
+  ramp_down_end: 70_000,   // 65–70s: drop
+  // 70s+ : recovery
+};
+
+export const options = {
+  scenarios: {
+    spike: {
+      executor: 'ramping-arrival-rate',
+      startRate: 0,
+      timeUnit: '1s',
+      preAllocatedVUs: 100,
+      maxVUs: 500,
+      stages: [
+        { duration: '30s', target: 50 },   // steady baseline
+        { duration: '5s',  target: 500 },  // sharp ramp up — the spike
+        { duration: '30s', target: 500 },  // hold at peak
+        { duration: '5s',  target: 50 },   // sharp ramp down
+        { duration: '30s', target: 50 },   // recovery
+      ],
+    },
+  },
+  thresholds: {
+    // Strict during steady — system at baseline must be at SLO
+    'http_req_duration{phase:steady}': ['p(95)<300'],
+    // Loose during the spike — degradation is expected, errors are not
+    'http_req_duration{phase:spike}': ['p(95)<2000'],
+    'http_req_failed{phase:spike}': ['rate<0.05'],
+    // Recovery: back to baseline SLO. This is the most important threshold —
+    // a system that "survives" the spike but never recovers is broken.
+    'http_req_duration{phase:recovery}': ['p(95)<300'],
+    'http_req_failed{phase:recovery}': ['rate<0.005'],
+  },
+};
+
+const TEST_START = Date.now();
+
+function currentPhase() {
+  const elapsed = Date.now() - TEST_START;
+  if (elapsed < TS.steady_end) return 'steady';
+  if (elapsed < TS.ramp_up_end) return 'ramp_up';
+  if (elapsed < TS.spike_end) return 'spike';
+  if (elapsed < TS.ramp_down_end) return 'ramp_down';
+  return 'recovery';
+}
+
+export default function () {
+  const phase = currentPhase();
+  const res = http.get(`${BASE_URL}/lab/echo`, { tags: { phase } });
+  check(res, {
+    'status is 200': (r) => r.status === 200,
+  });
+}
+7:T1ada,# Kata 58: Lighthouse Basics — Web Vitals via Playwright
+
+## What You Will Learn
+
+- The four pillars Lighthouse audits: **Performance**, **Accessibility**, **Best Practices**, **SEO**
+- The five **Core Web Vitals** every frontend perf engineer must know: **FCP, LCP, CLS, INP, TTFB**
+- How to measure these in **Playwright** without installing the Lighthouse CLI
+- The difference between **lab** (synthetic) and **field** (real-user) measurement
+- Where Web Vitals come from in browser internals (Navigation Timing, Paint Timing, PerformanceObserver)
+
+## Prerequisites
+
+- Phases 9–12 (you understand percentiles, distributions, thresholds)
+- The QA Labs server running OR Playwright running standalone (`cd playwright && npx playwright test phase-13`)
+
+## Concepts Explained
+
+### Why frontend perf is different
+
+Phases 9–12 measured **server-side** load: how fast the API responds. But your user doesn't see API latency directly — they see a page. A 50ms API + 4000ms of JavaScript = a slow page, no matter how fast the backend.
+
+Frontend perf measures **what the user actually experiences**: time to first paint, time until the page is interactive, visible layout stability.
+
+### The five Core Web Vitals
+
+| Metric | Full name | What it measures | "Good" threshold |
+|--------|-----------|------------------|------------------|
+| **FCP** | First Contentful Paint | Time until *any* content paints (text, image) | < 1.8s |
+| **LCP** | Largest Contentful Paint | Time until the **biggest** above-the-fold element paints | < 2.5s |
+| **CLS** | Cumulative Layout Shift | How much things jump around during load (unitless score) | < 0.1 |
+| **INP** | Interaction to Next Paint | Worst-case responsiveness to user input | < 200ms |
+| **TTFB** | Time to First Byte | Server response time before any rendering | < 800ms |
+
+Google's Search ranking signals consider **LCP, INP, CLS** as the primary three. They're the user-visible Big Three.
+
+### Lab vs field
+
+- **Lab** = synthetic. You run Lighthouse / Playwright in a controlled environment. Reproducible, deterministic, but doesn't reflect real-world conditions (your dev laptop is faster than median real-user device).
+- **Field** = Real User Monitoring (RUM). Actual page-load metrics from real users, sent to an analytics endpoint. The truth, but noisy.
+
+This kata uses **lab measurement** via Playwright. RUM is out of scope — you'd typically use `web-vitals` npm package or a vendor (DataDog RUM, Sentry, SpeedCurve).
+
+### Measuring Web Vitals in Playwright
+
+Playwright doesn't have built-in Web Vitals — but the browser exposes them via the **PerformanceObserver** API. The pattern:
+
+```typescript
+const lcp = await page.evaluate(() => new Promise<number>((resolve) => {
+  new PerformanceObserver((list) => {
+    const entries = list.getEntries();
+    resolve(entries[entries.length - 1].startTime);
+  }).observe({ type: 'largest-contentful-paint', buffered: true });
+}));
+```
+
+`{ buffered: true }` is critical — without it, the observer only fires for events *after* you subscribe, so an LCP that already fired would be missed.
+
+### What the kata's playground tests
+
+The playground (`playground/index.html`) is intentionally **fast and well-built**:
+- Tiny inline CSS (no render-blocking stylesheet)
+- One small inline image (LCP target)
+- No layout shifts after first paint
+- No JavaScript (TBT/INP near zero)
+
+Running a perf test against this page should produce **excellent** Web Vitals — establishing a baseline for what "good" looks like. Kata 59 introduces a deliberately broken page so you can see what failures look like.
+
+### Lighthouse CLI (for reference)
+
+The standalone Lighthouse CLI works against any URL:
+
+```bash
+npx lighthouse http://localhost:8080/phase-13-frontend-perf/58-lighthouse-basics/playground/ \
+  --only-categories=performance \
+  --output=json \
+  --output-path=./report.json \
+  --chrome-flags="--headless"
+```
+
+It produces a 100-page JSON report with every metric. For CI, you'd pipe it into [Lighthouse CI](https://github.com/GoogleChrome/lighthouse-ci) (kata 60). For day-to-day development inside a perf test, the Playwright approach in this kata is lighter.
+
+## Exercises
+
+1. **Run the kata's spec.** What FCP, LCP, CLS values does it report? Are they all in the "good" range?
+2. **Slow the page down.** Edit `playground/index.html` to add `<script src="https://example.com/missing.js"></script>` (a 404 with a long timeout). What happens to FCP? To LCP? To TTFB?
+3. **Compare Lighthouse vs Playwright.** Run `npx lighthouse <url>` against the same page. Are LCP values identical? They should be close — Lighthouse uses the same browser API under the hood.
+4. **Try a different `device`.** Lighthouse defaults to mobile + 4G throttling. Playwright uses your machine's full speed. Why do mobile-throttled measurements matter for CI gates?
+
+## Common Mistakes
+
+- **Asserting on lab metrics from a fast machine.** Your laptop is much faster than a real user's mid-range Android. Either throttle in Playwright (`page.context().route(...)`) or use Lighthouse's mobile preset.
+- **Forgetting `{ buffered: true }`.** PerformanceObserver only fires for events that happen *after* you subscribe — without `buffered`, you miss everything that already happened.
+- **Treating one measurement as the truth.** Web Vitals are noisy. Median over 10 runs > single run.
+- **Not waiting for LCP to settle.** LCP can update multiple times during page load as larger elements paint. Wait for `load` event + a small buffer before reading.
+
+## Cheat Sheet
+
+```typescript
+// Measure FCP, LCP, CLS in Playwright
+const fcp = await page.evaluate(() => new Promise<number>((resolve) => {
+  new PerformanceObserver((list) => {
+    for (const entry of list.getEntries()) {
+      if (entry.name === 'first-contentful-paint') resolve(entry.startTime);
+    }
+  }).observe({ type: 'paint', buffered: true });
+}));
+
+const lcp = await page.evaluate(() => new Promise<number>((resolve) => {
+  new PerformanceObserver((list) => {
+    const entries = list.getEntries();
+    resolve(entries[entries.length - 1].startTime);
+  }).observe({ type: 'largest-contentful-paint', buffered: true });
+}));
+
+// CLS accumulates — sum all entries
+const cls = await page.evaluate(() => new Promise<number>((resolve) => {
+  let total = 0;
+  new PerformanceObserver((list) => {
+    for (const entry of list.getEntries()) {
+      // hadRecentInput skips shifts caused by user input
+      if (!(entry as any).hadRecentInput) total += (entry as any).value;
+    }
+  }).observe({ type: 'layout-shift', buffered: true });
+  setTimeout(() => resolve(total), 1000);
+}));
+```
+
+| Threshold | Good | Needs Improvement | Poor |
+|-----------|------|-------------------|------|
+| LCP | <2.5s | <4s | >4s |
+| CLS | <0.1 | <0.25 | >0.25 |
+| INP | <200ms | <500ms | >500ms |
+| FCP | <1.8s | <3s | >3s |
+| TTFB | <800ms | <1.8s | >1.8s |
+8:Tdd2,// Kata 58 — Lighthouse Basics: measure Web Vitals via Playwright
+//
+// We measure FCP, LCP, CLS, and TTFB on the kata's playground page using
+// the browser's native PerformanceObserver. No Lighthouse CLI needed —
+// the same browser API powers Lighthouse itself.
+
+import { test, expect } from '@playwright/test';
+
+const PLAYGROUND_PATH = '/phase-13-frontend-perf/58-lighthouse-basics/playground/';
+
+interface WebVitals {
+  fcp: number;       // ms
+  lcp: number;       // ms
+  cls: number;       // unitless
+  ttfb: number;      // ms
+}
+
+async function measureWebVitals(page: import('@playwright/test').Page): Promise<WebVitals> {
+  await page.goto(PLAYGROUND_PATH);
+
+  // Give the browser a beat to populate timings, then read metrics.
+  // PerformanceObserver with `buffered: true` captures events that already fired.
+  return page.evaluate<WebVitals>(() => new Promise((resolve) => {
+    const result: WebVitals = { fcp: -1, lcp: -1, cls: 0, ttfb: -1 };
+
+    // FCP — first time any text/image paints
+    new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) {
+        if (entry.name === 'first-contentful-paint') {
+          result.fcp = entry.startTime;
+        }
+      }
+    }).observe({ type: 'paint', buffered: true });
+
+    // LCP — the largest above-the-fold element. Updates over time as
+    // larger elements paint; we take the LAST value reported.
+    new PerformanceObserver((list) => {
+      const entries = list.getEntries();
+      result.lcp = entries[entries.length - 1].startTime;
+    }).observe({ type: 'largest-contentful-paint', buffered: true });
+
+    // CLS — accumulates. Sum of all (non-input-driven) layout-shift values.
+    new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const ls = entry as any;
+        if (!ls.hadRecentInput) result.cls += ls.value;
+      }
+    }).observe({ type: 'layout-shift', buffered: true });
+
+    // TTFB — from Navigation Timing API
+    const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
+    if (nav) result.ttfb = nav.responseStart;
+
+    // Wait long enough for late layout shifts and final LCP update.
+    setTimeout(() => resolve(result), 1500);
+  }));
+}
+
+test.describe('Kata 58: Web Vitals on a well-built page', () => {
+  test('FCP under 1800ms (good threshold)', async ({ page }) => {
+    const vitals = await measureWebVitals(page);
+    console.log('Measured Web Vitals:', vitals);
+    expect(vitals.fcp).toBeGreaterThan(0);
+    expect(vitals.fcp).toBeLessThan(1800);
+  });
+
+  test('LCP under 2500ms (good threshold)', async ({ page }) => {
+    const vitals = await measureWebVitals(page);
+    expect(vitals.lcp).toBeGreaterThan(0);
+    expect(vitals.lcp).toBeLessThan(2500);
+  });
+
+  test('CLS under 0.1 (good threshold)', async ({ page }) => {
+    const vitals = await measureWebVitals(page);
+    // Page has no post-load shifts, so CLS should be ~0.
+    expect(vitals.cls).toBeLessThan(0.1);
+  });
+
+  test('TTFB under 800ms (good threshold)', async ({ page }) => {
+    const vitals = await measureWebVitals(page);
+    expect(vitals.ttfb).toBeGreaterThan(0);
+    expect(vitals.ttfb).toBeLessThan(800);
+  });
+
+  test('LCP element is the hero (largest above-the-fold)', async ({ page }) => {
+    await page.goto(PLAYGROUND_PATH);
+    // Sanity check that the perf-critical element actually rendered.
+    await expect(page.getByTestId('hero')).toBeVisible();
+  });
+});
+9:T2d7e,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#6A737D">// Kata 57 — Soak / Endurance Test (k6 solution)</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// Steady production-baseline RPS for an extended duration. Default is</span></span>
+<span class="line"><span style="color:#6A737D">// short (60s) to keep the kata runnable in a workshop; override with</span></span>
+<span class="line"><span style="color:#6A737D">// SOAK_DURATION env var for a real soak:</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">//   SOAK_DURATION=30m k6 run 57-soak-endurance-test.test.js</span></span>
+<span class="line"><span style="color:#6A737D">//   SOAK_DURATION=4h  k6 run 57-soak-endurance-test.test.js</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// Tags samples by 10-minute slice so per-period thresholds reveal drift.</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> http </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> 'k6/http'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { check } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> 'k6'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> BASE_URL</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> __ENV.</span><span style="color:#79B8FF">K6_BASE_URL</span><span style="color:#F97583"> ||</span><span style="color:#9ECBFF"> 'http://localhost:3000'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> SOAK_DURATION</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> __ENV.</span><span style="color:#79B8FF">SOAK_DURATION</span><span style="color:#F97583"> ||</span><span style="color:#9ECBFF"> '60s'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> const</span><span style="color:#79B8FF"> options</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">  scenarios: {</span></span>
+<span class="line"><span style="color:#E1E4E8">    soak: {</span></span>
+<span class="line"><span style="color:#E1E4E8">      executor: </span><span style="color:#9ECBFF">'constant-arrival-rate'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      rate: </span><span style="color:#79B8FF">50</span><span style="color:#E1E4E8">,                   </span><span style="color:#6A737D">// baseline production RPS — NOT peak</span></span>
+<span class="line"><span style="color:#E1E4E8">      timeUnit: </span><span style="color:#9ECBFF">'1s'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      duration: </span><span style="color:#79B8FF">SOAK_DURATION</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      preAllocatedVUs: </span><span style="color:#79B8FF">30</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      maxVUs: </span><span style="color:#79B8FF">60</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">    },</span></span>
+<span class="line"><span style="color:#E1E4E8">  },</span></span>
+<span class="line"><span style="color:#E1E4E8">  thresholds: {</span></span>
+<span class="line"><span style="color:#6A737D">    // Whole-test threshold — catches average degradation</span></span>
+<span class="line"><span style="color:#9ECBFF">    'http_req_duration'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'p(95)&#x3C;300'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#9ECBFF">    'http_req_failed'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'rate&#x3C;0.01'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#6A737D">    // Per-slice threshold — same numbers must hold across the whole run.</span></span>
+<span class="line"><span style="color:#6A737D">    // If slice0 passes but slice2 fails, you have drift.</span></span>
+<span class="line"><span style="color:#9ECBFF">    'http_req_duration{slice:0}'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'p(95)&#x3C;300'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#9ECBFF">    'http_req_duration{slice:1}'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'p(95)&#x3C;300'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#9ECBFF">    'http_req_duration{slice:2}'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'p(95)&#x3C;300'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#E1E4E8">  },</span></span>
+<span class="line"><span style="color:#E1E4E8">};</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> TEST_START</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> Date.</span><span style="color:#B392F0">now</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> SLICE_DURATION_MS</span><span style="color:#F97583"> =</span><span style="color:#79B8FF"> 10</span><span style="color:#F97583"> *</span><span style="color:#79B8FF"> 60</span><span style="color:#F97583"> *</span><span style="color:#79B8FF"> 1000</span><span style="color:#E1E4E8">; </span><span style="color:#6A737D">// 10 minutes per slice</span></span>
+<span class="line"><span style="color:#F97583">let</span><span style="color:#E1E4E8"> lastCheckpointMin </span><span style="color:#F97583">=</span><span style="color:#F97583"> -</span><span style="color:#79B8FF">1</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">function</span><span style="color:#B392F0"> currentSlice</span><span style="color:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> elapsed</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> Date.</span><span style="color:#B392F0">now</span><span style="color:#E1E4E8">() </span><span style="color:#F97583">-</span><span style="color:#79B8FF"> TEST_START</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">  return</span><span style="color:#E1E4E8"> Math.</span><span style="color:#B392F0">min</span><span style="color:#E1E4E8">(Math.</span><span style="color:#B392F0">floor</span><span style="color:#E1E4E8">(elapsed </span><span style="color:#F97583">/</span><span style="color:#79B8FF"> SLICE_DURATION_MS</span><span style="color:#E1E4E8">), </span><span style="color:#79B8FF">2</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> default</span><span style="color:#F97583"> function</span><span style="color:#E1E4E8"> () {</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> slice</span><span style="color:#F97583"> =</span><span style="color:#B392F0"> currentSlice</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> minute</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> Math.</span><span style="color:#B392F0">floor</span><span style="color:#E1E4E8">((Date.</span><span style="color:#B392F0">now</span><span style="color:#E1E4E8">() </span><span style="color:#F97583">-</span><span style="color:#79B8FF"> TEST_START</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">/</span><span style="color:#79B8FF"> 60_000</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Periodic checkpoint log so you can grep the run output and see</span></span>
+<span class="line"><span style="color:#6A737D">  // whether each minute started healthy.</span></span>
+<span class="line"><span style="color:#F97583">  if</span><span style="color:#E1E4E8"> (minute </span><span style="color:#F97583">></span><span style="color:#E1E4E8"> lastCheckpointMin </span><span style="color:#F97583">&#x26;&#x26;</span><span style="color:#E1E4E8"> minute </span><span style="color:#F97583">%</span><span style="color:#79B8FF"> 5</span><span style="color:#F97583"> ===</span><span style="color:#79B8FF"> 0</span><span style="color:#F97583"> &#x26;&#x26;</span><span style="color:#E1E4E8"> __ITER </span><span style="color:#F97583">&#x3C;</span><span style="color:#79B8FF"> 5</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#E1E4E8">    console.</span><span style="color:#B392F0">log</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`[soak] minute=${</span><span style="color:#E1E4E8">minute</span><span style="color:#9ECBFF">} slice=${</span><span style="color:#E1E4E8">slice</span><span style="color:#9ECBFF">}`</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    lastCheckpointMin </span><span style="color:#F97583">=</span><span style="color:#E1E4E8"> minute;</span></span>
+<span class="line"><span style="color:#E1E4E8">  }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> res</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> http.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/echo`</span><span style="color:#E1E4E8">, {</span></span>
+<span class="line"><span style="color:#E1E4E8">    tags: { slice: </span><span style="color:#B392F0">String</span><span style="color:#E1E4E8">(slice) },</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"><span style="color:#B392F0">  check</span><span style="color:#E1E4E8">(res, {</span></span>
+<span class="line"><span style="color:#9ECBFF">    'status is 200'</span><span style="color:#E1E4E8">: (</span><span style="color:#FFAB70">r</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> r.status </span><span style="color:#F97583">===</span><span style="color:#79B8FF"> 200</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span></code></pre>a:Tc94,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#6A737D"># Kata 57 — Soak / Endurance Test (Artillery solution)</span></span>
+<span class="line"><span style="color:#6A737D">#</span></span>
+<span class="line"><span style="color:#6A737D"># Single sustained phase at production-baseline RPS. Default is 60s;</span></span>
+<span class="line"><span style="color:#6A737D"># extend by editing the duration or supplying `--config '{ phases: [...] }'`.</span></span>
+<span class="line"><span style="color:#6A737D"># For a real soak (hours), Artillery's per-second resolution is overkill —</span></span>
+<span class="line"><span style="color:#6A737D"># k6 with custom slice tagging is more useful for analyzing drift.</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#85E89D">config</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">  target</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"http://localhost:3000"</span></span>
+<span class="line"><span style="color:#85E89D">  phases</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">    - </span><span style="color:#85E89D">duration</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">60</span></span>
+<span class="line"><span style="color:#85E89D">      arrivalRate</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">50</span></span>
+<span class="line"><span style="color:#85E89D">      name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"soak baseline"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#85E89D">  ensure</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">    p95</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">300</span></span>
+<span class="line"><span style="color:#85E89D">    maxErrorRate</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">1</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#85E89D">scenarios</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">  - </span><span style="color:#85E89D">name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"soak probe"</span></span>
+<span class="line"><span style="color:#85E89D">    flow</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">get</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">          url</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"/lab/echo"</span></span>
+<span class="line"><span style="color:#85E89D">          expect</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">            - </span><span style="color:#85E89D">statusCode</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">200</span></span>
+<span class="line"></span></code></pre>0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"kata":{"slug":"57-soak-endurance-test","number":57,"title":"Soak / Endurance Test","phaseSlug":"phase-12-test-types","phaseNumber":12,"phaseName":"Test Types","readmeRaw":"$3","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"57-soak-endurance-test.test.js","content":"$4"}],"artilleryFiles":[{"filename":"57-soak-endurance-test.yml","content":"# Kata 57 — Soak / Endurance Test (Artillery solution)\n#\n# Single sustained phase at production-baseline RPS. Default is 60s;\n# extend by editing the duration or supplying `--config '{ phases: [...] }'`.\n# For a real soak (hours), Artillery's per-second resolution is overkill —\n# k6 with custom slice tagging is more useful for analyzing drift.\n\nconfig:\n  target: \"http://localhost:3000\"\n  phases:\n    - duration: 60\n      arrivalRate: 50\n      name: \"soak baseline\"\n\n  ensure:\n    p95: 300\n    maxErrorRate: 1\n\nscenarios:\n  - name: \"soak probe\"\n    flow:\n      - get:\n          url: \"/lab/echo\"\n          expect:\n            - statusCode: 200\n"}],"jmeterFiles":[]},"prev":{"slug":"56-spike-test","number":56,"title":"Spike Test","phaseSlug":"phase-12-test-types","phaseNumber":12,"phaseName":"Test Types","readmeRaw":"$5","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"56-spike-test.test.js","content":"$6"}],"artilleryFiles":[{"filename":"56-spike-test.yml","content":"# Kata 56 — Spike Test (Artillery solution)\n#\n# Same single-spike profile as the k6 solution. Artillery's `phases`\n# can do `rampTo` for sharp transitions. ensure block is whole-test\n# (Artillery doesn't support phase-tagged ensures).\n\nconfig:\n  target: \"http://localhost:3000\"\n  phases:\n    - duration: 30\n      arrivalRate: 50\n      name: \"steady\"\n\n    - duration: 5\n      arrivalRate: 50\n      rampTo: 500\n      name: \"ramp-up (the spike)\"\n\n    - duration: 30\n      arrivalRate: 500\n      name: \"peak\"\n\n    - duration: 5\n      arrivalRate: 500\n      rampTo: 50\n      name: \"ramp-down\"\n\n    - duration: 30\n      arrivalRate: 50\n      name: \"recovery\"\n\n  ensure:\n    # Whole-test threshold — generous to allow spike degradation. For\n    # tighter per-phase asserts, use k6.\n    p95: 2000\n    maxErrorRate: 5\n\nscenarios:\n  - name: \"spike probe\"\n    flow:\n      - get:\n          url: \"/lab/echo\"\n          expect:\n            - statusCode: 200\n"}],"jmeterFiles":[]},"next":{"slug":"58-lighthouse-basics","number":58,"title":"Lighthouse Basics — Web Vitals via Playwright","phaseSlug":"phase-13-frontend-perf","phaseNumber":13,"phaseName":"Frontend Perf","readmeRaw":"$7","hasPlayground":true,"playwrightFiles":[{"filename":"58-lighthouse-basics.spec.ts","content":"$8"}],"cypressFiles":[],"k6Files":[],"artilleryFiles":[],"jmeterFiles":[]},"frameworks":[{"id":"k6","label":"k6","files":[{"filename":"57-soak-endurance-test.test.js","html":"$9"}]},{"id":"artillery","label":"Artillery","files":[{"filename":"57-soak-endurance-test.yml","html":"$a"}]},{"id":"jmeter","label":"JMeter","files":[]},{"id":"playwright","label":"Playwright","files":[]},{"id":"cypress","label":"Cypress","files":[]}]}],["$Lb"],"$Lc"]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"UzMlu93LkryOOruE2pxnW"}
+b:["$","script","script-0",{"src":"/qa-labs/_next/static/chunks/01luku1w1f06_.js","async":true}]
+c:["$","$Ld",null,{"children":["$","$e",null,{"name":"Next.MetadataOutlet","children":"$@f"}]}]
+f:null

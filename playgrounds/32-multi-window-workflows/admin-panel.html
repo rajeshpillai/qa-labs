@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Review Panel</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #1e293b; padding: 2rem; }
+    .header { background: #7c3aed; color: white; padding: 1rem 2rem; margin: -2rem -2rem 2rem; }
+    .header h1 { font-size: 1.25rem; }
+
+    .detail-card {
+      background: white; border-radius: 8px; padding: 1.5rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 1.5rem;
+    }
+    .detail-card h2 { font-size: 1.1rem; margin-bottom: 1rem; color: #334155; }
+
+    .field { display: flex; margin-bottom: 0.75rem; }
+    .field .label { font-weight: 600; width: 140px; color: #64748b; font-size: 0.875rem; }
+    .field .value { color: #1e293b; font-size: 0.875rem; }
+
+    .actions { display: flex; gap: 1rem; margin-top: 1.5rem; }
+    .btn {
+      padding: 0.6rem 1.5rem; border: none; border-radius: 6px;
+      font-weight: 600; font-size: 0.875rem; cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-approve { background: #22c55e; color: white; }
+    .btn-approve:hover { background: #16a34a; }
+    .btn-reject { background: #ef4444; color: white; }
+    .btn-reject:hover { background: #dc2626; }
+    .btn-close { background: #64748b; color: white; }
+    .btn-close:hover { background: #475569; }
+
+    .status-banner {
+      padding: 1rem; border-radius: 6px; font-weight: 600;
+      text-align: center; margin-top: 1rem; display: none;
+    }
+    .status-banner.approved { display: block; background: #dcfce7; color: #166534; }
+    .status-banner.rejected { display: block; background: #fee2e2; color: #991b1b; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Admin Review Panel</h1>
+  </div>
+
+  <!-- Applicant details are populated from URL search params -->
+  <div class="detail-card">
+    <h2 data-testid="applicant-name">Loading...</h2>
+    <div class="field">
+      <span class="label">Email:</span>
+      <span class="value" data-testid="applicant-email">—</span>
+    </div>
+    <div class="field">
+      <span class="label">Position:</span>
+      <span class="value" data-testid="applicant-position">—</span>
+    </div>
+    <div class="field">
+      <span class="label">Risk Level:</span>
+      <span class="value" data-testid="applicant-risk">—</span>
+    </div>
+    <div class="field">
+      <span class="label">Applied:</span>
+      <span class="value" data-testid="applicant-date">—</span>
+    </div>
+  </div>
+
+  <div class="actions" data-testid="action-buttons">
+    <button class="btn btn-approve" data-testid="approve-btn" onclick="handleDecision('approved')">Approve</button>
+    <button class="btn btn-reject" data-testid="reject-btn" onclick="handleDecision('rejected')">Reject</button>
+    <button class="btn btn-close" data-testid="close-btn" onclick="window.close()">Close</button>
+  </div>
+
+  <div class="status-banner" data-testid="decision-banner" id="decisionBanner"></div>
+
+  <script>
+    // -----------------------------------------------------------------------
+    // Resolve applicant details from one of two sources:
+    //  1) URL search parameters (preferred when the popup was opened with
+    //     a URL like admin-panel.html?id=1&name=Alice&...).
+    //  2) window.opener.__reviewData[window.name] — a fallback used when
+    //     the browser/test runner strips the query string during popup
+    //     navigation. The opener stashes the record keyed by window.name
+    //     before calling window.open().
+    // -----------------------------------------------------------------------
+    const params = new URLSearchParams(window.location.search);
+
+    // Try to read the fallback record from the opener keyed by this
+    // popup's window name. Guard against window.opener being null (e.g.
+    // when the popup was opened with rel="noopener" or in a new context).
+    let openerData = null;
+    try {
+      if (window.opener && window.name && window.opener.__reviewData) {
+        openerData = window.opener.__reviewData[window.name] || null;
+      }
+    } catch (e) {
+      // Cross-origin access to window.opener can throw; ignore and fall
+      // back to URL params.
+      openerData = null;
+    }
+
+    function readField(key, fallback) {
+      const fromUrl = params.get(key);
+      if (fromUrl !== null && fromUrl !== '') return fromUrl;
+      if (openerData && openerData[key]) return openerData[key];
+      return fallback;
+    }
+
+    const applicantId = readField('id', '');
+    const applicantName = readField('name', 'Unknown');
+    const applicantEmail = readField('email', '—');
+    const applicantPosition = readField('position', '—');
+    const applicantRisk = readField('risk', '—');
+    const applicantDate = readField('date', '—');
+
+    // Populate the detail card with the applicant info from URL params.
+    document.querySelector('[data-testid="applicant-name"]').textContent = applicantName;
+    document.querySelector('[data-testid="applicant-email"]').textContent = applicantEmail;
+    document.querySelector('[data-testid="applicant-position"]').textContent = applicantPosition;
+    document.querySelector('[data-testid="applicant-risk"]').textContent = applicantRisk;
+    document.querySelector('[data-testid="applicant-date"]').textContent = applicantDate;
+
+    // -----------------------------------------------------------------------
+    // handleDecision(decision) — sends a postMessage back to the main window
+    // (the opener) with the applicant ID and the decision (approved/rejected).
+    // The main page listens for this message to update the applicant status.
+    // -----------------------------------------------------------------------
+    function handleDecision(decision) {
+      const banner = document.getElementById('decisionBanner');
+      banner.className = 'status-banner ' + decision;
+      banner.textContent = applicantName + ' has been ' + decision + '.';
+      banner.style.display = 'block';
+
+      // Disable the action buttons after a decision is made so the admin
+      // cannot accidentally approve and reject the same applicant.
+      document.querySelector('[data-testid="approve-btn"]').disabled = true;
+      document.querySelector('[data-testid="reject-btn"]').disabled = true;
+
+      // window.opener is the Window object that opened this popup.
+      // postMessage(data, targetOrigin) sends a cross-origin-safe message.
+      // We use '*' for targetOrigin in this playground since both pages
+      // are served from the same origin.
+      if (window.opener) {
+        window.opener.postMessage(
+          { type: 'applicant-decision', id: applicantId, decision: decision },
+          '*'
+        );
+      }
+    }
+  </script>
+</body>
+</html>

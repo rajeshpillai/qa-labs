@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Kata 58 Playground — fast page baseline</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      line-height: 1.6;
+      padding: 2rem;
+      max-width: 56rem;
+      margin: 0 auto;
+    }
+    .hero {
+      width: 100%;
+      height: 320px;
+      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      border-radius: 0.75rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-size: 2.5rem;
+      font-weight: 700;
+      margin-bottom: 2rem;
+    }
+    h1 { font-size: 1.875rem; margin-bottom: 1rem; color: #93c5fd; }
+    p { margin-bottom: 1rem; }
+    .card {
+      background: #1e293b;
+      border-radius: 0.5rem;
+      padding: 1.5rem;
+      margin: 1rem 0;
+    }
+  </style>
+</head>
+<body>
+  <!--
+    This page is intentionally well-built for perf:
+    - All CSS inline (no render-blocking external stylesheet)
+    - LCP target is the .hero gradient div, paints immediately
+    - No layout shifts after initial render
+    - No JavaScript (zero TBT, perfect INP)
+    - Tiny page weight
+  -->
+  <div class="hero" data-testid="hero">QA Labs — fast baseline</div>
+  <h1 data-testid="title">Frontend perf foundations</h1>
+  <p>This page is the baseline for kata 58. It's deliberately well-built so your Web Vitals come back green:</p>
+  <div class="card" data-testid="card-fcp">
+    <strong>FCP</strong> — fires almost immediately because nothing render-blocks the first paint.
+  </div>
+  <div class="card" data-testid="card-lcp">
+    <strong>LCP</strong> — the .hero gradient block is the largest above-the-fold element. It paints inline with first paint, so LCP ≈ FCP.
+  </div>
+  <div class="card" data-testid="card-cls">
+    <strong>CLS</strong> — every element on this page has a fixed size declared in CSS. Nothing reflows after load.
+  </div>
+  <div class="card" data-testid="card-inp">
+    <strong>INP</strong> — there's no JavaScript, so input handlers have no work to do.
+  </div>
+</body>
+</html>

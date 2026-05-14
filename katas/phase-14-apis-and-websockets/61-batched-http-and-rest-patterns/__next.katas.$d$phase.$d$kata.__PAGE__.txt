@@ -1,0 +1,1110 @@
+1:"$Sreact.fragment"
+2:I[76750,["/qa-labs/_next/static/chunks/012xw9ydea0yn.js","/qa-labs/_next/static/chunks/0t2xr05rlu96l.js","/qa-labs/_next/static/chunks/0a55m.6s3qp~-.js","/qa-labs/_next/static/chunks/01luku1w1f06_.js"],"KataPageClient"]
+e:I[97367,["/qa-labs/_next/static/chunks/012xw9ydea0yn.js","/qa-labs/_next/static/chunks/0t2xr05rlu96l.js","/qa-labs/_next/static/chunks/0a55m.6s3qp~-.js"],"OutletBoundary"]
+f:"$Sreact.suspense"
+3:T1b22,# Kata 61: Batched HTTP and REST Patterns
+
+## What You Will Learn
+
+- The difference between **sequential**, **parallel**, and **batched** request patterns — and what each costs
+- k6's `http.batch()` for parallel requests, and **why "parallel" doesn't mean "free"**
+- The "fan-out" pattern: kicking off N parallel calls and waiting for all of them
+- How to model a typical API user: dashboard load = 5 parallel calls, profile click = 1 sequential call
+- When to use `Promise.all`-style parallelism vs sequential vs pipelined
+
+## Prerequisites
+
+- Phases 9–13 (you understand load shapes, percentiles, threshold patterns)
+- The QA Labs server running
+
+## Concepts Explained
+
+### Three request patterns
+
+When a single user action triggers multiple API calls, the test should match the *real* pattern, not just "send N requests."
+
+#### Sequential (request-then-request)
+
+```
+A ──┐
+    ▼
+    B ──┐
+        ▼
+        C
+```
+
+Total time = A + B + C. Each call waits for the previous one's response. This is slowest but unavoidable when **C depends on B's response**.
+
+```javascript
+// k6
+const a = http.get('/api/user');
+const b = http.get(`/api/user/${a.json('id')}/orders`);  // depends on A
+const c = http.get(`/api/orders/${b.json('orders')[0].id}`);  // depends on B
+```
+
+#### Parallel (fan-out)
+
+```
+A ──┐
+B ──┼──► all return
+C ──┘
+```
+
+Total time = max(A, B, C). All three fire simultaneously; finishes when the slowest one returns. Use when **none of the calls depend on each other**.
+
+```javascript
+// k6 — http.batch sends all in parallel
+const responses = http.batch([
+  ['GET', '/api/dashboard/widgets'],
+  ['GET', '/api/dashboard/notifications'],
+  ['GET', '/api/dashboard/feed'],
+]);
+```
+
+#### Pipelined / staggered
+
+```
+A ──────────►
+   B ──────────►
+      C ──────────►
+```
+
+Hybrid: subsequent requests start *before* the previous one finishes, but you wait for all of them. Useful for prefetching. Less common in test code; common in browser code.
+
+### Why "parallel" still costs
+
+Parallel doesn't mean free. Five parallel `http.batch` calls:
+- Use 5× the connections (or pipeline through HTTP/2)
+- Hit the server with a sudden burst (server CPU spike)
+- May saturate the **client's** outbound bandwidth
+
+If your test does 100 batches × 5 parallel = 500 simultaneous connections per VU, and you have 10 VUs, you're at 5000 simultaneous. Most servers don't like that.
+
+### `http.batch` semantics
+
+```javascript
+const responses = http.batch([
+  { method: 'GET', url: 'https://api.example.com/users' },
+  { method: 'GET', url: 'https://api.example.com/posts' },
+  { method: 'POST', url: 'https://api.example.com/event', body: JSON.stringify({}) },
+]);
+
+// responses is an array, same order as the input
+console.log(responses[0].status); // 200
+```
+
+Each entry can be:
+- A 2-element array `[method, url]`
+- A 3-element array `[method, url, body]`
+- A 4-element array `[method, url, body, params]`
+- An object with `method`, `url`, `body`, `params` keys
+
+All requests in the batch fire **at the same time**. Return is when the last one completes.
+
+### Modeling a "dashboard load"
+
+A dashboard typically:
+1. Logs in (sequential, must complete first)
+2. Fetches 4-6 widgets in parallel
+3. Fetches user notifications in parallel with widgets
+4. After all return, may make follow-up calls
+
+```javascript
+// 1. Auth (sequential)
+const token = login();
+
+// 2-3. Parallel dashboard load
+const responses = http.batch([
+  ['GET', `${BASE}/dashboard/widget-a`, null, { headers: authHeader(token) }],
+  ['GET', `${BASE}/dashboard/widget-b`, null, { headers: authHeader(token) }],
+  ['GET', `${BASE}/dashboard/widget-c`, null, { headers: authHeader(token) }],
+  ['GET', `${BASE}/notifications`, null, { headers: authHeader(token) }],
+]);
+
+// 4. Conditional follow-up
+if (responses[3].json('count') > 0) {
+  http.get(`${BASE}/notifications/details`, { headers: authHeader(token) });
+}
+```
+
+This realistically tests the dashboard endpoint — not by hammering it with N independent requests, but by simulating the **request shape** real users produce.
+
+### Sequential and chained — when you must
+
+Some flows are inherently sequential:
+- Submit form → get ID → fetch details for that ID
+- Create order → confirm payment → get receipt
+
+Sequential calls have a **multiplier** effect on latency: if each is p95 = 200ms, three in series = p95 ≈ 600ms (slightly less due to percentile math, but close). One slow step ruins the whole flow.
+
+### Artillery's `loop` and `parallel`
+
+Artillery can do batches via `loop` (sequential repetition):
+
+```yaml
+- loop:
+    - get: { url: "/api/widget-a" }
+    - get: { url: "/api/widget-b" }
+  count: 3
+```
+
+For true parallelism within a scenario, Artillery's options are limited — you'd run multiple parallel scenarios at the config level. **k6 wins for parallel-within-a-flow.**
+
+## Exercises
+
+1. **Sequential vs parallel.** Hit `/lab/echo` 3 times sequentially, then 3 times via `http.batch`. Compare iteration durations. With echo's near-zero latency the difference is small; try `/lab/slow?ms=200` for a clearer comparison.
+2. **Realistic dashboard.** Log in to `/lab/auth/login`, then `http.batch` four GETs to `/lab/echo` (simulating widget loads) using the auth token. Assert all four are 200.
+3. **Conditional follow-up.** If the auth user is "admin" (string match the username), fetch an extra endpoint after the batch. Otherwise skip.
+4. **Cost of parallelism.** Run 50 VUs each doing batches of 10 parallel requests against `/lab/echo`. What's the actual concurrent connection count? (Hint: VUs × batch size.) Why might this overload a small dev server?
+
+## Common Mistakes
+
+- **Treating sequential as the default.** If A and B don't depend on each other, doing them sequentially needlessly doubles iteration latency.
+- **Over-parallelizing.** Sending 50 parallel requests per iteration is rarely realistic; users don't do that.
+- **Ignoring slow responses in a batch.** A `batch` of 5 returns when the slowest finishes — but if 1 request is timing out, all 5 in your test wait for it. Add per-request timeout.
+- **Same `params` across batch entries.** Common bug: forget to pass tags per request, can't slice metrics by URL.
+
+## Cheat Sheet
+
+```javascript
+// k6 batch
+const res = http.batch([
+  ['GET', `${BASE}/a`, null, { tags: { name: 'a' } }],
+  ['GET', `${BASE}/b`, null, { tags: { name: 'b' } }],
+]);
+
+// Per-URL threshold via tags
+thresholds: {
+  'http_req_duration{name:a}': ['p(95)<200'],
+  'http_req_duration{name:b}': ['p(95)<300'],
+}
+```
+
+| Pattern | When | Total time |
+|---------|------|------------|
+| Sequential | Step N depends on step N-1 | Sum of all |
+| Parallel (`http.batch`) | Steps are independent | Max of all |
+| Pipelined | Prefetch / overlap-safe | Between sequential and parallel |
+| Conditional follow-up | Some steps optional | Depends on branching |
+4:Te86,// Kata 61 — Batched HTTP and REST Patterns (k6 solution)
+//
+// Compares sequential, parallel (batched), and conditional patterns
+// against the lab server. Each scenario tagged so per-pattern percentiles
+// are visible in the summary.
+
+import http from 'k6/http';
+import { check } from 'k6';
+
+const BASE_URL = __ENV.K6_BASE_URL || 'http://localhost:3000';
+
+export const options = {
+  scenarios: {
+    sequential: {
+      executor: 'constant-vus',
+      vus: 5,
+      duration: '15s',
+      exec: 'sequentialFlow',
+    },
+    batched: {
+      executor: 'constant-vus',
+      vus: 5,
+      duration: '15s',
+      exec: 'batchedFlow',
+    },
+    realistic: {
+      executor: 'constant-vus',
+      vus: 3,
+      duration: '15s',
+      exec: 'realisticDashboard',
+    },
+  },
+  thresholds: {
+    'http_req_failed': ['rate<0.01'],
+    // Same workload, different patterns. Per-pattern p95 makes the
+    // sequential vs parallel cost visible.
+    'iteration_duration{pattern:sequential}': ['p(95)<1500'],
+    'iteration_duration{pattern:batched}': ['p(95)<700'],
+  },
+};
+
+// Pattern 1: hit three slow endpoints sequentially.
+// Total ≈ 3 × 200ms = 600ms minimum.
+export function sequentialFlow() {
+  http.get(`${BASE_URL}/lab/slow?ms=200`, { tags: { pattern: 'sequential', step: 'a' } });
+  http.get(`${BASE_URL}/lab/slow?ms=200`, { tags: { pattern: 'sequential', step: 'b' } });
+  http.get(`${BASE_URL}/lab/slow?ms=200`, { tags: { pattern: 'sequential', step: 'c' } });
+}
+
+// Pattern 2: same three calls but in parallel via http.batch.
+// Total ≈ max(200ms, 200ms, 200ms) = 200ms.
+export function batchedFlow() {
+  const responses = http.batch([
+    ['GET', `${BASE_URL}/lab/slow?ms=200`, null, { tags: { pattern: 'batched', step: 'a' } }],
+    ['GET', `${BASE_URL}/lab/slow?ms=200`, null, { tags: { pattern: 'batched', step: 'b' } }],
+    ['GET', `${BASE_URL}/lab/slow?ms=200`, null, { tags: { pattern: 'batched', step: 'c' } }],
+  ]);
+  check(responses[0], { 'a returned 200': (r) => r.status === 200 });
+  check(responses[1], { 'b returned 200': (r) => r.status === 200 });
+  check(responses[2], { 'c returned 200': (r) => r.status === 200 });
+}
+
+// Pattern 3: realistic dashboard — sequential auth, then parallel widgets,
+// optional follow-up depending on the response.
+export function realisticDashboard() {
+  // 1. Sequential: login, must complete first.
+  const loginRes = http.post(
+    `${BASE_URL}/lab/auth/login`,
+    JSON.stringify({ username: `dash-${__VU}`, password: 'pw' }),
+    { headers: { 'Content-Type': 'application/json' } }
+  );
+  if (loginRes.status !== 200) return;
+  const token = loginRes.json('token');
+  const authHeaders = { Authorization: `Bearer ${token}` };
+
+  // 2. Parallel: 4 simulated widget loads + 1 notifications poll.
+  const responses = http.batch([
+    ['GET', `${BASE_URL}/lab/echo?widget=a`, null, { headers: authHeaders, tags: { widget: 'a' } }],
+    ['GET', `${BASE_URL}/lab/echo?widget=b`, null, { headers: authHeaders, tags: { widget: 'b' } }],
+    ['GET', `${BASE_URL}/lab/echo?widget=c`, null, { headers: authHeaders, tags: { widget: 'c' } }],
+    ['GET', `${BASE_URL}/lab/echo?widget=d`, null, { headers: authHeaders, tags: { widget: 'd' } }],
+    ['GET', `${BASE_URL}/lab/auth/me`, null, { headers: authHeaders, tags: { widget: 'me' } }],
+  ]);
+
+  for (const r of responses) {
+    check(r, { 'widget loaded': (res) => res.status === 200 });
+  }
+
+  // 3. Conditional: only fetch the extra endpoint if auth confirms it.
+  // (Trivial example — in real flows: "fetch alerts if user has admin role".)
+  const meRes = responses[4];
+  if (meRes.status === 200 && meRes.json('user')) {
+    http.get(`${BASE_URL}/lab/health`, { tags: { followup: 'true' } });
+  }
+}
+5:T754,# Kata 61 — Batched HTTP and REST Patterns (Artillery solution)
+#
+# Artillery's flow steps are sequential by default. There's no first-class
+# `parallel` block in the YAML config — for true parallelism within a flow,
+# use the engine: 'http' with custom JS, or just run multiple parallel
+# scenarios at the config level. This file shows both.
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 15
+      arrivalRate: 5
+      name: "main"
+  ensure:
+    p95: 1500
+    maxErrorRate: 1
+
+scenarios:
+  - name: "sequential dashboard load"
+    weight: 50
+    flow:
+      # Login (must be sequential — token feeds subsequent requests)
+      - post:
+          url: "/lab/auth/login"
+          json:
+            username: "dash-{{ $randomString() }}"
+            password: "pw"
+          capture:
+            - json: "$.token"
+              as: "token"
+          expect:
+            - statusCode: 200
+
+      # Sequential widget calls — each waits for the previous.
+      # Note total iteration time = sum of all latencies.
+      - get:
+          url: "/lab/echo?widget=a"
+          headers:
+            Authorization: "Bearer {{ token }}"
+      - get:
+          url: "/lab/echo?widget=b"
+          headers:
+            Authorization: "Bearer {{ token }}"
+      - get:
+          url: "/lab/echo?widget=c"
+          headers:
+            Authorization: "Bearer {{ token }}"
+      - get:
+          url: "/lab/echo?widget=d"
+          headers:
+            Authorization: "Bearer {{ token }}"
+
+  # To approximate parallelism, run a separate scenario that fires single
+  # widget requests at a higher arrival rate. Different test, same workload
+  # in aggregate. For real parallel-within-flow, use k6.
+  - name: "concurrent widget loads"
+    weight: 50
+    flow:
+      - get:
+          url: "/lab/echo?widget=concurrent"
+          expect:
+            - statusCode: 200
+6:T1cdc,# Kata 60: Performance Budgets and Lighthouse CI
+
+## What You Will Learn
+
+- What a **performance budget** is and why teams without one drift over time
+- The two budget categories: **timing budgets** (LCP < 2.5s) and **resource budgets** (JS < 200KB)
+- How to enforce budgets in CI using **Lighthouse CI** (LHCI)
+- The LHCI assertion config: `assertions.json` style
+- How budget failures show up in PR review (status checks, reports, comments)
+- A sample `lighthouserc.json` that gates merges on regression
+
+## Prerequisites
+
+- Completed [Kata 58](../58-lighthouse-basics/) and [Kata 59](../59-core-web-vitals/)
+- Familiarity with GitHub Actions / your CI tool (we'll show GitHub Actions snippets)
+
+## Concepts Explained
+
+### Why budgets
+
+Without a perf budget, page weight grows monotonically. Each PR adds "just one library" or "just one image" — and after 6 months your bundle is 4× what it was. Nobody owns the regression because each individual PR was tiny.
+
+A **budget** is a hard limit you assert in CI. Cross it, the build fails. Crossing it requires either: optimize, or get explicit approval to raise the budget.
+
+### Two flavors of budget
+
+#### Timing budgets
+
+Assert on the **measured experience**:
+
+```json
+{
+  "assertions": {
+    "first-contentful-paint": ["error", { "maxNumericValue": 1800 }],
+    "largest-contentful-paint": ["error", { "maxNumericValue": 2500 }],
+    "cumulative-layout-shift": ["error", { "maxNumericValue": 0.1 }],
+    "total-blocking-time": ["error", { "maxNumericValue": 200 }],
+    "interactive": ["error", { "maxNumericValue": 3500 }]
+  }
+}
+```
+
+#### Resource budgets
+
+Assert on what the **page weighs**:
+
+```json
+{
+  "budgets": [
+    {
+      "resourceSizes": [
+        { "resourceType": "script", "budget": 200 },
+        { "resourceType": "stylesheet", "budget": 100 },
+        { "resourceType": "image", "budget": 300 },
+        { "resourceType": "total", "budget": 600 }
+      ],
+      "resourceCounts": [
+        { "resourceType": "third-party", "budget": 10 }
+      ]
+    }
+  ]
+}
+```
+
+Sizes are KB. Resource budgets are **leading indicators** — they regress before timing does, so you catch problems earlier.
+
+### Lighthouse CI in 60 seconds
+
+Three components:
+
+1. **`lhci collect`** — runs Lighthouse N times against your URLs, gathers reports.
+2. **`lhci assert`** — applies your budget rules to the reports.
+3. **`lhci upload`** — pushes reports to a server (filesystem, GCS, or LHCI's hosted server) so you can compare PR-vs-main.
+
+A `lighthouserc.json` ties them together:
+
+```json
+{
+  "ci": {
+    "collect": {
+      "url": ["http://localhost:8080/phase-00-foundations/01-selectors-and-locators/playground/"],
+      "numberOfRuns": 3
+    },
+    "assert": {
+      "assertions": {
+        "first-contentful-paint": ["error", { "maxNumericValue": 1800 }],
+        "largest-contentful-paint": ["error", { "maxNumericValue": 2500 }],
+        "categories:performance": ["error", { "minScore": 0.9 }]
+      }
+    },
+    "upload": {
+      "target": "filesystem",
+      "outputDir": "./lighthouse-reports"
+    }
+  }
+}
+```
+
+Run with: `npx @lhci/cli@0.13 autorun`.
+
+### Hooking into GitHub Actions
+
+```yaml
+# .github/workflows/lighthouse-ci.yml
+name: Lighthouse CI
+
+on: [pull_request]
+
+jobs:
+  lighthouse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+
+      - name: Build site
+        run: cd website && npm install && npm run build
+
+      - name: Start server
+        run: |
+          cd server && npm install
+          npm start &
+          sleep 5
+
+      - name: Lighthouse CI
+        run: npx -y @lhci/cli@0.13 autorun
+        env:
+          LHCI_GITHUB_APP_TOKEN: ${{ secrets.LHCI_GITHUB_APP_TOKEN }}
+```
+
+PRs that breach the budget get a failed check + a link to the Lighthouse report. The optional `LHCI_GITHUB_APP_TOKEN` adds a status comment on the PR.
+
+### Three-number budgets — `error`, `warn`, `off`
+
+```json
+"first-contentful-paint": ["error", { "maxNumericValue": 1800 }]
+```
+
+The first element is the severity:
+- `error` — fail the CI check
+- `warn` — show in report but don't fail
+- `off` — disable the assertion
+
+Use `warn` for new metrics during a stabilization period — measure for a week, then flip to `error` once the noise floor is known.
+
+### Asserting per-category vs per-metric
+
+```json
+"assertions": {
+  "categories:performance": ["error", { "minScore": 0.9 }]
+}
+```
+
+This asserts the **overall Performance score** ≥ 0.9. Lighthouse scores categories 0.0-1.0. Often easier to stabilize than individual metrics.
+
+But: a 0.9 score can hide a regression in one specific metric if others improve. Best practice: assert **both** category score AND key individual metrics.
+
+### What budgets do NOT catch
+
+Budgets are great at catching regressions in **what's measured**. They miss:
+
+- Network conditions you don't simulate (slow 3G in real users vs cable in CI).
+- Devices you don't test (high-end laptop vs mid-range Android).
+- Geographic distance (CI runs in us-east, users are in Bangalore).
+- Real-user variability (your CI is consistent, real users aren't).
+
+Combine lab-based budgets with **field-based** RUM monitoring for full coverage.
+
+## Exercises
+
+1. **Write a `lighthouserc.json` for kata 58's playground.** Set FCP < 1800, LCP < 2500, score ≥ 0.9. Run with `npx @lhci/cli autorun`. Does it pass?
+2. **Run it against kata 59's broken playground.** Does it fail? Read the failure output — what's the worst metric?
+3. **Add a resource budget.** Limit total page weight to 100KB. Use `resourceSizes` with `total: 100`.
+4. **Tighten the FCP budget.** Drop FCP from 1800 to 500. The kata 58 page might still pass on a fast machine. Why is "tighter than the production target" sometimes a good idea, and sometimes flaky?
+5. **Wire it to GitHub Actions.** Use the snippet above. Push a PR that intentionally regresses the page (bigger image, more JS). Did the workflow catch it?
+
+## Common Mistakes
+
+- **Setting budgets too tight.** If your local machine reports LCP = 800ms and you set the budget to 900ms, CI will fail intermittently because CI runners are slower.
+- **Running once.** A single Lighthouse run can vary by 20%+. Always use `numberOfRuns: 3` minimum.
+- **Asserting on the wrong URL.** Easy to test the homepage but ship a regression on a detail page. Test the URLs your users actually hit.
+- **Treating perf score as the only metric.** A 90 perf score can mask a 0.3 CLS. Assert key metrics individually.
+- **No feedback loop.** A budget that fires only on red CI is annoying. Wire it to surface the report URL in the PR comment.
+
+## Cheat Sheet
+
+| Common budget targets | Good baseline |
+|------------------------|---------------|
+| FCP | 1800ms |
+| LCP | 2500ms |
+| CLS | 0.1 |
+| TBT | 200ms |
+| Time to Interactive | 3500ms |
+| Performance score | ≥ 0.9 |
+| Total page weight | ≤ 1MB (mobile-first) |
+| JS bundle | ≤ 200KB compressed |
+| Third-party requests | ≤ 10 |
+
+| LHCI command | What it does |
+|--------------|--------------|
+| `lhci collect` | Run Lighthouse, save raw reports |
+| `lhci assert` | Check reports against budget |
+| `lhci upload` | Push reports to LHCI server |
+| `lhci autorun` | All three in sequence |
+
+| Severity levels |
+|-----------------|
+| `error` — fails the build |
+| `warn` — shows in report, doesn't fail |
+| `off` — disabled |
+7:Td06,// Kata 60 — Performance Budgets via Resource Timing API
+//
+// We use Playwright + Resource Timing API as a "poor man's Lighthouse CI"
+// to demonstrate budget concepts. Real CI would use @lhci/cli — see the
+// readme for the full lighthouserc.json + GitHub Actions setup.
+//
+// The assertions encode example resource budgets. Beyond the threshold,
+// the spec fails — same as a real perf-budget breach.
+
+import { test, expect } from '@playwright/test';
+
+const PLAYGROUND_PATH = '/phase-13-frontend-perf/60-perf-budgets-and-lighthouse-ci/playground/';
+
+interface ResourceStats {
+  count: number;
+  totalBytes: number;
+  largestBytes: number;
+  largestName: string;
+  byType: Record<string, { count: number; bytes: number }>;
+}
+
+async function gatherResources(page: import('@playwright/test').Page): Promise<ResourceStats> {
+  await page.goto(PLAYGROUND_PATH, { waitUntil: 'networkidle' });
+
+  return page.evaluate<ResourceStats>(() => {
+    const entries = performance.getEntriesByType('resource') as PerformanceResourceTiming[];
+    const result: ResourceStats = {
+      count: entries.length,
+      totalBytes: 0,
+      largestBytes: 0,
+      largestName: '',
+      byType: {},
+    };
+
+    for (const e of entries) {
+      const size = e.transferSize || e.encodedBodySize || 0;
+      result.totalBytes += size;
+
+      if (size > result.largestBytes) {
+        result.largestBytes = size;
+        result.largestName = e.name.split('/').pop() || e.name;
+      }
+
+      const type = e.initiatorType || 'other';
+      if (!result.byType[type]) result.byType[type] = { count: 0, bytes: 0 };
+      result.byType[type].count += 1;
+      result.byType[type].bytes += size;
+    }
+
+    return result;
+  });
+}
+
+test.describe('Kata 60: Performance budgets', () => {
+  test('Total request count under budget (<= 20)', async ({ page }) => {
+    const stats = await gatherResources(page);
+    console.log('Resource stats:', stats);
+    // Budget: no more than 20 requests for a simple page.
+    expect(stats.count).toBeLessThanOrEqual(20);
+  });
+
+  test('Total transferred bytes under budget (<= 50KB)', async ({ page }) => {
+    const stats = await gatherResources(page);
+    // Budget: 50KB total. The playground triggers 8 small /lab/echo requests
+    // — should fit under this even with the page itself.
+    expect(stats.totalBytes).toBeLessThanOrEqual(50 * 1024);
+  });
+
+  test('No single resource exceeds 20KB', async ({ page }) => {
+    const stats = await gatherResources(page);
+    // Budget: largest single resource <= 20KB. Catches accidentally-shipped
+    // large images or unminified JS.
+    expect(stats.largestBytes).toBeLessThanOrEqual(20 * 1024);
+  });
+
+  test('No more than 10 fetch/xhr requests (third-party budget proxy)', async ({ page }) => {
+    const stats = await gatherResources(page);
+    const fetches = (stats.byType.fetch?.count ?? 0) + (stats.byType.xmlhttprequest?.count ?? 0);
+    // Budget: 10 fetch/XHR calls max. A real LHCI budget would target
+    // `resourceCounts: third-party` — same idea, different mechanism.
+    expect(fetches).toBeLessThanOrEqual(10);
+  });
+
+  test('Page basics still render (smoke)', async ({ page }) => {
+    await page.goto(PLAYGROUND_PATH);
+    await expect(page.getByTestId('title')).toBeVisible();
+    await expect(page.getByTestId('stats')).toBeVisible();
+  });
+});
+8:T1ce3,# Kata 62: WebSocket Testing
+
+## What You Will Learn
+
+- Why WebSocket load testing is fundamentally different from HTTP
+- The k6 `ws` module: connecting, sending, receiving, closing
+- Measuring **roundtrip latency** for echo-style protocols
+- Testing **connection capacity**: how many concurrent sockets can the server hold?
+- Handling **server-pushed messages** (the WS-specific part of the test)
+- Why open-model load makes no sense for WebSocket — closed model is correct
+
+## Prerequisites
+
+- Phases 9–13
+- The QA Labs server running (exposes a WebSocket at `ws://localhost:3000/lab/ws`)
+- Familiarity with the WebSocket protocol basics (handshake, frames, close codes)
+
+## Concepts Explained
+
+### Why WebSocket is different
+
+HTTP is **request-response**: every metric is per-request. WebSocket is a **persistent connection** with bidirectional messaging. Different metrics matter:
+
+| HTTP cares about | WebSocket cares about |
+|------------------|----------------------|
+| RPS, p95 latency | Connections held, message rate |
+| Time to first byte | Time to first frame after open |
+| HTTP status codes | Close codes, ping/pong cadence |
+| Per-request errors | Per-connection drops |
+
+Most importantly: **a WebSocket test holds connections open**. You can't ramp up "RPS" because requests don't really exist; you ramp up **connection count**.
+
+### The k6 `ws` module
+
+```javascript
+import ws from 'k6/ws';
+
+export default function () {
+  const url = 'ws://localhost:3000/lab/ws';
+  const params = { tags: { kind: 'echo' } };
+
+  // Connect; the callback runs once per VU iteration
+  const res = ws.connect(url, params, function (socket) {
+    socket.on('open', () => {
+      socket.send('hello');
+    });
+
+    socket.on('message', (msg) => {
+      console.log('received:', msg);
+    });
+
+    socket.on('close', () => {
+      console.log('connection closed');
+    });
+
+    socket.setTimeout(() => socket.close(), 5000);
+  });
+}
+```
+
+`ws.connect` is **synchronous from the test's perspective** — the iteration doesn't return until the socket closes.
+
+### The lab server's `/lab/ws` endpoint
+
+Hits `ws://localhost:3000/lab/ws`. Behavior:
+- On connect, server sends `{ "type": "hello", "ts": <ts> }` immediately
+- Plain text messages are echoed back as `{ "type": "echo", "msg": "<your text>", "ts": <ts> }`
+- Send `{ "op": "slow", "ms": 500 }` → server waits 500ms before echoing
+- Send `{ "op": "broadcast", "msg": "hi" }` → server forwards to ALL connected clients
+
+This lets you test echo latency, latency injection, and broadcast fan-out in one endpoint.
+
+### Measuring roundtrip latency
+
+Track time from `send` to `message` for each frame:
+
+```javascript
+import { Trend } from 'k6/metrics';
+const wsLatency = new Trend('ws_roundtrip_ms', true);
+
+ws.connect(url, params, function (socket) {
+  socket.on('open', () => {
+    for (let i = 0; i < 10; i++) {
+      const start = Date.now();
+      socket.setTimeout(() => {
+        socket.send(JSON.stringify({ seq: i, sentAt: start }));
+      }, i * 100);  // send every 100ms
+    }
+  });
+
+  socket.on('message', (raw) => {
+    const msg = JSON.parse(raw);
+    if (msg.type === 'echo') {
+      const original = JSON.parse(msg.msg);
+      wsLatency.add(Date.now() - original.sentAt);
+    }
+  });
+
+  socket.setTimeout(() => socket.close(), 3000);
+});
+```
+
+`ws_roundtrip_ms` becomes a custom Trend metric you can threshold on.
+
+### Closed-model is the only option for WS
+
+You can't say "100 RPS" for WebSocket — there are no requests. You say "100 concurrent connections" or "100 messages/second across N connections."
+
+```javascript
+// k6 closed-model: N connections held simultaneously
+export const options = {
+  scenarios: {
+    sustained_connections: {
+      executor: 'constant-vus',
+      vus: 100,           // 100 concurrent socket connections
+      duration: '60s',
+    },
+  },
+};
+```
+
+Each VU holds one socket. To find connection capacity, ramp VUs:
+
+```javascript
+{ executor: 'ramping-vus', stages: [
+  { duration: '30s', target: 100 },
+  { duration: '30s', target: 500 },
+  { duration: '30s', target: 1000 },
+]}
+```
+
+### Common WebSocket failure modes
+
+| Symptom | Cause |
+|---------|-------|
+| Connections fail at N | OS file descriptor limit (`ulimit -n`) on client or server |
+| Latency climbs with connection count | Server thread/event-loop bottleneck |
+| Messages dropped | Server backpressure, no flow control |
+| `1006 Abnormal Closure` | Connection forcibly closed (timeout, server crash) |
+| Slow ping/pong | Idle keepalive interval too aggressive |
+
+### Artillery WebSocket support
+
+Artillery can do WebSocket via the `engine: 'ws'`:
+
+```yaml
+config:
+  target: "ws://localhost:3000/lab/ws"
+  engine: ws
+  phases:
+    - duration: 30
+      arrivalRate: 10
+scenarios:
+  - flow:
+      - send: "hello"
+      - think: 1
+      - send: "hello again"
+```
+
+Less ergonomic than k6 for complex flows (no Trend metrics, limited message validation). For real WS work, **k6 is significantly better.**
+
+## Exercises
+
+1. **Echo latency baseline.** Connect, send 5 messages 100ms apart, measure roundtrip latency. p95 should be < 50ms locally.
+2. **Latency injection.** Use the `{ "op": "slow", "ms": 500 }` message to see what happens when the server takes time. Does your roundtrip metric reflect the 500ms?
+3. **Connection capacity.** Ramp from 10 → 200 connections over 60s. At what count does the server start dropping or slowing?
+4. **Broadcast fan-out.** With 50 VUs each connected, have ONE VU send a `{ "op": "broadcast", "msg": "hi" }`. Each of the 50 VUs should receive the broadcast frame. Measure the fan-out latency (broadcast send → all-clients-received).
+5. **Cleanup.** What happens to your test if you forget `socket.close()`? Does k6 hang? (Yes — set a timeout.)
+
+## Common Mistakes
+
+- **Treating WS tests like HTTP load.** `arrivalRate` and `RPS` don't translate. Use `vus` + `duration`.
+- **Not setting a timeout.** A socket that never receives the expected message will hang the iteration forever — set `socket.setTimeout()` to force-close.
+- **Forgetting `await` semantics.** `ws.connect` blocks the iteration until close, even though it looks like it returns immediately. Don't try to make HTTP calls "after" `ws.connect`.
+- **Hardcoding `localhost`.** Use `__ENV.K6_BASE_URL` and derive the WS URL from it (replace `http://` with `ws://`).
+- **Mixing protocols in one connection.** A k6 VU can either do HTTP or WebSocket per iteration easily; try not to do both in the same iteration.
+
+## Cheat Sheet
+
+```javascript
+import ws from 'k6/ws';
+import { Trend, Counter } from 'k6/metrics';
+
+const latency = new Trend('ws_roundtrip_ms', true);
+const errors = new Counter('ws_errors');
+
+ws.connect(url, params, function (socket) {
+  socket.on('open', () => { /* start sending */ });
+  socket.on('message', (m) => { /* record metrics */ });
+  socket.on('close', () => { /* expected end */ });
+  socket.on('error', () => errors.add(1));
+
+  // Always set a timeout — otherwise iteration hangs
+  socket.setTimeout(() => socket.close(), 5000);
+});
+```
+
+| Goal | Approach |
+|------|----------|
+| Measure echo latency | Connect, send, time `open` → `message` event |
+| Find connection capacity | Ramp VUs, watch `ws_session_duration` and connect failures |
+| Test pub/sub fan-out | Many subscribers, one publisher, count receives |
+| Test reconnection logic | Force-close from server, measure reconnect time |
+9:Tc73,// Kata 62 — WebSocket Testing (k6 solution)
+//
+// Connects to ws://localhost:3000/lab/ws, sends 10 ping messages spaced
+// 100ms apart, measures roundtrip latency. Each VU holds one socket
+// for 3 seconds.
+//
+// To find connection capacity, switch to the `ramping_connections`
+// scenario by uncommenting it below.
+
+import ws from 'k6/ws';
+import { check } from 'k6';
+import { Trend, Counter } from 'k6/metrics';
+
+const BASE_HTTP = __ENV.K6_BASE_URL || 'http://localhost:3000';
+const WS_URL = BASE_HTTP.replace(/^http/, 'ws') + '/lab/ws';
+
+const wsRoundtrip = new Trend('ws_roundtrip_ms', true);
+const wsConnectErrors = new Counter('ws_connect_errors');
+const wsMessages = new Counter('ws_messages_received');
+
+export const options = {
+  scenarios: {
+    echo_latency: {
+      executor: 'constant-vus',
+      vus: 10,
+      duration: '15s',
+    },
+    // Uncomment to find connection capacity:
+    // ramping_connections: {
+    //   executor: 'ramping-vus',
+    //   startVUs: 0,
+    //   stages: [
+    //     { duration: '15s', target: 50 },
+    //     { duration: '15s', target: 200 },
+    //     { duration: '15s', target: 500 },
+    //   ],
+    // },
+  },
+  thresholds: {
+    'ws_roundtrip_ms': ['p(95)<100'],
+    'ws_connect_errors': ['count<5'],
+    // Each VU connects ~5 times in 15s; we expect at least the hello frames
+    // back. Real-world tests would assert on roundtrip metrics, not raw count.
+    'ws_messages_received': ['count>=10'],
+  },
+};
+
+export default function () {
+  // Map of seq → sentAt so we can compute roundtrip when the echo arrives.
+  const pendingSends = new Map();
+
+  const res = ws.connect(WS_URL, {}, function (socket) {
+    socket.on('open', () => {
+      // Send 10 messages, 100ms apart. k6 v2 requires setTimeout > 0,
+      // so send the first one immediately and schedule the rest.
+      const sendOne = (seq) => {
+        if (socket.readyState !== 1) return;  // not OPEN
+        const sentAt = Date.now();
+        pendingSends.set(seq, sentAt);
+        socket.send(JSON.stringify({ seq, sentAt }));
+      };
+      sendOne(0);
+      for (let i = 1; i < 10; i++) {
+        socket.setTimeout(() => sendOne(i), i * 100);
+      }
+    });
+
+    socket.on('message', (raw) => {
+      wsMessages.add(1);
+      try {
+        const msg = JSON.parse(raw);
+        if (msg.type === 'hello') return;  // server greeting on connect
+        if (msg.type === 'echo') {
+          // Server wraps our text inside { type: 'echo', msg: <our text> }
+          const original = JSON.parse(msg.msg);
+          if (typeof original?.seq === 'number') {
+            const sentAt = pendingSends.get(original.seq);
+            if (sentAt) {
+              wsRoundtrip.add(Date.now() - sentAt);
+              pendingSends.delete(original.seq);
+            }
+          }
+        }
+      } catch {
+        // Ignore non-JSON frames
+      }
+    });
+
+    socket.on('error', (e) => {
+      console.log('WS error:', e?.error || e);
+      wsConnectErrors.add(1);
+    });
+
+    // Force-close after 3s — caps iteration duration.
+    socket.setTimeout(() => socket.close(), 3000);
+  });
+
+  check(res, {
+    'ws connect ok (status 101)': (r) => r && r.status === 101,
+  });
+}
+a:T4db6,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#6A737D">// Kata 61 — Batched HTTP and REST Patterns (k6 solution)</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// Compares sequential, parallel (batched), and conditional patterns</span></span>
+<span class="line"><span style="color:#6A737D">// against the lab server. Each scenario tagged so per-pattern percentiles</span></span>
+<span class="line"><span style="color:#6A737D">// are visible in the summary.</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> http </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> 'k6/http'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { check } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> 'k6'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> BASE_URL</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> __ENV.</span><span style="color:#79B8FF">K6_BASE_URL</span><span style="color:#F97583"> ||</span><span style="color:#9ECBFF"> 'http://localhost:3000'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> const</span><span style="color:#79B8FF"> options</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">  scenarios: {</span></span>
+<span class="line"><span style="color:#E1E4E8">    sequential: {</span></span>
+<span class="line"><span style="color:#E1E4E8">      executor: </span><span style="color:#9ECBFF">'constant-vus'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      vus: </span><span style="color:#79B8FF">5</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      duration: </span><span style="color:#9ECBFF">'15s'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      exec: </span><span style="color:#9ECBFF">'sequentialFlow'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">    },</span></span>
+<span class="line"><span style="color:#E1E4E8">    batched: {</span></span>
+<span class="line"><span style="color:#E1E4E8">      executor: </span><span style="color:#9ECBFF">'constant-vus'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      vus: </span><span style="color:#79B8FF">5</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      duration: </span><span style="color:#9ECBFF">'15s'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      exec: </span><span style="color:#9ECBFF">'batchedFlow'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">    },</span></span>
+<span class="line"><span style="color:#E1E4E8">    realistic: {</span></span>
+<span class="line"><span style="color:#E1E4E8">      executor: </span><span style="color:#9ECBFF">'constant-vus'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      vus: </span><span style="color:#79B8FF">3</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      duration: </span><span style="color:#9ECBFF">'15s'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      exec: </span><span style="color:#9ECBFF">'realisticDashboard'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">    },</span></span>
+<span class="line"><span style="color:#E1E4E8">  },</span></span>
+<span class="line"><span style="color:#E1E4E8">  thresholds: {</span></span>
+<span class="line"><span style="color:#9ECBFF">    'http_req_failed'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'rate&#x3C;0.01'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#6A737D">    // Same workload, different patterns. Per-pattern p95 makes the</span></span>
+<span class="line"><span style="color:#6A737D">    // sequential vs parallel cost visible.</span></span>
+<span class="line"><span style="color:#9ECBFF">    'iteration_duration{pattern:sequential}'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'p(95)&#x3C;1500'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#9ECBFF">    'iteration_duration{pattern:batched}'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'p(95)&#x3C;700'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#E1E4E8">  },</span></span>
+<span class="line"><span style="color:#E1E4E8">};</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// Pattern 1: hit three slow endpoints sequentially.</span></span>
+<span class="line"><span style="color:#6A737D">// Total ≈ 3 × 200ms = 600ms minimum.</span></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> function</span><span style="color:#B392F0"> sequentialFlow</span><span style="color:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#E1E4E8">  http.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/slow?ms=200`</span><span style="color:#E1E4E8">, { tags: { pattern: </span><span style="color:#9ECBFF">'sequential'</span><span style="color:#E1E4E8">, step: </span><span style="color:#9ECBFF">'a'</span><span style="color:#E1E4E8"> } });</span></span>
+<span class="line"><span style="color:#E1E4E8">  http.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/slow?ms=200`</span><span style="color:#E1E4E8">, { tags: { pattern: </span><span style="color:#9ECBFF">'sequential'</span><span style="color:#E1E4E8">, step: </span><span style="color:#9ECBFF">'b'</span><span style="color:#E1E4E8"> } });</span></span>
+<span class="line"><span style="color:#E1E4E8">  http.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/slow?ms=200`</span><span style="color:#E1E4E8">, { tags: { pattern: </span><span style="color:#9ECBFF">'sequential'</span><span style="color:#E1E4E8">, step: </span><span style="color:#9ECBFF">'c'</span><span style="color:#E1E4E8"> } });</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// Pattern 2: same three calls but in parallel via http.batch.</span></span>
+<span class="line"><span style="color:#6A737D">// Total ≈ max(200ms, 200ms, 200ms) = 200ms.</span></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> function</span><span style="color:#B392F0"> batchedFlow</span><span style="color:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> responses</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> http.</span><span style="color:#B392F0">batch</span><span style="color:#E1E4E8">([</span></span>
+<span class="line"><span style="color:#E1E4E8">    [</span><span style="color:#9ECBFF">'GET'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">`${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/slow?ms=200`</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">null</span><span style="color:#E1E4E8">, { tags: { pattern: </span><span style="color:#9ECBFF">'batched'</span><span style="color:#E1E4E8">, step: </span><span style="color:#9ECBFF">'a'</span><span style="color:#E1E4E8"> } }],</span></span>
+<span class="line"><span style="color:#E1E4E8">    [</span><span style="color:#9ECBFF">'GET'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">`${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/slow?ms=200`</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">null</span><span style="color:#E1E4E8">, { tags: { pattern: </span><span style="color:#9ECBFF">'batched'</span><span style="color:#E1E4E8">, step: </span><span style="color:#9ECBFF">'b'</span><span style="color:#E1E4E8"> } }],</span></span>
+<span class="line"><span style="color:#E1E4E8">    [</span><span style="color:#9ECBFF">'GET'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">`${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/slow?ms=200`</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">null</span><span style="color:#E1E4E8">, { tags: { pattern: </span><span style="color:#9ECBFF">'batched'</span><span style="color:#E1E4E8">, step: </span><span style="color:#9ECBFF">'c'</span><span style="color:#E1E4E8"> } }],</span></span>
+<span class="line"><span style="color:#E1E4E8">  ]);</span></span>
+<span class="line"><span style="color:#B392F0">  check</span><span style="color:#E1E4E8">(responses[</span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">], { </span><span style="color:#9ECBFF">'a returned 200'</span><span style="color:#E1E4E8">: (</span><span style="color:#FFAB70">r</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> r.status </span><span style="color:#F97583">===</span><span style="color:#79B8FF"> 200</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"><span style="color:#B392F0">  check</span><span style="color:#E1E4E8">(responses[</span><span style="color:#79B8FF">1</span><span style="color:#E1E4E8">], { </span><span style="color:#9ECBFF">'b returned 200'</span><span style="color:#E1E4E8">: (</span><span style="color:#FFAB70">r</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> r.status </span><span style="color:#F97583">===</span><span style="color:#79B8FF"> 200</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"><span style="color:#B392F0">  check</span><span style="color:#E1E4E8">(responses[</span><span style="color:#79B8FF">2</span><span style="color:#E1E4E8">], { </span><span style="color:#9ECBFF">'c returned 200'</span><span style="color:#E1E4E8">: (</span><span style="color:#FFAB70">r</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> r.status </span><span style="color:#F97583">===</span><span style="color:#79B8FF"> 200</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// Pattern 3: realistic dashboard — sequential auth, then parallel widgets,</span></span>
+<span class="line"><span style="color:#6A737D">// optional follow-up depending on the response.</span></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> function</span><span style="color:#B392F0"> realisticDashboard</span><span style="color:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#6A737D">  // 1. Sequential: login, must complete first.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> loginRes</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> http.</span><span style="color:#B392F0">post</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#9ECBFF">    `${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/auth/login`</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#79B8FF">    JSON</span><span style="color:#E1E4E8">.</span><span style="color:#B392F0">stringify</span><span style="color:#E1E4E8">({ username: </span><span style="color:#9ECBFF">`dash-${</span><span style="color:#E1E4E8">__VU</span><span style="color:#9ECBFF">}`</span><span style="color:#E1E4E8">, password: </span><span style="color:#9ECBFF">'pw'</span><span style="color:#E1E4E8"> }),</span></span>
+<span class="line"><span style="color:#E1E4E8">    { headers: { </span><span style="color:#9ECBFF">'Content-Type'</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">'application/json'</span><span style="color:#E1E4E8"> } }</span></span>
+<span class="line"><span style="color:#E1E4E8">  );</span></span>
+<span class="line"><span style="color:#F97583">  if</span><span style="color:#E1E4E8"> (loginRes.status </span><span style="color:#F97583">!==</span><span style="color:#79B8FF"> 200</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">return</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> token</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> loginRes.</span><span style="color:#B392F0">json</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'token'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> authHeaders</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> { Authorization: </span><span style="color:#9ECBFF">`Bearer ${</span><span style="color:#E1E4E8">token</span><span style="color:#9ECBFF">}`</span><span style="color:#E1E4E8"> };</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // 2. Parallel: 4 simulated widget loads + 1 notifications poll.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> responses</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> http.</span><span style="color:#B392F0">batch</span><span style="color:#E1E4E8">([</span></span>
+<span class="line"><span style="color:#E1E4E8">    [</span><span style="color:#9ECBFF">'GET'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">`${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/echo?widget=a`</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">null</span><span style="color:#E1E4E8">, { headers: authHeaders, tags: { widget: </span><span style="color:#9ECBFF">'a'</span><span style="color:#E1E4E8"> } }],</span></span>
+<span class="line"><span style="color:#E1E4E8">    [</span><span style="color:#9ECBFF">'GET'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">`${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/echo?widget=b`</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">null</span><span style="color:#E1E4E8">, { headers: authHeaders, tags: { widget: </span><span style="color:#9ECBFF">'b'</span><span style="color:#E1E4E8"> } }],</span></span>
+<span class="line"><span style="color:#E1E4E8">    [</span><span style="color:#9ECBFF">'GET'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">`${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/echo?widget=c`</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">null</span><span style="color:#E1E4E8">, { headers: authHeaders, tags: { widget: </span><span style="color:#9ECBFF">'c'</span><span style="color:#E1E4E8"> } }],</span></span>
+<span class="line"><span style="color:#E1E4E8">    [</span><span style="color:#9ECBFF">'GET'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">`${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/echo?widget=d`</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">null</span><span style="color:#E1E4E8">, { headers: authHeaders, tags: { widget: </span><span style="color:#9ECBFF">'d'</span><span style="color:#E1E4E8"> } }],</span></span>
+<span class="line"><span style="color:#E1E4E8">    [</span><span style="color:#9ECBFF">'GET'</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">`${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/auth/me`</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">null</span><span style="color:#E1E4E8">, { headers: authHeaders, tags: { widget: </span><span style="color:#9ECBFF">'me'</span><span style="color:#E1E4E8"> } }],</span></span>
+<span class="line"><span style="color:#E1E4E8">  ]);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  for</span><span style="color:#E1E4E8"> (</span><span style="color:#F97583">const</span><span style="color:#79B8FF"> r</span><span style="color:#F97583"> of</span><span style="color:#E1E4E8"> responses) {</span></span>
+<span class="line"><span style="color:#B392F0">    check</span><span style="color:#E1E4E8">(r, { </span><span style="color:#9ECBFF">'widget loaded'</span><span style="color:#E1E4E8">: (</span><span style="color:#FFAB70">res</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> res.status </span><span style="color:#F97583">===</span><span style="color:#79B8FF"> 200</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"><span style="color:#E1E4E8">  }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // 3. Conditional: only fetch the extra endpoint if auth confirms it.</span></span>
+<span class="line"><span style="color:#6A737D">  // (Trivial example — in real flows: "fetch alerts if user has admin role".)</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> meRes</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> responses[</span><span style="color:#79B8FF">4</span><span style="color:#E1E4E8">];</span></span>
+<span class="line"><span style="color:#F97583">  if</span><span style="color:#E1E4E8"> (meRes.status </span><span style="color:#F97583">===</span><span style="color:#79B8FF"> 200</span><span style="color:#F97583"> &#x26;&#x26;</span><span style="color:#E1E4E8"> meRes.</span><span style="color:#B392F0">json</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'user'</span><span style="color:#E1E4E8">)) {</span></span>
+<span class="line"><span style="color:#E1E4E8">    http.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/health`</span><span style="color:#E1E4E8">, { tags: { followup: </span><span style="color:#9ECBFF">'true'</span><span style="color:#E1E4E8"> } });</span></span>
+<span class="line"><span style="color:#E1E4E8">  }</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span></code></pre>b:T2192,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#6A737D"># Kata 61 — Batched HTTP and REST Patterns (Artillery solution)</span></span>
+<span class="line"><span style="color:#6A737D">#</span></span>
+<span class="line"><span style="color:#6A737D"># Artillery's flow steps are sequential by default. There's no first-class</span></span>
+<span class="line"><span style="color:#6A737D"># `parallel` block in the YAML config — for true parallelism within a flow,</span></span>
+<span class="line"><span style="color:#6A737D"># use the engine: 'http' with custom JS, or just run multiple parallel</span></span>
+<span class="line"><span style="color:#6A737D"># scenarios at the config level. This file shows both.</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#85E89D">config</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">  target</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"http://localhost:3000"</span></span>
+<span class="line"><span style="color:#85E89D">  phases</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">    - </span><span style="color:#85E89D">duration</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">15</span></span>
+<span class="line"><span style="color:#85E89D">      arrivalRate</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">5</span></span>
+<span class="line"><span style="color:#85E89D">      name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"main"</span></span>
+<span class="line"><span style="color:#85E89D">  ensure</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">    p95</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">1500</span></span>
+<span class="line"><span style="color:#85E89D">    maxErrorRate</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">1</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#85E89D">scenarios</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">  - </span><span style="color:#85E89D">name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"sequential dashboard load"</span></span>
+<span class="line"><span style="color:#85E89D">    weight</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">50</span></span>
+<span class="line"><span style="color:#85E89D">    flow</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#6A737D">      # Login (must be sequential — token feeds subsequent requests)</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">post</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">          url</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"/lab/auth/login"</span></span>
+<span class="line"><span style="color:#85E89D">          json</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">            username</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"dash-{{ $randomString() }}"</span></span>
+<span class="line"><span style="color:#85E89D">            password</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"pw"</span></span>
+<span class="line"><span style="color:#85E89D">          capture</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">            - </span><span style="color:#85E89D">json</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"$.token"</span></span>
+<span class="line"><span style="color:#85E89D">              as</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"token"</span></span>
+<span class="line"><span style="color:#85E89D">          expect</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">            - </span><span style="color:#85E89D">statusCode</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">200</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">      # Sequential widget calls — each waits for the previous.</span></span>
+<span class="line"><span style="color:#6A737D">      # Note total iteration time = sum of all latencies.</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">get</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">          url</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"/lab/echo?widget=a"</span></span>
+<span class="line"><span style="color:#85E89D">          headers</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">            Authorization</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"Bearer {{ token }}"</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">get</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">          url</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"/lab/echo?widget=b"</span></span>
+<span class="line"><span style="color:#85E89D">          headers</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">            Authorization</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"Bearer {{ token }}"</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">get</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">          url</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"/lab/echo?widget=c"</span></span>
+<span class="line"><span style="color:#85E89D">          headers</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">            Authorization</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"Bearer {{ token }}"</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">get</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">          url</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"/lab/echo?widget=d"</span></span>
+<span class="line"><span style="color:#85E89D">          headers</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">            Authorization</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"Bearer {{ token }}"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  # To approximate parallelism, run a separate scenario that fires single</span></span>
+<span class="line"><span style="color:#6A737D">  # widget requests at a higher arrival rate. Different test, same workload</span></span>
+<span class="line"><span style="color:#6A737D">  # in aggregate. For real parallel-within-flow, use k6.</span></span>
+<span class="line"><span style="color:#E1E4E8">  - </span><span style="color:#85E89D">name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"concurrent widget loads"</span></span>
+<span class="line"><span style="color:#85E89D">    weight</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">50</span></span>
+<span class="line"><span style="color:#85E89D">    flow</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">get</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">          url</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"/lab/echo?widget=concurrent"</span></span>
+<span class="line"><span style="color:#85E89D">          expect</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">            - </span><span style="color:#85E89D">statusCode</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">200</span></span>
+<span class="line"></span></code></pre>0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"kata":{"slug":"61-batched-http-and-rest-patterns","number":61,"title":"Batched HTTP and REST Patterns","phaseSlug":"phase-14-apis-and-websockets","phaseNumber":14,"phaseName":"Apis And Websockets","readmeRaw":"$3","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"61-batched-http-and-rest-patterns.test.js","content":"$4"}],"artilleryFiles":[{"filename":"61-batched-http-and-rest-patterns.yml","content":"$5"}],"jmeterFiles":[]},"prev":{"slug":"60-perf-budgets-and-lighthouse-ci","number":60,"title":"Performance Budgets and Lighthouse CI","phaseSlug":"phase-13-frontend-perf","phaseNumber":13,"phaseName":"Frontend Perf","readmeRaw":"$6","hasPlayground":true,"playwrightFiles":[{"filename":"60-perf-budgets-and-lighthouse-ci.spec.ts","content":"$7"}],"cypressFiles":[],"k6Files":[],"artilleryFiles":[],"jmeterFiles":[]},"next":{"slug":"62-websocket-testing","number":62,"title":"WebSocket Testing","phaseSlug":"phase-14-apis-and-websockets","phaseNumber":14,"phaseName":"Apis And Websockets","readmeRaw":"$8","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"62-websocket-testing.test.js","content":"$9"}],"artilleryFiles":[{"filename":"62-websocket-testing.yml","content":"# Kata 62 — WebSocket Testing (Artillery solution)\n#\n# Artillery's WebSocket engine is much simpler than k6's. Each scenario\n# opens a connection, sends/receives a sequence of frames, then closes.\n# No first-class roundtrip-latency metric — Artillery reports overall\n# session_length but not message-level RTT. For real WS perf work, k6.\n\nconfig:\n  target: \"ws://localhost:3000/lab/ws\"\n  engine: ws\n  phases:\n    - duration: 15\n      arrivalRate: 5\n      name: \"main\"\n\nscenarios:\n  - name: \"echo session\"\n    flow:\n      # Send a frame; Artillery doesn't await responses by default,\n      # but the connection stays open and the server's echo arrives\n      # back asynchronously.\n      - send: '{\"seq\":1,\"text\":\"hello\"}'\n      - think: 0.2\n      - send: '{\"seq\":2,\"text\":\"hello again\"}'\n      - think: 0.2\n      - send: '{\"seq\":3,\"text\":\"final\"}'\n      - think: 0.5\n"}],"jmeterFiles":[]},"frameworks":[{"id":"k6","label":"k6","files":[{"filename":"61-batched-http-and-rest-patterns.test.js","html":"$a"}]},{"id":"artillery","label":"Artillery","files":[{"filename":"61-batched-http-and-rest-patterns.yml","html":"$b"}]},{"id":"jmeter","label":"JMeter","files":[]},{"id":"playwright","label":"Playwright","files":[]},{"id":"cypress","label":"Cypress","files":[]}]}],["$Lc"],"$Ld"]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"UzMlu93LkryOOruE2pxnW"}
+c:["$","script","script-0",{"src":"/qa-labs/_next/static/chunks/01luku1w1f06_.js","async":true}]
+d:["$","$Le",null,{"children":["$","$f",null,{"name":"Next.MetadataOutlet","children":"$@10"}]}]
+10:null

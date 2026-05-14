@@ -1,0 +1,1017 @@
+1:"$Sreact.fragment"
+2:I[76750,["/qa-labs/_next/static/chunks/012xw9ydea0yn.js","/qa-labs/_next/static/chunks/0t2xr05rlu96l.js","/qa-labs/_next/static/chunks/0a55m.6s3qp~-.js","/qa-labs/_next/static/chunks/01luku1w1f06_.js"],"KataPageClient"]
+f:I[97367,["/qa-labs/_next/static/chunks/012xw9ydea0yn.js","/qa-labs/_next/static/chunks/0t2xr05rlu96l.js","/qa-labs/_next/static/chunks/0a55m.6s3qp~-.js"],"OutletBoundary"]
+10:"$Sreact.suspense"
+3:T1f0c,# Kata 67: Grafana + Prometheus Integration
+
+## What You Will Learn
+
+- The full **k6 → Prometheus → Grafana** pipeline for live perf dashboards
+- A working **docker-compose** stack you can spin up locally in 60 seconds
+- The k6 metrics that show up in Prometheus and how to query them with **PromQL**
+- Building three essential dashboards: **per-endpoint latency**, **error rate over time**, **VU/RPS**
+- How to **import a community dashboard** instead of building from scratch
+- Tying alerts to **threshold breaches** so a regression pages someone
+
+## Prerequisites
+
+- Completed [Kata 66 (Streaming Metrics)](../66-streaming-metrics/)
+- Docker installed (we'll use docker-compose to run Prometheus + Grafana)
+- The QA Labs server running
+
+## Concepts Explained
+
+### The architecture
+
+```
+┌─────────┐  remote-write   ┌────────────┐  scrape    ┌─────────┐
+│ k6 test │───────────────→│ Prometheus │←──────────│ Grafana │
+└─────────┘                  └────────────┘            └─────────┘
+                                                          │
+                                                       (you view)
+```
+
+- k6 sends metrics to Prometheus's **remote-write** endpoint as the test runs
+- Prometheus stores them as time series
+- Grafana queries Prometheus and renders dashboards
+
+### Stand up the stack: docker-compose
+
+Save this as `docker-compose.yml` in the kata folder:
+
+```yaml
+services:
+  prometheus:
+    image: prom/prometheus:v2.55.0
+    ports:
+      - "9090:9090"
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--web.enable-remote-write-receiver'
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+
+  grafana:
+    image: grafana/grafana:11.0.0
+    ports:
+      - "3001:3000"  # Grafana on 3001 (3000 is QA Labs)
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Viewer
+```
+
+And `prometheus.yml`:
+
+```yaml
+global:
+  scrape_interval: 15s
+```
+
+(No scrape config needed — Prometheus is in remote-write-receiver mode, k6 pushes data in directly.)
+
+Run: `docker compose up -d`. Grafana is now at http://localhost:3001 (admin / admin), Prometheus at http://localhost:9090.
+
+### Send k6 metrics to Prometheus
+
+```bash
+K6_PROMETHEUS_RW_SERVER_URL=http://localhost:9090/api/v1/write \
+K6_PROMETHEUS_RW_TREND_STATS=p(50),p(95),p(99),avg,min,max \
+k6 run --out experimental-prometheus-rw your-test.js
+```
+
+The `K6_PROMETHEUS_RW_TREND_STATS` env var controls which percentiles k6 sends. Default is just avg+max — useless for tail analysis. Override to get p95 and p99 in your dashboards.
+
+### What metrics show up in Prometheus
+
+After a test run, query in Prometheus / Grafana:
+
+| Metric | Description |
+|--------|-------------|
+| `k6_http_reqs` | Counter of total HTTP requests |
+| `k6_http_req_duration` | Trend: response time (with `_p95`, `_p99` suffixes) |
+| `k6_http_req_failed_rate` | Error rate |
+| `k6_iterations_total` | VU iterations completed |
+| `k6_vus` | Currently active VUs |
+| `k6_data_received_total` | Bytes received |
+| `k6_<custom_metric>_*` | Your custom Trends/Counters/Rates |
+
+All metrics include the **tags you set in k6** as Prometheus labels.
+
+### Three essential PromQL queries
+
+#### 1. p95 latency per endpoint, over time
+
+```promql
+k6_http_req_duration_p95{endpoint=~".+"}
+```
+
+In Grafana: time-series panel, instant query disabled. You see one line per endpoint.
+
+#### 2. Error rate over time
+
+```promql
+rate(k6_http_reqs{status=~"5.."}[1m])
+  / rate(k6_http_reqs[1m])
+```
+
+Shows the fraction of 5xx responses, smoothed over 1-minute windows.
+
+#### 3. Throughput per second
+
+```promql
+rate(k6_http_reqs[1m])
+```
+
+The actual RPS the test achieved (different from your `arrival_rate` setting if the system slows down).
+
+### Pre-built dashboards
+
+You don't need to build all dashboards from scratch — Grafana has community templates.
+
+The official **k6 Prometheus dashboard** is at Grafana.com dashboard ID **19665**. Import it:
+
+1. Grafana → Dashboards → New → Import
+2. Enter ID `19665`, click Load
+3. Pick your Prometheus data source
+
+Now you have 30+ pre-built panels covering all the standard k6 metrics.
+
+### Alerting
+
+Once metrics are in Prometheus, you can alert on regressions:
+
+```yaml
+# alerts.yml
+groups:
+  - name: perf-alerts
+    rules:
+      - alert: HighP95Latency
+        expr: max_over_time(k6_http_req_duration_p95[5m]) > 500
+        for: 1m
+        annotations:
+          summary: "p95 latency exceeded 500ms during load test"
+```
+
+Wire to PagerDuty / Slack / Discord via Alertmanager. Now a load-test regression actually wakes someone up — same as a production alert.
+
+### When to use this vs k6 Cloud
+
+| Local docker stack | k6 Cloud |
+|-------------------|----------|
+| Free | Paid (free tier limits) |
+| Self-hosted, full control | Hosted, no infra |
+| Need ops effort to keep up | Maintained by Grafana Labs |
+| One machine | Distributed across regions |
+| Custom dashboards | Pre-built |
+
+For solo / small teams: Cloud (free tier is enough for many use cases). For mature orgs already on Prometheus: docker-compose stack mirrors prod observability and integrates with existing alerts.
+
+## Exercises
+
+1. **Spin up the stack.** Save the docker-compose.yml + prometheus.yml from above. Run `docker compose up -d`. Visit http://localhost:9090 and http://localhost:3001 to confirm both are alive.
+2. **Send a kata-66 test to Prometheus.** Copy the k6 file from kata 66 to this folder, run with `K6_PROMETHEUS_RW_SERVER_URL=http://localhost:9090/api/v1/write k6 run --out experimental-prometheus-rw 66-streaming-metrics.test.js`. Open Prometheus and query `k6_http_reqs`. Should see counts per endpoint.
+3. **Import dashboard 19665.** Get a polished view of the run without building anything.
+4. **Build a custom panel.** In Grafana, create a panel showing `k6_http_req_duration_p95{region="us-east"}` over time. What happens during your test?
+5. **Add an alert.** Set a threshold rule for p95 > 500ms and run a test against `/lab/slow?ms=600`. Alert should fire.
+
+## Common Mistakes
+
+- **Forgetting `--web.enable-remote-write-receiver`.** Without this Prometheus flag, remote-write requests are rejected.
+- **Using port 3000 for Grafana.** That's QA Labs's port. Map Grafana to 3001 in docker-compose to avoid conflict.
+- **Default Trend stats.** Without `K6_PROMETHEUS_RW_TREND_STATS`, you only get `avg` and `max` — no percentiles in your dashboard.
+- **Cardinality explosion in production.** As kata 66 warned: high-cardinality tags will overwhelm Prometheus over time.
+- **Treating dashboards as "set and forget."** When endpoints change, dashboard queries need updating too. Pin a version of your dashboard JSON in Git.
+
+## Cheat Sheet
+
+```bash
+# Stand up the stack
+docker compose up -d
+
+# Run k6 with Prometheus output + better trend stats
+K6_PROMETHEUS_RW_SERVER_URL=http://localhost:9090/api/v1/write \
+K6_PROMETHEUS_RW_TREND_STATS=p(50),p(95),p(99),avg,min,max \
+k6 run --out experimental-prometheus-rw test.js
+
+# Verify metrics arrived
+curl 'http://localhost:9090/api/v1/query?query=k6_http_reqs'
+
+# Tear down
+docker compose down -v   # -v wipes the data volumes too
+```
+
+| Tool | Default port | Use |
+|------|--------------|-----|
+| QA Labs server | 3000 | Test runner + lab targets |
+| QA Labs playground | 8080 | Static kata pages |
+| Prometheus | 9090 | Time series storage + scrape |
+| Grafana | 3001 | Dashboards (mapped, not 3000) |
+
+| PromQL helper | What |
+|---------------|------|
+| `rate(metric[1m])` | Per-second rate over 1m window |
+| `histogram_quantile(0.95, ...)` | p95 from histogram buckets |
+| `max_over_time(metric[5m])` | Max value in 5m window |
+| `metric{label=~"regex"}` | Filter by label regex |
+4:T882,// Kata 67 — Grafana + Prometheus Integration
+//
+// This script is the same shape as kata 66 — the magic is in HOW you run
+// it, not what's in the file. To stream live metrics to your local
+// Prometheus + Grafana stack:
+//
+//   docker compose up -d
+//   K6_PROMETHEUS_RW_SERVER_URL=http://localhost:9090/api/v1/write \
+//   K6_PROMETHEUS_RW_TREND_STATS=p(50),p(95),p(99),avg,min,max \
+//   k6 run --out experimental-prometheus-rw 67-grafana-and-prometheus.test.js
+//
+// Then open http://localhost:3001 (Grafana) and import dashboard 19665.
+
+import http from 'k6/http';
+import { check } from 'k6';
+
+const BASE_URL = __ENV.K6_BASE_URL || 'http://localhost:3000';
+
+const ENDPOINTS = [
+  { url: `${BASE_URL}/lab/echo`, name: 'echo' },
+  { url: `${BASE_URL}/lab/slow?ms=200`, name: 'slow_200' },
+  { url: `${BASE_URL}/lab/jitter?p50=80&p95=300`, name: 'jitter' },
+  { url: `${BASE_URL}/lab/limit`, name: 'rate_limited' },
+];
+
+export const options = {
+  scenarios: {
+    realistic_mix: {
+      executor: 'ramping-arrival-rate',
+      startRate: 0,
+      timeUnit: '1s',
+      preAllocatedVUs: 30,
+      maxVUs: 100,
+      stages: [
+        { duration: '15s', target: 30 },   // ramp up
+        { duration: '30s', target: 30 },   // plateau
+        { duration: '10s', target: 0 },    // drain
+      ],
+    },
+  },
+  thresholds: {
+    'http_req_duration{endpoint:echo}': ['p(95)<200'],
+    'http_req_duration{endpoint:slow_200}': ['p(95)<400'],
+    'http_req_duration{endpoint:jitter}': ['p(95)<800'],
+    // No threshold on rate_limited — we WANT to see 429s in the dashboard.
+    'http_req_failed{endpoint:echo}': ['rate<0.01'],
+  },
+};
+
+export default function () {
+  const ep = ENDPOINTS[Math.floor(Math.random() * ENDPOINTS.length)];
+  const res = http.get(ep.url, {
+    tags: {
+      endpoint: ep.name,
+      // Status class makes for great dashboard splits — query by `status_class:5xx`.
+      // We can't tag based on response status before the request, so this stays
+      // generic; Prometheus auto-derives from the `status` tag k6 already sets.
+    },
+  });
+  check(res, {
+    'status acceptable (200 or 429)': (r) => r.status === 200 || r.status === 429,
+  });
+}
+5:T405,# Kata 67 — Grafana + Prometheus (Artillery solution)
+#
+# Artillery to Prometheus typically goes via the artillery-engine-statsd
+# plugin or a custom processor publishing to a Prometheus pushgateway.
+# k6's first-class Prometheus output is significantly simpler.
+#
+# This file is the HTTP load body — the integration story is in the readme.
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 15
+      arrivalRate: 5
+      rampTo: 30
+      name: "warm-up"
+    - duration: 30
+      arrivalRate: 30
+      name: "plateau"
+    - duration: 10
+      arrivalRate: 30
+      rampTo: 0
+      name: "drain"
+
+scenarios:
+  - name: "echo"
+    weight: 25
+    flow:
+      - get: { url: "/lab/echo" }
+  - name: "slow"
+    weight: 25
+    flow:
+      - get: { url: "/lab/slow?ms=200" }
+  - name: "jitter"
+    weight: 25
+    flow:
+      - get: { url: "/lab/jitter?p50=80&p95=300" }
+  - name: "rate-limited"
+    weight: 25
+    flow:
+      - get:
+          url: "/lab/limit"
+          expect:
+            - statusCode: [200, 429]
+6:T1a7f,# Kata 66: Streaming Metrics — Output Formats
+
+## What You Will Learn
+
+- Why the **end-of-test summary alone is not enough** for serious perf work
+- k6's six `--out` output formats: **json, csv, statsd, influxdb, prometheus-rw, cloud**
+- The difference between **per-data-point streams** and **aggregated rollups**
+- When to capture per-iteration data (and when it costs too much disk)
+- How to stream metrics so a Grafana / Prometheus stack can ingest them in real time
+- Tagging patterns that survive the round-trip into a time-series DB
+
+## Prerequisites
+
+- Comfortable with k6 thresholds, custom metrics (kata 50)
+- The QA Labs server running
+
+## Concepts Explained
+
+### The summary isn't enough
+
+After a 10-minute load test k6 prints:
+
+```
+http_req_duration: avg=120ms p(95)=210ms p(99)=480ms
+```
+
+That's **a single number per metric**. It tells you nothing about:
+- Was p95 stable across the run, or did it drift up at minute 8?
+- Did errors cluster at a specific time?
+- Did the slow VU correlate with a specific endpoint?
+
+To answer those, you need **per-data-point output**: every individual sample, written somewhere you can query.
+
+### Six built-in output options
+
+| Output | What it produces | Best for |
+|--------|------------------|----------|
+| (default) | Console summary only | Smoke tests, CI logs |
+| `--out json=file.json` | Every data point as ndjson | Local debugging, post-hoc analysis |
+| `--out csv=file.csv` | Same data as CSV | Excel / pandas / quick plots |
+| `--out statsd` | Push to a statsd daemon | Existing statsd infra |
+| `--out influxdb=...` | Push to InfluxDB v1/v2 | Grafana with InfluxDB backend |
+| `--out experimental-prometheus-rw` | Prometheus remote-write | Prometheus / Mimir / Grafana Cloud |
+| `--out cloud` | Stream to k6 Cloud | Hosted dashboards, sharing |
+
+You can specify `--out` multiple times — same run, multiple destinations.
+
+### `--out json` — per-data-point JSON
+
+```bash
+k6 run --out json=metrics.json my-test.js
+```
+
+Output is **newline-delimited JSON**: one record per data point.
+
+```json
+{"type":"Point","metric":"http_req_duration","data":{"time":"2026-04-29T10:00:01Z","value":42.5,"tags":{"name":"GET /api/foo","status":"200"}}}
+{"type":"Point","metric":"http_req_duration","data":{"time":"2026-04-29T10:00:01Z","value":31.0,"tags":{"name":"GET /api/bar","status":"200"}}}
+```
+
+You can pipe this to:
+- `jq` for ad-hoc filtering
+- pandas for analysis
+- Custom scripts that build per-period histograms
+
+**Cost:** big tests produce big files. A 10-minute test at 500 RPS = 300,000 lines of JSON ≈ 150MB.
+
+### `--out csv` — same data, smaller
+
+```bash
+k6 run --out csv=metrics.csv my-test.js
+```
+
+Same fidelity as JSON, smaller, easier to load into Excel/pandas. Loses some structural nuances (nested tags get flattened).
+
+### `--out experimental-prometheus-rw` — for live Grafana
+
+This is the modern default for production-grade dashboards.
+
+```bash
+K6_PROMETHEUS_RW_SERVER_URL=http://prometheus:9090/api/v1/write \
+k6 run --out experimental-prometheus-rw my-test.js
+```
+
+k6 streams metrics directly to a Prometheus remote-write endpoint. With Grafana pointing at the same Prometheus, you get **real-time dashboards while the test runs**.
+
+This is what kata 67 covers in depth.
+
+### Tagging matters more in streaming output
+
+The summary aggregates everything, so tags only matter for thresholds. With streaming output, tags **become labels in your time-series DB** — the dimensions you slice by:
+
+```javascript
+http.get(url, {
+  tags: {
+    endpoint: 'dashboard',  // → label endpoint=dashboard in Prometheus
+    user_type: 'admin',
+    region: 'us-east',
+  },
+});
+```
+
+In Grafana you can then plot `http_req_duration{endpoint="dashboard",region="us-east"}` and see exactly that slice.
+
+**Pitfall:** every unique tag combination creates a new time series. Tagging by request ID (`tag.id = uuid`) creates **one series per request** — that's a cardinality explosion and will overwhelm Prometheus.
+
+| Good tag values | Bad tag values |
+|-----------------|----------------|
+| Endpoint name (a few values) | User ID (millions) |
+| Status code class | Request ID |
+| Region | Timestamp |
+| Test variant / scenario | Random correlation ID |
+
+### Multiple outputs simultaneously
+
+```bash
+k6 run \
+  --out json=local.ndjson \
+  --out csv=local.csv \
+  --out experimental-prometheus-rw \
+  my-test.js
+```
+
+Useful pattern: stream to Prometheus for live dashboards AND save JSON locally for post-hoc analysis.
+
+### `--summary-export` — the thing kata-runner uses
+
+Separate from `--out`, this writes the end-of-run rollup to a JSON file:
+
+```bash
+k6 run --summary-export=summary.json my-test.js
+```
+
+That's what the QA Labs server's k6 runner parses (kata-runner integration). It's *only* the summary, not per-data-point — fast and small.
+
+## Exercises
+
+1. **Local JSON capture.** Run the kata's spec with `--out json=metrics.json`. Open the file. How many data points were recorded? What metrics show up?
+2. **CSV → pandas.** Same run, `--out csv=metrics.csv`. Load it: `pd.read_csv('metrics.csv')`. Plot `http_req_duration` over `time`. Do you see drift?
+3. **Tag cardinality.** Add a tag `request_id: uuid()` to every request and run with `--out json`. Compare file size to a run without that tag. Now imagine that going into Prometheus.
+4. **Compare summary vs streaming.** Run with both `--summary-export=s.json` and `--out json=stream.json`. Read s.json — how does it differ from stream.json?
+
+## Common Mistakes
+
+- **Cardinality explosions.** High-cardinality tags (user IDs, request IDs) crash Prometheus. Tag by category, not by individual.
+- **Trying to load multi-GB JSON in jq.** For big runs, use `jq --stream` or a streaming Python parser.
+- **Forgetting timezones.** `time` field in `--out json` is UTC. Most dashboards display local time. Check the offset.
+- **Streaming and not retaining locally.** If your Prometheus retention is 7 days, that data is gone. Pair with local CSV/JSON for archival.
+
+## Cheat Sheet
+
+```bash
+# Local capture
+k6 run --out json=run.ndjson --out csv=run.csv my-test.js
+
+# Live to Grafana (Prometheus remote-write)
+K6_PROMETHEUS_RW_SERVER_URL=http://prom:9090/api/v1/write \
+k6 run --out experimental-prometheus-rw my-test.js
+
+# k6 Cloud (hosted)
+k6 run --out cloud my-test.js
+```
+
+| Need | Use |
+|------|-----|
+| Quick check, no infra | Default summary |
+| Local debugging | `--out json` |
+| Live dashboard | `--out experimental-prometheus-rw` |
+| Existing statsd | `--out statsd` |
+| Spreadsheet analysis | `--out csv` |
+| Hosted, sharable | `--out cloud` |
+
+| Tag cardinality |
+|-----------------|
+| `endpoint` (10s) — fine |
+| `region` (10s) — fine |
+| `status_class` (5) — fine |
+| `user_id` (millions) — BAD |
+| `request_id` (per request) — BAD |
+7:T82a,// Kata 66 — Streaming Metrics (k6 solution)
+//
+// Demonstrates rich tagging that survives the round-trip to a time-series
+// DB. Run with `--out json=run.json` to capture the per-data-point stream.
+// Run with `--out experimental-prometheus-rw` to stream to Prometheus.
+//
+// Three deliberate tag dimensions show how to slice metrics by category
+// without exploding cardinality.
+
+import http from 'k6/http';
+import { check } from 'k6';
+
+const BASE_URL = __ENV.K6_BASE_URL || 'http://localhost:3000';
+
+// Simulated traffic mix — three endpoint categories, three "regions",
+// three user types. Total cardinality 3 × 3 × 3 = 27 time series.
+const ENDPOINTS = [
+  { url: `${BASE_URL}/lab/echo`, name: 'echo' },
+  { url: `${BASE_URL}/lab/slow?ms=100`, name: 'slow_100' },
+  { url: `${BASE_URL}/lab/jitter?p50=50&p95=200`, name: 'jitter' },
+];
+const REGIONS = ['us-east', 'eu-west', 'ap-south'];
+const USER_TYPES = ['guest', 'free', 'paid'];
+
+export const options = {
+  scenarios: {
+    streaming: {
+      executor: 'constant-arrival-rate',
+      rate: 30,
+      timeUnit: '1s',
+      duration: '20s',
+      preAllocatedVUs: 30,
+    },
+  },
+  thresholds: {
+    'http_req_failed': ['rate<0.01'],
+    // Per-endpoint thresholds — possible because the `endpoint` tag is set.
+    'http_req_duration{endpoint:echo}': ['p(95)<200'],
+    'http_req_duration{endpoint:slow_100}': ['p(95)<400'],
+    'http_req_duration{endpoint:jitter}': ['p(95)<800'],
+  },
+};
+
+export default function () {
+  // Pick one of each dimension at random — bounded cardinality.
+  const ep = ENDPOINTS[Math.floor(Math.random() * ENDPOINTS.length)];
+  const region = REGIONS[Math.floor(Math.random() * REGIONS.length)];
+  const userType = USER_TYPES[Math.floor(Math.random() * USER_TYPES.length)];
+
+  const res = http.get(ep.url, {
+    tags: {
+      endpoint: ep.name,
+      region,
+      user_type: userType,
+    },
+  });
+
+  // Note: deliberately NOT tagging by request ID. That would create one
+  // time series per request — kills Prometheus.
+  check(res, {
+    'status is 200': (r) => r.status === 200,
+  });
+}
+8:T2375,# Kata 68: Distributed Tracing Correlation
+
+## What You Will Learn
+
+- What **distributed tracing** is and how it relates to load testing
+- The **W3C Trace Context** standard: `traceparent` and `tracestate` headers
+- How to inject **trace IDs from k6** so load-test requests show up alongside production traces
+- The "**find the slow request**" workflow: load test fails → grab trace ID from k6 → open trace in your APM
+- Difference between **trace propagation** (header passing) and **trace generation** (creating the IDs)
+- Patterns for injecting OpenTelemetry-compatible headers in k6 / Artillery
+
+## Prerequisites
+
+- Completed [Kata 67 (Grafana + Prometheus)](../67-grafana-and-prometheus/)
+- Familiarity with **distributed tracing concepts** (spans, traces, parent/child relationships)
+- The QA Labs server running — exposes `/lab/headers` which echoes back received request headers (for verifying propagation)
+
+## Concepts Explained
+
+### What's distributed tracing?
+
+A **trace** is a record of a single request as it flows through multiple services. Each service contributes a **span** to the trace. The full trace tells you:
+
+- Which services were involved
+- How long each took
+- Which one was slow
+- What errors propagated
+
+Tools: **OpenTelemetry** (the standard), **Jaeger** / **Tempo** (storage), **Grafana** / **Honeycomb** / **Datadog** (UI).
+
+### Why this matters in load testing
+
+When your test reports "p99 was 2 seconds, p50 was 50ms," **the slow requests are different requests from the fast ones**. Aggregated metrics tell you *that* there's a tail; they don't tell you *what's causing it*.
+
+If your k6 test passes a trace ID with each request, you can:
+
+1. Run the load test
+2. See which iterations were slow (in the test output or Grafana)
+3. Look up those specific trace IDs in your APM (Tempo / Jaeger / Datadog)
+4. See the full span tree for that exact request — find the bottleneck
+
+This is the **bridge between load testing and APM**.
+
+### W3C Trace Context
+
+The standard format. Two headers:
+
+```
+traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+             │  │                                │                │
+             │  │                                │                └─ flags (sampled, etc.)
+             │  │                                └─ parent span id
+             │  └─ trace id (16 bytes hex)
+             └─ version
+
+tracestate: rojo=00f067aa0ba902b7,congo=t61rcWkgMzE
+            └─ vendor-specific extensions (optional)
+```
+
+Most APMs honor this format; many also accept legacy `X-Trace-Id` / `X-B3-TraceId` (Zipkin's B3 format).
+
+### Injecting trace IDs from k6
+
+```javascript
+function makeTraceparent() {
+  // Generate 16 random bytes for trace id, 8 for parent span id.
+  const hex = (n) => Array.from({ length: n }, () =>
+    Math.floor(Math.random() * 16).toString(16)).join('');
+  const traceId = hex(32);    // 16 bytes
+  const spanId = hex(16);     //  8 bytes
+  return { traceparent: `00-${traceId}-${spanId}-01`, traceId };
+}
+
+const { traceparent, traceId } = makeTraceparent();
+const res = http.get(url, {
+  headers: { traceparent },
+  tags: { trace_id: traceId },  // also tag the metric so we can find it
+});
+```
+
+Now every request in your load test:
+- Sends a unique `traceparent` header — the server creates a span linked to it
+- Tags the k6 metric with `trace_id` — you can find the slow ones in your output
+
+### Pattern: log slow trace IDs
+
+Combine k6 metrics with the trace IDs:
+
+```javascript
+const start = Date.now();
+const res = http.get(url, { headers: { traceparent }, tags: { trace_id: traceId } });
+const duration = Date.now() - start;
+
+if (duration > 1000) {
+  // Print the slow trace ID — paste into your APM to see what happened
+  console.warn(`slow request: trace_id=${traceId} duration=${duration}ms url=${url}`);
+}
+```
+
+In CI, scrape these warn lines. The slow trace IDs are your debug starting points.
+
+### The QA Labs `/lab/headers` endpoint
+
+To verify your trace headers actually reach the server, the lab server exposes:
+
+```
+GET /lab/headers
+→ { receivedHeaders: { ... your headers ... }, serverTraceId: "<id>", ts: <ts> }
+```
+
+Send a `traceparent` header → the response includes it back so you can confirm propagation.
+
+### Realistic perf-test + APM workflow
+
+```
+1. Run load test                       k6 → server (with trace IDs)
+                                            │
+                                       (server emits spans)
+                                            │
+2. Test fails: p99 = 2s                Grafana
+                                            │
+                                       (you click on slow request)
+                                            │
+3. Click trace ID → APM                Tempo / Jaeger
+                                            │
+                                       (you see the slow span)
+                                            │
+4. "Database query took 1.8s"         You file a bug.
+```
+
+Without trace ID propagation in step 1, step 3 isn't possible.
+
+### Sampling
+
+In production APMs, you typically sample only a small fraction of traces (1%, 0.1%) for cost reasons. In load tests, **sample every request** — the whole point is to investigate later. The `traceparent` flags field controls this:
+
+- `00` = not sampled (won't be stored)
+- `01` = sampled (will be stored)
+
+For load tests: always send `01`.
+
+### k6 has experimental built-in tracing
+
+k6's experimental `k6/x/tracing` extension can auto-inject W3C trace headers without manual code:
+
+```javascript
+import tracing from 'k6/experimental/tracing';
+
+const httpWithTracing = tracing.instrumentHTTP({
+  propagator: 'w3c',
+});
+
+httpWithTracing.get(url);  // automatically gets traceparent
+```
+
+Available in k6 v0.45+. The kata uses manual injection so you understand what's happening; once you do, the `instrumentHTTP` shortcut is fine.
+
+### Artillery tracing
+
+Artillery has the [`artillery-plugin-fake-data`](https://www.artillery.io/docs/reference/plugins/fake-data) and various plugins, plus `engine-http`'s `beforeRequest` hook for header injection. Less first-class than k6's experimental support.
+
+## Exercises
+
+1. **Verify propagation.** Send a `traceparent` header to `/lab/headers`, parse the response. Does `receivedHeaders.traceparent` match what you sent?
+2. **Generate unique trace IDs per iteration.** Use the `makeTraceparent()` helper from the cheat sheet. Run a 30s test against `/lab/jitter?p50=50&p95=500`. How many unique trace IDs did you generate?
+3. **Find the slow ones.** Add the slow-warning logic from above. After a run, grep stdout for `slow request:`. How many slow trace IDs did you log?
+4. **Use `instrumentHTTP` (experimental).** Replace your manual injection with `import tracing from 'k6/experimental/tracing'`. Does the response from `/lab/headers` still show propagation?
+5. **Combine with Grafana (kata 67).** Run the test with Prometheus output AND tag-based trace IDs. In Grafana, filter by `trace_id` for slow requests — does the dashboard let you click through to a specific trace?
+
+## Common Mistakes
+
+- **Forgetting the flags byte.** `00-{trace}-{span}-00` (last byte 00) means "not sampled" — your APM won't store it. Use `01`.
+- **Reusing trace IDs across iterations.** Each request should have its own. Otherwise you can't disambiguate which iteration was slow.
+- **Tagging by trace_id in metric tags.** This is the cardinality explosion warned about in kata 66 — every request has its own trace, every trace creates a series. Don't tag your metric this way; *log* the IDs instead.
+- **Sampling at 1% in load tests.** Defeats the purpose. Always sample 100% during load testing.
+- **Using B3 in modern stacks.** Most modern APMs prefer W3C `traceparent` over Zipkin's `X-B3-TraceId`. Send both for safety, but lead with W3C.
+
+## Cheat Sheet
+
+```javascript
+// Generate W3C traceparent
+function newTraceparent() {
+  const hex = (n) => Array.from({ length: n }, () =>
+    Math.floor(Math.random() * 16).toString(16)).join('');
+  const traceId = hex(32);
+  const spanId = hex(16);
+  return {
+    header: `00-${traceId}-${spanId}-01`,
+    traceId,
+    spanId,
+  };
+}
+
+// Apply per-request
+const tp = newTraceparent();
+const res = http.get(url, {
+  headers: { traceparent: tp.header },
+});
+
+if (res.timings.duration > 1000) {
+  console.warn(`slow: trace_id=${tp.traceId} url=${url}`);
+}
+```
+
+| Header | Standard | Use |
+|--------|----------|-----|
+| `traceparent` | W3C | Modern default, OpenTelemetry-native |
+| `tracestate` | W3C | Vendor extensions (optional) |
+| `X-B3-TraceId` | Zipkin | Legacy services / B3-only systems |
+| `X-Request-Id` | Convention | Request-level correlation, not trace-level |
+
+| Pattern | Where it lives |
+|---------|----------------|
+| Inject `traceparent` | k6 test code |
+| Pass through services | Server-side OpenTelemetry SDK |
+| Store traces | Tempo / Jaeger / vendor APM |
+| Visualize | Grafana / Datadog / Honeycomb |
+| Find from k6 output | Log slow trace IDs to stdout / metrics |
+9:Tb94,// Kata 68 — Distributed Tracing Correlation
+//
+// Generates a fresh W3C traceparent per request, sends it to /lab/headers
+// (which echoes it back so we can verify propagation), and logs slow
+// trace IDs so they can be looked up in an APM.
+
+import http from 'k6/http';
+import { check } from 'k6';
+import { Counter, Trend } from 'k6/metrics';
+
+const BASE_URL = __ENV.K6_BASE_URL || 'http://localhost:3000';
+
+const slowTraces = new Counter('slow_trace_ids_logged');
+const propagationOk = new Counter('trace_propagation_verified');
+const traceLatency = new Trend('trace_endpoint_latency_ms', true);
+
+export const options = {
+  scenarios: {
+    traced: {
+      executor: 'constant-arrival-rate',
+      rate: 20,
+      timeUnit: '1s',
+      duration: '15s',
+      preAllocatedVUs: 20,
+    },
+  },
+  thresholds: {
+    'http_req_failed': ['rate<0.01'],
+    'trace_propagation_verified': ['count>50'],
+    // Aligned with the lab endpoint's configured jitter (p95=400ms)
+    // plus modest network overhead. Setting tighter would be aspiration,
+    // not measurement.
+    'trace_endpoint_latency_ms': ['p(95)<600'],
+  },
+};
+
+// Build a W3C traceparent: version=00, trace_id=16 bytes hex, span_id=8 bytes hex, flags=01 (sampled)
+function newTraceparent() {
+  const hex = (n) =>
+    Array.from({ length: n }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+  const traceId = hex(32);
+  const spanId = hex(16);
+  return {
+    header: `00-${traceId}-${spanId}-01`,
+    traceId,
+    spanId,
+  };
+}
+
+export default function () {
+  const tp = newTraceparent();
+
+  // Hit a slow-ish endpoint for some realistic latency variance.
+  // Use /lab/jitter so some requests cross the "slow" threshold.
+  const start = Date.now();
+  const res = http.get(`${BASE_URL}/lab/jitter?p50=50&p95=400`, {
+    headers: {
+      traceparent: tp.header,
+      'x-trace-id': tp.traceId,  // legacy fallback
+    },
+    // NOTE: deliberately NOT tagging metric by trace_id — that's the
+    // cardinality-explosion antipattern. Log slow ones to stdout instead.
+  });
+  const duration = Date.now() - start;
+  traceLatency.add(duration);
+
+  if (duration > 700) {
+    // Log slow trace IDs — these are your APM jump-off points.
+    console.warn(`slow: trace_id=${tp.traceId} duration=${duration}ms`);
+    slowTraces.add(1);
+  }
+
+  // Verify propagation by hitting /lab/headers (which echoes back).
+  // Real production code wouldn't hit two endpoints — this is just to
+  // demonstrate the propagation pattern works end-to-end.
+  const verify = http.get(`${BASE_URL}/lab/headers`, {
+    headers: { traceparent: tp.header, 'x-trace-id': tp.traceId },
+  });
+
+  const echoed = verify.json('receivedHeaders');
+  // The lab server lowercases header names (Express convention).
+  if (echoed?.['traceparent'] === tp.header) {
+    propagationOk.add(1);
+  }
+
+  check(res, { 'status is 200': (r) => r.status === 200 });
+  check(verify, { 'verify status is 200': (r) => r.status === 200 });
+}
+a:T4fe,# Kata 68 — Distributed Tracing Correlation (Artillery solution)
+#
+# Artillery can inject custom headers per request, but generating a fresh
+# W3C traceparent per iteration requires a custom processor (JS function).
+# A static traceparent across all requests defeats the purpose.
+#
+# This file demonstrates the basic header injection. For per-request
+# trace IDs in Artillery, you'd need a `processor:` block with a function
+# that returns a unique header per call. See the kata's k6 solution for
+# the cleaner equivalent.
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 15
+      arrivalRate: 20
+      name: "main"
+
+scenarios:
+  - name: "traced jitter probe"
+    flow:
+      - get:
+          url: "/lab/jitter?p50=50&p95=400"
+          headers:
+            # Static — same id for every request. Real implementations need
+            # a processor function. Documenting the limitation here.
+            traceparent: "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01"
+
+  - name: "verify propagation"
+    flow:
+      - get:
+          url: "/lab/headers"
+          headers:
+            traceparent: "00-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-bbbbbbbbbbbbbbbb-01"
+          expect:
+            - statusCode: 200
+            - hasProperty: "receivedHeaders"
+b:T2776,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#6A737D">// Kata 67 — Grafana + Prometheus Integration</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// This script is the same shape as kata 66 — the magic is in HOW you run</span></span>
+<span class="line"><span style="color:#6A737D">// it, not what's in the file. To stream live metrics to your local</span></span>
+<span class="line"><span style="color:#6A737D">// Prometheus + Grafana stack:</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">//   docker compose up -d</span></span>
+<span class="line"><span style="color:#6A737D">//   K6_PROMETHEUS_RW_SERVER_URL=http://localhost:9090/api/v1/write \</span></span>
+<span class="line"><span style="color:#6A737D">//   K6_PROMETHEUS_RW_TREND_STATS=p(50),p(95),p(99),avg,min,max \</span></span>
+<span class="line"><span style="color:#6A737D">//   k6 run --out experimental-prometheus-rw 67-grafana-and-prometheus.test.js</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// Then open http://localhost:3001 (Grafana) and import dashboard 19665.</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> http </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> 'k6/http'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { check } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> 'k6'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> BASE_URL</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> __ENV.</span><span style="color:#79B8FF">K6_BASE_URL</span><span style="color:#F97583"> ||</span><span style="color:#9ECBFF"> 'http://localhost:3000'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> ENDPOINTS</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> [</span></span>
+<span class="line"><span style="color:#E1E4E8">  { url: </span><span style="color:#9ECBFF">`${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/echo`</span><span style="color:#E1E4E8">, name: </span><span style="color:#9ECBFF">'echo'</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">  { url: </span><span style="color:#9ECBFF">`${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/slow?ms=200`</span><span style="color:#E1E4E8">, name: </span><span style="color:#9ECBFF">'slow_200'</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">  { url: </span><span style="color:#9ECBFF">`${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/jitter?p50=80&#x26;p95=300`</span><span style="color:#E1E4E8">, name: </span><span style="color:#9ECBFF">'jitter'</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">  { url: </span><span style="color:#9ECBFF">`${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/limit`</span><span style="color:#E1E4E8">, name: </span><span style="color:#9ECBFF">'rate_limited'</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">];</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> const</span><span style="color:#79B8FF"> options</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">  scenarios: {</span></span>
+<span class="line"><span style="color:#E1E4E8">    realistic_mix: {</span></span>
+<span class="line"><span style="color:#E1E4E8">      executor: </span><span style="color:#9ECBFF">'ramping-arrival-rate'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      startRate: </span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      timeUnit: </span><span style="color:#9ECBFF">'1s'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      preAllocatedVUs: </span><span style="color:#79B8FF">30</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      maxVUs: </span><span style="color:#79B8FF">100</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      stages: [</span></span>
+<span class="line"><span style="color:#E1E4E8">        { duration: </span><span style="color:#9ECBFF">'15s'</span><span style="color:#E1E4E8">, target: </span><span style="color:#79B8FF">30</span><span style="color:#E1E4E8"> },   </span><span style="color:#6A737D">// ramp up</span></span>
+<span class="line"><span style="color:#E1E4E8">        { duration: </span><span style="color:#9ECBFF">'30s'</span><span style="color:#E1E4E8">, target: </span><span style="color:#79B8FF">30</span><span style="color:#E1E4E8"> },   </span><span style="color:#6A737D">// plateau</span></span>
+<span class="line"><span style="color:#E1E4E8">        { duration: </span><span style="color:#9ECBFF">'10s'</span><span style="color:#E1E4E8">, target: </span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8"> },    </span><span style="color:#6A737D">// drain</span></span>
+<span class="line"><span style="color:#E1E4E8">      ],</span></span>
+<span class="line"><span style="color:#E1E4E8">    },</span></span>
+<span class="line"><span style="color:#E1E4E8">  },</span></span>
+<span class="line"><span style="color:#E1E4E8">  thresholds: {</span></span>
+<span class="line"><span style="color:#9ECBFF">    'http_req_duration{endpoint:echo}'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'p(95)&#x3C;200'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#9ECBFF">    'http_req_duration{endpoint:slow_200}'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'p(95)&#x3C;400'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#9ECBFF">    'http_req_duration{endpoint:jitter}'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'p(95)&#x3C;800'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#6A737D">    // No threshold on rate_limited — we WANT to see 429s in the dashboard.</span></span>
+<span class="line"><span style="color:#9ECBFF">    'http_req_failed{endpoint:echo}'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'rate&#x3C;0.01'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#E1E4E8">  },</span></span>
+<span class="line"><span style="color:#E1E4E8">};</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> default</span><span style="color:#F97583"> function</span><span style="color:#E1E4E8"> () {</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> ep</span><span style="color:#F97583"> =</span><span style="color:#79B8FF"> ENDPOINTS</span><span style="color:#E1E4E8">[Math.</span><span style="color:#B392F0">floor</span><span style="color:#E1E4E8">(Math.</span><span style="color:#B392F0">random</span><span style="color:#E1E4E8">() </span><span style="color:#F97583">*</span><span style="color:#79B8FF"> ENDPOINTS</span><span style="color:#E1E4E8">.</span><span style="color:#79B8FF">length</span><span style="color:#E1E4E8">)];</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> res</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> http.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(ep.url, {</span></span>
+<span class="line"><span style="color:#E1E4E8">    tags: {</span></span>
+<span class="line"><span style="color:#E1E4E8">      endpoint: ep.name,</span></span>
+<span class="line"><span style="color:#6A737D">      // Status class makes for great dashboard splits — query by `status_class:5xx`.</span></span>
+<span class="line"><span style="color:#6A737D">      // We can't tag based on response status before the request, so this stays</span></span>
+<span class="line"><span style="color:#6A737D">      // generic; Prometheus auto-derives from the `status` tag k6 already sets.</span></span>
+<span class="line"><span style="color:#E1E4E8">    },</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"><span style="color:#B392F0">  check</span><span style="color:#E1E4E8">(res, {</span></span>
+<span class="line"><span style="color:#9ECBFF">    'status acceptable (200 or 429)'</span><span style="color:#E1E4E8">: (</span><span style="color:#FFAB70">r</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> r.status </span><span style="color:#F97583">===</span><span style="color:#79B8FF"> 200</span><span style="color:#F97583"> ||</span><span style="color:#E1E4E8"> r.status </span><span style="color:#F97583">===</span><span style="color:#79B8FF"> 429</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span></code></pre>c:T19e4,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#6A737D"># Kata 67 — Grafana + Prometheus (Artillery solution)</span></span>
+<span class="line"><span style="color:#6A737D">#</span></span>
+<span class="line"><span style="color:#6A737D"># Artillery to Prometheus typically goes via the artillery-engine-statsd</span></span>
+<span class="line"><span style="color:#6A737D"># plugin or a custom processor publishing to a Prometheus pushgateway.</span></span>
+<span class="line"><span style="color:#6A737D"># k6's first-class Prometheus output is significantly simpler.</span></span>
+<span class="line"><span style="color:#6A737D">#</span></span>
+<span class="line"><span style="color:#6A737D"># This file is the HTTP load body — the integration story is in the readme.</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#85E89D">config</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">  target</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"http://localhost:3000"</span></span>
+<span class="line"><span style="color:#85E89D">  phases</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">    - </span><span style="color:#85E89D">duration</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">15</span></span>
+<span class="line"><span style="color:#85E89D">      arrivalRate</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">5</span></span>
+<span class="line"><span style="color:#85E89D">      rampTo</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">30</span></span>
+<span class="line"><span style="color:#85E89D">      name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"warm-up"</span></span>
+<span class="line"><span style="color:#E1E4E8">    - </span><span style="color:#85E89D">duration</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">30</span></span>
+<span class="line"><span style="color:#85E89D">      arrivalRate</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">30</span></span>
+<span class="line"><span style="color:#85E89D">      name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"plateau"</span></span>
+<span class="line"><span style="color:#E1E4E8">    - </span><span style="color:#85E89D">duration</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">10</span></span>
+<span class="line"><span style="color:#85E89D">      arrivalRate</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">30</span></span>
+<span class="line"><span style="color:#85E89D">      rampTo</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">0</span></span>
+<span class="line"><span style="color:#85E89D">      name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"drain"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#85E89D">scenarios</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">  - </span><span style="color:#85E89D">name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"echo"</span></span>
+<span class="line"><span style="color:#85E89D">    weight</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">25</span></span>
+<span class="line"><span style="color:#85E89D">    flow</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">get</span><span style="color:#E1E4E8">: { </span><span style="color:#85E89D">url</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"/lab/echo"</span><span style="color:#E1E4E8"> }</span></span>
+<span class="line"><span style="color:#E1E4E8">  - </span><span style="color:#85E89D">name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"slow"</span></span>
+<span class="line"><span style="color:#85E89D">    weight</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">25</span></span>
+<span class="line"><span style="color:#85E89D">    flow</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">get</span><span style="color:#E1E4E8">: { </span><span style="color:#85E89D">url</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"/lab/slow?ms=200"</span><span style="color:#E1E4E8"> }</span></span>
+<span class="line"><span style="color:#E1E4E8">  - </span><span style="color:#85E89D">name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"jitter"</span></span>
+<span class="line"><span style="color:#85E89D">    weight</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">25</span></span>
+<span class="line"><span style="color:#85E89D">    flow</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">get</span><span style="color:#E1E4E8">: { </span><span style="color:#85E89D">url</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"/lab/jitter?p50=80&#x26;p95=300"</span><span style="color:#E1E4E8"> }</span></span>
+<span class="line"><span style="color:#E1E4E8">  - </span><span style="color:#85E89D">name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"rate-limited"</span></span>
+<span class="line"><span style="color:#85E89D">    weight</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">25</span></span>
+<span class="line"><span style="color:#85E89D">    flow</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">get</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">          url</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"/lab/limit"</span></span>
+<span class="line"><span style="color:#85E89D">          expect</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">            - </span><span style="color:#85E89D">statusCode</span><span style="color:#E1E4E8">: [</span><span style="color:#79B8FF">200</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">429</span><span style="color:#E1E4E8">]</span></span>
+<span class="line"></span></code></pre>0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"kata":{"slug":"67-grafana-and-prometheus","number":67,"title":"Grafana + Prometheus Integration","phaseSlug":"phase-16-observability","phaseNumber":16,"phaseName":"Observability","readmeRaw":"$3","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"67-grafana-and-prometheus.test.js","content":"$4"}],"artilleryFiles":[{"filename":"67-grafana-and-prometheus.yml","content":"$5"}],"jmeterFiles":[]},"prev":{"slug":"66-streaming-metrics","number":66,"title":"Streaming Metrics — Output Formats","phaseSlug":"phase-16-observability","phaseNumber":16,"phaseName":"Observability","readmeRaw":"$6","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"66-streaming-metrics.test.js","content":"$7"}],"artilleryFiles":[{"filename":"66-streaming-metrics.yml","content":"# Kata 66 — Streaming Metrics (Artillery solution)\n#\n# Artillery's equivalents to k6's --out flags:\n#  --output report.json     — single end-of-test JSON (similar to --summary-export)\n#  --quiet                  — suppresses real-time stdout updates\n#  Custom plugins: artillery-plugin-statsd, artillery-plugin-cloudwatch, etc.\n#\n# For real-time streaming to Prometheus or InfluxDB, k6's built-in outputs\n# are significantly more capable. This file shows the basic Artillery\n# pattern with output captured to JSON.\n\nconfig:\n  target: \"http://localhost:3000\"\n  phases:\n    - duration: 20\n      arrivalRate: 30\n      name: \"main\"\n\nscenarios:\n  - name: \"echo\"\n    weight: 33\n    flow:\n      - get:\n          url: \"/lab/echo\"\n\n  - name: \"slow\"\n    weight: 33\n    flow:\n      - get:\n          url: \"/lab/slow?ms=100\"\n\n  - name: \"jitter\"\n    weight: 34\n    flow:\n      - get:\n          url: \"/lab/jitter?p50=50&p95=200\"\n"}],"jmeterFiles":[]},"next":{"slug":"68-distributed-tracing-correlation","number":68,"title":"Distributed Tracing Correlation","phaseSlug":"phase-16-observability","phaseNumber":16,"phaseName":"Observability","readmeRaw":"$8","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"68-distributed-tracing-correlation.test.js","content":"$9"}],"artilleryFiles":[{"filename":"68-distributed-tracing-correlation.yml","content":"$a"}],"jmeterFiles":[]},"frameworks":[{"id":"k6","label":"k6","files":[{"filename":"67-grafana-and-prometheus.test.js","html":"$b"}]},{"id":"artillery","label":"Artillery","files":[{"filename":"67-grafana-and-prometheus.yml","html":"$c"}]},{"id":"jmeter","label":"JMeter","files":[]},{"id":"playwright","label":"Playwright","files":[]},{"id":"cypress","label":"Cypress","files":[]}]}],["$Ld"],"$Le"]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"UzMlu93LkryOOruE2pxnW"}
+d:["$","script","script-0",{"src":"/qa-labs/_next/static/chunks/01luku1w1f06_.js","async":true}]
+e:["$","$Lf",null,{"children":["$","$10",null,{"name":"Next.MetadataOutlet","children":"$@11"}]}]
+11:null

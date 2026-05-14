@@ -1,0 +1,858 @@
+1:"$Sreact.fragment"
+2:I[76750,["/qa-labs/_next/static/chunks/012xw9ydea0yn.js","/qa-labs/_next/static/chunks/0t2xr05rlu96l.js","/qa-labs/_next/static/chunks/0a55m.6s3qp~-.js","/qa-labs/_next/static/chunks/01luku1w1f06_.js"],"KataPageClient"]
+d:I[97367,["/qa-labs/_next/static/chunks/012xw9ydea0yn.js","/qa-labs/_next/static/chunks/0t2xr05rlu96l.js","/qa-labs/_next/static/chunks/0a55m.6s3qp~-.js"],"OutletBoundary"]
+e:"$Sreact.suspense"
+3:T1b11,# Kata 72: Trend Analysis and Historical Comparison
+
+## What You Will Learn
+
+- Why **single-run regressions** are noise but **trends across runs** are real signal
+- The **moving baseline** pattern: rolling p95-of-p95s instead of last-run comparison
+- How to detect **slow drift** that absolute thresholds miss (e.g., 1% slower per week → 50% slower per year)
+- **Run-to-run variance** and how to reason about it statistically
+- Storing run history for analysis: artifacts, S3, dedicated DBs (Grafana Cloud Tempo, k6 Cloud)
+- The "n-of-m" rule: only flag if the trend has held for several consecutive runs
+
+## Prerequisites
+
+- Completed [Kata 71 (CI Gates and Baselines)](../71-ci-gates-and-baselines/)
+- Completed [Kata 67 (Grafana + Prometheus)](../../phase-16-observability/67-grafana-and-prometheus/)
+- The QA Labs server running
+
+## Concepts Explained
+
+### Single runs lie
+
+A single perf-test run shows a number. That number is the result of:
+
+- The actual code being tested
+- Random scheduling of VUs across CPU cores
+- Background processes on the test runner
+- Disk I/O contention
+- Network jitter
+- Whatever else is happening on the machine
+
+**Run-to-run variance is typically 5-15%** even with identical code. A 5% "regression" is noise unless you have multiple runs to confirm.
+
+### The moving baseline
+
+Instead of comparing to last-run, compare to the **rolling median (or p95) of the last N runs**:
+
+```
+day 1: 200ms
+day 2: 195ms
+day 3: 210ms
+day 4: 198ms
+day 5: 215ms     ← single-run check vs day 4 alone says "+8.5%, ALERT!"
+                 ← rolling median over 4 days = 199ms; 215 vs 199 = +8%, but…
+                 ← run 6+ would tell us if this is real
+```
+
+A moving baseline with N=5 means a one-off spike won't trigger; a sustained shift will.
+
+### N-of-M flagging
+
+The "real signal" rule: only flag a regression if **N out of the last M runs are worse**.
+
+- **N=3, M=5**: 3 of last 5 runs above the baseline = real
+- **N=2, M=3**: more aggressive — 2 of last 3 = real
+- **N=1, M=1**: every run flags — too noisy
+
+Real teams pick `N=3, M=5` for nightly tests, `N=2, M=3` for hourly tests. PR-level smoke tests use absolute thresholds (kata 71) since each PR run is independent.
+
+### Where you store run history
+
+| Option | Pro | Con |
+|--------|-----|-----|
+| GitHub Actions artifacts | Free, no infra | 90-day retention, no easy querying |
+| Commit summaries to a perf branch | Versioned, full history | Repo bloat over time |
+| S3 / GCS bucket | Long retention, cheap | Custom tooling to query |
+| k6 Cloud / Grafana Cloud | Hosted, dashboards built-in | Paid (free tier exists) |
+| Prometheus long-term store (Mimir, Cortex) | Same stack as production observability | Ops overhead |
+
+**Most pragmatic for small teams**: GitHub artifacts + a simple `scripts/aggregate-history.js` that walks the last N artifacts and produces a trend chart. Keep it dumb until it hurts.
+
+### A simple trend script
+
+```javascript
+// scripts/check-trend.js
+const fs = require('fs');
+const path = require('path');
+
+const HISTORY_DIR = './history';
+const N = 5;
+
+const files = fs.readdirSync(HISTORY_DIR)
+  .filter(f => f.endsWith('.json'))
+  .sort()
+  .slice(-N);
+
+const p95s = files.map(f => {
+  const summary = JSON.parse(fs.readFileSync(path.join(HISTORY_DIR, f), 'utf-8'));
+  return summary.metrics.http_req_duration['p(95)'];
+});
+
+const sorted = [...p95s].sort((a, b) => a - b);
+const median = sorted[Math.floor(sorted.length / 2)];
+const latest = p95s[p95s.length - 1];
+
+console.log(`Last ${N} p95s: ${p95s.map(p => p.toFixed(0)).join(', ')}`);
+console.log(`Rolling median: ${median.toFixed(0)}ms`);
+console.log(`Latest: ${latest.toFixed(0)}ms`);
+
+const ratio = latest / median;
+if (ratio > 1.10) {
+  console.error(`Latest is ${((ratio - 1) * 100).toFixed(1)}% above median — investigate`);
+  process.exit(1);
+}
+```
+
+This catches both single big regressions AND slow drift (median shifts up over time, ratio stays at 1.0 even though absolute numbers grow).
+
+### Detecting slow drift
+
+A 1% regression per week is invisible run-to-run but **52% per year**. To catch:
+
+1. Keep history for at least 90 days
+2. Periodically (weekly cron) compare current rolling-median to **30-days-ago** rolling-median
+3. If divergence exceeds a threshold (10-20%), alert
+
+```javascript
+const todayMedian = rollingMedian(history.last5runs);
+const monthAgoMedian = rollingMedian(history.runsAround30DaysAgo);
+
+if (todayMedian / monthAgoMedian > 1.10) {
+  console.warn('Slow drift detected: 30-day median worsened by 10%+');
+}
+```
+
+This is what real perf engineers monitor weekly. Pure run-to-run comparison can't see it.
+
+### Variance reduction tactics
+
+If your runs are too noisy to compare meaningfully:
+
+| Tactic | Effect |
+|--------|--------|
+| Use dedicated CI runners (not shared) | Less interference |
+| Pin OS/kernel, set CPU governor to performance | More deterministic timing |
+| Disable HyperThreading | More predictable scheduling |
+| Run multiple iterations, take median | Cancels noise |
+| Aggregate p95-of-multiple-runs | More stable than single p95 |
+| Compare ratios, not absolute numbers | Insulates from runner speed differences |
+
+## Exercises
+
+1. **Generate 5 baseline runs.** Run the kata's k6 spec 5 times, save each summary to `history/run-N.json`. Calculate the rolling median manually.
+2. **Inject a "regression."** Switch the test target to `/lab/slow?ms=50` (slightly slower). Run 5 more times. How does the rolling median shift?
+3. **Implement N-of-M.** Modify `check-trend.js` to flag only when 3 of last 5 runs are above baseline. Verify with mixed clean/regressed runs.
+4. **Detect slow drift.** Save 10 runs, then introduce a small drift (each subsequent run 2% slower). Does the script catch it?
+5. **Plot the history.** Use Grafana with a CSV file or Prometheus. Visualize p95 over the last 30 runs.
+
+## Common Mistakes
+
+- **Comparing to last-run only.** That's not a trend — that's noise + 1.
+- **Tight thresholds without trend context.** A 5% threshold is too tight given run-to-run variance.
+- **Forgetting to refresh baseline.** A perf improvement landing in main means baseline is stale; auto-update or update manually.
+- **Cherry-picking runs.** "This run was slow because the build server was busy" — discount it once, fine. Discount it five times, you've stopped doing real perf testing.
+
+## Cheat Sheet
+
+| Comparison | Use |
+|------------|-----|
+| Latest vs absolute SLO | PR-level smoke |
+| Latest vs rolling median | Nightly trend |
+| Today's median vs 30-day median | Weekly drift |
+| n-of-m flagging | Reduce false positives |
+
+| Storage option | When |
+|----------------|------|
+| GitHub artifacts | Default for small teams |
+| Git commits to perf branch | When you need versioned history |
+| S3 / GCS | When artifacts retention isn't enough |
+| Prometheus long-term store | When you already use it for prod |
+| k6 Cloud / Grafana Cloud | When you want hosted dashboards |
+4:T2254,# Kata 71: CI Gates and Baselines
+
+## What You Will Learn
+
+- Why **a perf test that doesn't gate merges might as well not exist**
+- The two CI gating strategies: **absolute thresholds** vs **baseline comparison**
+- Building a perf-test workflow in **GitHub Actions**: build → run → assert → report
+- How to make perf tests **fast enough to run on every PR** (smoke variant) vs **thorough enough to catch real regressions** (nightly variant)
+- The `--summary-export` + threshold pattern that makes k6 fail the CI build cleanly
+- **Baseline storage**: where you keep "good" numbers and how you update them
+
+## Prerequisites
+
+- Phases 9–17
+- Familiarity with GitHub Actions or your CI tool (examples use Actions; concepts apply to GitLab CI / Jenkins / CircleCI)
+
+## Concepts Explained
+
+### Why gate?
+
+A perf test that just *measures* without failing is decoration. People glance at the dashboard, shrug, ship. **Without a gate, regressions accumulate silently.**
+
+A gated test:
+- Fails the CI build when a metric regresses past the threshold
+- Forces the PR author to investigate before merge
+- Creates a feedback loop: every regression has a name attached
+
+### Two gating strategies
+
+#### 1. Absolute thresholds (simpler, less powerful)
+
+```javascript
+thresholds: {
+  'http_req_duration': ['p(95)<300'],
+}
+```
+
+"p95 must be under 300ms." Fails any time it isn't.
+
+| Pro | Con |
+|-----|-----|
+| Simple, no comparison data needed | Doesn't catch regressions if you're already over the threshold |
+| Easy to align with SLOs | Must be re-tuned if your hardware changes |
+| Stable across runs | "300ms" is opinion — needs justification |
+
+#### 2. Baseline comparison (harder, more powerful)
+
+"p95 must not be worse than yesterday's p95 by more than 10%."
+
+```bash
+# Pseudo-pattern
+LATEST=$(jq '.metrics.http_req_duration["p(95)"]' summary.json)
+BASELINE=$(jq '.metrics.http_req_duration["p(95)"]' baseline.json)
+RATIO=$(echo "$LATEST / $BASELINE" | bc -l)
+if (( $(echo "$RATIO > 1.10" | bc -l) )); then exit 1; fi
+```
+
+Comparing relative change catches a 50% → 60% degradation that absolute thresholds wouldn't (both pass `p95 < 100`).
+
+| Pro | Con |
+|-----|-----|
+| Catches gradual drift | Needs baseline storage + update flow |
+| Ratio-based — works across hardware | Noisy: small changes flag false positives |
+| Adapts to current state | Needs human in the loop to update baselines |
+
+**Use both.** Absolute floor + relative drift detection.
+
+### A complete GitHub Actions workflow
+
+```yaml
+# .github/workflows/perf.yml
+name: Perf Tests
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'katas/**'
+  schedule:
+    - cron: '0 3 * * *'  # nightly at 3am
+
+jobs:
+  perf-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install k6
+        uses: grafana/setup-k6-action@v1
+
+      - name: Build website
+        run: cd website && npm install && npm run build
+
+      - name: Start server
+        run: |
+          cd server && npm install
+          npm start &
+          npx wait-on http://localhost:3000/api/health/
+
+      - name: Run perf smoke test
+        run: |
+          k6 run \
+            --summary-export=summary.json \
+            --quiet \
+            katas/phase-09-perf-foundations/45-http-and-latency-basics/k6/45-http-and-latency-basics.test.js
+
+      - name: Compare against baseline
+        run: |
+          node scripts/compare-baseline.js summary.json baselines/main.json
+
+      - name: Upload summary as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-summary
+          path: summary.json
+```
+
+### The compare-baseline.js script
+
+```javascript
+// scripts/compare-baseline.js
+const fs = require('fs');
+const [_, __, currentPath, baselinePath] = process.argv;
+const current = JSON.parse(fs.readFileSync(currentPath, 'utf-8'));
+const baseline = JSON.parse(fs.readFileSync(baselinePath, 'utf-8'));
+
+const currentP95 = current.metrics.http_req_duration['p(95)'];
+const baselineP95 = baseline.metrics.http_req_duration['p(95)'];
+const ratio = currentP95 / baselineP95;
+
+console.log(`Baseline p95: ${baselineP95.toFixed(1)}ms`);
+console.log(`Current p95:  ${currentP95.toFixed(1)}ms`);
+console.log(`Ratio:        ${ratio.toFixed(2)}x`);
+
+if (ratio > 1.10) {
+  console.error('REGRESSION: p95 worsened by more than 10%');
+  process.exit(1);
+}
+console.log('OK: within 10% of baseline');
+```
+
+### Where baselines live
+
+Three options:
+
+| Option | Pro | Con |
+|--------|-----|-----|
+| Git (committed JSON) | Versioned, simple | Updates need a PR — adds friction |
+| GitHub Actions cache | Fast, automatic | No history; can be cleared |
+| External store (S3, GCS) | Long history | Infra to maintain |
+
+**For most projects: Git.** Commit the baseline as `baselines/main.json`. Update it via PR when you intentionally accept a regression or shipped a perf improvement.
+
+### Two-tier strategy
+
+**Tier 1 — every PR (must be fast):**
+- Smoke test only — 1 minute total
+- Absolute thresholds (catches obvious failures)
+- Runs in <5 minutes total CI time
+
+**Tier 2 — nightly (can be thorough):**
+- Full load test — 15-30 minutes
+- Baseline comparison
+- Triggered via `schedule:` in workflow
+
+This way every PR gets fast feedback, while the slow comprehensive test catches subtler regressions.
+
+### Updating baselines
+
+A perf improvement landing in main means the baseline is now stale (old, slower numbers). Update it:
+
+```yaml
+- name: Update baseline (main only)
+  if: github.ref == 'refs/heads/main' && success()
+  run: |
+    cp summary.json baselines/main.json
+    git add baselines/main.json
+    git -c user.name=ci -c user.email=ci@x commit -m "ci: update perf baseline"
+    git push
+```
+
+This auto-commits a new baseline on every passing main build. Discuss with the team — some prefer manual updates via PR for visibility.
+
+### Reporting back to the PR
+
+```yaml
+- name: Comment on PR
+  if: github.event_name == 'pull_request'
+  uses: actions/github-script@v7
+  with:
+    script: |
+      const fs = require('fs');
+      const summary = JSON.parse(fs.readFileSync('summary.json', 'utf-8'));
+      const p95 = summary.metrics.http_req_duration['p(95)'];
+      github.rest.issues.createComment({
+        owner: context.repo.owner,
+        repo: context.repo.repo,
+        issue_number: context.issue.number,
+        body: `🏃 Perf test results:\np95 latency: ${p95.toFixed(1)}ms`
+      });
+```
+
+PRs now get a comment with the run results. Author sees impact immediately.
+
+## Exercises
+
+1. **Generate a baseline.** Run the kata's k6 test against the lab server. Capture `--summary-export=summary.json`. Save as your local `baselines/main.json`.
+2. **Make a regression.** Modify the test to hit `/lab/slow?ms=300` instead of `/lab/echo`. Run. p95 will be much higher. Run the compare script — it should fail.
+3. **Set up the GitHub Action.** Use the workflow above (adjust paths). Push a PR — does the action run? Does it fail when you intentionally regress?
+4. **Two-tier strategy.** Add a `perf-full` job triggered only on `schedule:`. Smoke runs on every PR; full runs nightly.
+5. **Auto-update baseline on main.** Add the auto-commit step. Verify it only runs on main and only on success.
+
+## Common Mistakes
+
+- **No timeout in CI.** A k6 test that hangs hangs the whole CI run. Always add `timeout-minutes`.
+- **Baseline drift without review.** Auto-updating without bounds means slow drift goes uncaught. Periodically diff against an "n weeks ago" baseline.
+- **Too-tight thresholds.** A 5% threshold flags every noisy run. 10-20% is more practical for cross-machine comparison.
+- **No retry on flaky CI.** Rerun once on failure; if it fails twice, that's a real regression.
+- **Hardware-specific baselines.** Your local laptop is faster than the CI runner. Don't generate baselines locally; let CI generate them on its own runners.
+
+## Cheat Sheet
+
+```bash
+# Generate summary
+k6 run --summary-export=summary.json --quiet test.js
+
+# Extract a metric for shell-based comparison
+jq '.metrics.http_req_duration["p(95)"]' summary.json
+
+# Inline ratio check (bash + bc)
+LATEST=$(jq -r '.metrics.http_req_duration["p(95)"]' summary.json)
+BASELINE=$(jq -r '.metrics.http_req_duration["p(95)"]' baselines/main.json)
+awk -v l=$LATEST -v b=$BASELINE 'BEGIN { exit (l/b > 1.10) ? 1 : 0 }'
+```
+
+| Strategy | When |
+|----------|------|
+| Absolute threshold | Aligned with public SLO; new repos with no history |
+| Baseline comparison | Mature repos; catches drift |
+| Both | Default — absolute floor + relative drift |
+
+| Tier | Cadence | Test |
+|------|---------|------|
+| Smoke | Every PR | 30-60s test, absolute threshold |
+| Load | Nightly | 15-30 min test, baseline comparison |
+| Soak | Pre-release | 4+ hours, full assertion suite |
+5:T67f,// Kata 71 — CI Gates and Baselines (k6 solution)
+//
+// A canonical "PR smoke" perf test: 30 seconds, absolute thresholds tied
+// to a stated SLO. Designed to run in CI and either pass cleanly or
+// fail with a clear threshold-name in the output (the bit your script
+// will grep for).
+//
+// Also writes summary stats that scripts/compare-baseline.js can consume.
+
+import http from 'k6/http';
+import { check } from 'k6';
+
+const BASE_URL = __ENV.K6_BASE_URL || 'http://localhost:3000';
+
+// SLO contract: p95 < 250ms, p99 < 500ms, error rate < 0.1%
+// CI threshold: 80% of SLO budget for headroom
+const SLO_P95_MS = 250;
+const SLO_P99_MS = 500;
+const SLO_ERROR_RATE = 0.001;
+
+const CI_P95_MS = Math.floor(SLO_P95_MS * 0.8);
+const CI_P99_MS = Math.floor(SLO_P99_MS * 0.8);
+const CI_ERROR_RATE = SLO_ERROR_RATE;
+
+export const options = {
+  scenarios: {
+    smoke: {
+      executor: 'constant-arrival-rate',
+      rate: 50,
+      timeUnit: '1s',
+      duration: '30s',
+      preAllocatedVUs: 30,
+      maxVUs: 60,
+    },
+  },
+  thresholds: {
+    // Each named threshold appears in summary.metrics — scripts can grep them.
+    'http_req_duration': [
+      { threshold: `p(95)<${CI_P95_MS}`, abortOnFail: false },
+      { threshold: `p(99)<${CI_P99_MS}`, abortOnFail: false },
+    ],
+    'http_req_failed': [`rate<${CI_ERROR_RATE}`],
+    // Self-documenting: encode the SLO numbers in metric names.
+    [`http_req_duration{slo:p95}`]: [`p(95)<${SLO_P95_MS}`],
+  },
+};
+
+export default function () {
+  const res = http.get(`${BASE_URL}/lab/echo`, {
+    tags: { slo: 'p95', endpoint: 'echo' },
+  });
+  check(res, {
+    'status is 200': (r) => r.status === 200,
+  });
+}
+6:T2095,# Kata 73: JMeter Awareness
+
+## What You Will Learn
+
+- Why **JMeter still matters** in 2026 even though k6 is technically better
+- How to read a basic **JMX file** (the XML format JMeter uses)
+- The JMeter mental model: **Thread Groups, Samplers, Listeners, Assertions**
+- How to **migrate** a JMeter test plan to k6 (and back, when stuck with JMeter)
+- The JMeter ecosystem: BlazeMeter, JMeter Maven Plugin, Taurus
+- When to **stay on JMeter** vs when to push for migration
+
+## Prerequisites
+
+- All earlier perf phases (you understand load patterns conceptually)
+- JMeter installed (optional — `brew install jmeter` or [download](https://jmeter.apache.org/download_jmeter.cgi))
+
+## Concepts Explained
+
+### Why this kata exists
+
+Most QA orgs in large enterprises **still run JMeter**. Banks, telecoms, governments — anywhere with 10+ year-old QA infrastructure. As a perf engineer, you'll meet JMeter test plans regularly. Even if you wouldn't choose it for new work, you need to **read, debug, and migrate** JMeter tests.
+
+This is a single awareness kata — not a deep dive. The real curriculum is k6 + Artillery (the rest of phases 9-17). But you should be able to recognize a JMX file when one shows up in your codebase.
+
+### What JMeter is
+
+A Java desktop application (with CLI mode) for HTTP/protocol load testing. It's been around since the early 2000s.
+
+| Strengths | Weaknesses |
+|-----------|------------|
+| GUI for visual test plan editing | GUI mode is slow / unsuitable for actual load runs |
+| Massive plugin ecosystem | Plugins are inconsistently maintained |
+| Supports many protocols (HTTP, JDBC, JMS, AMQP, …) | Verbose XML config |
+| Established in enterprise QA | Heavy memory footprint per "thread" |
+| Distributed mode built-in | Distributed mode is fragile |
+| Familiar to non-developers | Hard to put under version control sanely |
+
+### The JMeter mental model
+
+A JMeter test plan (`.jmx` file) is a tree:
+
+```
+Test Plan
+├── Thread Group        (the "scenario" — VUs and duration)
+│   ├── HTTP Request    (the "step" — sampler)
+│   │   └── Response Assertion   (a check)
+│   └── Constant Throughput Timer  (rate control)
+├── View Results Tree   (a listener — UI/result viewer)
+└── Aggregate Report    (another listener)
+```
+
+**Equivalents:**
+- Thread Group ≈ k6 scenario
+- Thread = VU
+- Sampler = HTTP request
+- Listener = output / reporter
+- Assertion = check
+- Timer = sleep / rate control
+
+### Reading a JMX file
+
+The provided `jmeter/73-smoke-test.jmx` is a minimal test plan. Excerpts:
+
+```xml
+<ThreadGroup>
+  <stringProp name="ThreadGroup.num_threads">5</stringProp>     <!-- 5 VUs -->
+  <stringProp name="ThreadGroup.duration">30</stringProp>        <!-- 30 sec -->
+  <hashTree>
+    <HTTPSamplerProxy>
+      <stringProp name="HTTPSampler.domain">localhost</stringProp>
+      <stringProp name="HTTPSampler.port">3000</stringProp>
+      <stringProp name="HTTPSampler.path">/lab/echo</stringProp>
+      <stringProp name="HTTPSampler.method">GET</stringProp>
+    </HTTPSamplerProxy>
+    <hashTree>
+      <ResponseAssertion>
+        <collectionProp name="Asserion.test_strings">
+          <stringProp>200</stringProp>
+        </collectionProp>
+        <stringProp name="Assertion.test_field">Assertion.response_code</stringProp>
+      </ResponseAssertion>
+    </hashTree>
+  </hashTree>
+</ThreadGroup>
+```
+
+XML is verbose; the tree structure is what matters.
+
+### Running a JMX file
+
+```bash
+# CLI mode — what production uses
+jmeter -n -t 73-smoke-test.jmx -l results.jtl -e -o report/
+
+# Flags:
+# -n  no-GUI mode
+# -t  test plan
+# -l  log results to JTL file
+# -e  generate HTML report after run
+# -o  output directory for HTML report
+```
+
+Open `report/index.html` for a Lighthouse-style perf report.
+
+### Migrating JMX to k6
+
+The JMeter team's recommended migration: **Taurus**. Taurus is a tool that takes JMX (or YAML, or others) and runs it via JMeter under the hood, but is a stepping stone — you can rewrite scenarios in Taurus YAML and Taurus is more script-friendly.
+
+Direct JMX → k6: no automatic tool. The path:
+1. Identify Thread Groups in the JMX
+2. Map each to a k6 scenario
+3. Each Sampler becomes an `http.get/post`
+4. Each ResponseAssertion becomes a `check()`
+5. Timer config becomes `sleep()` or `arrival-rate`
+6. Listeners become k6 outputs (`--out json` etc.)
+
+For the kata's `73-smoke-test.jmx`:
+
+```javascript
+// k6 equivalent
+import http from 'k6/http';
+import { check } from 'k6';
+
+export const options = {
+  vus: 5,         // ThreadGroup.num_threads
+  duration: '30s', // ThreadGroup.duration
+};
+
+export default function () {
+  const res = http.get('http://localhost:3000/lab/echo');
+  check(res, {
+    'status is 200': (r) => r.status === 200,  // ResponseAssertion
+  });
+}
+```
+
+Roughly 30 lines of XML → 10 lines of JavaScript.
+
+### When to stay on JMeter
+
+Despite k6 being better for new work, **don't migrate** if:
+
+- The team has 10+ years of JMeter expertise and no JS culture
+- You have hundreds of existing JMX plans that all work
+- You're using a JMeter-specific feature (SOAP samplers, JDBC samplers, JMS samplers — k6 doesn't have these)
+- A vendor's perf tool only outputs JMX
+
+Migration is a **multi-quarter effort** for any non-trivial test estate. Don't do it lightly.
+
+### When to push for migration
+
+Migrate when:
+
+- You're starting fresh
+- Your team is JS-fluent (Playwright/Cypress backgrounds)
+- You need CI integration that JMeter makes painful (k6 Docker image is small; JMeter Docker images are 1GB+)
+- You want to use modern observability (Prometheus, Grafana — k6 has first-class support)
+- You need to scale to 100k+ RPS (k6 in Go is significantly more efficient per machine)
+
+### The QA Labs server doesn't have a JMeter runner
+
+This kata's "Run Tests" tab will show JMeter as 501 (not implemented) when selected, because we don't ship a JMeter runner in the lab server. The included `.jmx` file is for reference and for running standalone:
+
+```bash
+jmeter -n -t katas/phase-18-cicd-and-capstone/73-jmeter-awareness/jmeter/73-smoke-test.jmx -l results.jtl
+```
+
+If you want to add JMeter runner support, see `server/src/runners/k6-runner.ts` as a template — the dispatch infrastructure is already there.
+
+## Exercises
+
+1. **Read the JMX.** Open `jmeter/73-smoke-test.jmx` in any text editor. Identify the Thread Group config, the Sampler URL, the Assertion.
+2. **Run the JMX.** If you have JMeter installed: `jmeter -n -t 73-smoke-test.jmx -l results.jtl -e -o report/`. Open the HTML report.
+3. **Translate to k6.** The translation is given above — verify you can map each JMX element to its k6 equivalent.
+4. **Compare runtimes.** Run the JMX with 100 threads. Run the equivalent k6 with 100 VUs. Compare memory usage.
+5. **When you'd recommend migration.** Write a 1-paragraph migration justification for an imaginary team. What questions would you need to answer?
+
+## Common Mistakes
+
+- **Running JMeter in GUI mode for actual load.** GUI mode adds significant overhead and is intended for test development, not execution.
+- **Trying to put JMX files in code review.** They're huge XML files where line-level diffs are unreadable. Keep tests small or use Taurus YAML.
+- **Skipping listeners config.** A misconfigured listener can be the perf bottleneck of your perf test.
+- **Ignoring distributed mode setup.** JMeter's distributed mode requires careful config — RMI ports, Java versions matching across all nodes.
+
+## Cheat Sheet
+
+| JMeter element | k6 equivalent |
+|----------------|---------------|
+| Test Plan | options + default function |
+| Thread Group | scenarios entry |
+| HTTP Request Sampler | `http.get/post/put` |
+| ResponseAssertion | `check()` |
+| Constant Throughput Timer | `arrival-rate` executor |
+| ConstantTimer | `sleep()` |
+| CSV Data Set Config | `SharedArray` + JSON/CSV file |
+| If Controller | regular `if` statement |
+| Loop Controller | regular `for` loop |
+| Listener | `--out` flag |
+
+| When migrating, ask | Answer |
+|---------------------|--------|
+| How many JMX files? | 1-10: easy. 100+: project. |
+| Custom plugins used? | Each needs an equivalent or rewrite. |
+| Team JS familiarity? | Low → migration is risky |
+| Existing CI integration? | k6 Docker image is much smaller |
+| Distributed-mode in use? | k6 cloud or self-hosted distributed |
+7:T49b,// Kata 73 — JMeter Awareness (k6 equivalent)
+//
+// This is the same test as the kata's 73-smoke-test.jmx, translated to
+// k6. Use it as a Rosetta Stone: read the JMX in the kata's `jmeter/`
+// folder, then read this file, and the JMX → k6 mapping should click.
+
+import http from 'k6/http';
+import { check } from 'k6';
+
+const BASE_URL = __ENV.K6_BASE_URL || 'http://localhost:3000';
+
+export const options = {
+  // Equivalent of <ThreadGroup>: 5 threads, 30s duration, 5s ramp.
+  // (k6's `ramp-up` is a separate scenario primitive; for a simple 1:1
+  // map we use stages.)
+  scenarios: {
+    smoke: {
+      executor: 'ramping-vus',
+      startVUs: 0,
+      stages: [
+        { duration: '5s', target: 5 },    // ramp_time
+        { duration: '30s', target: 5 },   // duration
+      ],
+    },
+  },
+  thresholds: {
+    // Equivalent of the JMX <ResponseAssertion>: status code matches 200
+    'http_req_failed': ['rate<0.01'],
+    'http_req_duration': ['p(95)<500'],
+  },
+};
+
+export default function () {
+  // Equivalent of <HTTPSamplerProxy>: GET /lab/echo
+  const res = http.get(`${BASE_URL}/lab/echo`);
+  check(res, {
+    'status is 200': (r) => r.status === 200,
+  });
+}
+8:T100e,<?xml version="1.0" encoding="UTF-8"?>
+<jmeterTestPlan version="1.2" properties="5.0" jmeter="5.6.3">
+  <hashTree>
+    <TestPlan guiclass="TestPlanGui" testclass="TestPlan" testname="QA Labs Kata 73 — Smoke" enabled="true">
+      <stringProp name="TestPlan.comments">Hits /lab/echo at 5 threads for 30 seconds. Asserts 200 status.</stringProp>
+      <boolProp name="TestPlan.functional_mode">false</boolProp>
+      <boolProp name="TestPlan.serialize_threadgroups">false</boolProp>
+      <elementProp name="TestPlan.user_defined_variables" elementType="Arguments">
+        <collectionProp name="Arguments.arguments"/>
+      </elementProp>
+      <stringProp name="TestPlan.user_define_classpath"></stringProp>
+    </TestPlan>
+    <hashTree>
+      <ThreadGroup guiclass="ThreadGroupGui" testclass="ThreadGroup" testname="Smoke Thread Group" enabled="true">
+        <stringProp name="ThreadGroup.on_sample_error">continue</stringProp>
+        <elementProp name="ThreadGroup.main_controller" elementType="LoopController" guiclass="LoopControlPanel" testclass="LoopController" testname="Loop Controller" enabled="true">
+          <boolProp name="LoopController.continue_forever">false</boolProp>
+          <stringProp name="LoopController.loops">-1</stringProp>
+        </elementProp>
+        <stringProp name="ThreadGroup.num_threads">5</stringProp>
+        <stringProp name="ThreadGroup.ramp_time">5</stringProp>
+        <boolProp name="ThreadGroup.scheduler">true</boolProp>
+        <stringProp name="ThreadGroup.duration">30</stringProp>
+        <stringProp name="ThreadGroup.delay">0</stringProp>
+      </ThreadGroup>
+      <hashTree>
+        <HTTPSamplerProxy guiclass="HttpTestSampleGui" testclass="HTTPSamplerProxy" testname="GET /lab/echo" enabled="true">
+          <elementProp name="HTTPsampler.Arguments" elementType="Arguments" guiclass="HTTPArgumentsPanel" testclass="Arguments" testname="User Defined Variables" enabled="true">
+            <collectionProp name="Arguments.arguments"/>
+          </elementProp>
+          <stringProp name="HTTPSampler.domain">localhost</stringProp>
+          <stringProp name="HTTPSampler.port">3000</stringProp>
+          <stringProp name="HTTPSampler.protocol">http</stringProp>
+          <stringProp name="HTTPSampler.path">/lab/echo</stringProp>
+          <stringProp name="HTTPSampler.method">GET</stringProp>
+          <boolProp name="HTTPSampler.follow_redirects">true</boolProp>
+          <boolProp name="HTTPSampler.use_keepalive">true</boolProp>
+        </HTTPSamplerProxy>
+        <hashTree>
+          <ResponseAssertion guiclass="AssertionGui" testclass="ResponseAssertion" testname="Status is 200" enabled="true">
+            <collectionProp name="Asserion.test_strings">
+              <stringProp name="49586">200</stringProp>
+            </collectionProp>
+            <stringProp name="Assertion.test_field">Assertion.response_code</stringProp>
+            <boolProp name="Assertion.assume_success">false</boolProp>
+            <intProp name="Assertion.test_type">8</intProp>
+          </ResponseAssertion>
+          <hashTree/>
+        </hashTree>
+        <ConstantThroughputTimer guiclass="TestBeanGUI" testclass="ConstantThroughputTimer" testname="Throughput Limiter (50 RPS)" enabled="true">
+          <intProp name="calcMode">2</intProp>
+          <doubleProp>
+            <name>throughput</name>
+            <value>3000.0</value>
+          </doubleProp>
+        </ConstantThroughputTimer>
+        <hashTree/>
+      </hashTree>
+      <ResultCollector guiclass="SummaryReport" testclass="ResultCollector" testname="Summary Report" enabled="true">
+        <boolProp name="ResultCollector.error_logging">false</boolProp>
+        <objProp>
+          <name>saveConfig</name>
+          <value class="SampleSaveConfiguration">
+            <time>true</time>
+            <latency>true</latency>
+            <responseCode>true</responseCode>
+            <success>true</success>
+          </value>
+        </objProp>
+        <stringProp name="filename"></stringProp>
+      </ResultCollector>
+      <hashTree/>
+    </hashTree>
+  </hashTree>
+</jmeterTestPlan>
+9:T13a1,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#6A737D">// Kata 72 — Trend Analysis (k6 solution)</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// Same shape as kata 71's smoke test — the analytical work happens</span></span>
+<span class="line"><span style="color:#6A737D">// OUTSIDE k6, in scripts that aggregate multiple summary.json files</span></span>
+<span class="line"><span style="color:#6A737D">// over time. See the readme for check-trend.js + the n-of-m pattern.</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// To produce trend data: run this 5+ times, saving --summary-export</span></span>
+<span class="line"><span style="color:#6A737D">// each time, and feed the resulting JSONs into check-trend.js.</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> http </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> 'k6/http'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { check } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> 'k6'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> BASE_URL</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> __ENV.</span><span style="color:#79B8FF">K6_BASE_URL</span><span style="color:#F97583"> ||</span><span style="color:#9ECBFF"> 'http://localhost:3000'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> const</span><span style="color:#79B8FF"> options</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">  scenarios: {</span></span>
+<span class="line"><span style="color:#E1E4E8">    trend: {</span></span>
+<span class="line"><span style="color:#E1E4E8">      executor: </span><span style="color:#9ECBFF">'constant-arrival-rate'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      rate: </span><span style="color:#79B8FF">50</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      timeUnit: </span><span style="color:#9ECBFF">'1s'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      duration: </span><span style="color:#9ECBFF">'20s'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      preAllocatedVUs: </span><span style="color:#79B8FF">30</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">    },</span></span>
+<span class="line"><span style="color:#E1E4E8">  },</span></span>
+<span class="line"><span style="color:#E1E4E8">  thresholds: {</span></span>
+<span class="line"><span style="color:#9ECBFF">    'http_req_duration'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'p(95)&#x3C;300'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#9ECBFF">    'http_req_failed'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'rate&#x3C;0.01'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#E1E4E8">  },</span></span>
+<span class="line"><span style="color:#E1E4E8">};</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> default</span><span style="color:#F97583"> function</span><span style="color:#E1E4E8"> () {</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> res</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> http.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/echo`</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#B392F0">  check</span><span style="color:#E1E4E8">(res, { </span><span style="color:#9ECBFF">'status is 200'</span><span style="color:#E1E4E8">: (</span><span style="color:#FFAB70">r</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> r.status </span><span style="color:#F97583">===</span><span style="color:#79B8FF"> 200</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span></code></pre>a:Tbe8,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#6A737D"># Kata 72 — Trend Analysis (Artillery solution)</span></span>
+<span class="line"><span style="color:#6A737D">#</span></span>
+<span class="line"><span style="color:#6A737D"># Same workload as the k6 solution. The analytical work is in scripts</span></span>
+<span class="line"><span style="color:#6A737D"># that walk historical run outputs — Artillery's `--output report.json`</span></span>
+<span class="line"><span style="color:#6A737D"># captures one run's data; aggregation across runs is your tooling.</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#85E89D">config</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">  target</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"http://localhost:3000"</span></span>
+<span class="line"><span style="color:#85E89D">  phases</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">    - </span><span style="color:#85E89D">duration</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">20</span></span>
+<span class="line"><span style="color:#85E89D">      arrivalRate</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">50</span></span>
+<span class="line"><span style="color:#85E89D">      name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"trend snapshot"</span></span>
+<span class="line"><span style="color:#85E89D">  ensure</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">    p95</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">300</span></span>
+<span class="line"><span style="color:#85E89D">    maxErrorRate</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">1</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#85E89D">scenarios</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">  - </span><span style="color:#85E89D">name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"trend probe"</span></span>
+<span class="line"><span style="color:#85E89D">    flow</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">get</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">          url</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"/lab/echo"</span></span>
+<span class="line"><span style="color:#85E89D">          expect</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">            - </span><span style="color:#85E89D">statusCode</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">200</span></span>
+<span class="line"></span></code></pre>0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"kata":{"slug":"72-trend-analysis-and-historical-comparison","number":72,"title":"Trend Analysis and Historical Comparison","phaseSlug":"phase-18-cicd-and-capstone","phaseNumber":18,"phaseName":"Cicd And Capstone","readmeRaw":"$3","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"72-trend-analysis-and-historical-comparison.test.js","content":"// Kata 72 — Trend Analysis (k6 solution)\n//\n// Same shape as kata 71's smoke test — the analytical work happens\n// OUTSIDE k6, in scripts that aggregate multiple summary.json files\n// over time. See the readme for check-trend.js + the n-of-m pattern.\n//\n// To produce trend data: run this 5+ times, saving --summary-export\n// each time, and feed the resulting JSONs into check-trend.js.\n\nimport http from 'k6/http';\nimport { check } from 'k6';\n\nconst BASE_URL = __ENV.K6_BASE_URL || 'http://localhost:3000';\n\nexport const options = {\n  scenarios: {\n    trend: {\n      executor: 'constant-arrival-rate',\n      rate: 50,\n      timeUnit: '1s',\n      duration: '20s',\n      preAllocatedVUs: 30,\n    },\n  },\n  thresholds: {\n    'http_req_duration': ['p(95)<300'],\n    'http_req_failed': ['rate<0.01'],\n  },\n};\n\nexport default function () {\n  const res = http.get(`${BASE_URL}/lab/echo`);\n  check(res, { 'status is 200': (r) => r.status === 200 });\n}\n"}],"artilleryFiles":[{"filename":"72-trend-analysis-and-historical-comparison.yml","content":"# Kata 72 — Trend Analysis (Artillery solution)\n#\n# Same workload as the k6 solution. The analytical work is in scripts\n# that walk historical run outputs — Artillery's `--output report.json`\n# captures one run's data; aggregation across runs is your tooling.\n\nconfig:\n  target: \"http://localhost:3000\"\n  phases:\n    - duration: 20\n      arrivalRate: 50\n      name: \"trend snapshot\"\n  ensure:\n    p95: 300\n    maxErrorRate: 1\n\nscenarios:\n  - name: \"trend probe\"\n    flow:\n      - get:\n          url: \"/lab/echo\"\n          expect:\n            - statusCode: 200\n"}],"jmeterFiles":[]},"prev":{"slug":"71-ci-gates-and-baselines","number":71,"title":"CI Gates and Baselines","phaseSlug":"phase-18-cicd-and-capstone","phaseNumber":18,"phaseName":"Cicd And Capstone","readmeRaw":"$4","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"71-ci-gates-and-baselines.test.js","content":"$5"}],"artilleryFiles":[{"filename":"71-ci-gates-and-baselines.yml","content":"# Kata 71 — CI Gates and Baselines (Artillery solution)\n#\n# Artillery's `ensure` block is the equivalent of k6 thresholds — failed\n# ensures exit non-zero, gating the CI build. For baseline comparison,\n# Artillery has artillery.io/cloud or you can pipe `--output report.json`\n# into a custom script (same pattern as the k6 solution's compare-baseline.js).\n\nconfig:\n  target: \"http://localhost:3000\"\n  phases:\n    - duration: 30\n      arrivalRate: 50\n      name: \"ci smoke\"\n  ensure:\n    p95: 200    # 80% of SLO budget (250ms)\n    p99: 400    # 80% of SLO budget (500ms)\n    maxErrorRate: 0.1\n\nscenarios:\n  - name: \"ci smoke probe\"\n    flow:\n      - get:\n          url: \"/lab/echo\"\n          expect:\n            - statusCode: 200\n"}],"jmeterFiles":[]},"next":{"slug":"73-jmeter-awareness","number":73,"title":"JMeter Awareness","phaseSlug":"phase-18-cicd-and-capstone","phaseNumber":18,"phaseName":"Cicd And Capstone","readmeRaw":"$6","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"73-jmeter-awareness.test.js","content":"$7"}],"artilleryFiles":[{"filename":"73-jmeter-awareness.yml","content":"# Kata 73 — JMeter Awareness (Artillery equivalent)\n#\n# Same workload as the kata's 73-smoke-test.jmx, in Artillery YAML.\n# JMeter Thread Group becomes Artillery `phases`. JMX Sampler becomes\n# `flow` step. ResponseAssertion becomes `expect`.\n\nconfig:\n  target: \"http://localhost:3000\"\n  phases:\n    - duration: 5\n      arrivalRate: 1\n      rampTo: 50\n      name: \"ramp\"\n    - duration: 30\n      arrivalRate: 50\n      name: \"smoke\"\n  ensure:\n    p95: 500\n    maxErrorRate: 1\n\nscenarios:\n  - name: \"echo\"\n    flow:\n      - get:\n          url: \"/lab/echo\"\n          expect:\n            - statusCode: 200\n"}],"jmeterFiles":[{"filename":"73-smoke-test.jmx","content":"$8"}]},"frameworks":[{"id":"k6","label":"k6","files":[{"filename":"72-trend-analysis-and-historical-comparison.test.js","html":"$9"}]},{"id":"artillery","label":"Artillery","files":[{"filename":"72-trend-analysis-and-historical-comparison.yml","html":"$a"}]},{"id":"jmeter","label":"JMeter","files":[]},{"id":"playwright","label":"Playwright","files":[]},{"id":"cypress","label":"Cypress","files":[]}]}],["$Lb"],"$Lc"]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"UzMlu93LkryOOruE2pxnW"}
+b:["$","script","script-0",{"src":"/qa-labs/_next/static/chunks/01luku1w1f06_.js","async":true}]
+c:["$","$Ld",null,{"children":["$","$e",null,{"name":"Next.MetadataOutlet","children":"$@f"}]}]
+f:null

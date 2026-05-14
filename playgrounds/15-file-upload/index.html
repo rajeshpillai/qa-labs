@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kata 15: File Upload | QA Labs</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #1e293b; padding: 2rem; }
+    .header { background: #0f172a; color: white; padding: 1rem 2rem; margin: -2rem -2rem 2rem; }
+    .header h1 { font-size: 1.25rem; }
+    .kata-badge { display: inline-block; background: #38bdf8; color: #0f172a; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 4px; margin-right: 0.5rem; }
+
+    .upload-container { max-width: 650px; margin: 0 auto; background: white; border-radius: 8px; padding: 2rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .upload-title { font-size: 1.1rem; color: #334155; margin-bottom: 1.5rem; padding-bottom: 0.75rem; border-bottom: 2px solid #e2e8f0; }
+
+    /* Upload sections */
+    .upload-section { margin-bottom: 1.5rem; }
+    .upload-section h3 { font-size: 0.9rem; color: #475569; margin-bottom: 0.75rem; }
+
+    /* Drag-drop zone */
+    .drop-zone {
+      border: 2px dashed #cbd5e1; border-radius: 8px; padding: 2rem;
+      text-align: center; cursor: pointer; transition: border-color 0.2s, background 0.2s;
+      margin-bottom: 0.75rem; position: relative;
+    }
+    .drop-zone:hover { border-color: #3b82f6; background: #eff6ff; }
+    .drop-zone.drag-over { border-color: #3b82f6; background: #dbeafe; }
+    .drop-zone .drop-icon { font-size: 2rem; margin-bottom: 0.5rem; display: block; color: #94a3b8; }
+    .drop-zone .drop-text { font-size: 0.85rem; color: #64748b; }
+    .drop-zone .drop-text strong { color: #2563eb; }
+
+    /* Hidden file input — the drop zone click triggers this */
+    .file-input { display: none; }
+
+    /* Accepted types info */
+    .accepted-types { font-size: 0.75rem; color: #94a3b8; margin-top: 0.5rem; }
+
+    /* Error message for invalid file type */
+    .upload-error {
+      display: none; padding: 0.6rem 0.85rem; background: #fee2e2; color: #991b1b;
+      border-radius: 6px; font-size: 0.8rem; margin-top: 0.5rem;
+    }
+    .upload-error.visible { display: block; }
+
+    /* Progress bar */
+    .progress-container { display: none; margin-top: 0.75rem; }
+    .progress-container.visible { display: block; }
+    .progress-bar-bg { height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; }
+    .progress-bar-fill { height: 100%; background: #2563eb; border-radius: 4px; transition: width 0.3s; width: 0%; }
+    .progress-text { font-size: 0.75rem; color: #64748b; margin-top: 0.25rem; text-align: right; }
+
+    /* File list */
+    .file-list { margin-top: 1rem; }
+    .file-list h3 { font-size: 0.9rem; color: #475569; margin-bottom: 0.5rem; }
+    .file-item {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.65rem 0.85rem; background: #f8fafc; border: 1px solid #e2e8f0;
+      border-radius: 6px; margin-bottom: 0.5rem; font-size: 0.85rem;
+    }
+    .file-item .file-info { display: flex; align-items: center; gap: 0.75rem; }
+    .file-item .file-icon { font-size: 1.2rem; color: #64748b; }
+    .file-item .file-name { font-weight: 600; color: #334155; }
+    .file-item .file-size { font-size: 0.75rem; color: #94a3b8; }
+    .file-item .file-preview {
+      width: 40px; height: 40px; object-fit: cover; border-radius: 4px;
+      background: #e2e8f0; display: flex; align-items: center; justify-content: center;
+      font-size: 0.6rem; color: #64748b; overflow: hidden;
+    }
+    .file-item .file-preview img { width: 100%; height: 100%; object-fit: cover; }
+    .file-item .btn-remove {
+      background: #fee2e2; color: #991b1b; border: none; padding: 0.3rem 0.6rem;
+      border-radius: 4px; cursor: pointer; font-size: 0.75rem; font-weight: 600;
+    }
+    .file-item .btn-remove:hover { background: #fca5a5; }
+
+    .empty-list { font-size: 0.8rem; color: #94a3b8; font-style: italic; }
+  </style>
+</head>
+<body>
+
+  <header class="header" data-testid="page-header">
+    <span class="kata-badge">KATA 15</span>
+    <h1>KYC Document Upload</h1>
+  </header>
+
+  <div class="upload-container" data-testid="upload-container">
+    <h2 class="upload-title">Upload Identity Documents</h2>
+
+    <!-- Upload section -->
+    <div class="upload-section">
+      <h3>Upload ID Proof & Address Proof</h3>
+
+      <!-- Drop zone: clicking it opens the file picker, or files can be dragged onto it -->
+      <div class="drop-zone" data-testid="drop-zone" id="drop-zone">
+        <span class="drop-icon">&#128206;</span>
+        <div class="drop-text">
+          Drag & drop files here, or <strong>click to browse</strong>
+        </div>
+        <div class="accepted-types">Accepted: .pdf, .jpg, .png (max 5 MB each)</div>
+      </div>
+
+      <!-- Hidden file input triggered by the drop zone click -->
+      <input type="file" class="file-input" data-testid="file-input" id="file-input"
+             accept=".pdf,.jpg,.jpeg,.png" multiple>
+
+      <!-- Error shown when an invalid file type is selected -->
+      <div class="upload-error" data-testid="upload-error" id="upload-error"></div>
+
+      <!-- Progress bar shown during simulated upload -->
+      <div class="progress-container" data-testid="progress-container" id="progress-container">
+        <div class="progress-bar-bg">
+          <div class="progress-bar-fill" data-testid="progress-bar" id="progress-bar"></div>
+        </div>
+        <div class="progress-text" data-testid="progress-text" id="progress-text">0%</div>
+      </div>
+    </div>
+
+    <!-- List of uploaded files -->
+    <div class="file-list" data-testid="file-list">
+      <h3>Uploaded Files (<span data-testid="file-count" id="file-count">0</span>)</h3>
+      <div id="file-items" data-testid="file-items">
+        <p class="empty-list" data-testid="empty-list" id="empty-list">No files uploaded yet.</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // -----------------------------------------------------------------------
+    // File upload logic with drag-drop, type validation, preview, and
+    // simulated progress bar.
+    // -----------------------------------------------------------------------
+
+    const dropZone = document.getElementById('drop-zone');
+    const fileInput = document.getElementById('file-input');
+    const uploadError = document.getElementById('upload-error');
+    const progressContainer = document.getElementById('progress-container');
+    const progressBar = document.getElementById('progress-bar');
+    const progressText = document.getElementById('progress-text');
+    const fileItems = document.getElementById('file-items');
+    const fileCountEl = document.getElementById('file-count');
+    const emptyList = document.getElementById('empty-list');
+
+    // ALLOWED_TYPES lists the MIME types we accept for upload.
+    const ALLOWED_TYPES = ['application/pdf', 'image/jpeg', 'image/png'];
+    // ALLOWED_EXTENSIONS for display purposes.
+    const ALLOWED_EXTENSIONS = ['.pdf', '.jpg', '.jpeg', '.png'];
+    // MAX_SIZE_BYTES: 5 MB in bytes.
+    const MAX_SIZE_BYTES = 5 * 1024 * 1024;
+
+    // uploadedFiles tracks all files that have been successfully uploaded.
+    let uploadedFiles = [];
+
+    // --- Click the drop zone to open the file picker ---
+    // When the drop zone is clicked, we programmatically click the hidden
+    // <input type="file"> to open the browser's file picker dialog.
+    dropZone.addEventListener('click', () => {
+      fileInput.click();
+    });
+
+    // --- Drag-and-drop events on the drop zone ---
+    // dragover: fires continuously while a file is dragged over the zone.
+    // We must call e.preventDefault() to allow the drop event to fire.
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      dropZone.classList.add('drag-over');
+    });
+
+    // dragleave: fires when the dragged item leaves the drop zone.
+    dropZone.addEventListener('dragleave', (e) => {
+      if (!dropZone.contains(e.relatedTarget)) {
+        dropZone.classList.remove('drag-over');
+      }
+    });
+
+    // drop: fires when files are dropped onto the zone.
+    // e.dataTransfer.files contains the dropped File objects.
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('drag-over');
+      const files = Array.from(e.dataTransfer.files);
+      handleFiles(files);
+    });
+
+    // --- File input change event ---
+    // When the user selects files via the file picker dialog, the "change"
+    // event fires on the <input type="file">.
+    fileInput.addEventListener('change', (e) => {
+      const files = Array.from(e.target.files);
+      handleFiles(files);
+      // Reset the input so the same file can be selected again.
+      fileInput.value = '';
+    });
+
+    // handleFiles(files) validates each file and adds valid ones to the list.
+    // Parameters:
+    //   files — an array of File objects from the input or drop event.
+    function handleFiles(files) {
+      // Hide previous errors.
+      uploadError.classList.remove('visible');
+      uploadError.textContent = '';
+
+      for (const file of files) {
+        // Check file type against ALLOWED_TYPES.
+        if (!ALLOWED_TYPES.includes(file.type)) {
+          const ext = file.name.split('.').pop();
+          uploadError.textContent = `File "${file.name}" is not allowed. Only .pdf, .jpg, .png files are accepted.`;
+          uploadError.classList.add('visible');
+          continue; // Skip this file but process others.
+        }
+
+        // Check file size.
+        if (file.size > MAX_SIZE_BYTES) {
+          uploadError.textContent = `File "${file.name}" exceeds the 5 MB limit.`;
+          uploadError.classList.add('visible');
+          continue;
+        }
+
+        // File is valid — simulate upload with a progress bar.
+        simulateUpload(file);
+      }
+    }
+
+    // simulateUpload(file) shows a progress bar animation and then adds
+    // the file to the uploaded files list.
+    function simulateUpload(file) {
+      progressContainer.classList.add('visible');
+      progressBar.style.width = '0%';
+      progressText.textContent = '0%';
+
+      let progress = 0;
+      // setInterval runs a function repeatedly at the given interval (ms).
+      // We increment progress by 10% every 50ms to simulate upload time.
+      const interval = setInterval(() => {
+        progress += 10;
+        progressBar.style.width = progress + '%';
+        progressText.textContent = progress + '%';
+
+        if (progress >= 100) {
+          clearInterval(interval);
+          // After "upload" completes, add the file to the list.
+          addFileToList(file);
+          // Hide the progress bar after a short delay.
+          setTimeout(() => {
+            progressContainer.classList.remove('visible');
+          }, 300);
+        }
+      }, 50);
+    }
+
+    // formatFileSize(bytes) converts bytes to a human-readable string.
+    // e.g. 1024 -> "1.0 KB", 1048576 -> "1.0 MB"
+    function formatFileSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    // addFileToList(file) creates a DOM element for the uploaded file and
+    // appends it to the file list.
+    function addFileToList(file) {
+      // Hide the "no files" message.
+      emptyList.style.display = 'none';
+
+      // Generate a unique ID for this file item.
+      const fileId = 'file-' + Date.now() + '-' + Math.random().toString(36).substr(2, 5);
+
+      // Store the file reference.
+      uploadedFiles.push({ id: fileId, file });
+
+      // Create the file item element.
+      const item = document.createElement('div');
+      item.className = 'file-item';
+      item.setAttribute('data-testid', fileId);
+      item.setAttribute('data-file-name', file.name);
+
+      // Build the preview element.
+      let previewHTML = '';
+      if (file.type.startsWith('image/')) {
+        // For image files, create a thumbnail using a FileReader.
+        // FileReader reads file contents asynchronously. readAsDataURL()
+        // produces a base64 data URL that can be used as an <img> src.
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const img = item.querySelector('.file-preview img');
+          if (img) img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+        previewHTML = '<div class="file-preview" data-testid="preview-' + fileId + '"><img src="" alt="preview"></div>';
+      } else {
+        previewHTML = '<div class="file-preview" data-testid="preview-' + fileId + '">PDF</div>';
+      }
+
+      item.innerHTML = `
+        <div class="file-info">
+          ${previewHTML}
+          <div>
+            <div class="file-name" data-testid="name-${fileId}">${file.name}</div>
+            <div class="file-size" data-testid="size-${fileId}">${formatFileSize(file.size)}</div>
+          </div>
+        </div>
+        <button class="btn-remove" data-testid="remove-${fileId}" data-file-id="${fileId}">Remove</button>
+      `;
+
+      fileItems.appendChild(item);
+      updateFileCount();
+
+      // Attach the remove button's click handler.
+      item.querySelector('.btn-remove').addEventListener('click', () => {
+        removeFile(fileId);
+      });
+    }
+
+    // removeFile(fileId) removes a file from the uploaded list and DOM.
+    function removeFile(fileId) {
+      // Remove from our tracking array.
+      uploadedFiles = uploadedFiles.filter(f => f.id !== fileId);
+
+      // Remove the DOM element.
+      const el = document.querySelector(`[data-testid="${fileId}"]`);
+      if (el) el.remove();
+
+      updateFileCount();
+
+      // Show the "no files" message if the list is empty.
+      if (uploadedFiles.length === 0) {
+        emptyList.style.display = 'block';
+      }
+    }
+
+    // updateFileCount() updates the "Uploaded Files (N)" counter.
+    function updateFileCount() {
+      fileCountEl.textContent = uploadedFiles.length;
+    }
+  </script>
+
+</body>
+</html>

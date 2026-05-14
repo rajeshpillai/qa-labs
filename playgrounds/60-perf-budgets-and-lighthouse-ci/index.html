@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Kata 60 Playground — over-budget page</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      padding: 2rem;
+      max-width: 56rem;
+      margin: 0 auto;
+      line-height: 1.6;
+    }
+    h1 { font-size: 1.875rem; color: #93c5fd; margin-bottom: 1rem; }
+    .resource-list { margin-top: 1rem; }
+    .resource-list li { margin: 0.25rem 0; font-family: monospace; font-size: 0.85rem; }
+    .stats {
+      background: #1e293b;
+      padding: 1rem;
+      border-radius: 0.5rem;
+      margin: 1rem 0;
+    }
+  </style>
+</head>
+<body>
+  <!--
+    This page is "over-budget on purpose":
+    - Lots of small resource fetches (drives request count up)
+    - Several CSS-loaded inline images (drives image budget up)
+    - The total is small in absolute terms but exceeds tight budgets
+
+    The kata exercise is to write an LHCI config that flags this page
+    and then optimize until it passes.
+  -->
+  <h1 data-testid="title">Resource budgets demo</h1>
+  <p>
+    This page intentionally exceeds tight resource budgets. Use the kata's
+    <code>lighthouserc.json</code> to flag the regression, then either tighten
+    the budget or ship optimizations.
+  </p>
+
+  <div class="stats" data-testid="stats">
+    <div>Page count: <strong id="resource-count">measuring…</strong></div>
+    <div>Total transferred bytes: <strong id="total-bytes">measuring…</strong></div>
+    <div>Largest resource: <strong id="largest">measuring…</strong></div>
+  </div>
+
+  <h2>What the page loads (in addition to itself):</h2>
+  <ul class="resource-list" data-testid="resource-list" id="resource-list"></ul>
+
+  <script>
+    // Simulate a resource-heavy page by triggering a handful of fetches.
+    // We intentionally hit /lab/echo with different query params to make
+    // each request count as a unique resource (no caching).
+    const origin = 'http://localhost:3000';
+    const fetches = [];
+    for (let i = 0; i < 8; i++) {
+      fetches.push(fetch(`${origin}/lab/echo?bundle=${i}`).catch(() => null));
+    }
+
+    Promise.all(fetches).then(() => {
+      const list = document.getElementById('resource-list');
+      const entries = performance.getEntriesByType('resource');
+      let totalBytes = 0;
+      let largest = { name: 'none', size: 0 };
+
+      for (const e of entries) {
+        const size = e.transferSize || e.encodedBodySize || 0;
+        totalBytes += size;
+        if (size > largest.size) {
+          largest = { name: e.name.split('/').pop() || e.name, size };
+        }
+        const li = document.createElement('li');
+        li.textContent = `${size}b — ${e.initiatorType} — ${e.name}`;
+        list.appendChild(li);
+      }
+
+      document.getElementById('resource-count').textContent = String(entries.length);
+      document.getElementById('total-bytes').textContent = `${totalBytes} bytes`;
+      document.getElementById('largest').textContent = `${largest.name} (${largest.size}b)`;
+    });
+  </script>
+</body>
+</html>

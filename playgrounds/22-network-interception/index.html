@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kata 22: Network Interception | QA Labs</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #1e293b; padding: 2rem; }
+    .header { background: #0f172a; color: white; padding: 1rem 2rem; margin: -2rem -2rem 2rem; }
+    .header h1 { font-size: 1.25rem; }
+    .kata-badge { display: inline-block; background: #38bdf8; color: #0f172a; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 4px; margin-right: 0.5rem; }
+
+    .section { margin-bottom: 2rem; padding: 1.5rem; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .section h2 { font-size: 1rem; color: #475569; margin-bottom: 1rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.5rem; }
+
+    .form-group { margin-bottom: 1rem; }
+    .form-group label { display: block; font-size: 0.85rem; font-weight: 600; color: #475569; margin-bottom: 0.25rem; }
+    .form-group input, .form-group select {
+      width: 100%; max-width: 400px; padding: 0.5rem 0.75rem; border: 1px solid #cbd5e1;
+      border-radius: 6px; font-size: 0.9rem; color: #1e293b;
+    }
+
+    button {
+      padding: 0.5rem 1.25rem; border: none; border-radius: 6px; font-size: 0.875rem;
+      font-weight: 600; cursor: pointer; transition: background 0.2s;
+    }
+    .btn-primary { background: #3b82f6; color: white; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-primary:disabled { background: #94a3b8; cursor: not-allowed; }
+    .btn-secondary { background: #e2e8f0; color: #334155; }
+    .btn-secondary:hover { background: #cbd5e1; }
+
+    .loading { display: none; align-items: center; gap: 0.5rem; color: #64748b; font-size: 0.85rem; margin-top: 0.5rem; }
+    .loading.visible { display: flex; }
+    .spinner { width: 16px; height: 16px; border: 2px solid #cbd5e1; border-top-color: #3b82f6; border-radius: 50%; animation: spin 0.6s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .status-message {
+      margin-top: 0.75rem; padding: 0.75rem 1rem; border-radius: 6px;
+      font-size: 0.85rem; display: none;
+    }
+    .status-message.visible { display: block; }
+    .status-success { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+    .status-error { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+
+    .applicant-card {
+      padding: 1rem; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;
+      margin-top: 1rem; display: none;
+    }
+    .applicant-card.visible { display: block; }
+    .applicant-card .field { margin-bottom: 0.5rem; font-size: 0.85rem; }
+    .applicant-card .field strong { color: #475569; }
+
+    .note {
+      margin-top: 1rem; padding: 0.75rem 1rem; background: #fffbeb; border: 1px solid #fde68a;
+      border-radius: 6px; font-size: 0.8rem; color: #92400e;
+    }
+  </style>
+</head>
+<body>
+
+  <header class="header" data-testid="page-header">
+    <span class="kata-badge">KATA 22</span>
+    <h1>KYC Submission Form - Network Interception Practice</h1>
+  </header>
+
+  <!--
+    IMPORTANT NOTE FOR LEARNERS:
+    ==========================================================================
+    This playground makes fetch() requests to relative URLs like /api/applicant
+    and /api/kyc/submit. There is NO real backend server — these requests will
+    return 404 errors if not intercepted.
+
+    The point of this kata is to learn NETWORK INTERCEPTION in your test
+    framework. Your tests will intercept these fetch requests BEFORE they reach
+    the server and return mock responses. This is a common real-world pattern:
+    the frontend talks to API endpoints, and in tests you mock the backend.
+
+    - Playwright uses page.route() to intercept requests
+    - Cypress uses cy.intercept() to intercept requests
+    ==========================================================================
+  -->
+
+  <!-- Section 1: Load Applicant Data (GET request) -->
+  <div class="section" data-testid="applicant-section">
+    <h2>Applicant Lookup</h2>
+    <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 1rem;">
+      Enter an applicant ID to load their data from the API.
+    </p>
+    <div class="form-group">
+      <label for="applicant-id">Applicant ID</label>
+      <input type="text" id="applicant-id" data-testid="applicant-id-input" placeholder="e.g. APP-1001" value="APP-1001">
+    </div>
+    <button class="btn-secondary" data-testid="load-applicant-btn" id="load-applicant-btn">Load Applicant</button>
+
+    <div class="loading" data-testid="applicant-loading" id="applicant-loading">
+      <div class="spinner"></div>
+      <span>Loading applicant data...</span>
+    </div>
+
+    <div class="applicant-card" data-testid="applicant-card" id="applicant-card">
+      <div class="field"><strong>Name:</strong> <span data-testid="applicant-name" id="applicant-name"></span></div>
+      <div class="field"><strong>Email:</strong> <span data-testid="applicant-email" id="applicant-email"></span></div>
+      <div class="field"><strong>Country:</strong> <span data-testid="applicant-country" id="applicant-country"></span></div>
+      <div class="field"><strong>Risk Level:</strong> <span data-testid="applicant-risk" id="applicant-risk"></span></div>
+    </div>
+
+    <div class="status-message" data-testid="applicant-error" id="applicant-error"></div>
+  </div>
+
+  <!-- Section 2: KYC Submission Form (POST request) -->
+  <div class="section" data-testid="kyc-form-section">
+    <h2>Submit KYC Application</h2>
+    <form id="kyc-form" data-testid="kyc-form">
+      <div class="form-group">
+        <label for="full-name">Full Name</label>
+        <input type="text" id="full-name" data-testid="full-name-input" placeholder="Aisha Patel" required>
+      </div>
+      <div class="form-group">
+        <label for="email">Email</label>
+        <input type="email" id="email" data-testid="email-input" placeholder="aisha@example.com" required>
+      </div>
+      <div class="form-group">
+        <label for="country">Country</label>
+        <select id="country" data-testid="country-select">
+          <option value="US">United States</option>
+          <option value="GB">United Kingdom</option>
+          <option value="IN">India</option>
+          <option value="DE">Germany</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="doc-type">Document Type</label>
+        <select id="doc-type" data-testid="doc-type-select">
+          <option value="passport">Passport</option>
+          <option value="drivers-license">Driver's License</option>
+          <option value="national-id">National ID</option>
+        </select>
+      </div>
+      <button type="submit" class="btn-primary" data-testid="submit-btn" id="submit-btn">Submit KYC</button>
+    </form>
+
+    <div class="loading" data-testid="submit-loading" id="submit-loading">
+      <div class="spinner"></div>
+      <span>Submitting KYC application...</span>
+    </div>
+
+    <div class="status-message" data-testid="submit-status" id="submit-status"></div>
+  </div>
+
+  <div class="note">
+    <strong>Note:</strong> This playground makes real fetch() calls to <code>/api/applicant</code> and <code>/api/kyc/submit</code>.
+    Without a backend server, these will fail with 404. In the test exercises, you will intercept these requests
+    and return mock responses using Playwright's <code>page.route()</code> or Cypress's <code>cy.intercept()</code>.
+  </div>
+
+  <script>
+    // -----------------------------------------------------------------------
+    // Applicant Lookup — GET /api/applicant?id=APP-1001
+    // -----------------------------------------------------------------------
+    // When the user clicks "Load Applicant", this function sends a GET request
+    // to /api/applicant with the applicant ID as a query parameter. In tests,
+    // we intercept this request and return mock data.
+
+    document.getElementById('load-applicant-btn').addEventListener('click', async () => {
+      // Read the applicant ID from the input field.
+      const applicantId = document.getElementById('applicant-id').value.trim();
+
+      // If no ID is entered, show an error and stop.
+      if (!applicantId) {
+        showApplicantError('Please enter an applicant ID.');
+        return;
+      }
+
+      // Show loading indicator while we wait for the response.
+      document.getElementById('applicant-loading').classList.add('visible');
+      // Hide previous results/errors.
+      document.getElementById('applicant-card').classList.remove('visible');
+      document.getElementById('applicant-error').classList.remove('visible');
+
+      try {
+        // Send a GET request to the /api/applicant endpoint.
+        // fetch(url) makes an HTTP request and returns a Promise that resolves
+        // to a Response object. We include a custom header so tests can verify it.
+        const response = await fetch(`/api/applicant?id=${encodeURIComponent(applicantId)}`, {
+          method: 'GET',
+          headers: {
+            'Accept': 'application/json',
+            'X-Client-Version': '1.0.0'
+          }
+        });
+
+        // Check if the response status indicates success (2xx).
+        // response.ok is true if status is 200-299.
+        if (!response.ok) {
+          throw new Error(`Server returned ${response.status}: ${response.statusText}`);
+        }
+
+        // Parse the JSON response body.
+        // response.json() returns a Promise that resolves to the parsed JSON.
+        const data = await response.json();
+
+        // Display the applicant data in the card.
+        document.getElementById('applicant-name').textContent = data.name;
+        document.getElementById('applicant-email').textContent = data.email;
+        document.getElementById('applicant-country').textContent = data.country;
+        document.getElementById('applicant-risk').textContent = data.riskLevel;
+        document.getElementById('applicant-card').classList.add('visible');
+      } catch (err) {
+        // Show error message if the request fails.
+        showApplicantError(err.message || 'Failed to load applicant data.');
+      } finally {
+        // Hide the loading indicator whether the request succeeded or failed.
+        document.getElementById('applicant-loading').classList.remove('visible');
+      }
+    });
+
+    // showApplicantError(msg) displays an error message in the applicant section.
+    function showApplicantError(msg) {
+      const el = document.getElementById('applicant-error');
+      el.textContent = msg;
+      el.className = 'status-message visible status-error';
+    }
+
+    // -----------------------------------------------------------------------
+    // KYC Submission — POST /api/kyc/submit
+    // -----------------------------------------------------------------------
+    // When the user submits the form, this function sends a POST request with
+    // the form data as JSON. In tests, we intercept this request to return
+    // mock success or error responses.
+
+    document.getElementById('kyc-form').addEventListener('submit', async (e) => {
+      // Prevent the default form submission (which would navigate away).
+      e.preventDefault();
+
+      // Disable the submit button to prevent double submissions.
+      const submitBtn = document.getElementById('submit-btn');
+      submitBtn.disabled = true;
+
+      // Show loading indicator.
+      document.getElementById('submit-loading').classList.add('visible');
+      // Hide previous status messages.
+      document.getElementById('submit-status').classList.remove('visible');
+
+      // Collect form data into a plain JavaScript object.
+      const formData = {
+        fullName: document.getElementById('full-name').value.trim(),
+        email: document.getElementById('email').value.trim(),
+        country: document.getElementById('country').value,
+        documentType: document.getElementById('doc-type').value
+      };
+
+      try {
+        // Send a POST request with the form data as JSON.
+        // We include Content-Type and Authorization headers so tests can
+        // verify that the correct headers are being sent.
+        const response = await fetch('/api/kyc/submit', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer test-token-abc123',
+            'X-Client-Version': '1.0.0'
+          },
+          // JSON.stringify() converts the JS object to a JSON string for the body.
+          body: JSON.stringify(formData)
+        });
+
+        // Parse the JSON response.
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.message || `Server error: ${response.status}`);
+        }
+
+        // Show success message.
+        showSubmitStatus('success', `KYC submitted successfully! Reference: ${result.referenceId}`);
+      } catch (err) {
+        // Show error message.
+        showSubmitStatus('error', err.message || 'Failed to submit KYC application.');
+      } finally {
+        // Hide loading and re-enable the submit button.
+        document.getElementById('submit-loading').classList.remove('visible');
+        submitBtn.disabled = false;
+      }
+    });
+
+    // showSubmitStatus(type, msg) displays a success or error message for the form.
+    // type can be 'success' or 'error'.
+    function showSubmitStatus(type, msg) {
+      const el = document.getElementById('submit-status');
+      el.textContent = msg;
+      el.className = `status-message visible status-${type}`;
+    }
+  </script>
+
+</body>
+</html>

@@ -1,0 +1,571 @@
+1:"$Sreact.fragment"
+2:I[76750,["/qa-labs/_next/static/chunks/012xw9ydea0yn.js","/qa-labs/_next/static/chunks/0t2xr05rlu96l.js","/qa-labs/_next/static/chunks/0a55m.6s3qp~-.js","/qa-labs/_next/static/chunks/01luku1w1f06_.js"],"KataPageClient"]
+d:I[97367,["/qa-labs/_next/static/chunks/012xw9ydea0yn.js","/qa-labs/_next/static/chunks/0t2xr05rlu96l.js","/qa-labs/_next/static/chunks/0a55m.6s3qp~-.js"],"OutletBoundary"]
+e:"$Sreact.suspense"
+3:T144d,# Kata 47: Throughput and Little's Law
+
+## What You Will Learn
+
+- The relationship between **virtual users (VUs)**, **response time**, and **throughput** — and why it's NOT just `VUs × RPS`
+- **Little's Law:** the equation that ties them together: `L = λ × W`
+- Why doubling VUs doesn't always double throughput
+- The difference between **closed** and **open** workload models — and why most real traffic is open
+- How to choose `vus` vs `arrivalRate` in k6 / Artillery
+
+## Prerequisites
+
+- Completed [Kata 45](../45-http-and-latency-basics/) and [Kata 46](../46-percentiles-and-distribution/)
+- The QA Labs server running locally (`/lab/slow` and `/lab/jitter`)
+
+## Concepts Explained
+
+### Little's Law
+
+A simple but powerful equation from queueing theory:
+
+```
+L = λ × W
+```
+
+Where:
+- **L** = average concurrency (requests in flight at any moment)
+- **λ** (lambda) = throughput (requests per second)
+- **W** = average response time (seconds per request)
+
+Solve for any one when you know the other two. For example:
+- If **W = 200ms** and you want **λ = 500 RPS**, then **L = 500 × 0.2 = 100** concurrent in-flight requests.
+- If you have **100 VUs** holding the line and **W = 200ms**, you'll get **λ = 100 / 0.2 = 500 RPS**.
+
+This is why "100 VUs" doesn't directly translate to a throughput number — it depends on how long each request takes.
+
+### Closed vs open workload
+
+This trips up most beginners.
+
+#### Closed model — fixed concurrency
+
+Each VU does: send request → wait for response → think → repeat. The number of in-flight requests is **at most** the VU count. If the system slows down, throughput drops because VUs are stuck waiting.
+
+```javascript
+// k6 closed model — the default
+export const options = {
+  vus: 100,           // 100 simultaneous "users"
+  duration: '30s',
+};
+```
+
+Real users behave more like the closed model **per session** — but real *traffic* is open: new users keep arriving regardless of how slow the system is.
+
+#### Open model — fixed arrival rate
+
+New requests start at a steady rate, regardless of whether previous ones finished. If the system slows down, requests pile up. This better simulates real traffic — and it's how production overload looks.
+
+```javascript
+// k6 open model
+export const options = {
+  scenarios: {
+    steady: {
+      executor: 'constant-arrival-rate',
+      rate: 500,           // 500 requests per second
+      timeUnit: '1s',
+      duration: '30s',
+      preAllocatedVUs: 100, // worker pool — must be enough
+      maxVUs: 200,
+    },
+  },
+};
+```
+
+Artillery's `arrivalRate` in `phases` is also open-model.
+
+> **Why this matters:** if you load-test in closed mode at "100 VUs" and the system slows down, your test artificially backs off. You'll never observe overload. Open mode is what real traffic looks like — and what causes real outages.
+
+### What VU count to pick (closed model)
+
+If you're using closed mode (k6 default), pick VUs roughly equal to expected concurrency:
+
+```
+VUs needed ≈ target_RPS × expected_response_time_seconds
+```
+
+For 500 RPS at 200ms response time: ~100 VUs. If the system slows to 500ms response time, you'd need 250 VUs to maintain 500 RPS. With 100 VUs, you'd only achieve `100 / 0.5 = 200 RPS`.
+
+## Exercises
+
+1. **Closed mode warm-up.** Run the k6 test against `/lab/slow?ms=100` with 10 VUs for 10 seconds. What throughput do you observe? Apply Little's Law: does it match `10 / 0.1 = 100 RPS`?
+2. **Increase VUs.** Same endpoint, 20 VUs. Does throughput double? It should, until the server can't keep up.
+3. **Increase server-side delay.** Hit `/lab/slow?ms=500` with 10 VUs. Throughput should be ~`10 / 0.5 = 20 RPS`.
+4. **Open mode.** Switch to `constant-arrival-rate` at 200 RPS against `/lab/slow?ms=100`. Does it sustain 200 RPS? Now point it at `/lab/slow?ms=600` — what happens? (You'll see queueing.)
+5. **Calculate VUs needed.** You want 1000 RPS sustained against an endpoint with p95 = 250ms. How many `preAllocatedVUs` should you start with?
+
+## Common Mistakes
+
+- **Reporting throughput from a closed-mode test as your system's capacity.** It's bounded by your VU count — not the system's actual limit.
+- **Forgetting `preAllocatedVUs` is a pool, not a target.** k6 will warn if your `rate` requires more VUs than allocated; bump `preAllocatedVUs` and `maxVUs` accordingly.
+- **Comparing closed-mode results across different systems.** If response times differ, throughput differs even at the same VU count — it's apples to oranges.
+
+## Cheat Sheet
+
+| You want to test... | Use this model | k6 executor |
+|---------------------|----------------|-------------|
+| Steady traffic at known RPS | Open | `constant-arrival-rate` |
+| User-session load (think time) | Closed | default `vus` + `duration` |
+| Ramp from 0 → N RPS | Open | `ramping-arrival-rate` |
+| Ramp from 0 → N concurrent | Closed | `ramping-vus` |
+| Spike test | Open | `ramping-arrival-rate` with sharp ramp |
+
+| Symptom | Likely cause |
+|---------|--------------|
+| Throughput plateaus while VUs increase | System saturated |
+| Throughput < target rate in open mode | Server can't keep up; queue is growing |
+| `preAllocatedVUs` warning in k6 | Bump the pool size |
+4:T55d,// Kata 47 — Throughput and Little's Law (k6 solution)
+//
+// Demonstrates open-model load using `constant-arrival-rate`. We TARGET
+// 200 RPS against a 100ms endpoint. Little's Law says we'll need
+// L = λ × W = 200 × 0.1 = 20 in-flight requests on average — so 40
+// preAllocatedVUs gives us 2× headroom for jitter.
+//
+// Try changing the URL to /lab/slow?ms=600 and watch the test struggle to
+// hit the 200 RPS target — that's queueing, exactly as Little's Law predicts.
+
+import http from 'k6/http';
+import { check } from 'k6';
+
+const BASE_URL = __ENV.K6_BASE_URL || 'http://localhost:3000';
+
+export const options = {
+  scenarios: {
+    steady_rps: {
+      executor: 'constant-arrival-rate',
+      rate: 200,                  // 200 requests per second...
+      timeUnit: '1s',             // ...per second
+      duration: '15s',
+      preAllocatedVUs: 40,        // worker pool: enough for L=20 + headroom
+      maxVUs: 80,
+    },
+  },
+  thresholds: {
+    'http_req_duration': ['p(95)<300'],
+    'http_req_failed': ['rate<0.01'],
+    // The test should hit at least 95% of the target throughput.
+    // (200 RPS × 15s = 3000 expected; allow some slack for ramp.)
+    'http_reqs': ['count>2700'],
+  },
+};
+
+export default function () {
+  const res = http.get(`${BASE_URL}/lab/slow?ms=100`);
+  check(res, {
+    'status is 200': (r) => r.status === 200,
+  });
+}
+5:T1156,# Kata 46: Percentiles and Distribution
+
+## What You Will Learn
+
+- Why **the average is the wrong metric** for response times
+- What p50, p95, p99 actually measure — and which one matters for your users
+- How to read a long-tail distribution and spot outliers
+- Setting **per-percentile thresholds** in k6 and Artillery
+- Why "two nines" of fast response is not the same as "p99 of fast response"
+
+## Prerequisites
+
+- Completed [Kata 45 (HTTP and Latency Basics)](../45-http-and-latency-basics/)
+- The QA Labs server running locally — you'll hit `/lab/jitter` which simulates real-world latency variability
+
+## Concepts Explained
+
+### Why averages lie
+
+Imagine 10 requests with these response times (ms):
+
+```
+50, 50, 50, 50, 50, 50, 50, 50, 50, 5000
+```
+
+- **Average:** 545ms
+- **p50 (median):** 50ms
+- **p95:** 5000ms (the 9th-and-up values are at or above the 95th percentile in a small sample)
+- **p99:** 5000ms
+
+If you only watched the average, you'd think "545ms — meh, not great but not terrible." But 1 in 10 of your users got a 5-second response. That's the user who closes the tab and never comes back.
+
+> **Rule of thumb:** averages are for marketing slides. Engineers track percentiles.
+
+### What each percentile means
+
+| Percentile | Meaning | When to use |
+|------------|---------|-------------|
+| **p50 (median)** | Half your users got this fast or faster | "Typical" experience |
+| **p95** | 95% of users got this fast or faster (5% had it worse) | Most common SLO target |
+| **p99** | Only 1% of users had it worse | High-traffic systems where 1% = thousands of users |
+| **p99.9** | "Three nines" tail | Critical-path systems (payments, auth) |
+
+If your system handles 1 million requests/day:
+- p99 = 200ms means **10,000 requests/day were slower than 200ms**
+- p99.9 = 200ms means **1,000 requests/day were slower than 200ms**
+
+That difference matters a lot.
+
+### Reading a distribution
+
+A response time distribution often looks like this (frequency on Y, response time on X):
+
+```
+freq │
+     │ ▓▓▓
+     │ ▓▓▓▓
+     │ ▓▓▓▓▓
+     │ ▓▓▓▓▓▓
+     │ ▓▓▓▓▓▓▓ ▓
+     │ ▓▓▓▓▓▓▓▓▓▓        ▓                ▓
+     └────────────────────────────────────────────►
+       fast                                slow
+       └── p50 ──┘
+                    └── p95 ──┘
+                                            └ p99
+```
+
+The **long tail** on the right is where bad user experiences hide. A test that looks fine at p50 can have a terrible tail. The whole point of percentile-based thresholds is to catch tail regressions.
+
+### k6 threshold syntax
+
+```javascript
+export const options = {
+  thresholds: {
+    http_req_duration: [
+      'p(50)<100',  // median under 100ms
+      'p(95)<300',  // 95% under 300ms
+      'p(99)<800',  // 99% under 800ms
+    ],
+  },
+};
+```
+
+Each entry is a separate threshold — k6 evaluates them independently. If any fails, the test fails.
+
+### Artillery threshold syntax
+
+```yaml
+config:
+  ensure:
+    p50: 100
+    p95: 300
+    p99: 800
+```
+
+## Exercises
+
+1. **Hit `/lab/jitter?p50=50&p95=400`.** What does k6 report for p50, p95, p99? Does it match what the server is told to do?
+2. **Crank `p95` to 2000 in the URL.** Now p99 in the result will be way out — it's the tail of the tail.
+3. **Tighten thresholds** so the test passes for `p50=50&p95=400` but fails for `p50=50&p95=600`. This is what catching a regression looks like.
+4. **Why does p99 sometimes look unstable across runs?** (Hint: how many samples land in the top 1% of a 5-second test at low VU count?)
+
+## Common Mistakes
+
+- **Reporting only p50.** Half of users had it worse — that's not "typical", that's "the lucky half".
+- **Setting thresholds on average instead of percentiles.** Average smooths the tail; you'll miss regressions that only affect 5% of traffic.
+- **Treating p99 from short tests as accurate.** With few samples, p99 has high variance. Run longer tests for tail metrics.
+
+## Cheat Sheet
+
+| Want to know... | Look at... |
+|-----------------|-----------|
+| Typical user experience | p50 |
+| Almost-everyone's experience | p95 |
+| Worst-case for high-volume systems | p99, p99.9 |
+| Whether the test had outliers | max vs p99 |
+| Whether avg is hiding something | (avg − p50) — large gap = skew |
+6:T60b,// Kata 46 — Percentiles and Distribution (k6 solution)
+//
+// Hits /lab/jitter which simulates a real-world distribution: 95% of requests
+// land between p50 and p95, but 5% are tail events well past p95. The
+// thresholds below assert on multiple percentiles — try changing the URL
+// query string to see which threshold breaks first.
+
+import http from 'k6/http';
+import { check } from 'k6';
+
+const BASE_URL = __ENV.K6_BASE_URL || 'http://localhost:3000';
+
+// Server-side latency distribution. The lab server samples from this when
+// responding. We want our thresholds to be slightly tighter than what the
+// server promises so a real regression breaks them.
+const LAB_P50_MS = 50;
+const LAB_P95_MS = 400;
+
+export const options = {
+  vus: 5,
+  duration: '15s',  // longer = more samples = stabler tail percentiles
+  thresholds: {
+    'http_req_duration': [
+      'p(50)<100',   // typical user: under 100ms
+      'p(95)<600',   // 95% of users: under 600ms (LAB_P95_MS plus headroom)
+      'p(99)<1500',  // tail: under 1.5s
+    ],
+    'http_req_failed': ['rate<0.01'],
+    // Custom threshold: max latency observed should not exceed 2s,
+    // otherwise something is *really* wrong.
+    'http_req_duration{kind:max}': ['max<2000'],
+  },
+};
+
+export default function () {
+  const res = http.get(
+    `${BASE_URL}/lab/jitter?p50=${LAB_P50_MS}&p95=${LAB_P95_MS}`,
+    { tags: { kind: 'max' } }
+  );
+
+  check(res, {
+    'status is 200': (r) => r.status === 200,
+    'has latencyMs field': (r) => typeof r.json('latencyMs') === 'number',
+  });
+}
+7:T10d9,# Kata 48: Smoke Test
+
+## What You Will Learn
+
+- What a **smoke test** is in load-testing terms (and how it differs from a smoke test in functional QA)
+- Why every perf project should start with one — and run it on every commit
+- The minimal k6 / Artillery script that constitutes a smoke test
+- How to gate a CI pipeline on a smoke test before running heavier loads
+
+## Prerequisites
+
+- Completed phase 9 (HTTP basics, percentiles, Little's Law)
+- k6 installed (`k6 version`)
+- The QA Labs server running (`cd server && npm start`)
+
+## Concepts Explained
+
+### What is a smoke test in load testing?
+
+In **functional** QA, a smoke test is a quick "does the build even start" check.
+
+In **load** testing, a smoke test is the same idea but for your perf scripts: the smallest possible run that proves:
+
+1. The script compiles and runs without errors.
+2. The target system responds.
+3. Your assertions pass under trivial load (1 VU, ~1 minute).
+
+It is **not** a load test. It does not measure capacity. It just answers "is the perf testing pipeline alive?"
+
+### Why bother?
+
+Two reasons:
+
+**1. Catch broken scripts before paying for a 30-minute load test.** If your `BASE_URL` is wrong, your auth token expired, or the API contract changed, you want to know in 60 seconds, not 30 minutes.
+
+**2. Make perf tests part of CI.** A full load test is too slow for every PR. But a smoke test takes ~1 minute and can run on every commit — catching regressions where the *script* breaks (separate from regressions in *performance*, which need bigger runs).
+
+### Anatomy of a good smoke test
+
+```
+1 VU          ← exactly one user, no concurrency
+30-60 seconds ← long enough to make ~30 requests
+Tight thresholds:
+  - http_req_failed: rate<0.01      (fewer than 1% errors)
+  - http_req_duration: p(95)<500    (clearly fast)
+checks on response shape
+```
+
+The thresholds are **tighter** than what your real load test would assert. Why? Because under a single VU there's nothing competing for resources — if even *this* is slow, something is fundamentally wrong.
+
+### Smoke test vs load test
+
+| | Smoke | Load |
+|---|---|---|
+| **VUs** | 1 | 100s |
+| **Duration** | 30-60s | 5-30 min |
+| **What you assert** | "It works" | "It works at scale" |
+| **Where it runs** | Every CI commit | Nightly / pre-release |
+| **What a failure means** | Pipeline broken or system unreachable | Capacity regression |
+
+### Don't skip the checks
+
+A smoke test that does nothing but `http.get()` and never asserts on the response is worse than nothing — it'll pass even when the server returns 500 every time. Use `check()` for at least:
+
+- `status === 200`
+- One field of the JSON body has the expected shape
+
+## Exercises
+
+1. **Write a smoke test for `/lab/auth/me` (the protected endpoint).** It needs an auth token first — make a smoke test that logs in via `/lab/auth/login`, then hits `/me`, and asserts both calls succeed.
+2. **Make it fail.** Stop the QA Labs server and run the smoke test. The `http_req_failed` threshold should fire. Read the failure output.
+3. **Tighten until it breaks.** Set `p(95)<5` and run against `/lab/echo`. Why does it fail? What's the right tightness?
+4. **Wire it to fail-fast in CI.** What's the exit code on a threshold breach? How would you wire that into a GitHub Actions job that aborts the rest of the pipeline?
+
+## Common Mistakes
+
+- **Treating smoke as load.** Cranking VUs to "see what happens" turns a smoke test into a load test that's too short to be useful.
+- **No assertions.** A test that doesn't assert anything is theatre. Always include at least one `check()` and one threshold.
+- **Skipping smoke and going straight to load.** Then you spend 25 minutes waiting for a load test that fails because of a typo in the URL.
+
+## Cheat Sheet
+
+```javascript
+// Skeleton smoke test
+import http from 'k6/http';
+import { check } from 'k6';
+
+export const options = {
+  vus: 1,
+  duration: '30s',
+  thresholds: {
+    http_req_failed: ['rate<0.01'],
+    http_req_duration: ['p(95)<500'],
+  },
+};
+
+export default function () {
+  const res = http.get('http://localhost:3000/lab/echo');
+  check(res, { 'status is 200': (r) => r.status === 200 });
+}
+```
+
+If this passes consistently in CI, you've earned the right to run heavier scenarios. If it doesn't, fix the script before doing anything else.
+8:T93f,// Kata 48 — Smoke Test (k6 solution)
+//
+// The simplest possible perf test: one VU, 30 seconds, tight thresholds,
+// hits a representative endpoint to verify the perf pipeline is alive.
+// This kata's solution covers two flows the readme exercise asks for:
+// 1. A bare-minimum smoke test against /lab/echo
+// 2. An auth flow smoke test (login → /me) — see the second scenario
+
+import http from 'k6/http';
+import { check, group } from 'k6';
+
+const BASE_URL = __ENV.K6_BASE_URL || 'http://localhost:3000';
+
+export const options = {
+  scenarios: {
+    // Scenario 1: trivial GET smoke
+    echo_smoke: {
+      executor: 'constant-vus',
+      vus: 1,
+      duration: '30s',
+      exec: 'echoSmoke',
+    },
+    // Scenario 2: auth flow smoke
+    auth_smoke: {
+      executor: 'constant-vus',
+      vus: 1,
+      duration: '30s',
+      exec: 'authSmoke',
+      startTime: '0s', // run in parallel — that's fine for a smoke
+    },
+  },
+  thresholds: {
+    // Tighter than a load test: this is 1 VU on an unloaded system,
+    // anything beyond these numbers means something is fundamentally broken.
+    'http_req_failed': ['rate<0.01'],
+    'http_req_duration': ['p(95)<500'],
+    // Per-scenario assertion: every login + /me call must succeed
+    'checks{scenario:auth_smoke}': ['rate>0.99'],
+  },
+};
+
+export function echoSmoke() {
+  const res = http.get(`${BASE_URL}/lab/echo`);
+  check(res, {
+    'echo status is 200': (r) => r.status === 200,
+    'echo body has ok=true': (r) => r.json('ok') === true,
+  });
+}
+
+export function authSmoke() {
+  let token;
+
+  group('login', () => {
+    const loginRes = http.post(
+      `${BASE_URL}/lab/auth/login`,
+      JSON.stringify({ username: 'smoke-user', password: 'anything-works' }),
+      { headers: { 'Content-Type': 'application/json' }, tags: { scenario: 'auth_smoke' } }
+    );
+    check(loginRes, {
+      'login status is 200': (r) => r.status === 200,
+      'login returns a token': (r) => typeof r.json('token') === 'string',
+    });
+    token = loginRes.json('token');
+  });
+
+  group('me', () => {
+    const meRes = http.get(`${BASE_URL}/lab/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+      tags: { scenario: 'auth_smoke' },
+    });
+    check(meRes, {
+      'me status is 200': (r) => r.status === 200,
+      'me returns the user': (r) => r.json('user') === 'smoke-user',
+    });
+  });
+}
+9:T17e8,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#6A737D">// Kata 47 — Throughput and Little's Law (k6 solution)</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// Demonstrates open-model load using `constant-arrival-rate`. We TARGET</span></span>
+<span class="line"><span style="color:#6A737D">// 200 RPS against a 100ms endpoint. Little's Law says we'll need</span></span>
+<span class="line"><span style="color:#6A737D">// L = λ × W = 200 × 0.1 = 20 in-flight requests on average — so 40</span></span>
+<span class="line"><span style="color:#6A737D">// preAllocatedVUs gives us 2× headroom for jitter.</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// Try changing the URL to /lab/slow?ms=600 and watch the test struggle to</span></span>
+<span class="line"><span style="color:#6A737D">// hit the 200 RPS target — that's queueing, exactly as Little's Law predicts.</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> http </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> 'k6/http'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { check } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> 'k6'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> BASE_URL</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> __ENV.</span><span style="color:#79B8FF">K6_BASE_URL</span><span style="color:#F97583"> ||</span><span style="color:#9ECBFF"> 'http://localhost:3000'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> const</span><span style="color:#79B8FF"> options</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">  scenarios: {</span></span>
+<span class="line"><span style="color:#E1E4E8">    steady_rps: {</span></span>
+<span class="line"><span style="color:#E1E4E8">      executor: </span><span style="color:#9ECBFF">'constant-arrival-rate'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      rate: </span><span style="color:#79B8FF">200</span><span style="color:#E1E4E8">,                  </span><span style="color:#6A737D">// 200 requests per second...</span></span>
+<span class="line"><span style="color:#E1E4E8">      timeUnit: </span><span style="color:#9ECBFF">'1s'</span><span style="color:#E1E4E8">,             </span><span style="color:#6A737D">// ...per second</span></span>
+<span class="line"><span style="color:#E1E4E8">      duration: </span><span style="color:#9ECBFF">'15s'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      preAllocatedVUs: </span><span style="color:#79B8FF">40</span><span style="color:#E1E4E8">,        </span><span style="color:#6A737D">// worker pool: enough for L=20 + headroom</span></span>
+<span class="line"><span style="color:#E1E4E8">      maxVUs: </span><span style="color:#79B8FF">80</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">    },</span></span>
+<span class="line"><span style="color:#E1E4E8">  },</span></span>
+<span class="line"><span style="color:#E1E4E8">  thresholds: {</span></span>
+<span class="line"><span style="color:#9ECBFF">    'http_req_duration'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'p(95)&#x3C;300'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#9ECBFF">    'http_req_failed'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'rate&#x3C;0.01'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#6A737D">    // The test should hit at least 95% of the target throughput.</span></span>
+<span class="line"><span style="color:#6A737D">    // (200 RPS × 15s = 3000 expected; allow some slack for ramp.)</span></span>
+<span class="line"><span style="color:#9ECBFF">    'http_reqs'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'count>2700'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#E1E4E8">  },</span></span>
+<span class="line"><span style="color:#E1E4E8">};</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> default</span><span style="color:#F97583"> function</span><span style="color:#E1E4E8"> () {</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> res</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> http.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/slow?ms=100`</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#B392F0">  check</span><span style="color:#E1E4E8">(res, {</span></span>
+<span class="line"><span style="color:#9ECBFF">    'status is 200'</span><span style="color:#E1E4E8">: (</span><span style="color:#FFAB70">r</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> r.status </span><span style="color:#F97583">===</span><span style="color:#79B8FF"> 200</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span></code></pre>a:Tb9f,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#6A737D"># Kata 47 — Throughput and Little's Law (Artillery solution)</span></span>
+<span class="line"><span style="color:#6A737D">#</span></span>
+<span class="line"><span style="color:#6A737D"># Artillery's `arrivalRate` is open-model by default — exactly what we want.</span></span>
+<span class="line"><span style="color:#6A737D"># Same target as the k6 solution: 200 RPS for 15 seconds against /lab/slow.</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#85E89D">config</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">  target</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"http://localhost:3000"</span></span>
+<span class="line"><span style="color:#85E89D">  phases</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">    - </span><span style="color:#85E89D">duration</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">15</span></span>
+<span class="line"><span style="color:#85E89D">      arrivalRate</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">200</span></span>
+<span class="line"><span style="color:#85E89D">      name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"200 rps steady"</span></span>
+<span class="line"><span style="color:#85E89D">  ensure</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">    p95</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">300</span></span>
+<span class="line"><span style="color:#85E89D">    maxErrorRate</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">1</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#85E89D">scenarios</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">  - </span><span style="color:#85E89D">name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"constant rps against 100ms endpoint"</span></span>
+<span class="line"><span style="color:#85E89D">    flow</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">get</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">          url</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"/lab/slow?ms=100"</span></span>
+<span class="line"><span style="color:#85E89D">          expect</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">            - </span><span style="color:#85E89D">statusCode</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">200</span></span>
+<span class="line"></span></code></pre>0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"kata":{"slug":"47-throughput-and-littles-law","number":47,"title":"Throughput and Little's Law","phaseSlug":"phase-09-perf-foundations","phaseNumber":9,"phaseName":"Perf Foundations","readmeRaw":"$3","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"47-throughput-and-littles-law.test.js","content":"$4"}],"artilleryFiles":[{"filename":"47-throughput-and-littles-law.yml","content":"# Kata 47 — Throughput and Little's Law (Artillery solution)\n#\n# Artillery's `arrivalRate` is open-model by default — exactly what we want.\n# Same target as the k6 solution: 200 RPS for 15 seconds against /lab/slow.\n\nconfig:\n  target: \"http://localhost:3000\"\n  phases:\n    - duration: 15\n      arrivalRate: 200\n      name: \"200 rps steady\"\n  ensure:\n    p95: 300\n    maxErrorRate: 1\n\nscenarios:\n  - name: \"constant rps against 100ms endpoint\"\n    flow:\n      - get:\n          url: \"/lab/slow?ms=100\"\n          expect:\n            - statusCode: 200\n"}],"jmeterFiles":[]},"prev":{"slug":"46-percentiles-and-distribution","number":46,"title":"Percentiles and Distribution","phaseSlug":"phase-09-perf-foundations","phaseNumber":9,"phaseName":"Perf Foundations","readmeRaw":"$5","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"46-percentiles-and-distribution.test.js","content":"$6"}],"artilleryFiles":[{"filename":"46-percentiles-and-distribution.yml","content":"# Kata 46 — Percentiles and Distribution (Artillery solution)\n\nconfig:\n  target: \"http://localhost:3000\"\n  phases:\n    - duration: 15\n      arrivalRate: 5\n      name: \"distribution sampling\"\n  ensure:\n    # Per-percentile assertions. Artillery exits non-zero if any breach.\n    p50: 100\n    p95: 600\n    p99: 1500\n    maxErrorRate: 1\n\nscenarios:\n  - name: \"jitter sampling\"\n    flow:\n      - get:\n          url: \"/lab/jitter?p50=50&p95=400\"\n          expect:\n            - statusCode: 200\n            - hasProperty: \"latencyMs\"\n"}],"jmeterFiles":[]},"next":{"slug":"48-smoke-test","number":48,"title":"Smoke Test","phaseSlug":"phase-10-k6-basics","phaseNumber":10,"phaseName":"K6 Basics","readmeRaw":"$7","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"48-smoke-test.test.js","content":"$8"}],"artilleryFiles":[{"filename":"48-smoke-test.yml","content":"# Kata 48 — Smoke Test (Artillery solution)\n\nconfig:\n  target: \"http://localhost:3000\"\n  phases:\n    - duration: 30\n      arrivalRate: 1\n      name: \"smoke\"\n  ensure:\n    p95: 500\n    maxErrorRate: 1\n\nscenarios:\n  - name: \"echo smoke\"\n    weight: 1\n    flow:\n      - get:\n          url: \"/lab/echo\"\n          expect:\n            - statusCode: 200\n            - hasProperty: \"ok\"\n\n  - name: \"auth flow smoke\"\n    weight: 1\n    flow:\n      - post:\n          url: \"/lab/auth/login\"\n          json:\n            username: \"smoke-user\"\n            password: \"anything-works\"\n          capture:\n            - json: \"$.token\"\n              as: \"token\"\n          expect:\n            - statusCode: 200\n\n      - get:\n          url: \"/lab/auth/me\"\n          headers:\n            Authorization: \"Bearer {{ token }}\"\n          expect:\n            - statusCode: 200\n            - hasProperty: \"user\"\n"}],"jmeterFiles":[]},"frameworks":[{"id":"k6","label":"k6","files":[{"filename":"47-throughput-and-littles-law.test.js","html":"$9"}]},{"id":"artillery","label":"Artillery","files":[{"filename":"47-throughput-and-littles-law.yml","html":"$a"}]},{"id":"jmeter","label":"JMeter","files":[]},{"id":"playwright","label":"Playwright","files":[]},{"id":"cypress","label":"Cypress","files":[]}]}],["$Lb"],"$Lc"]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"UzMlu93LkryOOruE2pxnW"}
+b:["$","script","script-0",{"src":"/qa-labs/_next/static/chunks/01luku1w1f06_.js","async":true}]
+c:["$","$Ld",null,{"children":["$","$e",null,{"name":"Next.MetadataOutlet","children":"$@f"}]}]
+f:null

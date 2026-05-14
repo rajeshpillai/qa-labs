@@ -1,0 +1,891 @@
+1:"$Sreact.fragment"
+2:I[76750,["/qa-labs/_next/static/chunks/012xw9ydea0yn.js","/qa-labs/_next/static/chunks/0t2xr05rlu96l.js","/qa-labs/_next/static/chunks/0a55m.6s3qp~-.js","/qa-labs/_next/static/chunks/01luku1w1f06_.js"],"KataPageClient"]
+c:I[97367,["/qa-labs/_next/static/chunks/012xw9ydea0yn.js","/qa-labs/_next/static/chunks/0t2xr05rlu96l.js","/qa-labs/_next/static/chunks/0a55m.6s3qp~-.js"],"OutletBoundary"]
+d:"$Sreact.suspense"
+3:T2254,# Kata 71: CI Gates and Baselines
+
+## What You Will Learn
+
+- Why **a perf test that doesn't gate merges might as well not exist**
+- The two CI gating strategies: **absolute thresholds** vs **baseline comparison**
+- Building a perf-test workflow in **GitHub Actions**: build → run → assert → report
+- How to make perf tests **fast enough to run on every PR** (smoke variant) vs **thorough enough to catch real regressions** (nightly variant)
+- The `--summary-export` + threshold pattern that makes k6 fail the CI build cleanly
+- **Baseline storage**: where you keep "good" numbers and how you update them
+
+## Prerequisites
+
+- Phases 9–17
+- Familiarity with GitHub Actions or your CI tool (examples use Actions; concepts apply to GitLab CI / Jenkins / CircleCI)
+
+## Concepts Explained
+
+### Why gate?
+
+A perf test that just *measures* without failing is decoration. People glance at the dashboard, shrug, ship. **Without a gate, regressions accumulate silently.**
+
+A gated test:
+- Fails the CI build when a metric regresses past the threshold
+- Forces the PR author to investigate before merge
+- Creates a feedback loop: every regression has a name attached
+
+### Two gating strategies
+
+#### 1. Absolute thresholds (simpler, less powerful)
+
+```javascript
+thresholds: {
+  'http_req_duration': ['p(95)<300'],
+}
+```
+
+"p95 must be under 300ms." Fails any time it isn't.
+
+| Pro | Con |
+|-----|-----|
+| Simple, no comparison data needed | Doesn't catch regressions if you're already over the threshold |
+| Easy to align with SLOs | Must be re-tuned if your hardware changes |
+| Stable across runs | "300ms" is opinion — needs justification |
+
+#### 2. Baseline comparison (harder, more powerful)
+
+"p95 must not be worse than yesterday's p95 by more than 10%."
+
+```bash
+# Pseudo-pattern
+LATEST=$(jq '.metrics.http_req_duration["p(95)"]' summary.json)
+BASELINE=$(jq '.metrics.http_req_duration["p(95)"]' baseline.json)
+RATIO=$(echo "$LATEST / $BASELINE" | bc -l)
+if (( $(echo "$RATIO > 1.10" | bc -l) )); then exit 1; fi
+```
+
+Comparing relative change catches a 50% → 60% degradation that absolute thresholds wouldn't (both pass `p95 < 100`).
+
+| Pro | Con |
+|-----|-----|
+| Catches gradual drift | Needs baseline storage + update flow |
+| Ratio-based — works across hardware | Noisy: small changes flag false positives |
+| Adapts to current state | Needs human in the loop to update baselines |
+
+**Use both.** Absolute floor + relative drift detection.
+
+### A complete GitHub Actions workflow
+
+```yaml
+# .github/workflows/perf.yml
+name: Perf Tests
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'katas/**'
+  schedule:
+    - cron: '0 3 * * *'  # nightly at 3am
+
+jobs:
+  perf-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install k6
+        uses: grafana/setup-k6-action@v1
+
+      - name: Build website
+        run: cd website && npm install && npm run build
+
+      - name: Start server
+        run: |
+          cd server && npm install
+          npm start &
+          npx wait-on http://localhost:3000/api/health/
+
+      - name: Run perf smoke test
+        run: |
+          k6 run \
+            --summary-export=summary.json \
+            --quiet \
+            katas/phase-09-perf-foundations/45-http-and-latency-basics/k6/45-http-and-latency-basics.test.js
+
+      - name: Compare against baseline
+        run: |
+          node scripts/compare-baseline.js summary.json baselines/main.json
+
+      - name: Upload summary as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-summary
+          path: summary.json
+```
+
+### The compare-baseline.js script
+
+```javascript
+// scripts/compare-baseline.js
+const fs = require('fs');
+const [_, __, currentPath, baselinePath] = process.argv;
+const current = JSON.parse(fs.readFileSync(currentPath, 'utf-8'));
+const baseline = JSON.parse(fs.readFileSync(baselinePath, 'utf-8'));
+
+const currentP95 = current.metrics.http_req_duration['p(95)'];
+const baselineP95 = baseline.metrics.http_req_duration['p(95)'];
+const ratio = currentP95 / baselineP95;
+
+console.log(`Baseline p95: ${baselineP95.toFixed(1)}ms`);
+console.log(`Current p95:  ${currentP95.toFixed(1)}ms`);
+console.log(`Ratio:        ${ratio.toFixed(2)}x`);
+
+if (ratio > 1.10) {
+  console.error('REGRESSION: p95 worsened by more than 10%');
+  process.exit(1);
+}
+console.log('OK: within 10% of baseline');
+```
+
+### Where baselines live
+
+Three options:
+
+| Option | Pro | Con |
+|--------|-----|-----|
+| Git (committed JSON) | Versioned, simple | Updates need a PR — adds friction |
+| GitHub Actions cache | Fast, automatic | No history; can be cleared |
+| External store (S3, GCS) | Long history | Infra to maintain |
+
+**For most projects: Git.** Commit the baseline as `baselines/main.json`. Update it via PR when you intentionally accept a regression or shipped a perf improvement.
+
+### Two-tier strategy
+
+**Tier 1 — every PR (must be fast):**
+- Smoke test only — 1 minute total
+- Absolute thresholds (catches obvious failures)
+- Runs in <5 minutes total CI time
+
+**Tier 2 — nightly (can be thorough):**
+- Full load test — 15-30 minutes
+- Baseline comparison
+- Triggered via `schedule:` in workflow
+
+This way every PR gets fast feedback, while the slow comprehensive test catches subtler regressions.
+
+### Updating baselines
+
+A perf improvement landing in main means the baseline is now stale (old, slower numbers). Update it:
+
+```yaml
+- name: Update baseline (main only)
+  if: github.ref == 'refs/heads/main' && success()
+  run: |
+    cp summary.json baselines/main.json
+    git add baselines/main.json
+    git -c user.name=ci -c user.email=ci@x commit -m "ci: update perf baseline"
+    git push
+```
+
+This auto-commits a new baseline on every passing main build. Discuss with the team — some prefer manual updates via PR for visibility.
+
+### Reporting back to the PR
+
+```yaml
+- name: Comment on PR
+  if: github.event_name == 'pull_request'
+  uses: actions/github-script@v7
+  with:
+    script: |
+      const fs = require('fs');
+      const summary = JSON.parse(fs.readFileSync('summary.json', 'utf-8'));
+      const p95 = summary.metrics.http_req_duration['p(95)'];
+      github.rest.issues.createComment({
+        owner: context.repo.owner,
+        repo: context.repo.repo,
+        issue_number: context.issue.number,
+        body: `🏃 Perf test results:\np95 latency: ${p95.toFixed(1)}ms`
+      });
+```
+
+PRs now get a comment with the run results. Author sees impact immediately.
+
+## Exercises
+
+1. **Generate a baseline.** Run the kata's k6 test against the lab server. Capture `--summary-export=summary.json`. Save as your local `baselines/main.json`.
+2. **Make a regression.** Modify the test to hit `/lab/slow?ms=300` instead of `/lab/echo`. Run. p95 will be much higher. Run the compare script — it should fail.
+3. **Set up the GitHub Action.** Use the workflow above (adjust paths). Push a PR — does the action run? Does it fail when you intentionally regress?
+4. **Two-tier strategy.** Add a `perf-full` job triggered only on `schedule:`. Smoke runs on every PR; full runs nightly.
+5. **Auto-update baseline on main.** Add the auto-commit step. Verify it only runs on main and only on success.
+
+## Common Mistakes
+
+- **No timeout in CI.** A k6 test that hangs hangs the whole CI run. Always add `timeout-minutes`.
+- **Baseline drift without review.** Auto-updating without bounds means slow drift goes uncaught. Periodically diff against an "n weeks ago" baseline.
+- **Too-tight thresholds.** A 5% threshold flags every noisy run. 10-20% is more practical for cross-machine comparison.
+- **No retry on flaky CI.** Rerun once on failure; if it fails twice, that's a real regression.
+- **Hardware-specific baselines.** Your local laptop is faster than the CI runner. Don't generate baselines locally; let CI generate them on its own runners.
+
+## Cheat Sheet
+
+```bash
+# Generate summary
+k6 run --summary-export=summary.json --quiet test.js
+
+# Extract a metric for shell-based comparison
+jq '.metrics.http_req_duration["p(95)"]' summary.json
+
+# Inline ratio check (bash + bc)
+LATEST=$(jq -r '.metrics.http_req_duration["p(95)"]' summary.json)
+BASELINE=$(jq -r '.metrics.http_req_duration["p(95)"]' baselines/main.json)
+awk -v l=$LATEST -v b=$BASELINE 'BEGIN { exit (l/b > 1.10) ? 1 : 0 }'
+```
+
+| Strategy | When |
+|----------|------|
+| Absolute threshold | Aligned with public SLO; new repos with no history |
+| Baseline comparison | Mature repos; catches drift |
+| Both | Default — absolute floor + relative drift |
+
+| Tier | Cadence | Test |
+|------|---------|------|
+| Smoke | Every PR | 30-60s test, absolute threshold |
+| Load | Nightly | 15-30 min test, baseline comparison |
+| Soak | Pre-release | 4+ hours, full assertion suite |
+4:T67f,// Kata 71 — CI Gates and Baselines (k6 solution)
+//
+// A canonical "PR smoke" perf test: 30 seconds, absolute thresholds tied
+// to a stated SLO. Designed to run in CI and either pass cleanly or
+// fail with a clear threshold-name in the output (the bit your script
+// will grep for).
+//
+// Also writes summary stats that scripts/compare-baseline.js can consume.
+
+import http from 'k6/http';
+import { check } from 'k6';
+
+const BASE_URL = __ENV.K6_BASE_URL || 'http://localhost:3000';
+
+// SLO contract: p95 < 250ms, p99 < 500ms, error rate < 0.1%
+// CI threshold: 80% of SLO budget for headroom
+const SLO_P95_MS = 250;
+const SLO_P99_MS = 500;
+const SLO_ERROR_RATE = 0.001;
+
+const CI_P95_MS = Math.floor(SLO_P95_MS * 0.8);
+const CI_P99_MS = Math.floor(SLO_P99_MS * 0.8);
+const CI_ERROR_RATE = SLO_ERROR_RATE;
+
+export const options = {
+  scenarios: {
+    smoke: {
+      executor: 'constant-arrival-rate',
+      rate: 50,
+      timeUnit: '1s',
+      duration: '30s',
+      preAllocatedVUs: 30,
+      maxVUs: 60,
+    },
+  },
+  thresholds: {
+    // Each named threshold appears in summary.metrics — scripts can grep them.
+    'http_req_duration': [
+      { threshold: `p(95)<${CI_P95_MS}`, abortOnFail: false },
+      { threshold: `p(99)<${CI_P99_MS}`, abortOnFail: false },
+    ],
+    'http_req_failed': [`rate<${CI_ERROR_RATE}`],
+    // Self-documenting: encode the SLO numbers in metric names.
+    [`http_req_duration{slo:p95}`]: [`p(95)<${SLO_P95_MS}`],
+  },
+};
+
+export default function () {
+  const res = http.get(`${BASE_URL}/lab/echo`, {
+    tags: { slo: 'p95', endpoint: 'echo' },
+  });
+  check(res, {
+    'status is 200': (r) => r.status === 200,
+  });
+}
+5:T2153,# Kata 70: Retry Storms and Circuit Breakers
+
+## What You Will Learn
+
+- Why **naive retries make outages worse** — the math of retry amplification
+- How a **retry storm** turns 5% errors into 50% load amplification
+- The three retry policies: **fixed**, **linear**, **exponential with jitter** (you saw this in kata 63)
+- **Circuit breakers**: closed → open → half-open state machine
+- The **retry budget** pattern — cap total retries, not per-request
+- How to test that your client implements these correctly
+
+## Prerequisites
+
+- Completed [Kata 63 (Rate Limit Handling)](../../phase-14-apis-and-websockets/63-rate-limit-handling/) — backoff fundamentals
+- Completed [Kata 69 (Fault Injection)](../69-fault-injection-with-toxiproxy/) — chaos primitives
+- The QA Labs server running
+
+## Concepts Explained
+
+### The retry-storm math
+
+Suppose your service has 3 retries on failure (no backoff). Backend is healthy: every request succeeds, no retries fire. Total load = base load.
+
+Backend starts failing 50% of the time. Each request on average takes 2 attempts before succeeding (1 initial + 1 retry). **Total load doubles.**
+
+Backend fails 90%. Average attempts = 4 (1 + 0.9 × (1 + 0.9 × (1 + 0.9 × 1))). **Total load 4×.**
+
+Backend fully down (100% failure). Every request retries 3 times before giving up. **Total load 4×** with zero work done.
+
+This is the **retry-amplification curve**: as failures rise, load rises faster, which causes more failures, which causes more load. Death spiral.
+
+### What stops a retry storm
+
+Three patterns, used together:
+
+#### 1. Exponential backoff with jitter
+
+Already covered in kata 63. Spreads retries over time, breaks synchronization. **Always do this.**
+
+#### 2. Bounded retry budget
+
+Instead of "retry up to 3 times per request," use "retry up to 10% of total request volume":
+
+```
+allowedRetries = totalSuccessfulRequests * 0.1
+```
+
+Once you hit the budget, **stop retrying for the next window**. Implementations: token bucket on retry side, leaky bucket of "retry quota."
+
+This caps amplification at 1.1× even under 100% backend failure.
+
+#### 3. Circuit breaker
+
+A state machine in front of the dependency:
+
+```
+                    ┌─────────────┐
+              ┌────►│   CLOSED    │  ← normal: requests pass through
+              │     │ (forwarding)│
+              │     └──────┬──────┘
+              │            │
+              │   N consecutive failures
+              │            │
+              │            ▼
+              │     ┌─────────────┐
+              │     │    OPEN     │  ← failing fast: short-circuit, no calls
+              │     │ (rejecting) │
+              │     └──────┬──────┘
+              │            │
+              │       cooldown timer
+              │            │
+              │            ▼
+              │     ┌─────────────┐
+              └─────│  HALF-OPEN  │  ← probing: let one through, see if alive
+   one success      │  (probing)  │
+                    └─────────────┘
+                          │
+                     one failure
+                          │
+                          ▼
+                       (back to OPEN)
+```
+
+When the breaker is OPEN, your service immediately returns an error (or fallback) **without calling the failing dependency at all**. This:
+- Stops amplifying load on the broken backend
+- Lets the backend recover without being hammered
+- Returns a fast error to the client (better than a 30s timeout)
+
+After a cooldown (typically 5-30s), the breaker goes HALF-OPEN: one probe request goes through. Success → CLOSED. Failure → back to OPEN.
+
+### Testing client-side resilience
+
+You're testing not "does the rate limit work" (kata 63) but "does my client behave well when things break." The pattern:
+
+1. Inject failures (kata 69)
+2. Run client-driven load
+3. Assert: client doesn't amplify load beyond budget
+4. Assert: failures fail fast once breaker opens (latency goes DOWN, not up)
+
+A naive retry implementation will fail #3. A breaker-less implementation will fail #4.
+
+### Implementing a circuit breaker in test code
+
+```javascript
+// Module-scope state shared across iterations of one VU
+let breakerState = 'closed';   // 'closed' | 'open' | 'half-open'
+let consecutiveFailures = 0;
+let lastFailureTime = 0;
+const FAILURE_THRESHOLD = 5;
+const COOLDOWN_MS = 5000;
+
+function callWithBreaker(url) {
+  const now = Date.now();
+  if (breakerState === 'open') {
+    if (now - lastFailureTime > COOLDOWN_MS) {
+      breakerState = 'half-open';  // probe time
+    } else {
+      return null;  // short-circuit — don't even try
+    }
+  }
+  const res = http.get(url);
+  if (res.status === 200) {
+    consecutiveFailures = 0;
+    breakerState = 'closed';
+  } else {
+    consecutiveFailures++;
+    if (consecutiveFailures >= FAILURE_THRESHOLD) {
+      breakerState = 'open';
+      lastFailureTime = now;
+    }
+  }
+  return res;
+}
+```
+
+In real apps you'd use a library: **Polly** (.NET), **Resilience4j** (Java), **opossum** (Node.js), **resilient-bench** (Go). Same pattern.
+
+### What metrics tell the story
+
+In a chaos test with retries + breaker, watch:
+
+| Metric | Healthy story | Storm story |
+|--------|--------------|-------------|
+| Total HTTP requests | Stable | Climbing as backend degrades |
+| Retry count | Bounded by budget | Unbounded |
+| Breaker state | Cycles closed → half-open | Stuck open |
+| p95 of fast-failed (breaker rejects) | Low (< 5ms) | N/A |
+| Error rate seen by client | Drops to "fast errors" once open | Times out then errors |
+
+The transition where breaker opens should be **visible**: latency drops sharply (no more waiting for the slow backend), error rate stays high but stable.
+
+## Exercises
+
+1. **Naive retry baseline.** Run a 30s test against `/lab/flaky?errorRate=0.5`. Each iteration retries up to 3 times on failure. What's `http_reqs` count? Compare to a 0% error baseline.
+2. **Add backoff.** Same test, but exponential backoff between retries. Did it reduce total request volume? Did p95 increase?
+3. **Add a budget.** Allow at most 1 retry per 5 successful requests. Track via Counter. Does the budget kick in?
+4. **Implement the breaker.** Module-level state, FAILURE_THRESHOLD=5. After breaker opens, all requests fast-fail. Plot per-second `http_reqs` (in Grafana, kata 67) and watch for the discontinuity.
+5. **Compare three implementations** under `/lab/flaky?errorRate=0.7`: (a) naive retries, (b) backoff, (c) breaker. Which preserves the most useful work?
+
+## Common Mistakes
+
+- **Treating retries as "free."** Each retry is a real request. Multiplied across 1000 RPS and 50% errors = a lot of wasted work.
+- **No budget.** Even with backoff, infinite retries amplify load.
+- **Breaker thresholds too aggressive.** Opening on 1 failure = breaker constantly opens during normal jitter. Use 5+ consecutive failures.
+- **Breaker thresholds too lax.** Opening on 100 consecutive failures means amplification has long since happened.
+- **No cooldown.** Half-open immediately = breaker opens and closes constantly under flapping backend.
+- **Retry on 4xx.** 4xx means client error — retrying won't help. Retry only 5xx and timeouts.
+
+## Cheat Sheet
+
+```javascript
+// VU-level circuit breaker
+let state = 'closed', fails = 0, openedAt = 0;
+const THRESHOLD = 5, COOLDOWN_MS = 5000;
+
+function call(url) {
+  if (state === 'open' && Date.now() - openedAt < COOLDOWN_MS) {
+    breakerRejects.add(1);
+    return { status: 0, fastFail: true };
+  }
+  if (state === 'open') state = 'half-open';
+
+  const res = http.get(url);
+  if (res.status >= 200 && res.status < 300) {
+    fails = 0;
+    state = 'closed';
+  } else {
+    fails++;
+    if (fails >= THRESHOLD) { state = 'open'; openedAt = Date.now(); }
+  }
+  return res;
+}
+```
+
+| Config | Typical |
+|--------|---------|
+| Retry attempts | 1-3 (per request) |
+| Retry budget | 10% of successful traffic |
+| Backoff base | 100-500ms |
+| Backoff factor | 2× |
+| Jitter | ± 25% |
+| Breaker threshold | 5 consecutive failures |
+| Breaker cooldown | 5-30 seconds |
+| Max timeout per attempt | 1-5s |
+
+| Don't retry on | Why |
+|----------------|-----|
+| 4xx (except 429) | Client error — won't change |
+| 200 with payload error | App-level error, not transport |
+| Non-idempotent operations | Risk of duplicate side effects |
+6:Tcd9,// Kata 70 — Retry Storms and Circuit Breakers
+//
+// Three side-by-side strategies against /lab/flaky:
+// - naive_retries: retry up to 3× immediately on failure (anti-pattern)
+// - backoff:       retry up to 3× with jittered exponential backoff
+// - breaker:       circuit breaker — fast-fail once enough failures accumulate
+
+import http from 'k6/http';
+import { sleep } from 'k6';
+import { Counter, Rate } from 'k6/metrics';
+
+const BASE_URL = __ENV.K6_BASE_URL || 'http://localhost:3000';
+const URL = `${BASE_URL}/lab/flaky?errorRate=0.4`;
+
+const totalAttempts = new Counter('total_attempts');
+const breakerRejects = new Counter('breaker_rejects');
+const successRate = new Rate('successful_requests');
+
+export const options = {
+  scenarios: {
+    naive_retries: {
+      executor: 'constant-vus',
+      vus: 5,
+      duration: '15s',
+      exec: 'naiveRetries',
+      tags: { strategy: 'naive' },
+    },
+    backoff: {
+      executor: 'constant-vus',
+      vus: 5,
+      duration: '15s',
+      exec: 'withBackoff',
+      tags: { strategy: 'backoff' },
+    },
+    breaker: {
+      executor: 'constant-vus',
+      vus: 5,
+      duration: '15s',
+      exec: 'withBreaker',
+      tags: { strategy: 'breaker' },
+    },
+  },
+  thresholds: {
+    // Same per-strategy success rate target — apples-to-apples comparison
+    'successful_requests{strategy:naive}': ['rate>0.50'],
+    'successful_requests{strategy:backoff}': ['rate>0.50'],
+    'successful_requests{strategy:breaker}': ['rate>0.50'],
+    // Breaker should aggressively reject when it's open — count must be visible
+    'breaker_rejects': ['count>5'],
+  },
+};
+
+// Strategy 1: hammer + retry. Amplifies load.
+export function naiveRetries() {
+  for (let i = 0; i < 4; i++) {
+    totalAttempts.add(1);
+    const res = http.get(URL);
+    if (res.status === 200) {
+      successRate.add(true);
+      return;
+    }
+    // No backoff — retry immediately. THIS IS THE ANTI-PATTERN.
+  }
+  successRate.add(false);
+}
+
+// Strategy 2: jittered exponential backoff. Spreads retries over time.
+export function withBackoff() {
+  for (let i = 0; i < 4; i++) {
+    totalAttempts.add(1);
+    const res = http.get(URL);
+    if (res.status === 200) {
+      successRate.add(true);
+      return;
+    }
+    if (i < 3) {
+      const base = 0.1 * Math.pow(2, i);   // 100ms, 200ms, 400ms
+      const jitter = Math.random() * base;
+      sleep(base + jitter);
+    }
+  }
+  successRate.add(false);
+}
+
+// Strategy 3: per-VU circuit breaker. After N failures, fast-fail.
+// State is per-VU because each k6 VU has its own JS runtime.
+const THRESHOLD = 5;
+const COOLDOWN_MS = 3000;
+let breakerState = 'closed';
+let consecutiveFails = 0;
+let openedAt = 0;
+
+export function withBreaker() {
+  totalAttempts.add(1);
+
+  // Check if we should fast-fail
+  if (breakerState === 'open') {
+    if (Date.now() - openedAt < COOLDOWN_MS) {
+      breakerRejects.add(1);
+      successRate.add(false);
+      return;
+    }
+    breakerState = 'half-open';
+  }
+
+  const res = http.get(URL);
+
+  if (res.status === 200) {
+    consecutiveFails = 0;
+    breakerState = 'closed';
+    successRate.add(true);
+  } else {
+    consecutiveFails++;
+    if (consecutiveFails >= THRESHOLD) {
+      breakerState = 'open';
+      openedAt = Date.now();
+    }
+    successRate.add(false);
+  }
+}
+7:T1b11,# Kata 72: Trend Analysis and Historical Comparison
+
+## What You Will Learn
+
+- Why **single-run regressions** are noise but **trends across runs** are real signal
+- The **moving baseline** pattern: rolling p95-of-p95s instead of last-run comparison
+- How to detect **slow drift** that absolute thresholds miss (e.g., 1% slower per week → 50% slower per year)
+- **Run-to-run variance** and how to reason about it statistically
+- Storing run history for analysis: artifacts, S3, dedicated DBs (Grafana Cloud Tempo, k6 Cloud)
+- The "n-of-m" rule: only flag if the trend has held for several consecutive runs
+
+## Prerequisites
+
+- Completed [Kata 71 (CI Gates and Baselines)](../71-ci-gates-and-baselines/)
+- Completed [Kata 67 (Grafana + Prometheus)](../../phase-16-observability/67-grafana-and-prometheus/)
+- The QA Labs server running
+
+## Concepts Explained
+
+### Single runs lie
+
+A single perf-test run shows a number. That number is the result of:
+
+- The actual code being tested
+- Random scheduling of VUs across CPU cores
+- Background processes on the test runner
+- Disk I/O contention
+- Network jitter
+- Whatever else is happening on the machine
+
+**Run-to-run variance is typically 5-15%** even with identical code. A 5% "regression" is noise unless you have multiple runs to confirm.
+
+### The moving baseline
+
+Instead of comparing to last-run, compare to the **rolling median (or p95) of the last N runs**:
+
+```
+day 1: 200ms
+day 2: 195ms
+day 3: 210ms
+day 4: 198ms
+day 5: 215ms     ← single-run check vs day 4 alone says "+8.5%, ALERT!"
+                 ← rolling median over 4 days = 199ms; 215 vs 199 = +8%, but…
+                 ← run 6+ would tell us if this is real
+```
+
+A moving baseline with N=5 means a one-off spike won't trigger; a sustained shift will.
+
+### N-of-M flagging
+
+The "real signal" rule: only flag a regression if **N out of the last M runs are worse**.
+
+- **N=3, M=5**: 3 of last 5 runs above the baseline = real
+- **N=2, M=3**: more aggressive — 2 of last 3 = real
+- **N=1, M=1**: every run flags — too noisy
+
+Real teams pick `N=3, M=5` for nightly tests, `N=2, M=3` for hourly tests. PR-level smoke tests use absolute thresholds (kata 71) since each PR run is independent.
+
+### Where you store run history
+
+| Option | Pro | Con |
+|--------|-----|-----|
+| GitHub Actions artifacts | Free, no infra | 90-day retention, no easy querying |
+| Commit summaries to a perf branch | Versioned, full history | Repo bloat over time |
+| S3 / GCS bucket | Long retention, cheap | Custom tooling to query |
+| k6 Cloud / Grafana Cloud | Hosted, dashboards built-in | Paid (free tier exists) |
+| Prometheus long-term store (Mimir, Cortex) | Same stack as production observability | Ops overhead |
+
+**Most pragmatic for small teams**: GitHub artifacts + a simple `scripts/aggregate-history.js` that walks the last N artifacts and produces a trend chart. Keep it dumb until it hurts.
+
+### A simple trend script
+
+```javascript
+// scripts/check-trend.js
+const fs = require('fs');
+const path = require('path');
+
+const HISTORY_DIR = './history';
+const N = 5;
+
+const files = fs.readdirSync(HISTORY_DIR)
+  .filter(f => f.endsWith('.json'))
+  .sort()
+  .slice(-N);
+
+const p95s = files.map(f => {
+  const summary = JSON.parse(fs.readFileSync(path.join(HISTORY_DIR, f), 'utf-8'));
+  return summary.metrics.http_req_duration['p(95)'];
+});
+
+const sorted = [...p95s].sort((a, b) => a - b);
+const median = sorted[Math.floor(sorted.length / 2)];
+const latest = p95s[p95s.length - 1];
+
+console.log(`Last ${N} p95s: ${p95s.map(p => p.toFixed(0)).join(', ')}`);
+console.log(`Rolling median: ${median.toFixed(0)}ms`);
+console.log(`Latest: ${latest.toFixed(0)}ms`);
+
+const ratio = latest / median;
+if (ratio > 1.10) {
+  console.error(`Latest is ${((ratio - 1) * 100).toFixed(1)}% above median — investigate`);
+  process.exit(1);
+}
+```
+
+This catches both single big regressions AND slow drift (median shifts up over time, ratio stays at 1.0 even though absolute numbers grow).
+
+### Detecting slow drift
+
+A 1% regression per week is invisible run-to-run but **52% per year**. To catch:
+
+1. Keep history for at least 90 days
+2. Periodically (weekly cron) compare current rolling-median to **30-days-ago** rolling-median
+3. If divergence exceeds a threshold (10-20%), alert
+
+```javascript
+const todayMedian = rollingMedian(history.last5runs);
+const monthAgoMedian = rollingMedian(history.runsAround30DaysAgo);
+
+if (todayMedian / monthAgoMedian > 1.10) {
+  console.warn('Slow drift detected: 30-day median worsened by 10%+');
+}
+```
+
+This is what real perf engineers monitor weekly. Pure run-to-run comparison can't see it.
+
+### Variance reduction tactics
+
+If your runs are too noisy to compare meaningfully:
+
+| Tactic | Effect |
+|--------|--------|
+| Use dedicated CI runners (not shared) | Less interference |
+| Pin OS/kernel, set CPU governor to performance | More deterministic timing |
+| Disable HyperThreading | More predictable scheduling |
+| Run multiple iterations, take median | Cancels noise |
+| Aggregate p95-of-multiple-runs | More stable than single p95 |
+| Compare ratios, not absolute numbers | Insulates from runner speed differences |
+
+## Exercises
+
+1. **Generate 5 baseline runs.** Run the kata's k6 spec 5 times, save each summary to `history/run-N.json`. Calculate the rolling median manually.
+2. **Inject a "regression."** Switch the test target to `/lab/slow?ms=50` (slightly slower). Run 5 more times. How does the rolling median shift?
+3. **Implement N-of-M.** Modify `check-trend.js` to flag only when 3 of last 5 runs are above baseline. Verify with mixed clean/regressed runs.
+4. **Detect slow drift.** Save 10 runs, then introduce a small drift (each subsequent run 2% slower). Does the script catch it?
+5. **Plot the history.** Use Grafana with a CSV file or Prometheus. Visualize p95 over the last 30 runs.
+
+## Common Mistakes
+
+- **Comparing to last-run only.** That's not a trend — that's noise + 1.
+- **Tight thresholds without trend context.** A 5% threshold is too tight given run-to-run variance.
+- **Forgetting to refresh baseline.** A perf improvement landing in main means baseline is stale; auto-update or update manually.
+- **Cherry-picking runs.** "This run was slow because the build server was busy" — discount it once, fine. Discount it five times, you've stopped doing real perf testing.
+
+## Cheat Sheet
+
+| Comparison | Use |
+|------------|-----|
+| Latest vs absolute SLO | PR-level smoke |
+| Latest vs rolling median | Nightly trend |
+| Today's median vs 30-day median | Weekly drift |
+| n-of-m flagging | Reduce false positives |
+
+| Storage option | When |
+|----------------|------|
+| GitHub artifacts | Default for small teams |
+| Git commits to perf branch | When you need versioned history |
+| S3 / GCS | When artifacts retention isn't enough |
+| Prometheus long-term store | When you already use it for prod |
+| k6 Cloud / Grafana Cloud | When you want hosted dashboards |
+8:T2309,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#6A737D">// Kata 71 — CI Gates and Baselines (k6 solution)</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// A canonical "PR smoke" perf test: 30 seconds, absolute thresholds tied</span></span>
+<span class="line"><span style="color:#6A737D">// to a stated SLO. Designed to run in CI and either pass cleanly or</span></span>
+<span class="line"><span style="color:#6A737D">// fail with a clear threshold-name in the output (the bit your script</span></span>
+<span class="line"><span style="color:#6A737D">// will grep for).</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// Also writes summary stats that scripts/compare-baseline.js can consume.</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> http </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> 'k6/http'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { check } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> 'k6'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> BASE_URL</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> __ENV.</span><span style="color:#79B8FF">K6_BASE_URL</span><span style="color:#F97583"> ||</span><span style="color:#9ECBFF"> 'http://localhost:3000'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// SLO contract: p95 &#x3C; 250ms, p99 &#x3C; 500ms, error rate &#x3C; 0.1%</span></span>
+<span class="line"><span style="color:#6A737D">// CI threshold: 80% of SLO budget for headroom</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> SLO_P95_MS</span><span style="color:#F97583"> =</span><span style="color:#79B8FF"> 250</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> SLO_P99_MS</span><span style="color:#F97583"> =</span><span style="color:#79B8FF"> 500</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> SLO_ERROR_RATE</span><span style="color:#F97583"> =</span><span style="color:#79B8FF"> 0.001</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> CI_P95_MS</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> Math.</span><span style="color:#B392F0">floor</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">SLO_P95_MS</span><span style="color:#F97583"> *</span><span style="color:#79B8FF"> 0.8</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> CI_P99_MS</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> Math.</span><span style="color:#B392F0">floor</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">SLO_P99_MS</span><span style="color:#F97583"> *</span><span style="color:#79B8FF"> 0.8</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> CI_ERROR_RATE</span><span style="color:#F97583"> =</span><span style="color:#79B8FF"> SLO_ERROR_RATE</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> const</span><span style="color:#79B8FF"> options</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">  scenarios: {</span></span>
+<span class="line"><span style="color:#E1E4E8">    smoke: {</span></span>
+<span class="line"><span style="color:#E1E4E8">      executor: </span><span style="color:#9ECBFF">'constant-arrival-rate'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      rate: </span><span style="color:#79B8FF">50</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      timeUnit: </span><span style="color:#9ECBFF">'1s'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      duration: </span><span style="color:#9ECBFF">'30s'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      preAllocatedVUs: </span><span style="color:#79B8FF">30</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      maxVUs: </span><span style="color:#79B8FF">60</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">    },</span></span>
+<span class="line"><span style="color:#E1E4E8">  },</span></span>
+<span class="line"><span style="color:#E1E4E8">  thresholds: {</span></span>
+<span class="line"><span style="color:#6A737D">    // Each named threshold appears in summary.metrics — scripts can grep them.</span></span>
+<span class="line"><span style="color:#9ECBFF">    'http_req_duration'</span><span style="color:#E1E4E8">: [</span></span>
+<span class="line"><span style="color:#E1E4E8">      { threshold: </span><span style="color:#9ECBFF">`p(95)&#x3C;${</span><span style="color:#79B8FF">CI_P95_MS</span><span style="color:#9ECBFF">}`</span><span style="color:#E1E4E8">, abortOnFail: </span><span style="color:#79B8FF">false</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">      { threshold: </span><span style="color:#9ECBFF">`p(99)&#x3C;${</span><span style="color:#79B8FF">CI_P99_MS</span><span style="color:#9ECBFF">}`</span><span style="color:#E1E4E8">, abortOnFail: </span><span style="color:#79B8FF">false</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">    ],</span></span>
+<span class="line"><span style="color:#9ECBFF">    'http_req_failed'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">`rate&#x3C;${</span><span style="color:#79B8FF">CI_ERROR_RATE</span><span style="color:#9ECBFF">}`</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#6A737D">    // Self-documenting: encode the SLO numbers in metric names.</span></span>
+<span class="line"><span style="color:#E1E4E8">    [</span><span style="color:#9ECBFF">`http_req_duration{slo:p95}`</span><span style="color:#E1E4E8">]: [</span><span style="color:#9ECBFF">`p(95)&#x3C;${</span><span style="color:#79B8FF">SLO_P95_MS</span><span style="color:#9ECBFF">}`</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#E1E4E8">  },</span></span>
+<span class="line"><span style="color:#E1E4E8">};</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> default</span><span style="color:#F97583"> function</span><span style="color:#E1E4E8"> () {</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> res</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> http.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/echo`</span><span style="color:#E1E4E8">, {</span></span>
+<span class="line"><span style="color:#E1E4E8">    tags: { slo: </span><span style="color:#9ECBFF">'p95'</span><span style="color:#E1E4E8">, endpoint: </span><span style="color:#9ECBFF">'echo'</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"><span style="color:#B392F0">  check</span><span style="color:#E1E4E8">(res, {</span></span>
+<span class="line"><span style="color:#9ECBFF">    'status is 200'</span><span style="color:#E1E4E8">: (</span><span style="color:#FFAB70">r</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> r.status </span><span style="color:#F97583">===</span><span style="color:#79B8FF"> 200</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span></code></pre>9:Td98,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#6A737D"># Kata 71 — CI Gates and Baselines (Artillery solution)</span></span>
+<span class="line"><span style="color:#6A737D">#</span></span>
+<span class="line"><span style="color:#6A737D"># Artillery's `ensure` block is the equivalent of k6 thresholds — failed</span></span>
+<span class="line"><span style="color:#6A737D"># ensures exit non-zero, gating the CI build. For baseline comparison,</span></span>
+<span class="line"><span style="color:#6A737D"># Artillery has artillery.io/cloud or you can pipe `--output report.json`</span></span>
+<span class="line"><span style="color:#6A737D"># into a custom script (same pattern as the k6 solution's compare-baseline.js).</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#85E89D">config</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">  target</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"http://localhost:3000"</span></span>
+<span class="line"><span style="color:#85E89D">  phases</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">    - </span><span style="color:#85E89D">duration</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">30</span></span>
+<span class="line"><span style="color:#85E89D">      arrivalRate</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">50</span></span>
+<span class="line"><span style="color:#85E89D">      name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"ci smoke"</span></span>
+<span class="line"><span style="color:#85E89D">  ensure</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">    p95</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">200</span><span style="color:#6A737D">    # 80% of SLO budget (250ms)</span></span>
+<span class="line"><span style="color:#85E89D">    p99</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">400</span><span style="color:#6A737D">    # 80% of SLO budget (500ms)</span></span>
+<span class="line"><span style="color:#85E89D">    maxErrorRate</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">0.1</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#85E89D">scenarios</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">  - </span><span style="color:#85E89D">name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"ci smoke probe"</span></span>
+<span class="line"><span style="color:#85E89D">    flow</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">get</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">          url</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"/lab/echo"</span></span>
+<span class="line"><span style="color:#85E89D">          expect</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">            - </span><span style="color:#85E89D">statusCode</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">200</span></span>
+<span class="line"></span></code></pre>0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"kata":{"slug":"71-ci-gates-and-baselines","number":71,"title":"CI Gates and Baselines","phaseSlug":"phase-18-cicd-and-capstone","phaseNumber":18,"phaseName":"Cicd And Capstone","readmeRaw":"$3","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"71-ci-gates-and-baselines.test.js","content":"$4"}],"artilleryFiles":[{"filename":"71-ci-gates-and-baselines.yml","content":"# Kata 71 — CI Gates and Baselines (Artillery solution)\n#\n# Artillery's `ensure` block is the equivalent of k6 thresholds — failed\n# ensures exit non-zero, gating the CI build. For baseline comparison,\n# Artillery has artillery.io/cloud or you can pipe `--output report.json`\n# into a custom script (same pattern as the k6 solution's compare-baseline.js).\n\nconfig:\n  target: \"http://localhost:3000\"\n  phases:\n    - duration: 30\n      arrivalRate: 50\n      name: \"ci smoke\"\n  ensure:\n    p95: 200    # 80% of SLO budget (250ms)\n    p99: 400    # 80% of SLO budget (500ms)\n    maxErrorRate: 0.1\n\nscenarios:\n  - name: \"ci smoke probe\"\n    flow:\n      - get:\n          url: \"/lab/echo\"\n          expect:\n            - statusCode: 200\n"}],"jmeterFiles":[]},"prev":{"slug":"70-retry-storms-and-circuit-breakers","number":70,"title":"Retry Storms and Circuit Breakers","phaseSlug":"phase-17-chaos-and-resilience","phaseNumber":17,"phaseName":"Chaos And Resilience","readmeRaw":"$5","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"70-retry-storms-and-circuit-breakers.test.js","content":"$6"}],"artilleryFiles":[{"filename":"70-retry-storms-and-circuit-breakers.yml","content":"# Kata 70 — Retry Storms and Circuit Breakers (Artillery solution)\n#\n# Artillery doesn't have first-class retry config or circuit-breaker\n# state. Implementing those would require a custom JS processor.\n# This file just demonstrates the chaos load against /lab/flaky;\n# for the strategy comparisons (naive vs backoff vs breaker), see\n# the k6 solution which has per-VU state.\n\nconfig:\n  target: \"http://localhost:3000\"\n  phases:\n    - duration: 15\n      arrivalRate: 30\n      name: \"chaos load\"\n\nscenarios:\n  - name: \"flaky probe\"\n    flow:\n      - get:\n          url: \"/lab/flaky?errorRate=0.4\"\n          expect:\n            - statusCode: [200, 500]\n"}],"jmeterFiles":[]},"next":{"slug":"72-trend-analysis-and-historical-comparison","number":72,"title":"Trend Analysis and Historical Comparison","phaseSlug":"phase-18-cicd-and-capstone","phaseNumber":18,"phaseName":"Cicd And Capstone","readmeRaw":"$7","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"72-trend-analysis-and-historical-comparison.test.js","content":"// Kata 72 — Trend Analysis (k6 solution)\n//\n// Same shape as kata 71's smoke test — the analytical work happens\n// OUTSIDE k6, in scripts that aggregate multiple summary.json files\n// over time. See the readme for check-trend.js + the n-of-m pattern.\n//\n// To produce trend data: run this 5+ times, saving --summary-export\n// each time, and feed the resulting JSONs into check-trend.js.\n\nimport http from 'k6/http';\nimport { check } from 'k6';\n\nconst BASE_URL = __ENV.K6_BASE_URL || 'http://localhost:3000';\n\nexport const options = {\n  scenarios: {\n    trend: {\n      executor: 'constant-arrival-rate',\n      rate: 50,\n      timeUnit: '1s',\n      duration: '20s',\n      preAllocatedVUs: 30,\n    },\n  },\n  thresholds: {\n    'http_req_duration': ['p(95)<300'],\n    'http_req_failed': ['rate<0.01'],\n  },\n};\n\nexport default function () {\n  const res = http.get(`${BASE_URL}/lab/echo`);\n  check(res, { 'status is 200': (r) => r.status === 200 });\n}\n"}],"artilleryFiles":[{"filename":"72-trend-analysis-and-historical-comparison.yml","content":"# Kata 72 — Trend Analysis (Artillery solution)\n#\n# Same workload as the k6 solution. The analytical work is in scripts\n# that walk historical run outputs — Artillery's `--output report.json`\n# captures one run's data; aggregation across runs is your tooling.\n\nconfig:\n  target: \"http://localhost:3000\"\n  phases:\n    - duration: 20\n      arrivalRate: 50\n      name: \"trend snapshot\"\n  ensure:\n    p95: 300\n    maxErrorRate: 1\n\nscenarios:\n  - name: \"trend probe\"\n    flow:\n      - get:\n          url: \"/lab/echo\"\n          expect:\n            - statusCode: 200\n"}],"jmeterFiles":[]},"frameworks":[{"id":"k6","label":"k6","files":[{"filename":"71-ci-gates-and-baselines.test.js","html":"$8"}]},{"id":"artillery","label":"Artillery","files":[{"filename":"71-ci-gates-and-baselines.yml","html":"$9"}]},{"id":"jmeter","label":"JMeter","files":[]},{"id":"playwright","label":"Playwright","files":[]},{"id":"cypress","label":"Cypress","files":[]}]}],["$La"],"$Lb"]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"UzMlu93LkryOOruE2pxnW"}
+a:["$","script","script-0",{"src":"/qa-labs/_next/static/chunks/01luku1w1f06_.js","async":true}]
+b:["$","$Lc",null,{"children":["$","$d",null,{"name":"Next.MetadataOutlet","children":"$@e"}]}]
+e:null

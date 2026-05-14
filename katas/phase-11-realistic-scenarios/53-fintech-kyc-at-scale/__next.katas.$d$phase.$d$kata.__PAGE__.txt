@@ -1,0 +1,1290 @@
+1:"$Sreact.fragment"
+2:I[76750,["/qa-labs/_next/static/chunks/012xw9ydea0yn.js","/qa-labs/_next/static/chunks/0t2xr05rlu96l.js","/qa-labs/_next/static/chunks/0a55m.6s3qp~-.js","/qa-labs/_next/static/chunks/01luku1w1f06_.js"],"KataPageClient"]
+10:I[97367,["/qa-labs/_next/static/chunks/012xw9ydea0yn.js","/qa-labs/_next/static/chunks/0t2xr05rlu96l.js","/qa-labs/_next/static/chunks/0a55m.6s3qp~-.js"],"OutletBoundary"]
+11:"$Sreact.suspense"
+3:T17d1,# Kata 53: Fintech KYC at Scale
+
+## What You Will Learn
+
+- How to model a **multi-step user journey** as a single perf scenario
+- **Capturing IDs** between requests (the response of step 1 feeds the URL of step 2)
+- **Think time** — `sleep()` between steps to mimic real users
+- **Per-step assertions and timings** — measure each leg of the funnel separately
+- Building a **scenario weighting** profile that mirrors production: 80% complete, 10% bail at docs, 10% bail at video
+- Reading **funnel completion rates** from custom metrics — your business cares about this number, not p95
+
+## Prerequisites
+
+- Completed [Kata 51](../51-parameterization-and-data-driven-tests/) and [Kata 52](../52-authentication-flows/)
+- The QA Labs server running — exposes `/lab/kyc/*` (apply → documents → video → decision)
+
+## Concepts Explained
+
+### The KYC funnel
+
+Most fintech onboarding flows look like this:
+
+```
+Apply  →  Upload docs  →  Video verify  →  Decision
+ 90%        85%             80%             75%
+```
+
+Each arrow is a drop-off. A perf test that goes **all the way through** every iteration ignores reality. You'd test the decision endpoint at 100% of traffic when production sees only 75%.
+
+### Modeling the funnel in k6
+
+Three approaches:
+
+#### 1. Single scenario, capture IDs along the way
+
+```javascript
+export default function () {
+  const apply = http.post(`${BASE_URL}/lab/kyc/apply`, JSON.stringify({ user: `u-${__VU}` }), opts);
+  const id = apply.json('id');
+
+  http.post(`${BASE_URL}/lab/kyc/${id}/documents`);
+  http.post(`${BASE_URL}/lab/kyc/${id}/video`);
+  http.post(`${BASE_URL}/lab/kyc/${id}/decision`);
+}
+```
+
+Simple, but every iteration goes through 100% of the funnel. Doesn't match reality.
+
+#### 2. Multiple scenarios with weighted volume
+
+```javascript
+export const options = {
+  scenarios: {
+    completes:        { executor: 'constant-arrival-rate', rate: 75, ... exec: 'fullFlow' },
+    bails_at_docs:    { executor: 'constant-arrival-rate', rate: 15, ... exec: 'bailDocs' },
+    bails_at_video:   { executor: 'constant-arrival-rate', rate: 5,  ... exec: 'bailVideo' },
+    bails_at_apply:   { executor: 'constant-arrival-rate', rate: 5,  ... exec: 'bailApply' },
+  },
+};
+```
+
+Each scenario does a different prefix of the funnel. The `rate` per scenario adds up to 100 RPS, mimicking production drop-off. **This is the right way.**
+
+#### 3. Single scenario with branching probability
+
+```javascript
+export default function () {
+  const id = doApply();
+  if (Math.random() > 0.10) doDocuments(id);
+  else return;
+  if (Math.random() > 0.05) doVideo(id);
+  else return;
+  doDecision(id);
+}
+```
+
+Cheap to write, gives you the same drop-off pattern. Loses the per-stage-scenario metrics k6 produces automatically.
+
+### Think time — `sleep()` between steps
+
+Real users don't paste their ID, upload a doc, and complete a video selfie in 200ms. They take seconds-to-minutes between steps. Without `sleep()`, every VU hammers the system as fast as possible — producing spikes the system never sees in production.
+
+```javascript
+import { sleep } from 'k6';
+
+http.post(`/lab/kyc/${id}/documents`);
+sleep(2 + Math.random() * 5);  // 2–7s of "user thinking"
+http.post(`/lab/kyc/${id}/video`);
+```
+
+**Don't go overboard with sleep.** If sleep dominates the iteration time, you need vastly more VUs to maintain RPS — and you're then spending memory just to wait around. Use the **open-model executors** (`constant-arrival-rate`) which don't care about per-iteration time.
+
+### Per-step timings via `Trend`
+
+You want to know p95 of each leg of the funnel separately. Use a `Trend` metric per step:
+
+```javascript
+import { Trend } from 'k6/metrics';
+const tApply = new Trend('kyc_apply_ms', true);
+const tDocs = new Trend('kyc_documents_ms', true);
+const tVideo = new Trend('kyc_video_ms', true);
+const tDecision = new Trend('kyc_decision_ms', true);
+
+const res = http.post(/* apply */);
+tApply.add(res.timings.duration);
+```
+
+Then thresholds per step:
+
+```javascript
+thresholds: {
+  'kyc_apply_ms': ['p(95)<150'],
+  'kyc_documents_ms': ['p(95)<300'],
+  'kyc_video_ms': ['p(95)<1000'],
+  'kyc_decision_ms': ['p(95)<500'],
+}
+```
+
+If `kyc_video_ms` is the only one breaching, you know exactly which step regressed.
+
+### Funnel completion rate
+
+Track it as a `Rate`:
+
+```javascript
+import { Rate } from 'k6/metrics';
+const completion = new Rate('kyc_completion');
+
+// at the end of fullFlow:
+completion.add(true);
+
+// in any bail-out scenario:
+completion.add(false);
+```
+
+Threshold: `'kyc_completion': ['rate>0.70']`. This is the *business* assertion — fail the perf test if the funnel completion rate drops below acceptable, regardless of latency.
+
+## Exercises
+
+1. **Build the weighted funnel.** Replicate the 75/15/5/5 split using four `constant-arrival-rate` scenarios. Total 100 RPS for 30 seconds.
+2. **Add per-step think time.** 1–3s after apply, 3–8s after documents (uploads are slow), 5–15s after video.
+3. **Measure funnel time end-to-end.** Custom Trend `kyc_total_funnel_ms` for VUs that complete. Compare to sum of per-step times — gap is total think time.
+4. **Asymmetric latency.** What if `/lab/kyc/:id/decision` becomes 2× slower? Which threshold catches it first? Which catches it most clearly?
+
+## Common Mistakes
+
+- **Treating the whole flow as one HTTP request.** The flow is a sequence of HTTP requests; each has its own latency story.
+- **Going 100% through every iteration.** Doesn't match production traffic shape; over-tests downstream steps.
+- **No think time.** Hammers the system at iteration speed — every VU slams documents+video back-to-back.
+- **One Trend for the whole flow.** Hides which step regressed.
+
+## Cheat Sheet
+
+| Concept | k6 mechanism |
+|---------|--------------|
+| Capture ID from response 1, use in URL of response 2 | `const id = res.json('id'); http.post(\`.../${id}/...\`)` |
+| Think time | `sleep(seconds)` |
+| Per-step latency | One `Trend` per step, threshold per metric |
+| Funnel weight | Multiple scenarios with different `rate` |
+| Drop-off rate | `Rate` metric, threshold `rate>0.X` |
+4:T11a0,// Kata 53 — Fintech KYC at Scale (k6 solution)
+//
+// Models a realistic KYC funnel with weighted drop-off:
+//   75% complete the whole flow
+//   15% bail after documents
+//   5%  bail after video
+//   5%  bail right after apply
+//
+// Each step has its own custom Trend metric and threshold so a regression
+// in one leg of the funnel is immediately visible. Includes realistic
+// think time between steps.
+
+import http from 'k6/http';
+import { check, sleep } from 'k6';
+import { Rate, Trend } from 'k6/metrics';
+
+const BASE_URL = __ENV.K6_BASE_URL || 'http://localhost:3000';
+
+// Per-step timing metrics. The `true` flag formats values as milliseconds
+// in the summary output.
+const tApply = new Trend('kyc_apply_ms', true);
+const tDocs = new Trend('kyc_documents_ms', true);
+const tVideo = new Trend('kyc_video_ms', true);
+const tDecision = new Trend('kyc_decision_ms', true);
+
+// Funnel completion rate — the business metric.
+const completion = new Rate('kyc_completion');
+
+export const options = {
+  scenarios: {
+    full_flow: {
+      executor: 'constant-arrival-rate',
+      rate: 30,
+      timeUnit: '1s',
+      duration: '30s',
+      preAllocatedVUs: 60,
+      maxVUs: 120,
+      exec: 'fullFlow',
+    },
+    bail_at_video: {
+      executor: 'constant-arrival-rate',
+      rate: 5,
+      timeUnit: '1s',
+      duration: '30s',
+      preAllocatedVUs: 15,
+      exec: 'bailAtVideo',
+    },
+    bail_at_documents: {
+      executor: 'constant-arrival-rate',
+      rate: 10,
+      timeUnit: '1s',
+      duration: '30s',
+      preAllocatedVUs: 25,
+      exec: 'bailAtDocs',
+    },
+    bail_at_apply: {
+      executor: 'constant-arrival-rate',
+      rate: 5,
+      timeUnit: '1s',
+      duration: '30s',
+      preAllocatedVUs: 10,
+      exec: 'bailAtApply',
+    },
+  },
+  thresholds: {
+    // Per-step latency targets — tighter for faster steps.
+    'kyc_apply_ms': ['p(95)<200'],
+    'kyc_documents_ms': ['p(95)<400'],
+    'kyc_video_ms': ['p(95)<1500'],
+    'kyc_decision_ms': ['p(95)<800'],
+    // Business metric: at least 70% of started applications complete.
+    'kyc_completion': ['rate>0.70'],
+    'http_req_failed': ['rate<0.01'],
+  },
+};
+
+function apply() {
+  const start = Date.now();
+  const res = http.post(
+    `${BASE_URL}/lab/kyc/apply`,
+    JSON.stringify({ user: `applicant-${__VU}-${__ITER}` }),
+    { headers: { 'Content-Type': 'application/json' }, tags: { step: 'apply' } }
+  );
+  tApply.add(Date.now() - start);
+  check(res, { 'apply status is 200': (r) => r.status === 200 });
+  return res.status === 200 ? res.json('id') : null;
+}
+
+function uploadDocs(id) {
+  const start = Date.now();
+  const res = http.post(
+    `${BASE_URL}/lab/kyc/${id}/documents`,
+    null,
+    { tags: { step: 'documents' } }
+  );
+  tDocs.add(Date.now() - start);
+  return check(res, { 'documents status is 200': (r) => r.status === 200 });
+}
+
+function videoVerify(id) {
+  const start = Date.now();
+  const res = http.post(
+    `${BASE_URL}/lab/kyc/${id}/video`,
+    null,
+    { tags: { step: 'video' } }
+  );
+  tVideo.add(Date.now() - start);
+  return check(res, { 'video status is 200': (r) => r.status === 200 });
+}
+
+function decide(id) {
+  const start = Date.now();
+  const res = http.post(
+    `${BASE_URL}/lab/kyc/${id}/decision`,
+    null,
+    { tags: { step: 'decision' } }
+  );
+  tDecision.add(Date.now() - start);
+  return check(res, { 'decision status is 200': (r) => r.status === 200 });
+}
+
+// Realistic think time between steps. `sleep()` blocks the iteration —
+// open-model executors compensate by spinning up more VUs as needed.
+function think(min, max) {
+  sleep(min + Math.random() * (max - min));
+}
+
+export function fullFlow() {
+  const id = apply();
+  if (!id) return completion.add(false);
+
+  think(1, 3);
+  if (!uploadDocs(id)) return completion.add(false);
+
+  think(3, 8);
+  if (!videoVerify(id)) return completion.add(false);
+
+  think(2, 5);
+  if (!decide(id)) return completion.add(false);
+
+  completion.add(true);
+}
+
+export function bailAtVideo() {
+  const id = apply();
+  if (!id) return completion.add(false);
+  think(1, 3);
+  uploadDocs(id);
+  think(3, 8);
+  videoVerify(id);
+  // User abandons after video — no decision call.
+  completion.add(false);
+}
+
+export function bailAtDocs() {
+  const id = apply();
+  if (!id) return completion.add(false);
+  think(1, 3);
+  uploadDocs(id);
+  // User abandons after docs.
+  completion.add(false);
+}
+
+export function bailAtApply() {
+  apply();
+  // User starts the application but never uploads anything.
+  completion.add(false);
+}
+5:T8d0,# Kata 53 — Fintech KYC at Scale (Artillery solution)
+#
+# Same weighted-funnel idea as the k6 solution, but using Artillery's
+# scenario `weight` to model drop-off. Artillery doesn't have first-class
+# custom metrics like k6, so per-step latency observability is weaker —
+# this is a deliberate teaching point in the kata.
+#
+# Each scenario captures the application id and chains requests with
+# `think` blocks for realistic pacing.
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 30
+      arrivalRate: 50
+      name: "main"
+  ensure:
+    p95: 1500
+    maxErrorRate: 1
+
+scenarios:
+  - name: "full flow"
+    weight: 75
+    flow:
+      - post:
+          url: "/lab/kyc/apply"
+          json:
+            user: "applicant-{{ $randomString() }}"
+          capture:
+            - json: "$.id"
+              as: "appId"
+          expect:
+            - statusCode: 200
+      - think: 2
+
+      - post:
+          url: "/lab/kyc/{{ appId }}/documents"
+          expect:
+            - statusCode: 200
+      - think: 5
+
+      - post:
+          url: "/lab/kyc/{{ appId }}/video"
+          expect:
+            - statusCode: 200
+      - think: 3
+
+      - post:
+          url: "/lab/kyc/{{ appId }}/decision"
+          expect:
+            - statusCode: 200
+
+  - name: "bail at video"
+    weight: 5
+    flow:
+      - post:
+          url: "/lab/kyc/apply"
+          json:
+            user: "applicant-{{ $randomString() }}"
+          capture:
+            - json: "$.id"
+              as: "appId"
+      - think: 2
+      - post:
+          url: "/lab/kyc/{{ appId }}/documents"
+      - think: 5
+      - post:
+          url: "/lab/kyc/{{ appId }}/video"
+      # User abandons — no decision call
+
+  - name: "bail at documents"
+    weight: 15
+    flow:
+      - post:
+          url: "/lab/kyc/apply"
+          json:
+            user: "applicant-{{ $randomString() }}"
+          capture:
+            - json: "$.id"
+              as: "appId"
+      - think: 2
+      - post:
+          url: "/lab/kyc/{{ appId }}/documents"
+      # User abandons after upload
+
+  - name: "bail at apply"
+    weight: 5
+    flow:
+      - post:
+          url: "/lab/kyc/apply"
+          json:
+            user: "applicant-{{ $randomString() }}"
+      # Started but never uploaded
+6:T16cd,# Kata 52: Authentication Flows
+
+## What You Will Learn
+
+- The four common auth patterns in load tests: **login per iteration**, **login once per VU**, **shared token pool**, **pre-baked tokens**
+- When each pattern matches reality (and when each is wrong)
+- Handling token expiry mid-test
+- Refresh-token flow under load
+- Detecting and handling 401s without polluting your latency metrics
+
+## Prerequisites
+
+- Completed [Kata 51 (Parameterization)](../51-parameterization-and-data-driven-tests/)
+- The QA Labs server running
+
+## Concepts Explained
+
+### Why auth deserves its own kata
+
+If your load test logs in 10,000 times in 30 seconds against an endpoint that's not the one you're trying to measure, you've turned the test into a **login** stress test, not the test you wanted.
+
+Worse, login latency drowns out the latency of the endpoint you actually care about. The numbers look bad, you think the system is slow, but the bottleneck is just *how you wrote the test*.
+
+### Four patterns
+
+#### 1. Login per iteration (almost always wrong)
+
+```javascript
+export default function () {
+  const token = login();          // ← every iteration
+  http.get('/api/dashboard', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+```
+
+**When it's right:** specifically testing the login endpoint.
+**When it's wrong:** anywhere else. Wastes load on `/login`, distorts ratios, shadows downstream latency.
+
+#### 2. Login once per VU (the usual default)
+
+Each VU logs in once at scenario start, reuses the token for every iteration.
+
+```javascript
+import { sleep } from 'k6';
+
+let token = null;
+
+export default function () {
+  if (!token) token = login();
+  http.get('/api/dashboard', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+```
+
+**When it's right:** each "user" in your simulated load is a long-lived session.
+**Issue:** doesn't catch login latency at all — if you care about login under load, run it as a separate scenario.
+
+#### 3. Shared token pool (login bursts pre-test)
+
+For very high RPS where even per-VU logins are too many, pre-warm a pool of tokens before the actual test:
+
+```javascript
+import { SharedArray } from 'k6/data';
+import http from 'k6/http';
+
+const tokens = new SharedArray('tokens', function () {
+  // This runs ONCE in init context — make N login calls upfront
+  const arr = [];
+  for (let i = 0; i < 50; i++) {
+    const res = http.post(/* login */);
+    arr.push(res.json('token'));
+  }
+  return arr;
+});
+
+export default function () {
+  const token = tokens[__VU % tokens.length];
+  http.get('/api/dashboard', { headers: { Authorization: `Bearer ${token}` } });
+}
+```
+
+**When it's right:** ultra-high RPS, login isn't part of the perf hypothesis.
+
+#### 4. Pre-baked tokens (loaded from CSV / vault)
+
+Login pool is generated outside k6 entirely:
+
+```javascript
+const tokens = new SharedArray('tokens', () => JSON.parse(open('./tokens.json')));
+```
+
+**When it's right:** can't or shouldn't hit `/login` in a load test (rate limits, audit logs, etc.).
+
+### Handling token expiry
+
+Even per-VU tokens can expire mid-test. Two strategies:
+
+**Reactive:** if a request returns 401, refresh:
+```javascript
+let res = http.get(url, { headers: { Authorization: `Bearer ${token}` } });
+if (res.status === 401) {
+  token = login();
+  res = http.get(url, { headers: { Authorization: `Bearer ${token}` } });
+}
+```
+
+**Proactive:** track token age, refresh before it expires.
+
+The reactive approach is simpler but adds 401 → 200 retries to your latency stats, which can confuse percentile reading. Tag the retry to exclude:
+
+```javascript
+http.get(url, { tags: { retry: 'true' } });
+// Then in thresholds:
+'http_req_duration{retry:false}': ['p(95)<300'],
+```
+
+### Refresh-token flow
+
+Real auth often uses access + refresh tokens. Mirror this in tests if production does:
+
+```javascript
+let access = null;
+let refresh = null;
+
+function ensureToken() {
+  if (!access) {
+    const r = login();
+    access = r.access;
+    refresh = r.refresh;
+  }
+}
+
+function refreshAccess() {
+  const r = http.post('/auth/refresh', { refresh });
+  access = r.json('access');
+}
+```
+
+The QA Labs server uses simple bearer tokens (no expiry, no refresh) for kata simplicity. In a real test, swap in your real auth API.
+
+### Don't let 401s pollute metrics
+
+If 5% of requests return 401 (because tokens just expired and you're refreshing), they show up in `http_req_failed` and inflate your error rate. Two fixes:
+
+1. **Tag and exclude** failed-auth requests from your error threshold.
+2. **Don't measure** the auth-fixup hops in your main latency assertions.
+
+## Exercises
+
+1. **Login per iteration** vs **login once per VU.** Build both and compare RPS to `/lab/auth/me` between them under the same VU count. By how much does the per-iteration version distort the test?
+2. **Pre-warm a token pool of 20 tokens.** Run 50 VUs sharing those 20 tokens. Does the test reach the target RPS? What's the bottleneck?
+3. **Simulate 5% expiry.** Tag random requests to send a deliberately bad token (`token + 'x'`). Catch the 401, refresh, retry. Verify your latency p95 doesn't include retry hops.
+
+## Common Mistakes
+
+- **Login + 1 request per iteration.** You're testing the login endpoint, not the protected one. RPS to `/dashboard` will be half what it could be.
+- **Hardcoded token in the test file.** Tokens expire, breaks the test.
+- **Counting 401-then-retry as a successful response.** Inflates throughput, hides the problem.
+
+## Cheat Sheet
+
+| Pattern | When | Cost |
+|---------|------|------|
+| Login per iteration | Testing login itself | Stresses login, distorts other metrics |
+| Login once per VU | Most simulated-user tests | Adds N login calls at start |
+| Shared token pool | High RPS, login isn't the focus | Init time grows with pool size |
+| Pre-baked tokens | Can't hit login in test | Maintenance overhead |
+7:Td0d,// Kata 52 — Authentication Flows (k6 solution)
+//
+// Compares three auth patterns side-by-side using the QA Labs lab server:
+// - per_iter:    login on every iteration (anti-pattern, baseline)
+// - per_vu:      login once per VU, reuse token
+// - token_pool:  pre-warm a shared pool, every VU pulls from it
+//
+// Run all three at once and inspect per-scenario http_reqs to see how the
+// patterns distort the test's actual focus (calls to /lab/auth/me).
+
+import http from 'k6/http';
+import { check } from 'k6';
+import { SharedArray } from 'k6/data';
+
+const BASE_URL = __ENV.K6_BASE_URL || 'http://localhost:3000';
+const POOL_SIZE = 20;
+
+// Pre-warmed token pool — runs ONCE in init context (before any VU starts).
+// Every VU sees the same array; selection is round-robin via __VU.
+const tokenPool = new SharedArray('token_pool', function () {
+  const arr = [];
+  for (let i = 0; i < POOL_SIZE; i++) {
+    const res = http.post(
+      `${BASE_URL}/lab/auth/login`,
+      JSON.stringify({ username: `pool-user-${i}`, password: 'pw' }),
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+    if (res.status === 200) arr.push(res.json('token'));
+  }
+  return arr;
+});
+
+export const options = {
+  scenarios: {
+    per_iter: {
+      executor: 'constant-vus',
+      vus: 5,
+      duration: '15s',
+      exec: 'loginEveryIteration',
+      tags: { auth_pattern: 'per_iter' },
+    },
+    per_vu: {
+      executor: 'constant-vus',
+      vus: 5,
+      duration: '15s',
+      exec: 'loginOncePerVu',
+      tags: { auth_pattern: 'per_vu' },
+    },
+    token_pool: {
+      executor: 'constant-vus',
+      vus: 5,
+      duration: '15s',
+      exec: 'usePool',
+      tags: { auth_pattern: 'token_pool' },
+    },
+  },
+  thresholds: {
+    'http_req_failed': ['rate<0.01'],
+    // Only assert on the protected endpoint — exclude login retries.
+    'http_req_duration{endpoint:me}': ['p(95)<200'],
+  },
+};
+
+// Anti-pattern: login on every iteration. Logs into N times more than needed.
+export function loginEveryIteration() {
+  const loginRes = http.post(
+    `${BASE_URL}/lab/auth/login`,
+    JSON.stringify({ username: `per-iter-${__VU}`, password: 'pw' }),
+    { headers: { 'Content-Type': 'application/json' }, tags: { endpoint: 'login' } }
+  );
+  if (loginRes.status !== 200) return;
+
+  hitMe(loginRes.json('token'));
+}
+
+// Sensible default: login once per VU, cache the token in module-level state.
+// In k6, `vuToken` is per-VU because each VU gets its own JS runtime.
+let vuToken = null;
+export function loginOncePerVu() {
+  if (!vuToken) {
+    const res = http.post(
+      `${BASE_URL}/lab/auth/login`,
+      JSON.stringify({ username: `per-vu-${__VU}`, password: 'pw' }),
+      { headers: { 'Content-Type': 'application/json' }, tags: { endpoint: 'login' } }
+    );
+    if (res.status !== 200) return;
+    vuToken = res.json('token');
+  }
+  hitMe(vuToken);
+}
+
+// High-RPS pattern: pull from pre-warmed shared pool. Zero login calls
+// during the test phase.
+export function usePool() {
+  if (tokenPool.length === 0) return;
+  const token = tokenPool[__VU % tokenPool.length];
+  hitMe(token);
+}
+
+function hitMe(token) {
+  const res = http.get(`${BASE_URL}/lab/auth/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+    tags: { endpoint: 'me' },
+  });
+  check(res, {
+    'me status is 200': (r) => r.status === 200,
+  });
+}
+8:T86c,# Kata 52 — Authentication Flows (Artillery solution)
+#
+# Artillery's `flow` is per-scenario; every scenario starts fresh, so the
+# "login once per VU" pattern from k6 maps to "login at scenario start,
+# capture token, use across remaining steps". This is the realistic default.
+#
+# The three approaches the kata covers:
+# - login_then_many_calls: login → many calls (idiomatic Artillery)
+# - login_per_iteration:   each "iteration" is its own scenario (Artillery
+#                          re-runs scenarios per arrival, so login happens
+#                          on every arrival — equivalent to per-iter)
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 20
+      arrivalRate: 10
+      name: "main"
+  ensure:
+    p95: 300
+    maxErrorRate: 1
+
+scenarios:
+  # Idiomatic: each VU logs in once, then makes several /me calls.
+  # This is the closest Artillery equivalent of "login once per VU".
+  - name: "login then many calls"
+    weight: 70
+    flow:
+      - post:
+          url: "/lab/auth/login"
+          json:
+            username: "burst-{{ $randomString() }}"
+            password: "pw"
+          capture:
+            - json: "$.token"
+              as: "token"
+          expect:
+            - statusCode: 200
+
+      # Reuse the captured token for several /me calls before the VU exits.
+      - loop:
+          - get:
+              url: "/lab/auth/me"
+              headers:
+                Authorization: "Bearer {{ token }}"
+              expect:
+                - statusCode: 200
+        count: 5
+
+  # Anti-pattern: each "iteration" (here, scenario invocation) does
+  # exactly one login + one /me. Useful only when login is the focus.
+  - name: "login per iteration"
+    weight: 30
+    flow:
+      - post:
+          url: "/lab/auth/login"
+          json:
+            username: "per-iter-{{ $randomString() }}"
+            password: "pw"
+          capture:
+            - json: "$.token"
+              as: "token"
+          expect:
+            - statusCode: 200
+
+      - get:
+          url: "/lab/auth/me"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          expect:
+            - statusCode: 200
+9:T18ce,# Kata 54: Load Test
+
+## What You Will Learn
+
+- What a **load test** actually measures (as opposed to stress, spike, or soak)
+- How to pick the right RPS target — production traffic × headroom factor
+- The "warm-up + plateau + drain" pattern as the standard load shape
+- Setting **realistic SLO-based thresholds** instead of arbitrary numbers
+- Why a passing load test still tells you nothing about your **breakpoint** (that's kata 55)
+
+## Prerequisites
+
+- Completed phase 11 (realistic scenarios, parameterization, auth)
+- The QA Labs server running
+
+## Concepts Explained
+
+### Five test types in one phase
+
+This phase has four katas covering five distinct test types. They use similar tooling but answer **different questions**:
+
+| Test type | Question it answers | Kata |
+|-----------|---------------------|------|
+| **Load** | Does the system meet its SLOs at expected production load? | **54 (this one)** |
+| **Stress** | What's the maximum sustainable load before SLOs break? | 55 |
+| **Breakpoint** | Where does the system actually fail (crash, timeout)? | 55 |
+| **Spike** | What happens when traffic jumps 10× in 30 seconds? | 56 |
+| **Soak** | Are there memory leaks / connection leaks under steady load for hours? | 57 |
+
+People run "load tests" without thinking and call any of the above a load test. Each one finds different bugs.
+
+### What a load test is
+
+> **A load test verifies that the system meets its SLOs under expected production traffic.**
+
+It's an **affirmative** test: "Yes, we can handle 500 RPS with p95 < 300ms and < 1% errors." Pass = ship. Fail = either the system regressed or the SLO needs revisiting.
+
+### Picking the load target
+
+Three numbers you need:
+
+1. **Peak production RPS.** From your monitoring (e.g., Grafana, Datadog). Look at the busiest hour of the busiest day in the last 30 days.
+2. **Headroom factor.** Usually 1.2–1.5×. You want to handle today's peak *plus* unexpected growth.
+3. **Duration.** Long enough to flush warm-up effects and gather statistically meaningful percentiles. **15–30 minutes** is typical; **5 minutes minimum** for a CI variant.
+
+Example: peak is 800 RPS, factor 1.25 → load test at **1000 RPS for 15 minutes**.
+
+### The standard load shape
+
+```
+RPS
+1000 │              ┌────────────────┐
+     │             ╱                  ╲
+ 800 │            ╱                    ╲
+     │           ╱                      ╲
+   0 │__________╱                        ╲__________
+     └────────────────────────────────────────────►
+        warm-up      plateau (assert here)   drain
+        ~1 min       ~13 min                  ~1 min
+```
+
+- **Warm-up** flushes cold caches, JIT compilation, connection pool. Don't assert on this period.
+- **Plateau** is where you assert. Tag this slice and write per-tag thresholds.
+- **Drain** ensures graceful shutdown — assert connection-close behavior here.
+
+### SLO-based thresholds
+
+Bad threshold:
+```javascript
+http_req_duration: ['p(95)<500']  // why 500ms? because it sounded round?
+```
+
+Good threshold:
+```javascript
+// SLO: p95 < 300ms (defined in our service contract)
+// Test threshold: 80% of SLO budget (gives headroom for noise)
+http_req_duration: ['p(95)<240']
+```
+
+Tying the threshold to a defined SLO makes the test result actionable: a breach means the SLO is at risk. Without an SLO, the threshold is opinion.
+
+### Common load-test pitfalls
+
+- **Treating max RPS as the load.** Max RPS is what you find with a stress test (kata 55). Production load is *typical* peak, not max.
+- **Asserting on whole-test data including warm-up.** Tag the plateau and assert only on the plateau samples.
+- **No `sleep()` in user-flow tests.** Real users have think time. See kata 53.
+- **Single-region test against multi-region service.** Make sure your load generator's network path resembles real users.
+
+## Exercises
+
+1. **Build the canonical load test.** 100 RPS, 1-minute warm-up to plateau, 3-minute plateau at 100 RPS, 30s drain. Tag the plateau samples. Threshold: `p(95)<300` on plateau only.
+2. **Tighten then break.** Drop the plateau threshold to `p(95)<150`. Run again. Did it pass? If yes, your service is faster than the SLO needs — discuss whether to tighten the SLO or save the headroom.
+3. **Add a per-endpoint slice.** Hit two endpoints (`/lab/echo` fast, `/lab/slow?ms=200` deliberately slow) at a 70/30 split. Threshold p95 *separately* per endpoint. Why is whole-test p95 misleading here?
+4. **What about the median?** Add `p(50)<50` for `/lab/echo`. Why might you assert both p50 and p95? Hint: a system can have great avg latency but a terrible long tail.
+
+## Common Mistakes
+
+- **Confusing load test with stress test.** Load = "can we handle today's traffic?" Stress = "how much can we handle?"
+- **One run is not a benchmark.** Latency varies between runs — establish a baseline by averaging 3+ runs before fighting noise.
+- **Tightening thresholds to "make the test feel meaningful."** That's a recipe for flaky CI. Anchor to SLOs.
+- **Running load tests in production without coordination.** Real-world consequence: you DOS your own users. Use a load environment that mirrors prod, not prod itself.
+
+## Cheat Sheet
+
+```javascript
+// k6 load test skeleton
+import { tagWithCurrentStageProfile } from 'k6/execution';  // experimental
+
+export const options = {
+  scenarios: {
+    realistic_load: {
+      executor: 'ramping-arrival-rate',
+      startRate: 0,
+      timeUnit: '1s',
+      preAllocatedVUs: 100,
+      maxVUs: 200,
+      stages: [
+        { duration: '1m', target: 100 },   // warm-up
+        { duration: '3m', target: 100 },   // plateau ← assert here
+        { duration: '30s', target: 0 },    // drain
+      ],
+    },
+  },
+  thresholds: {
+    // Use { aborOnFail: true } in CI to fail fast
+    'http_req_duration{phase:plateau}': [{ threshold: 'p(95)<300', abortOnFail: false }],
+    'http_req_failed': ['rate<0.01'],
+  },
+};
+```
+
+| Step | Why |
+|------|-----|
+| Use **open model** (`ramping-arrival-rate`) | Closed model bottlenecks on VU count under slowdown |
+| Tag the plateau | Assert only on representative data |
+| Threshold ties to SLO | Result is actionable, not opinion |
+| Multiple runs for baseline | Single-run data is noise |
+a:T89e,// Kata 54 — Load Test (k6 solution)
+//
+// Canonical load shape: ramp → plateau → drain.
+// Asserts SLO-aligned thresholds against the plateau slice only,
+// excluding warm-up samples that would distort percentiles.
+//
+// Total runtime ~2.5 min. Increase plateau duration in real CI.
+
+import http from 'k6/http';
+import { check } from 'k6';
+
+const BASE_URL = __ENV.K6_BASE_URL || 'http://localhost:3000';
+
+// SLO definitions — tied to a (hypothetical) service contract.
+// In a real project, these come from your service's published SLO.
+const SLO_P95_MS = 300;
+const SLO_ERROR_RATE = 0.01;
+
+// Test thresholds use 80% of SLO budget for headroom.
+const TEST_P95_MS = Math.floor(SLO_P95_MS * 0.8);
+
+export const options = {
+  scenarios: {
+    realistic_load: {
+      executor: 'ramping-arrival-rate',
+      startRate: 0,
+      timeUnit: '1s',
+      preAllocatedVUs: 50,
+      maxVUs: 100,
+      stages: [
+        { duration: '20s', target: 100 },  // warm-up: 0 → 100 RPS
+        { duration: '90s', target: 100 },  // plateau: 100 RPS sustained ← assert here
+        { duration: '20s', target: 0 },    // drain
+      ],
+    },
+  },
+  thresholds: {
+    // Whole-test threshold: more generous, accounts for warm-up and drain.
+    'http_req_duration': [`p(95)<${SLO_P95_MS * 1.5}`],
+    // Plateau-only threshold: tight, SLO-aligned.
+    [`http_req_duration{phase:plateau}`]: [`p(95)<${TEST_P95_MS}`],
+    'http_req_failed': [`rate<${SLO_ERROR_RATE}`],
+  },
+};
+
+const TEST_START_MS = Date.now();
+const WARMUP_END_MS = 20_000;
+const PLATEAU_END_MS = WARMUP_END_MS + 90_000;
+
+function currentPhase() {
+  const elapsed = Date.now() - TEST_START_MS;
+  if (elapsed < WARMUP_END_MS) return 'warmup';
+  if (elapsed < PLATEAU_END_MS) return 'plateau';
+  return 'drain';
+}
+
+export default function () {
+  const phase = currentPhase();
+  // Mix of endpoints: 70% fast (/lab/echo), 30% slow (/lab/jitter)
+  // — represents a typical traffic mix, not a single endpoint.
+  const url =
+    Math.random() < 0.7
+      ? `${BASE_URL}/lab/echo`
+      : `${BASE_URL}/lab/jitter?p50=80&p95=200`;
+
+  const res = http.get(url, { tags: { phase } });
+  check(res, {
+    'status is 200': (r) => r.status === 200,
+  });
+}
+b:T404,# Kata 54 — Load Test (Artillery solution)
+#
+# Same shape as the k6 solution — warm-up, plateau, drain. Artillery's
+# `phases` are open-model by default, which is what you want for a
+# load test. The `ensure` block at the end uses overall test stats
+# (Artillery doesn't support per-phase tagged thresholds the way k6 does).
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 20
+      arrivalRate: 5
+      rampTo: 100
+      name: "warm-up"
+
+    - duration: 90
+      arrivalRate: 100
+      name: "plateau"
+
+    - duration: 20
+      arrivalRate: 100
+      rampTo: 0
+      name: "drain"
+
+  ensure:
+    # SLO-aligned threshold (whole-test, can't slice by phase here)
+    p95: 300
+    maxErrorRate: 1
+
+scenarios:
+  - name: "fast endpoint"
+    weight: 70
+    flow:
+      - get:
+          url: "/lab/echo"
+          expect:
+            - statusCode: 200
+
+  - name: "slower endpoint"
+    weight: 30
+    flow:
+      - get:
+          url: "/lab/jitter?p50=80&p95=200"
+          expect:
+            - statusCode: 200
+c:T7608,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#6A737D">// Kata 53 — Fintech KYC at Scale (k6 solution)</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// Models a realistic KYC funnel with weighted drop-off:</span></span>
+<span class="line"><span style="color:#6A737D">//   75% complete the whole flow</span></span>
+<span class="line"><span style="color:#6A737D">//   15% bail after documents</span></span>
+<span class="line"><span style="color:#6A737D">//   5%  bail after video</span></span>
+<span class="line"><span style="color:#6A737D">//   5%  bail right after apply</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// Each step has its own custom Trend metric and threshold so a regression</span></span>
+<span class="line"><span style="color:#6A737D">// in one leg of the funnel is immediately visible. Includes realistic</span></span>
+<span class="line"><span style="color:#6A737D">// think time between steps.</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> http </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> 'k6/http'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { check, sleep } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> 'k6'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { Rate, Trend } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> 'k6/metrics'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> BASE_URL</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> __ENV.</span><span style="color:#79B8FF">K6_BASE_URL</span><span style="color:#F97583"> ||</span><span style="color:#9ECBFF"> 'http://localhost:3000'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// Per-step timing metrics. The `true` flag formats values as milliseconds</span></span>
+<span class="line"><span style="color:#6A737D">// in the summary output.</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> tApply</span><span style="color:#F97583"> =</span><span style="color:#F97583"> new</span><span style="color:#B392F0"> Trend</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'kyc_apply_ms'</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">true</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> tDocs</span><span style="color:#F97583"> =</span><span style="color:#F97583"> new</span><span style="color:#B392F0"> Trend</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'kyc_documents_ms'</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">true</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> tVideo</span><span style="color:#F97583"> =</span><span style="color:#F97583"> new</span><span style="color:#B392F0"> Trend</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'kyc_video_ms'</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">true</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> tDecision</span><span style="color:#F97583"> =</span><span style="color:#F97583"> new</span><span style="color:#B392F0"> Trend</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'kyc_decision_ms'</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">true</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// Funnel completion rate — the business metric.</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> completion</span><span style="color:#F97583"> =</span><span style="color:#F97583"> new</span><span style="color:#B392F0"> Rate</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'kyc_completion'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> const</span><span style="color:#79B8FF"> options</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">  scenarios: {</span></span>
+<span class="line"><span style="color:#E1E4E8">    full_flow: {</span></span>
+<span class="line"><span style="color:#E1E4E8">      executor: </span><span style="color:#9ECBFF">'constant-arrival-rate'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      rate: </span><span style="color:#79B8FF">30</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      timeUnit: </span><span style="color:#9ECBFF">'1s'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      duration: </span><span style="color:#9ECBFF">'30s'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      preAllocatedVUs: </span><span style="color:#79B8FF">60</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      maxVUs: </span><span style="color:#79B8FF">120</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      exec: </span><span style="color:#9ECBFF">'fullFlow'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">    },</span></span>
+<span class="line"><span style="color:#E1E4E8">    bail_at_video: {</span></span>
+<span class="line"><span style="color:#E1E4E8">      executor: </span><span style="color:#9ECBFF">'constant-arrival-rate'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      rate: </span><span style="color:#79B8FF">5</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      timeUnit: </span><span style="color:#9ECBFF">'1s'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      duration: </span><span style="color:#9ECBFF">'30s'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      preAllocatedVUs: </span><span style="color:#79B8FF">15</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      exec: </span><span style="color:#9ECBFF">'bailAtVideo'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">    },</span></span>
+<span class="line"><span style="color:#E1E4E8">    bail_at_documents: {</span></span>
+<span class="line"><span style="color:#E1E4E8">      executor: </span><span style="color:#9ECBFF">'constant-arrival-rate'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      rate: </span><span style="color:#79B8FF">10</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      timeUnit: </span><span style="color:#9ECBFF">'1s'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      duration: </span><span style="color:#9ECBFF">'30s'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      preAllocatedVUs: </span><span style="color:#79B8FF">25</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      exec: </span><span style="color:#9ECBFF">'bailAtDocs'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">    },</span></span>
+<span class="line"><span style="color:#E1E4E8">    bail_at_apply: {</span></span>
+<span class="line"><span style="color:#E1E4E8">      executor: </span><span style="color:#9ECBFF">'constant-arrival-rate'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      rate: </span><span style="color:#79B8FF">5</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      timeUnit: </span><span style="color:#9ECBFF">'1s'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      duration: </span><span style="color:#9ECBFF">'30s'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      preAllocatedVUs: </span><span style="color:#79B8FF">10</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      exec: </span><span style="color:#9ECBFF">'bailAtApply'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">    },</span></span>
+<span class="line"><span style="color:#E1E4E8">  },</span></span>
+<span class="line"><span style="color:#E1E4E8">  thresholds: {</span></span>
+<span class="line"><span style="color:#6A737D">    // Per-step latency targets — tighter for faster steps.</span></span>
+<span class="line"><span style="color:#9ECBFF">    'kyc_apply_ms'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'p(95)&#x3C;200'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#9ECBFF">    'kyc_documents_ms'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'p(95)&#x3C;400'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#9ECBFF">    'kyc_video_ms'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'p(95)&#x3C;1500'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#9ECBFF">    'kyc_decision_ms'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'p(95)&#x3C;800'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#6A737D">    // Business metric: at least 70% of started applications complete.</span></span>
+<span class="line"><span style="color:#9ECBFF">    'kyc_completion'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'rate>0.70'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#9ECBFF">    'http_req_failed'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'rate&#x3C;0.01'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#E1E4E8">  },</span></span>
+<span class="line"><span style="color:#E1E4E8">};</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">function</span><span style="color:#B392F0"> apply</span><span style="color:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> start</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> Date.</span><span style="color:#B392F0">now</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> res</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> http.</span><span style="color:#B392F0">post</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#9ECBFF">    `${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/kyc/apply`</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#79B8FF">    JSON</span><span style="color:#E1E4E8">.</span><span style="color:#B392F0">stringify</span><span style="color:#E1E4E8">({ user: </span><span style="color:#9ECBFF">`applicant-${</span><span style="color:#E1E4E8">__VU</span><span style="color:#9ECBFF">}-${</span><span style="color:#E1E4E8">__ITER</span><span style="color:#9ECBFF">}`</span><span style="color:#E1E4E8"> }),</span></span>
+<span class="line"><span style="color:#E1E4E8">    { headers: { </span><span style="color:#9ECBFF">'Content-Type'</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">'application/json'</span><span style="color:#E1E4E8"> }, tags: { step: </span><span style="color:#9ECBFF">'apply'</span><span style="color:#E1E4E8"> } }</span></span>
+<span class="line"><span style="color:#E1E4E8">  );</span></span>
+<span class="line"><span style="color:#E1E4E8">  tApply.</span><span style="color:#B392F0">add</span><span style="color:#E1E4E8">(Date.</span><span style="color:#B392F0">now</span><span style="color:#E1E4E8">() </span><span style="color:#F97583">-</span><span style="color:#E1E4E8"> start);</span></span>
+<span class="line"><span style="color:#B392F0">  check</span><span style="color:#E1E4E8">(res, { </span><span style="color:#9ECBFF">'apply status is 200'</span><span style="color:#E1E4E8">: (</span><span style="color:#FFAB70">r</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> r.status </span><span style="color:#F97583">===</span><span style="color:#79B8FF"> 200</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"><span style="color:#F97583">  return</span><span style="color:#E1E4E8"> res.status </span><span style="color:#F97583">===</span><span style="color:#79B8FF"> 200</span><span style="color:#F97583"> ?</span><span style="color:#E1E4E8"> res.</span><span style="color:#B392F0">json</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'id'</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">:</span><span style="color:#79B8FF"> null</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">function</span><span style="color:#B392F0"> uploadDocs</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">id</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> start</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> Date.</span><span style="color:#B392F0">now</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> res</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> http.</span><span style="color:#B392F0">post</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#9ECBFF">    `${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/kyc/${</span><span style="color:#E1E4E8">id</span><span style="color:#9ECBFF">}/documents`</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#79B8FF">    null</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">    { tags: { step: </span><span style="color:#9ECBFF">'documents'</span><span style="color:#E1E4E8"> } }</span></span>
+<span class="line"><span style="color:#E1E4E8">  );</span></span>
+<span class="line"><span style="color:#E1E4E8">  tDocs.</span><span style="color:#B392F0">add</span><span style="color:#E1E4E8">(Date.</span><span style="color:#B392F0">now</span><span style="color:#E1E4E8">() </span><span style="color:#F97583">-</span><span style="color:#E1E4E8"> start);</span></span>
+<span class="line"><span style="color:#F97583">  return</span><span style="color:#B392F0"> check</span><span style="color:#E1E4E8">(res, { </span><span style="color:#9ECBFF">'documents status is 200'</span><span style="color:#E1E4E8">: (</span><span style="color:#FFAB70">r</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> r.status </span><span style="color:#F97583">===</span><span style="color:#79B8FF"> 200</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">function</span><span style="color:#B392F0"> videoVerify</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">id</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> start</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> Date.</span><span style="color:#B392F0">now</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> res</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> http.</span><span style="color:#B392F0">post</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#9ECBFF">    `${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/kyc/${</span><span style="color:#E1E4E8">id</span><span style="color:#9ECBFF">}/video`</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#79B8FF">    null</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">    { tags: { step: </span><span style="color:#9ECBFF">'video'</span><span style="color:#E1E4E8"> } }</span></span>
+<span class="line"><span style="color:#E1E4E8">  );</span></span>
+<span class="line"><span style="color:#E1E4E8">  tVideo.</span><span style="color:#B392F0">add</span><span style="color:#E1E4E8">(Date.</span><span style="color:#B392F0">now</span><span style="color:#E1E4E8">() </span><span style="color:#F97583">-</span><span style="color:#E1E4E8"> start);</span></span>
+<span class="line"><span style="color:#F97583">  return</span><span style="color:#B392F0"> check</span><span style="color:#E1E4E8">(res, { </span><span style="color:#9ECBFF">'video status is 200'</span><span style="color:#E1E4E8">: (</span><span style="color:#FFAB70">r</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> r.status </span><span style="color:#F97583">===</span><span style="color:#79B8FF"> 200</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">function</span><span style="color:#B392F0"> decide</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">id</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> start</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> Date.</span><span style="color:#B392F0">now</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> res</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> http.</span><span style="color:#B392F0">post</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#9ECBFF">    `${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/kyc/${</span><span style="color:#E1E4E8">id</span><span style="color:#9ECBFF">}/decision`</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#79B8FF">    null</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">    { tags: { step: </span><span style="color:#9ECBFF">'decision'</span><span style="color:#E1E4E8"> } }</span></span>
+<span class="line"><span style="color:#E1E4E8">  );</span></span>
+<span class="line"><span style="color:#E1E4E8">  tDecision.</span><span style="color:#B392F0">add</span><span style="color:#E1E4E8">(Date.</span><span style="color:#B392F0">now</span><span style="color:#E1E4E8">() </span><span style="color:#F97583">-</span><span style="color:#E1E4E8"> start);</span></span>
+<span class="line"><span style="color:#F97583">  return</span><span style="color:#B392F0"> check</span><span style="color:#E1E4E8">(res, { </span><span style="color:#9ECBFF">'decision status is 200'</span><span style="color:#E1E4E8">: (</span><span style="color:#FFAB70">r</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> r.status </span><span style="color:#F97583">===</span><span style="color:#79B8FF"> 200</span><span style="color:#E1E4E8"> });</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// Realistic think time between steps. `sleep()` blocks the iteration —</span></span>
+<span class="line"><span style="color:#6A737D">// open-model executors compensate by spinning up more VUs as needed.</span></span>
+<span class="line"><span style="color:#F97583">function</span><span style="color:#B392F0"> think</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">min</span><span style="color:#E1E4E8">, </span><span style="color:#FFAB70">max</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#B392F0">  sleep</span><span style="color:#E1E4E8">(min </span><span style="color:#F97583">+</span><span style="color:#E1E4E8"> Math.</span><span style="color:#B392F0">random</span><span style="color:#E1E4E8">() </span><span style="color:#F97583">*</span><span style="color:#E1E4E8"> (max </span><span style="color:#F97583">-</span><span style="color:#E1E4E8"> min));</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> function</span><span style="color:#B392F0"> fullFlow</span><span style="color:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> id</span><span style="color:#F97583"> =</span><span style="color:#B392F0"> apply</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  if</span><span style="color:#E1E4E8"> (</span><span style="color:#F97583">!</span><span style="color:#E1E4E8">id) </span><span style="color:#F97583">return</span><span style="color:#E1E4E8"> completion.</span><span style="color:#B392F0">add</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">false</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">  think</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">1</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">3</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  if</span><span style="color:#E1E4E8"> (</span><span style="color:#F97583">!</span><span style="color:#B392F0">uploadDocs</span><span style="color:#E1E4E8">(id)) </span><span style="color:#F97583">return</span><span style="color:#E1E4E8"> completion.</span><span style="color:#B392F0">add</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">false</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">  think</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">3</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">8</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  if</span><span style="color:#E1E4E8"> (</span><span style="color:#F97583">!</span><span style="color:#B392F0">videoVerify</span><span style="color:#E1E4E8">(id)) </span><span style="color:#F97583">return</span><span style="color:#E1E4E8"> completion.</span><span style="color:#B392F0">add</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">false</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">  think</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">2</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">5</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">  if</span><span style="color:#E1E4E8"> (</span><span style="color:#F97583">!</span><span style="color:#B392F0">decide</span><span style="color:#E1E4E8">(id)) </span><span style="color:#F97583">return</span><span style="color:#E1E4E8"> completion.</span><span style="color:#B392F0">add</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">false</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">  completion.</span><span style="color:#B392F0">add</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">true</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> function</span><span style="color:#B392F0"> bailAtVideo</span><span style="color:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> id</span><span style="color:#F97583"> =</span><span style="color:#B392F0"> apply</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  if</span><span style="color:#E1E4E8"> (</span><span style="color:#F97583">!</span><span style="color:#E1E4E8">id) </span><span style="color:#F97583">return</span><span style="color:#E1E4E8"> completion.</span><span style="color:#B392F0">add</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">false</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#B392F0">  think</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">1</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">3</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#B392F0">  uploadDocs</span><span style="color:#E1E4E8">(id);</span></span>
+<span class="line"><span style="color:#B392F0">  think</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">3</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">8</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#B392F0">  videoVerify</span><span style="color:#E1E4E8">(id);</span></span>
+<span class="line"><span style="color:#6A737D">  // User abandons after video — no decision call.</span></span>
+<span class="line"><span style="color:#E1E4E8">  completion.</span><span style="color:#B392F0">add</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">false</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> function</span><span style="color:#B392F0"> bailAtDocs</span><span style="color:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> id</span><span style="color:#F97583"> =</span><span style="color:#B392F0"> apply</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  if</span><span style="color:#E1E4E8"> (</span><span style="color:#F97583">!</span><span style="color:#E1E4E8">id) </span><span style="color:#F97583">return</span><span style="color:#E1E4E8"> completion.</span><span style="color:#B392F0">add</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">false</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#B392F0">  think</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">1</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">3</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#B392F0">  uploadDocs</span><span style="color:#E1E4E8">(id);</span></span>
+<span class="line"><span style="color:#6A737D">  // User abandons after docs.</span></span>
+<span class="line"><span style="color:#E1E4E8">  completion.</span><span style="color:#B392F0">add</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">false</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> function</span><span style="color:#B392F0"> bailAtApply</span><span style="color:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#B392F0">  apply</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#6A737D">  // User starts the application but never uploads anything.</span></span>
+<span class="line"><span style="color:#E1E4E8">  completion.</span><span style="color:#B392F0">add</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">false</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span></code></pre>d:T323c,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#6A737D"># Kata 53 — Fintech KYC at Scale (Artillery solution)</span></span>
+<span class="line"><span style="color:#6A737D">#</span></span>
+<span class="line"><span style="color:#6A737D"># Same weighted-funnel idea as the k6 solution, but using Artillery's</span></span>
+<span class="line"><span style="color:#6A737D"># scenario `weight` to model drop-off. Artillery doesn't have first-class</span></span>
+<span class="line"><span style="color:#6A737D"># custom metrics like k6, so per-step latency observability is weaker —</span></span>
+<span class="line"><span style="color:#6A737D"># this is a deliberate teaching point in the kata.</span></span>
+<span class="line"><span style="color:#6A737D">#</span></span>
+<span class="line"><span style="color:#6A737D"># Each scenario captures the application id and chains requests with</span></span>
+<span class="line"><span style="color:#6A737D"># `think` blocks for realistic pacing.</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#85E89D">config</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">  target</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"http://localhost:3000"</span></span>
+<span class="line"><span style="color:#85E89D">  phases</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">    - </span><span style="color:#85E89D">duration</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">30</span></span>
+<span class="line"><span style="color:#85E89D">      arrivalRate</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">50</span></span>
+<span class="line"><span style="color:#85E89D">      name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"main"</span></span>
+<span class="line"><span style="color:#85E89D">  ensure</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">    p95</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">1500</span></span>
+<span class="line"><span style="color:#85E89D">    maxErrorRate</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">1</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#85E89D">scenarios</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">  - </span><span style="color:#85E89D">name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"full flow"</span></span>
+<span class="line"><span style="color:#85E89D">    weight</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">75</span></span>
+<span class="line"><span style="color:#85E89D">    flow</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">post</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">          url</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"/lab/kyc/apply"</span></span>
+<span class="line"><span style="color:#85E89D">          json</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">            user</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"applicant-{{ $randomString() }}"</span></span>
+<span class="line"><span style="color:#85E89D">          capture</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">            - </span><span style="color:#85E89D">json</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"$.id"</span></span>
+<span class="line"><span style="color:#85E89D">              as</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"appId"</span></span>
+<span class="line"><span style="color:#85E89D">          expect</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">            - </span><span style="color:#85E89D">statusCode</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">200</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">think</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">2</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">post</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">          url</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"/lab/kyc/{{ appId }}/documents"</span></span>
+<span class="line"><span style="color:#85E89D">          expect</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">            - </span><span style="color:#85E89D">statusCode</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">200</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">think</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">5</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">post</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">          url</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"/lab/kyc/{{ appId }}/video"</span></span>
+<span class="line"><span style="color:#85E89D">          expect</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">            - </span><span style="color:#85E89D">statusCode</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">200</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">think</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">3</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">post</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">          url</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"/lab/kyc/{{ appId }}/decision"</span></span>
+<span class="line"><span style="color:#85E89D">          expect</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">            - </span><span style="color:#85E89D">statusCode</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">200</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">  - </span><span style="color:#85E89D">name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"bail at video"</span></span>
+<span class="line"><span style="color:#85E89D">    weight</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">5</span></span>
+<span class="line"><span style="color:#85E89D">    flow</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">post</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">          url</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"/lab/kyc/apply"</span></span>
+<span class="line"><span style="color:#85E89D">          json</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">            user</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"applicant-{{ $randomString() }}"</span></span>
+<span class="line"><span style="color:#85E89D">          capture</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">            - </span><span style="color:#85E89D">json</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"$.id"</span></span>
+<span class="line"><span style="color:#85E89D">              as</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"appId"</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">think</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">2</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">post</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">          url</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"/lab/kyc/{{ appId }}/documents"</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">think</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">5</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">post</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">          url</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"/lab/kyc/{{ appId }}/video"</span></span>
+<span class="line"><span style="color:#6A737D">      # User abandons — no decision call</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">  - </span><span style="color:#85E89D">name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"bail at documents"</span></span>
+<span class="line"><span style="color:#85E89D">    weight</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">15</span></span>
+<span class="line"><span style="color:#85E89D">    flow</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">post</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">          url</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"/lab/kyc/apply"</span></span>
+<span class="line"><span style="color:#85E89D">          json</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">            user</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"applicant-{{ $randomString() }}"</span></span>
+<span class="line"><span style="color:#85E89D">          capture</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">            - </span><span style="color:#85E89D">json</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"$.id"</span></span>
+<span class="line"><span style="color:#85E89D">              as</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"appId"</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">think</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">2</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">post</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">          url</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"/lab/kyc/{{ appId }}/documents"</span></span>
+<span class="line"><span style="color:#6A737D">      # User abandons after upload</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">  - </span><span style="color:#85E89D">name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"bail at apply"</span></span>
+<span class="line"><span style="color:#85E89D">    weight</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">5</span></span>
+<span class="line"><span style="color:#85E89D">    flow</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">post</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">          url</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"/lab/kyc/apply"</span></span>
+<span class="line"><span style="color:#85E89D">          json</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">            user</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"applicant-{{ $randomString() }}"</span></span>
+<span class="line"><span style="color:#6A737D">      # Started but never uploaded</span></span>
+<span class="line"></span></code></pre>0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"kata":{"slug":"53-fintech-kyc-at-scale","number":53,"title":"Fintech KYC at Scale","phaseSlug":"phase-11-realistic-scenarios","phaseNumber":11,"phaseName":"Realistic Scenarios","readmeRaw":"$3","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"53-fintech-kyc-at-scale.test.js","content":"$4"}],"artilleryFiles":[{"filename":"53-fintech-kyc-at-scale.yml","content":"$5"}],"jmeterFiles":[]},"prev":{"slug":"52-authentication-flows","number":52,"title":"Authentication Flows","phaseSlug":"phase-11-realistic-scenarios","phaseNumber":11,"phaseName":"Realistic Scenarios","readmeRaw":"$6","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"52-authentication-flows.test.js","content":"$7"}],"artilleryFiles":[{"filename":"52-authentication-flows.yml","content":"$8"}],"jmeterFiles":[]},"next":{"slug":"54-load-test","number":54,"title":"Load Test","phaseSlug":"phase-12-test-types","phaseNumber":12,"phaseName":"Test Types","readmeRaw":"$9","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"54-load-test.test.js","content":"$a"}],"artilleryFiles":[{"filename":"54-load-test.yml","content":"$b"}],"jmeterFiles":[]},"frameworks":[{"id":"k6","label":"k6","files":[{"filename":"53-fintech-kyc-at-scale.test.js","html":"$c"}]},{"id":"artillery","label":"Artillery","files":[{"filename":"53-fintech-kyc-at-scale.yml","html":"$d"}]},{"id":"jmeter","label":"JMeter","files":[]},{"id":"playwright","label":"Playwright","files":[]},{"id":"cypress","label":"Cypress","files":[]}]}],["$Le"],"$Lf"]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"UzMlu93LkryOOruE2pxnW"}
+e:["$","script","script-0",{"src":"/qa-labs/_next/static/chunks/01luku1w1f06_.js","async":true}]
+f:["$","$L10",null,{"children":["$","$11",null,{"name":"Next.MetadataOutlet","children":"$@12"}]}]
+12:null

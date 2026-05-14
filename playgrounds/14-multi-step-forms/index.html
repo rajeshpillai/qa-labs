@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kata 14: Multi-Step Forms | QA Labs</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #1e293b; padding: 2rem; }
+    .header { background: #0f172a; color: white; padding: 1rem 2rem; margin: -2rem -2rem 2rem; }
+    .header h1 { font-size: 1.25rem; }
+    .kata-badge { display: inline-block; background: #38bdf8; color: #0f172a; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 4px; margin-right: 0.5rem; }
+
+    .wizard-container { max-width: 650px; margin: 0 auto; background: white; border-radius: 8px; padding: 2rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+
+    /* Progress indicator bar */
+    .progress-bar { display: flex; justify-content: space-between; margin-bottom: 2rem; position: relative; }
+    .progress-bar::before {
+      content: ''; position: absolute; top: 15px; left: 0; right: 0;
+      height: 3px; background: #e2e8f0; z-index: 0;
+    }
+    .step-indicator {
+      display: flex; flex-direction: column; align-items: center; position: relative; z-index: 1;
+      flex: 1; font-size: 0.75rem; color: #94a3b8;
+    }
+    .step-indicator .step-circle {
+      width: 32px; height: 32px; border-radius: 50%; background: #e2e8f0;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: 0.85rem; color: #64748b; margin-bottom: 0.4rem;
+      transition: background 0.3s, color 0.3s;
+    }
+    .step-indicator.active .step-circle { background: #2563eb; color: white; }
+    .step-indicator.completed .step-circle { background: #16a34a; color: white; }
+    .step-indicator.active, .step-indicator.completed { color: #334155; font-weight: 600; }
+
+    /* Form steps */
+    .step { display: none; }
+    .step.active { display: block; }
+    .step h2 { font-size: 1rem; color: #334155; margin-bottom: 1.25rem; padding-bottom: 0.5rem; border-bottom: 2px solid #e2e8f0; }
+
+    .form-group { margin-bottom: 1rem; }
+    .form-group label { display: block; font-size: 0.85rem; font-weight: 600; color: #475569; margin-bottom: 0.3rem; }
+    .form-group label .required { color: #ef4444; }
+    .form-group input, .form-group select {
+      width: 100%; padding: 0.55rem 0.7rem; border: 2px solid #cbd5e1;
+      border-radius: 6px; font-size: 0.85rem; outline: none;
+    }
+    .form-group input:focus, .form-group select:focus { border-color: #3b82f6; }
+    .form-group input.input-error { border-color: #ef4444; }
+    .form-group .error-message { display: none; font-size: 0.75rem; color: #ef4444; margin-top: 0.2rem; }
+    .form-group .error-message.visible { display: block; }
+
+    /* Navigation buttons */
+    .btn-row { display: flex; justify-content: space-between; margin-top: 1.5rem; gap: 1rem; }
+    .btn {
+      padding: 0.65rem 1.5rem; font-size: 0.9rem; font-weight: 600;
+      border: none; border-radius: 6px; cursor: pointer; transition: background 0.2s;
+    }
+    .btn-back { background: #e2e8f0; color: #475569; }
+    .btn-back:hover { background: #cbd5e1; }
+    .btn-next { background: #2563eb; color: white; margin-left: auto; }
+    .btn-next:hover { background: #1d4ed8; }
+    .btn-submit { background: #16a34a; color: white; margin-left: auto; }
+    .btn-submit:hover { background: #15803d; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* Review page */
+    .review-section { margin-bottom: 1rem; }
+    .review-section h3 { font-size: 0.85rem; color: #2563eb; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; }
+    .review-item { display: flex; justify-content: space-between; padding: 0.4rem 0; border-bottom: 1px solid #f1f5f9; font-size: 0.85rem; }
+    .review-item .review-label { color: #64748b; }
+    .review-item .review-value { font-weight: 600; color: #1e293b; }
+
+    /* Status messages */
+    .form-status { display: none; padding: 0.85rem 1rem; border-radius: 6px; margin-top: 1rem; font-size: 0.875rem; font-weight: 500; }
+    .form-status.success { display: block; background: #dcfce7; color: #166534; border: 1px solid #86efac; }
+    .form-status.error { display: block; background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; }
+  </style>
+</head>
+<body>
+
+  <header class="header" data-testid="page-header">
+    <span class="kata-badge">KATA 14</span>
+    <h1>KYC Wizard - Multi-Step Form</h1>
+  </header>
+
+  <div class="wizard-container" data-testid="wizard-container">
+
+    <!-- Progress indicator -->
+    <div class="progress-bar" data-testid="progress-bar">
+      <div class="step-indicator active" data-testid="indicator-1">
+        <span class="step-circle">1</span>
+        <span>Personal</span>
+      </div>
+      <div class="step-indicator" data-testid="indicator-2">
+        <span class="step-circle">2</span>
+        <span>Address</span>
+      </div>
+      <div class="step-indicator" data-testid="indicator-3">
+        <span class="step-circle">3</span>
+        <span>Employment</span>
+      </div>
+      <div class="step-indicator" data-testid="indicator-4">
+        <span class="step-circle">4</span>
+        <span>Review</span>
+      </div>
+    </div>
+
+    <!-- Step 1: Personal Info -->
+    <div class="step active" data-testid="step-1" id="step-1">
+      <h2>Step 1: Personal Information</h2>
+      <div class="form-group">
+        <label>Full Name <span class="required">*</span></label>
+        <input type="text" data-testid="input-full-name" data-field="fullName" placeholder="e.g. Aisha Patel" required>
+        <div class="error-message" data-testid="error-full-name">Full name is required.</div>
+      </div>
+      <div class="form-group">
+        <label>Email <span class="required">*</span></label>
+        <input type="email" data-testid="input-email" data-field="email" placeholder="e.g. aisha@example.com" required>
+        <div class="error-message" data-testid="error-email">Valid email is required.</div>
+      </div>
+      <div class="form-group">
+        <label>Phone <span class="required">*</span></label>
+        <input type="tel" data-testid="input-phone" data-field="phone" placeholder="e.g. +1-555-123-4567" required>
+        <div class="error-message" data-testid="error-phone">Phone number is required.</div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-next" data-testid="btn-next-1">Next</button>
+      </div>
+    </div>
+
+    <!-- Step 2: Address -->
+    <div class="step" data-testid="step-2" id="step-2">
+      <h2>Step 2: Address Details</h2>
+      <div class="form-group">
+        <label>Street Address <span class="required">*</span></label>
+        <input type="text" data-testid="input-street" data-field="street" placeholder="e.g. 42 Baker Street" required>
+        <div class="error-message" data-testid="error-street">Street address is required.</div>
+      </div>
+      <div class="form-group">
+        <label>City <span class="required">*</span></label>
+        <input type="text" data-testid="input-city" data-field="city" placeholder="e.g. London" required>
+        <div class="error-message" data-testid="error-city">City is required.</div>
+      </div>
+      <div class="form-group">
+        <label>Country <span class="required">*</span></label>
+        <select data-testid="input-country" data-field="country" required>
+          <option value="">-- Select Country --</option>
+          <option value="US">United States</option>
+          <option value="GB">United Kingdom</option>
+          <option value="IN">India</option>
+          <option value="SG">Singapore</option>
+        </select>
+        <div class="error-message" data-testid="error-country">Country is required.</div>
+      </div>
+      <div class="form-group">
+        <label>Postal Code <span class="required">*</span></label>
+        <input type="text" data-testid="input-postal" data-field="postal" placeholder="e.g. W1U 6PL" required>
+        <div class="error-message" data-testid="error-postal">Postal code is required.</div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-back" data-testid="btn-back-2">Back</button>
+        <button class="btn btn-next" data-testid="btn-next-2">Next</button>
+      </div>
+    </div>
+
+    <!-- Step 3: Employment -->
+    <div class="step" data-testid="step-3" id="step-3">
+      <h2>Step 3: Employment Information</h2>
+      <div class="form-group">
+        <label>Employment Status <span class="required">*</span></label>
+        <select data-testid="input-employment-status" data-field="employmentStatus" required>
+          <option value="">-- Select Status --</option>
+          <option value="employed">Employed</option>
+          <option value="self-employed">Self-Employed</option>
+          <option value="retired">Retired</option>
+          <option value="student">Student</option>
+        </select>
+        <div class="error-message" data-testid="error-employment-status">Employment status is required.</div>
+      </div>
+      <div class="form-group">
+        <label>Employer / Company Name <span class="required">*</span></label>
+        <input type="text" data-testid="input-employer" data-field="employer" placeholder="e.g. Acme Corp" required>
+        <div class="error-message" data-testid="error-employer">Employer name is required.</div>
+      </div>
+      <div class="form-group">
+        <label>Annual Income Range <span class="required">*</span></label>
+        <select data-testid="input-income" data-field="income" required>
+          <option value="">-- Select Range --</option>
+          <option value="under-25k">Under $25,000</option>
+          <option value="25k-50k">$25,000 - $50,000</option>
+          <option value="50k-100k">$50,000 - $100,000</option>
+          <option value="over-100k">Over $100,000</option>
+        </select>
+        <div class="error-message" data-testid="error-income">Income range is required.</div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-back" data-testid="btn-back-3">Back</button>
+        <button class="btn btn-next" data-testid="btn-next-3">Next</button>
+      </div>
+    </div>
+
+    <!-- Step 4: Review & Submit -->
+    <div class="step" data-testid="step-4" id="step-4">
+      <h2>Step 4: Review & Submit</h2>
+      <div class="review-section" data-testid="review-personal">
+        <h3>Personal Information</h3>
+        <div class="review-item"><span class="review-label">Full Name</span><span class="review-value" data-testid="review-fullName"></span></div>
+        <div class="review-item"><span class="review-label">Email</span><span class="review-value" data-testid="review-email"></span></div>
+        <div class="review-item"><span class="review-label">Phone</span><span class="review-value" data-testid="review-phone"></span></div>
+      </div>
+      <div class="review-section" data-testid="review-address">
+        <h3>Address</h3>
+        <div class="review-item"><span class="review-label">Street</span><span class="review-value" data-testid="review-street"></span></div>
+        <div class="review-item"><span class="review-label">City</span><span class="review-value" data-testid="review-city"></span></div>
+        <div class="review-item"><span class="review-label">Country</span><span class="review-value" data-testid="review-country"></span></div>
+        <div class="review-item"><span class="review-label">Postal Code</span><span class="review-value" data-testid="review-postal"></span></div>
+      </div>
+      <div class="review-section" data-testid="review-employment">
+        <h3>Employment</h3>
+        <div class="review-item"><span class="review-label">Status</span><span class="review-value" data-testid="review-employmentStatus"></span></div>
+        <div class="review-item"><span class="review-label">Employer</span><span class="review-value" data-testid="review-employer"></span></div>
+        <div class="review-item"><span class="review-label">Income</span><span class="review-value" data-testid="review-income"></span></div>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-back" data-testid="btn-back-4">Back</button>
+        <button class="btn btn-submit" data-testid="btn-submit">Submit Application</button>
+      </div>
+    </div>
+
+    <div id="form-status" class="form-status" data-testid="form-status"></div>
+  </div>
+
+  <script>
+    // -----------------------------------------------------------------------
+    // Multi-step wizard logic.
+    //
+    // The wizard tracks the current step (1-4). Each step is shown/hidden
+    // by toggling the "active" class. Navigation buttons validate the
+    // current step before advancing.
+    // -----------------------------------------------------------------------
+
+    let currentStep = 1;
+    const totalSteps = 4;
+
+    // formData stores all field values across steps so we can display them
+    // on the review page (step 4).
+    const formData = {};
+
+    // goToStep(stepNum) hides the current step, shows the target step,
+    // and updates the progress indicator.
+    function goToStep(stepNum) {
+      // Hide all steps.
+      document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+
+      // Show the target step.
+      document.getElementById('step-' + stepNum).classList.add('active');
+
+      // Update the progress indicator circles.
+      for (let i = 1; i <= totalSteps; i++) {
+        const indicator = document.querySelector(`[data-testid="indicator-${i}"]`);
+        indicator.classList.remove('active', 'completed');
+        if (i < stepNum) {
+          // Steps before the current one are marked "completed" (green).
+          indicator.classList.add('completed');
+        } else if (i === stepNum) {
+          // The current step is marked "active" (blue).
+          indicator.classList.add('active');
+        }
+        // Steps after the current one have no extra class (grey).
+      }
+
+      currentStep = stepNum;
+
+      // If we're on the review step, populate the review data.
+      if (stepNum === 4) {
+        populateReview();
+      }
+    }
+
+    // saveStepData(stepNum) reads all input values from the given step
+    // and stores them in formData.
+    function saveStepData(stepNum) {
+      const step = document.getElementById('step-' + stepNum);
+      // querySelectorAll('[data-field]') finds all inputs with a data-field attribute.
+      step.querySelectorAll('[data-field]').forEach(input => {
+        const fieldName = input.getAttribute('data-field');
+        formData[fieldName] = input.value.trim();
+      });
+    }
+
+    // validateStep(stepNum) checks that all required fields in the given
+    // step are filled. Returns true if valid, false otherwise.
+    function validateStep(stepNum) {
+      const step = document.getElementById('step-' + stepNum);
+      let valid = true;
+
+      // Clear previous errors in this step.
+      step.querySelectorAll('.input-error').forEach(el => el.classList.remove('input-error'));
+      step.querySelectorAll('.error-message').forEach(el => el.classList.remove('visible'));
+
+      // Check each input/select with a data-field attribute.
+      step.querySelectorAll('[data-field]').forEach(input => {
+        if (input.hasAttribute('required') && !input.value.trim()) {
+          input.classList.add('input-error');
+          // Find the sibling error message element.
+          const errorEl = input.parentElement.querySelector('.error-message');
+          if (errorEl) errorEl.classList.add('visible');
+          valid = false;
+        }
+      });
+
+      return valid;
+    }
+
+    // populateReview() fills the review page (step 4) with data from formData.
+    function populateReview() {
+      // For each key in formData, find the review element and set its text.
+      Object.keys(formData).forEach(key => {
+        const el = document.querySelector(`[data-testid="review-${key}"]`);
+        if (el) {
+          // For select fields, show the selected option's text instead of its value.
+          const input = document.querySelector(`[data-field="${key}"]`);
+          if (input && input.tagName === 'SELECT' && input.selectedIndex > 0) {
+            el.textContent = input.options[input.selectedIndex].text;
+          } else {
+            el.textContent = formData[key];
+          }
+        }
+      });
+    }
+
+    // --- Next button handlers ---
+    // Each "Next" button validates the current step, saves data, and advances.
+    document.querySelectorAll('[data-testid^="btn-next-"]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        // Extract the step number from the button's testid (e.g., "btn-next-1" -> 1).
+        const stepNum = parseInt(btn.getAttribute('data-testid').split('-').pop());
+
+        if (!validateStep(stepNum)) return; // Stop if validation fails.
+
+        saveStepData(stepNum);
+        goToStep(stepNum + 1);
+      });
+    });
+
+    // --- Back button handlers ---
+    // Each "Back" button saves current data (without validation) and goes back.
+    document.querySelectorAll('[data-testid^="btn-back-"]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const stepNum = parseInt(btn.getAttribute('data-testid').split('-').pop());
+        saveStepData(stepNum);
+        goToStep(stepNum - 1);
+      });
+    });
+
+    // --- Submit button handler ---
+    document.querySelector('[data-testid="btn-submit"]').addEventListener('click', () => {
+      const statusEl = document.getElementById('form-status');
+      statusEl.className = 'form-status success';
+      statusEl.textContent = 'KYC application submitted successfully! Application is under review.';
+    });
+  </script>
+
+</body>
+</html>

@@ -1,0 +1,1006 @@
+1:"$Sreact.fragment"
+2:I[76750,["/qa-labs/_next/static/chunks/012xw9ydea0yn.js","/qa-labs/_next/static/chunks/0t2xr05rlu96l.js","/qa-labs/_next/static/chunks/0a55m.6s3qp~-.js","/qa-labs/_next/static/chunks/01luku1w1f06_.js"],"KataPageClient"]
+d:I[97367,["/qa-labs/_next/static/chunks/012xw9ydea0yn.js","/qa-labs/_next/static/chunks/0t2xr05rlu96l.js","/qa-labs/_next/static/chunks/0a55m.6s3qp~-.js"],"OutletBoundary"]
+e:"$Sreact.suspense"
+3:T2153,# Kata 70: Retry Storms and Circuit Breakers
+
+## What You Will Learn
+
+- Why **naive retries make outages worse** — the math of retry amplification
+- How a **retry storm** turns 5% errors into 50% load amplification
+- The three retry policies: **fixed**, **linear**, **exponential with jitter** (you saw this in kata 63)
+- **Circuit breakers**: closed → open → half-open state machine
+- The **retry budget** pattern — cap total retries, not per-request
+- How to test that your client implements these correctly
+
+## Prerequisites
+
+- Completed [Kata 63 (Rate Limit Handling)](../../phase-14-apis-and-websockets/63-rate-limit-handling/) — backoff fundamentals
+- Completed [Kata 69 (Fault Injection)](../69-fault-injection-with-toxiproxy/) — chaos primitives
+- The QA Labs server running
+
+## Concepts Explained
+
+### The retry-storm math
+
+Suppose your service has 3 retries on failure (no backoff). Backend is healthy: every request succeeds, no retries fire. Total load = base load.
+
+Backend starts failing 50% of the time. Each request on average takes 2 attempts before succeeding (1 initial + 1 retry). **Total load doubles.**
+
+Backend fails 90%. Average attempts = 4 (1 + 0.9 × (1 + 0.9 × (1 + 0.9 × 1))). **Total load 4×.**
+
+Backend fully down (100% failure). Every request retries 3 times before giving up. **Total load 4×** with zero work done.
+
+This is the **retry-amplification curve**: as failures rise, load rises faster, which causes more failures, which causes more load. Death spiral.
+
+### What stops a retry storm
+
+Three patterns, used together:
+
+#### 1. Exponential backoff with jitter
+
+Already covered in kata 63. Spreads retries over time, breaks synchronization. **Always do this.**
+
+#### 2. Bounded retry budget
+
+Instead of "retry up to 3 times per request," use "retry up to 10% of total request volume":
+
+```
+allowedRetries = totalSuccessfulRequests * 0.1
+```
+
+Once you hit the budget, **stop retrying for the next window**. Implementations: token bucket on retry side, leaky bucket of "retry quota."
+
+This caps amplification at 1.1× even under 100% backend failure.
+
+#### 3. Circuit breaker
+
+A state machine in front of the dependency:
+
+```
+                    ┌─────────────┐
+              ┌────►│   CLOSED    │  ← normal: requests pass through
+              │     │ (forwarding)│
+              │     └──────┬──────┘
+              │            │
+              │   N consecutive failures
+              │            │
+              │            ▼
+              │     ┌─────────────┐
+              │     │    OPEN     │  ← failing fast: short-circuit, no calls
+              │     │ (rejecting) │
+              │     └──────┬──────┘
+              │            │
+              │       cooldown timer
+              │            │
+              │            ▼
+              │     ┌─────────────┐
+              └─────│  HALF-OPEN  │  ← probing: let one through, see if alive
+   one success      │  (probing)  │
+                    └─────────────┘
+                          │
+                     one failure
+                          │
+                          ▼
+                       (back to OPEN)
+```
+
+When the breaker is OPEN, your service immediately returns an error (or fallback) **without calling the failing dependency at all**. This:
+- Stops amplifying load on the broken backend
+- Lets the backend recover without being hammered
+- Returns a fast error to the client (better than a 30s timeout)
+
+After a cooldown (typically 5-30s), the breaker goes HALF-OPEN: one probe request goes through. Success → CLOSED. Failure → back to OPEN.
+
+### Testing client-side resilience
+
+You're testing not "does the rate limit work" (kata 63) but "does my client behave well when things break." The pattern:
+
+1. Inject failures (kata 69)
+2. Run client-driven load
+3. Assert: client doesn't amplify load beyond budget
+4. Assert: failures fail fast once breaker opens (latency goes DOWN, not up)
+
+A naive retry implementation will fail #3. A breaker-less implementation will fail #4.
+
+### Implementing a circuit breaker in test code
+
+```javascript
+// Module-scope state shared across iterations of one VU
+let breakerState = 'closed';   // 'closed' | 'open' | 'half-open'
+let consecutiveFailures = 0;
+let lastFailureTime = 0;
+const FAILURE_THRESHOLD = 5;
+const COOLDOWN_MS = 5000;
+
+function callWithBreaker(url) {
+  const now = Date.now();
+  if (breakerState === 'open') {
+    if (now - lastFailureTime > COOLDOWN_MS) {
+      breakerState = 'half-open';  // probe time
+    } else {
+      return null;  // short-circuit — don't even try
+    }
+  }
+  const res = http.get(url);
+  if (res.status === 200) {
+    consecutiveFailures = 0;
+    breakerState = 'closed';
+  } else {
+    consecutiveFailures++;
+    if (consecutiveFailures >= FAILURE_THRESHOLD) {
+      breakerState = 'open';
+      lastFailureTime = now;
+    }
+  }
+  return res;
+}
+```
+
+In real apps you'd use a library: **Polly** (.NET), **Resilience4j** (Java), **opossum** (Node.js), **resilient-bench** (Go). Same pattern.
+
+### What metrics tell the story
+
+In a chaos test with retries + breaker, watch:
+
+| Metric | Healthy story | Storm story |
+|--------|--------------|-------------|
+| Total HTTP requests | Stable | Climbing as backend degrades |
+| Retry count | Bounded by budget | Unbounded |
+| Breaker state | Cycles closed → half-open | Stuck open |
+| p95 of fast-failed (breaker rejects) | Low (< 5ms) | N/A |
+| Error rate seen by client | Drops to "fast errors" once open | Times out then errors |
+
+The transition where breaker opens should be **visible**: latency drops sharply (no more waiting for the slow backend), error rate stays high but stable.
+
+## Exercises
+
+1. **Naive retry baseline.** Run a 30s test against `/lab/flaky?errorRate=0.5`. Each iteration retries up to 3 times on failure. What's `http_reqs` count? Compare to a 0% error baseline.
+2. **Add backoff.** Same test, but exponential backoff between retries. Did it reduce total request volume? Did p95 increase?
+3. **Add a budget.** Allow at most 1 retry per 5 successful requests. Track via Counter. Does the budget kick in?
+4. **Implement the breaker.** Module-level state, FAILURE_THRESHOLD=5. After breaker opens, all requests fast-fail. Plot per-second `http_reqs` (in Grafana, kata 67) and watch for the discontinuity.
+5. **Compare three implementations** under `/lab/flaky?errorRate=0.7`: (a) naive retries, (b) backoff, (c) breaker. Which preserves the most useful work?
+
+## Common Mistakes
+
+- **Treating retries as "free."** Each retry is a real request. Multiplied across 1000 RPS and 50% errors = a lot of wasted work.
+- **No budget.** Even with backoff, infinite retries amplify load.
+- **Breaker thresholds too aggressive.** Opening on 1 failure = breaker constantly opens during normal jitter. Use 5+ consecutive failures.
+- **Breaker thresholds too lax.** Opening on 100 consecutive failures means amplification has long since happened.
+- **No cooldown.** Half-open immediately = breaker opens and closes constantly under flapping backend.
+- **Retry on 4xx.** 4xx means client error — retrying won't help. Retry only 5xx and timeouts.
+
+## Cheat Sheet
+
+```javascript
+// VU-level circuit breaker
+let state = 'closed', fails = 0, openedAt = 0;
+const THRESHOLD = 5, COOLDOWN_MS = 5000;
+
+function call(url) {
+  if (state === 'open' && Date.now() - openedAt < COOLDOWN_MS) {
+    breakerRejects.add(1);
+    return { status: 0, fastFail: true };
+  }
+  if (state === 'open') state = 'half-open';
+
+  const res = http.get(url);
+  if (res.status >= 200 && res.status < 300) {
+    fails = 0;
+    state = 'closed';
+  } else {
+    fails++;
+    if (fails >= THRESHOLD) { state = 'open'; openedAt = Date.now(); }
+  }
+  return res;
+}
+```
+
+| Config | Typical |
+|--------|---------|
+| Retry attempts | 1-3 (per request) |
+| Retry budget | 10% of successful traffic |
+| Backoff base | 100-500ms |
+| Backoff factor | 2× |
+| Jitter | ± 25% |
+| Breaker threshold | 5 consecutive failures |
+| Breaker cooldown | 5-30 seconds |
+| Max timeout per attempt | 1-5s |
+
+| Don't retry on | Why |
+|----------------|-----|
+| 4xx (except 429) | Client error — won't change |
+| 200 with payload error | App-level error, not transport |
+| Non-idempotent operations | Risk of duplicate side effects |
+4:Tcd9,// Kata 70 — Retry Storms and Circuit Breakers
+//
+// Three side-by-side strategies against /lab/flaky:
+// - naive_retries: retry up to 3× immediately on failure (anti-pattern)
+// - backoff:       retry up to 3× with jittered exponential backoff
+// - breaker:       circuit breaker — fast-fail once enough failures accumulate
+
+import http from 'k6/http';
+import { sleep } from 'k6';
+import { Counter, Rate } from 'k6/metrics';
+
+const BASE_URL = __ENV.K6_BASE_URL || 'http://localhost:3000';
+const URL = `${BASE_URL}/lab/flaky?errorRate=0.4`;
+
+const totalAttempts = new Counter('total_attempts');
+const breakerRejects = new Counter('breaker_rejects');
+const successRate = new Rate('successful_requests');
+
+export const options = {
+  scenarios: {
+    naive_retries: {
+      executor: 'constant-vus',
+      vus: 5,
+      duration: '15s',
+      exec: 'naiveRetries',
+      tags: { strategy: 'naive' },
+    },
+    backoff: {
+      executor: 'constant-vus',
+      vus: 5,
+      duration: '15s',
+      exec: 'withBackoff',
+      tags: { strategy: 'backoff' },
+    },
+    breaker: {
+      executor: 'constant-vus',
+      vus: 5,
+      duration: '15s',
+      exec: 'withBreaker',
+      tags: { strategy: 'breaker' },
+    },
+  },
+  thresholds: {
+    // Same per-strategy success rate target — apples-to-apples comparison
+    'successful_requests{strategy:naive}': ['rate>0.50'],
+    'successful_requests{strategy:backoff}': ['rate>0.50'],
+    'successful_requests{strategy:breaker}': ['rate>0.50'],
+    // Breaker should aggressively reject when it's open — count must be visible
+    'breaker_rejects': ['count>5'],
+  },
+};
+
+// Strategy 1: hammer + retry. Amplifies load.
+export function naiveRetries() {
+  for (let i = 0; i < 4; i++) {
+    totalAttempts.add(1);
+    const res = http.get(URL);
+    if (res.status === 200) {
+      successRate.add(true);
+      return;
+    }
+    // No backoff — retry immediately. THIS IS THE ANTI-PATTERN.
+  }
+  successRate.add(false);
+}
+
+// Strategy 2: jittered exponential backoff. Spreads retries over time.
+export function withBackoff() {
+  for (let i = 0; i < 4; i++) {
+    totalAttempts.add(1);
+    const res = http.get(URL);
+    if (res.status === 200) {
+      successRate.add(true);
+      return;
+    }
+    if (i < 3) {
+      const base = 0.1 * Math.pow(2, i);   // 100ms, 200ms, 400ms
+      const jitter = Math.random() * base;
+      sleep(base + jitter);
+    }
+  }
+  successRate.add(false);
+}
+
+// Strategy 3: per-VU circuit breaker. After N failures, fast-fail.
+// State is per-VU because each k6 VU has its own JS runtime.
+const THRESHOLD = 5;
+const COOLDOWN_MS = 3000;
+let breakerState = 'closed';
+let consecutiveFails = 0;
+let openedAt = 0;
+
+export function withBreaker() {
+  totalAttempts.add(1);
+
+  // Check if we should fast-fail
+  if (breakerState === 'open') {
+    if (Date.now() - openedAt < COOLDOWN_MS) {
+      breakerRejects.add(1);
+      successRate.add(false);
+      return;
+    }
+    breakerState = 'half-open';
+  }
+
+  const res = http.get(URL);
+
+  if (res.status === 200) {
+    consecutiveFails = 0;
+    breakerState = 'closed';
+    successRate.add(true);
+  } else {
+    consecutiveFails++;
+    if (consecutiveFails >= THRESHOLD) {
+      breakerState = 'open';
+      openedAt = Date.now();
+    }
+    successRate.add(false);
+  }
+}
+5:T1d36,# Kata 69: Fault Injection with Toxiproxy
+
+## What You Will Learn
+
+- Why **chaos testing** belongs alongside load testing — not as a separate discipline
+- **Toxiproxy** as a small, scriptable network-fault proxy you can put in front of any TCP service
+- The seven Toxiproxy "toxics" that simulate real-world failures: latency, slow_close, timeout, slicer, bandwidth, etc.
+- The **inject → measure → recover** test pattern
+- Why "chaos in dev" is cheap and "chaos in prod" needs a bigger stack (Gremlin, AWS FIS, chaos-mesh)
+- Using QA Labs's `/lab/flaky` and `/lab/slow` as a simpler simulation when you don't want to spin up Toxiproxy
+
+## Prerequisites
+
+- Phase 16 (you have a sense of how to observe perf during a test)
+- Optional: [Toxiproxy installed](https://github.com/Shopify/toxiproxy) — `brew install toxiproxy` or download from releases
+- The QA Labs server running (we'll use `/lab/flaky` + `/lab/slow` as the kata's primary fault source — Toxiproxy patterns covered in the readme as the production-grade upgrade)
+
+## Concepts Explained
+
+### Why fault inject during load tests?
+
+Most perf tests assume a happy path: the network is fine, the database is up, downstream services respond. **Production isn't like that.** Real perf properties only show up under faults:
+
+- "p95 is 200ms when everything works" — meaningless
+- "p95 is 250ms when 5% of requests fail" — useful
+- "p95 stays under 500ms when the DB has 500ms added latency" — what you actually want to know
+
+Combining load + faults is **chaos load testing**: how does your system behave when stressed AND broken simultaneously?
+
+### Toxiproxy: the smallest chaos tool
+
+Toxiproxy is a TCP proxy with toggleable "toxics." Sit it between client and server, then add toxics via a CLI or HTTP API:
+
+```bash
+toxiproxy-cli create -l :26379 -u :6379 my-redis
+toxiproxy-cli toxic add -t latency -a latency=500 my-redis  # +500ms on every response
+toxiproxy-cli toxic add -t timeout -a timeout=1000 my-redis # close after 1s
+```
+
+Tests connect to `localhost:26379` instead of `localhost:6379`. Toxiproxy adds the chaos.
+
+### The seven toxics
+
+| Toxic | What it does |
+|-------|--------------|
+| `latency` | Adds fixed delay (with optional jitter) |
+| `bandwidth` | Limits throughput |
+| `slow_close` | Delays connection close (forces clients to wait) |
+| `timeout` | Closes the connection after N ms |
+| `slicer` | Splits TCP packets to simulate slow networks |
+| `down` | Drops all packets — service appears down |
+| `limit_data` | Sets a maximum bytes-per-connection budget |
+
+Each can be added/removed via API at runtime — perfect for "inject, measure, remove" patterns inside a test.
+
+### Inject → measure → recover
+
+```javascript
+// Pseudo-pattern; real code calls Toxiproxy's HTTP API
+beforeAll(() => addToxic('redis', 'latency', { latency: 500 }));
+afterAll(() => removeToxic('redis', 'latency'));
+
+// During the test, your service is talking to Redis with +500ms.
+// Measure how the service degrades.
+```
+
+In k6, you'd add an `setup()` function that calls Toxiproxy's HTTP API before VUs start, and `teardown()` that cleans up. This way the chaos is part of the test definition.
+
+### When you don't want to run Toxiproxy
+
+For a workshop or quick experiments, the QA Labs server bakes some of the same chaos into endpoints:
+
+- `/lab/slow?ms=500` — fixed latency injection (toxic: latency)
+- `/lab/jitter?p50=&p95=` — distribution-based latency
+- `/lab/flaky?errorRate=0.1` — random errors (toxic: down, partial)
+- `/lab/limit` — rate-limit responses
+
+The kata's solution uses these for runnable katas. The **readme exercises** include real Toxiproxy setup for when you want to do this against your own infra.
+
+### What chaos load tests find
+
+Bugs invisible without faults:
+
+| Bug | How chaos testing exposes it |
+|-----|------------------------------|
+| **No connection timeout** | When the dependency is slow, your service threads pile up forever |
+| **No retry budget** | A flaky dep triggers infinite retries, amplifying the load 10× |
+| **Cascading failure** | One slow dep makes another time out, cascade to system-wide outage |
+| **Bad fallback** | Fallback path is slower than primary; worse than a timely failure |
+| **Bad health checks** | Service marks itself healthy while dependency is down |
+| **Memory growth on errors** | Each failed request leaks memory; minutes-long fault → OOM |
+
+### From Toxiproxy to production chaos
+
+Toxiproxy is great for dev/CI. For production-grade chaos:
+
+| Tool | Scope |
+|------|-------|
+| **Toxiproxy** | TCP-level, single host, scripted |
+| **chaos-mesh** | Kubernetes-native, pod/network/IO faults |
+| **Gremlin** | Hosted, multi-cloud, scheduled |
+| **AWS Fault Injection Simulator** | AWS-native, aware of AZs/regions |
+| **Litmus** | OSS K8s chaos with predefined experiments |
+
+Concepts transfer; depth and integration differ.
+
+## Exercises
+
+1. **Latency injection.** Run the kata's k6 spec. It hits `/lab/slow?ms=500`. Measure p95 — should be ~500ms+ (server-side delay + network). Now hit `/lab/echo` and compare.
+2. **Random errors.** Modify the spec to hit `/lab/flaky?errorRate=0.1` for 30 seconds. What's `http_req_failed`? Does it match the configured 10%? (Within a few percent due to small samples.)
+3. **Compounding faults.** Hit `/lab/slow?ms=200` *and* `/lab/flaky?errorRate=0.05` in a 50/50 split. Now you have BOTH high latency and errors. p95 and error rate should both reflect.
+4. **Real Toxiproxy.** Install Toxiproxy and put it in front of `/lab/echo`. Add `+200ms` latency via the CLI. Hit it from k6. Does latency match?
+5. **Recovery test.** Inject a fault for 15s, remove it for 15s. Compare p95 in each phase via tags `phase:injected` vs `phase:clean`.
+
+## Common Mistakes
+
+- **Forgetting to remove toxics.** A toxic added in `setup()` and not removed in `teardown()` will haunt the next test run.
+- **Injecting too much fault at once.** "Everything's broken" tests rarely reflect reality. Inject one fault at a time, see how the system reacts, layer up.
+- **Asserting same SLO under chaos.** Of course p95 is worse with +500ms latency injected. Tag the chaos period and assert *recovery* SLO, not in-chaos SLO.
+- **Testing chaos in prod without coordination.** Different blast radius — needs careful scoping, not "let's break some pods."
+
+## Cheat Sheet
+
+```bash
+# Toxiproxy CLI quick start
+toxiproxy-server &                                  # daemon on :8474
+toxiproxy-cli create -l :26379 -u :6379 my-cache    # proxy redis on :26379
+toxiproxy-cli toxic add -t latency -a latency=500 my-cache
+toxiproxy-cli toxic add -t down my-cache            # take it offline
+toxiproxy-cli toxic remove -n latency_downstream my-cache
+toxiproxy-cli list
+```
+
+```javascript
+// k6 with HTTP-API-driven Toxiproxy (real version)
+import http from 'k6/http';
+
+export function setup() {
+  http.post('http://localhost:8474/proxies/my-cache/toxics', JSON.stringify({
+    name: 'latency_downstream',
+    type: 'latency',
+    attributes: { latency: 500 },
+  }), { headers: { 'Content-Type': 'application/json' } });
+}
+
+export function teardown() {
+  http.del('http://localhost:8474/proxies/my-cache/toxics/latency_downstream');
+}
+```
+
+| Toxic | Real-world equivalent |
+|-------|------------------------|
+| `latency` | DB slow-down, network congestion |
+| `down` | Service crash |
+| `slicer` | Slow client / phone on 3G |
+| `timeout` | Half-open connections, NAT drops |
+| `slow_close` | Server backend stuck closing |
+6:T832,// Kata 69 — Fault Injection (k6 solution)
+//
+// Two scenarios run sequentially: a "clean" baseline against /lab/echo,
+// then a "chaos" phase against /lab/slow + /lab/flaky. Per-phase tagged
+// thresholds let us require strict SLO during clean and looser SLO
+// during chaos — but assert that error rate during chaos is bounded.
+
+import http from 'k6/http';
+import { check } from 'k6';
+
+const BASE_URL = __ENV.K6_BASE_URL || 'http://localhost:3000';
+
+export const options = {
+  scenarios: {
+    clean: {
+      executor: 'constant-arrival-rate',
+      rate: 30,
+      timeUnit: '1s',
+      duration: '10s',
+      preAllocatedVUs: 30,
+      exec: 'cleanRequest',
+      tags: { phase: 'clean' },
+      startTime: '0s',
+    },
+    chaos: {
+      executor: 'constant-arrival-rate',
+      rate: 30,
+      timeUnit: '1s',
+      duration: '15s',
+      preAllocatedVUs: 30,
+      exec: 'chaosRequest',
+      tags: { phase: 'chaos' },
+      startTime: '12s',
+    },
+  },
+  thresholds: {
+    // Clean phase: tight SLO
+    'http_req_duration{phase:clean}': ['p(95)<200'],
+    'http_req_failed{phase:clean}': ['rate<0.01'],
+    // Chaos phase: looser latency, bounded error rate
+    'http_req_duration{phase:chaos}': ['p(95)<800'],
+    'http_req_failed{phase:chaos}': ['rate<0.20'],   // <20% failures expected from /lab/flaky
+  },
+};
+
+export function cleanRequest() {
+  const res = http.get(`${BASE_URL}/lab/echo`, { tags: { phase: 'clean' } });
+  check(res, { 'clean status is 200': (r) => r.status === 200 });
+}
+
+export function chaosRequest() {
+  // 50/50 split: slow endpoint (latency) and flaky endpoint (errors).
+  // Real Toxiproxy would inject these via toxics on a single endpoint;
+  // we simulate via the lab server's built-in chaos endpoints.
+  const slowMode = Math.random() < 0.5;
+  const url = slowMode
+    ? `${BASE_URL}/lab/slow?ms=300`
+    : `${BASE_URL}/lab/flaky?errorRate=0.15`;
+
+  const res = http.get(url, {
+    tags: { phase: 'chaos', mode: slowMode ? 'latency' : 'errors' },
+  });
+  check(res, {
+    'chaos status acceptable': (r) => r.status === 200 || r.status === 500,
+  });
+}
+7:T2254,# Kata 71: CI Gates and Baselines
+
+## What You Will Learn
+
+- Why **a perf test that doesn't gate merges might as well not exist**
+- The two CI gating strategies: **absolute thresholds** vs **baseline comparison**
+- Building a perf-test workflow in **GitHub Actions**: build → run → assert → report
+- How to make perf tests **fast enough to run on every PR** (smoke variant) vs **thorough enough to catch real regressions** (nightly variant)
+- The `--summary-export` + threshold pattern that makes k6 fail the CI build cleanly
+- **Baseline storage**: where you keep "good" numbers and how you update them
+
+## Prerequisites
+
+- Phases 9–17
+- Familiarity with GitHub Actions or your CI tool (examples use Actions; concepts apply to GitLab CI / Jenkins / CircleCI)
+
+## Concepts Explained
+
+### Why gate?
+
+A perf test that just *measures* without failing is decoration. People glance at the dashboard, shrug, ship. **Without a gate, regressions accumulate silently.**
+
+A gated test:
+- Fails the CI build when a metric regresses past the threshold
+- Forces the PR author to investigate before merge
+- Creates a feedback loop: every regression has a name attached
+
+### Two gating strategies
+
+#### 1. Absolute thresholds (simpler, less powerful)
+
+```javascript
+thresholds: {
+  'http_req_duration': ['p(95)<300'],
+}
+```
+
+"p95 must be under 300ms." Fails any time it isn't.
+
+| Pro | Con |
+|-----|-----|
+| Simple, no comparison data needed | Doesn't catch regressions if you're already over the threshold |
+| Easy to align with SLOs | Must be re-tuned if your hardware changes |
+| Stable across runs | "300ms" is opinion — needs justification |
+
+#### 2. Baseline comparison (harder, more powerful)
+
+"p95 must not be worse than yesterday's p95 by more than 10%."
+
+```bash
+# Pseudo-pattern
+LATEST=$(jq '.metrics.http_req_duration["p(95)"]' summary.json)
+BASELINE=$(jq '.metrics.http_req_duration["p(95)"]' baseline.json)
+RATIO=$(echo "$LATEST / $BASELINE" | bc -l)
+if (( $(echo "$RATIO > 1.10" | bc -l) )); then exit 1; fi
+```
+
+Comparing relative change catches a 50% → 60% degradation that absolute thresholds wouldn't (both pass `p95 < 100`).
+
+| Pro | Con |
+|-----|-----|
+| Catches gradual drift | Needs baseline storage + update flow |
+| Ratio-based — works across hardware | Noisy: small changes flag false positives |
+| Adapts to current state | Needs human in the loop to update baselines |
+
+**Use both.** Absolute floor + relative drift detection.
+
+### A complete GitHub Actions workflow
+
+```yaml
+# .github/workflows/perf.yml
+name: Perf Tests
+
+on:
+  pull_request:
+    paths:
+      - 'src/**'
+      - 'katas/**'
+  schedule:
+    - cron: '0 3 * * *'  # nightly at 3am
+
+jobs:
+  perf-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install k6
+        uses: grafana/setup-k6-action@v1
+
+      - name: Build website
+        run: cd website && npm install && npm run build
+
+      - name: Start server
+        run: |
+          cd server && npm install
+          npm start &
+          npx wait-on http://localhost:3000/api/health/
+
+      - name: Run perf smoke test
+        run: |
+          k6 run \
+            --summary-export=summary.json \
+            --quiet \
+            katas/phase-09-perf-foundations/45-http-and-latency-basics/k6/45-http-and-latency-basics.test.js
+
+      - name: Compare against baseline
+        run: |
+          node scripts/compare-baseline.js summary.json baselines/main.json
+
+      - name: Upload summary as artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-summary
+          path: summary.json
+```
+
+### The compare-baseline.js script
+
+```javascript
+// scripts/compare-baseline.js
+const fs = require('fs');
+const [_, __, currentPath, baselinePath] = process.argv;
+const current = JSON.parse(fs.readFileSync(currentPath, 'utf-8'));
+const baseline = JSON.parse(fs.readFileSync(baselinePath, 'utf-8'));
+
+const currentP95 = current.metrics.http_req_duration['p(95)'];
+const baselineP95 = baseline.metrics.http_req_duration['p(95)'];
+const ratio = currentP95 / baselineP95;
+
+console.log(`Baseline p95: ${baselineP95.toFixed(1)}ms`);
+console.log(`Current p95:  ${currentP95.toFixed(1)}ms`);
+console.log(`Ratio:        ${ratio.toFixed(2)}x`);
+
+if (ratio > 1.10) {
+  console.error('REGRESSION: p95 worsened by more than 10%');
+  process.exit(1);
+}
+console.log('OK: within 10% of baseline');
+```
+
+### Where baselines live
+
+Three options:
+
+| Option | Pro | Con |
+|--------|-----|-----|
+| Git (committed JSON) | Versioned, simple | Updates need a PR — adds friction |
+| GitHub Actions cache | Fast, automatic | No history; can be cleared |
+| External store (S3, GCS) | Long history | Infra to maintain |
+
+**For most projects: Git.** Commit the baseline as `baselines/main.json`. Update it via PR when you intentionally accept a regression or shipped a perf improvement.
+
+### Two-tier strategy
+
+**Tier 1 — every PR (must be fast):**
+- Smoke test only — 1 minute total
+- Absolute thresholds (catches obvious failures)
+- Runs in <5 minutes total CI time
+
+**Tier 2 — nightly (can be thorough):**
+- Full load test — 15-30 minutes
+- Baseline comparison
+- Triggered via `schedule:` in workflow
+
+This way every PR gets fast feedback, while the slow comprehensive test catches subtler regressions.
+
+### Updating baselines
+
+A perf improvement landing in main means the baseline is now stale (old, slower numbers). Update it:
+
+```yaml
+- name: Update baseline (main only)
+  if: github.ref == 'refs/heads/main' && success()
+  run: |
+    cp summary.json baselines/main.json
+    git add baselines/main.json
+    git -c user.name=ci -c user.email=ci@x commit -m "ci: update perf baseline"
+    git push
+```
+
+This auto-commits a new baseline on every passing main build. Discuss with the team — some prefer manual updates via PR for visibility.
+
+### Reporting back to the PR
+
+```yaml
+- name: Comment on PR
+  if: github.event_name == 'pull_request'
+  uses: actions/github-script@v7
+  with:
+    script: |
+      const fs = require('fs');
+      const summary = JSON.parse(fs.readFileSync('summary.json', 'utf-8'));
+      const p95 = summary.metrics.http_req_duration['p(95)'];
+      github.rest.issues.createComment({
+        owner: context.repo.owner,
+        repo: context.repo.repo,
+        issue_number: context.issue.number,
+        body: `🏃 Perf test results:\np95 latency: ${p95.toFixed(1)}ms`
+      });
+```
+
+PRs now get a comment with the run results. Author sees impact immediately.
+
+## Exercises
+
+1. **Generate a baseline.** Run the kata's k6 test against the lab server. Capture `--summary-export=summary.json`. Save as your local `baselines/main.json`.
+2. **Make a regression.** Modify the test to hit `/lab/slow?ms=300` instead of `/lab/echo`. Run. p95 will be much higher. Run the compare script — it should fail.
+3. **Set up the GitHub Action.** Use the workflow above (adjust paths). Push a PR — does the action run? Does it fail when you intentionally regress?
+4. **Two-tier strategy.** Add a `perf-full` job triggered only on `schedule:`. Smoke runs on every PR; full runs nightly.
+5. **Auto-update baseline on main.** Add the auto-commit step. Verify it only runs on main and only on success.
+
+## Common Mistakes
+
+- **No timeout in CI.** A k6 test that hangs hangs the whole CI run. Always add `timeout-minutes`.
+- **Baseline drift without review.** Auto-updating without bounds means slow drift goes uncaught. Periodically diff against an "n weeks ago" baseline.
+- **Too-tight thresholds.** A 5% threshold flags every noisy run. 10-20% is more practical for cross-machine comparison.
+- **No retry on flaky CI.** Rerun once on failure; if it fails twice, that's a real regression.
+- **Hardware-specific baselines.** Your local laptop is faster than the CI runner. Don't generate baselines locally; let CI generate them on its own runners.
+
+## Cheat Sheet
+
+```bash
+# Generate summary
+k6 run --summary-export=summary.json --quiet test.js
+
+# Extract a metric for shell-based comparison
+jq '.metrics.http_req_duration["p(95)"]' summary.json
+
+# Inline ratio check (bash + bc)
+LATEST=$(jq -r '.metrics.http_req_duration["p(95)"]' summary.json)
+BASELINE=$(jq -r '.metrics.http_req_duration["p(95)"]' baselines/main.json)
+awk -v l=$LATEST -v b=$BASELINE 'BEGIN { exit (l/b > 1.10) ? 1 : 0 }'
+```
+
+| Strategy | When |
+|----------|------|
+| Absolute threshold | Aligned with public SLO; new repos with no history |
+| Baseline comparison | Mature repos; catches drift |
+| Both | Default — absolute floor + relative drift |
+
+| Tier | Cadence | Test |
+|------|---------|------|
+| Smoke | Every PR | 30-60s test, absolute threshold |
+| Load | Nightly | 15-30 min test, baseline comparison |
+| Soak | Pre-release | 4+ hours, full assertion suite |
+8:T67f,// Kata 71 — CI Gates and Baselines (k6 solution)
+//
+// A canonical "PR smoke" perf test: 30 seconds, absolute thresholds tied
+// to a stated SLO. Designed to run in CI and either pass cleanly or
+// fail with a clear threshold-name in the output (the bit your script
+// will grep for).
+//
+// Also writes summary stats that scripts/compare-baseline.js can consume.
+
+import http from 'k6/http';
+import { check } from 'k6';
+
+const BASE_URL = __ENV.K6_BASE_URL || 'http://localhost:3000';
+
+// SLO contract: p95 < 250ms, p99 < 500ms, error rate < 0.1%
+// CI threshold: 80% of SLO budget for headroom
+const SLO_P95_MS = 250;
+const SLO_P99_MS = 500;
+const SLO_ERROR_RATE = 0.001;
+
+const CI_P95_MS = Math.floor(SLO_P95_MS * 0.8);
+const CI_P99_MS = Math.floor(SLO_P99_MS * 0.8);
+const CI_ERROR_RATE = SLO_ERROR_RATE;
+
+export const options = {
+  scenarios: {
+    smoke: {
+      executor: 'constant-arrival-rate',
+      rate: 50,
+      timeUnit: '1s',
+      duration: '30s',
+      preAllocatedVUs: 30,
+      maxVUs: 60,
+    },
+  },
+  thresholds: {
+    // Each named threshold appears in summary.metrics — scripts can grep them.
+    'http_req_duration': [
+      { threshold: `p(95)<${CI_P95_MS}`, abortOnFail: false },
+      { threshold: `p(99)<${CI_P99_MS}`, abortOnFail: false },
+    ],
+    'http_req_failed': [`rate<${CI_ERROR_RATE}`],
+    // Self-documenting: encode the SLO numbers in metric names.
+    [`http_req_duration{slo:p95}`]: [`p(95)<${SLO_P95_MS}`],
+  },
+};
+
+export default function () {
+  const res = http.get(`${BASE_URL}/lab/echo`, {
+    tags: { slo: 'p95', endpoint: 'echo' },
+  });
+  check(res, {
+    'status is 200': (r) => r.status === 200,
+  });
+}
+9:T4f3d,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#6A737D">// Kata 70 — Retry Storms and Circuit Breakers</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// Three side-by-side strategies against /lab/flaky:</span></span>
+<span class="line"><span style="color:#6A737D">// - naive_retries: retry up to 3× immediately on failure (anti-pattern)</span></span>
+<span class="line"><span style="color:#6A737D">// - backoff:       retry up to 3× with jittered exponential backoff</span></span>
+<span class="line"><span style="color:#6A737D">// - breaker:       circuit breaker — fast-fail once enough failures accumulate</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> http </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> 'k6/http'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { sleep } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> 'k6'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { Counter, Rate } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> 'k6/metrics'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> BASE_URL</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> __ENV.</span><span style="color:#79B8FF">K6_BASE_URL</span><span style="color:#F97583"> ||</span><span style="color:#9ECBFF"> 'http://localhost:3000'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> URL</span><span style="color:#F97583"> =</span><span style="color:#9ECBFF"> `${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/flaky?errorRate=0.4`</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> totalAttempts</span><span style="color:#F97583"> =</span><span style="color:#F97583"> new</span><span style="color:#B392F0"> Counter</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'total_attempts'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> breakerRejects</span><span style="color:#F97583"> =</span><span style="color:#F97583"> new</span><span style="color:#B392F0"> Counter</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'breaker_rejects'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> successRate</span><span style="color:#F97583"> =</span><span style="color:#F97583"> new</span><span style="color:#B392F0"> Rate</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'successful_requests'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> const</span><span style="color:#79B8FF"> options</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">  scenarios: {</span></span>
+<span class="line"><span style="color:#E1E4E8">    naive_retries: {</span></span>
+<span class="line"><span style="color:#E1E4E8">      executor: </span><span style="color:#9ECBFF">'constant-vus'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      vus: </span><span style="color:#79B8FF">5</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      duration: </span><span style="color:#9ECBFF">'15s'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      exec: </span><span style="color:#9ECBFF">'naiveRetries'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      tags: { strategy: </span><span style="color:#9ECBFF">'naive'</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">    },</span></span>
+<span class="line"><span style="color:#E1E4E8">    backoff: {</span></span>
+<span class="line"><span style="color:#E1E4E8">      executor: </span><span style="color:#9ECBFF">'constant-vus'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      vus: </span><span style="color:#79B8FF">5</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      duration: </span><span style="color:#9ECBFF">'15s'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      exec: </span><span style="color:#9ECBFF">'withBackoff'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      tags: { strategy: </span><span style="color:#9ECBFF">'backoff'</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">    },</span></span>
+<span class="line"><span style="color:#E1E4E8">    breaker: {</span></span>
+<span class="line"><span style="color:#E1E4E8">      executor: </span><span style="color:#9ECBFF">'constant-vus'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      vus: </span><span style="color:#79B8FF">5</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      duration: </span><span style="color:#9ECBFF">'15s'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      exec: </span><span style="color:#9ECBFF">'withBreaker'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      tags: { strategy: </span><span style="color:#9ECBFF">'breaker'</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">    },</span></span>
+<span class="line"><span style="color:#E1E4E8">  },</span></span>
+<span class="line"><span style="color:#E1E4E8">  thresholds: {</span></span>
+<span class="line"><span style="color:#6A737D">    // Same per-strategy success rate target — apples-to-apples comparison</span></span>
+<span class="line"><span style="color:#9ECBFF">    'successful_requests{strategy:naive}'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'rate>0.50'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#9ECBFF">    'successful_requests{strategy:backoff}'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'rate>0.50'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#9ECBFF">    'successful_requests{strategy:breaker}'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'rate>0.50'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#6A737D">    // Breaker should aggressively reject when it's open — count must be visible</span></span>
+<span class="line"><span style="color:#9ECBFF">    'breaker_rejects'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'count>5'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#E1E4E8">  },</span></span>
+<span class="line"><span style="color:#E1E4E8">};</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// Strategy 1: hammer + retry. Amplifies load.</span></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> function</span><span style="color:#B392F0"> naiveRetries</span><span style="color:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#F97583">  for</span><span style="color:#E1E4E8"> (</span><span style="color:#F97583">let</span><span style="color:#E1E4E8"> i </span><span style="color:#F97583">=</span><span style="color:#79B8FF"> 0</span><span style="color:#E1E4E8">; i </span><span style="color:#F97583">&#x3C;</span><span style="color:#79B8FF"> 4</span><span style="color:#E1E4E8">; i</span><span style="color:#F97583">++</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#E1E4E8">    totalAttempts.</span><span style="color:#B392F0">add</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">1</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">    const</span><span style="color:#79B8FF"> res</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> http.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">URL</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">    if</span><span style="color:#E1E4E8"> (res.status </span><span style="color:#F97583">===</span><span style="color:#79B8FF"> 200</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#E1E4E8">      successRate.</span><span style="color:#B392F0">add</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">true</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">      return</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#6A737D">    // No backoff — retry immediately. THIS IS THE ANTI-PATTERN.</span></span>
+<span class="line"><span style="color:#E1E4E8">  }</span></span>
+<span class="line"><span style="color:#E1E4E8">  successRate.</span><span style="color:#B392F0">add</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">false</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// Strategy 2: jittered exponential backoff. Spreads retries over time.</span></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> function</span><span style="color:#B392F0"> withBackoff</span><span style="color:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#F97583">  for</span><span style="color:#E1E4E8"> (</span><span style="color:#F97583">let</span><span style="color:#E1E4E8"> i </span><span style="color:#F97583">=</span><span style="color:#79B8FF"> 0</span><span style="color:#E1E4E8">; i </span><span style="color:#F97583">&#x3C;</span><span style="color:#79B8FF"> 4</span><span style="color:#E1E4E8">; i</span><span style="color:#F97583">++</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#E1E4E8">    totalAttempts.</span><span style="color:#B392F0">add</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">1</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">    const</span><span style="color:#79B8FF"> res</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> http.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">URL</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">    if</span><span style="color:#E1E4E8"> (res.status </span><span style="color:#F97583">===</span><span style="color:#79B8FF"> 200</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#E1E4E8">      successRate.</span><span style="color:#B392F0">add</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">true</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">      return</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#F97583">    if</span><span style="color:#E1E4E8"> (i </span><span style="color:#F97583">&#x3C;</span><span style="color:#79B8FF"> 3</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#F97583">      const</span><span style="color:#79B8FF"> base</span><span style="color:#F97583"> =</span><span style="color:#79B8FF"> 0.1</span><span style="color:#F97583"> *</span><span style="color:#E1E4E8"> Math.</span><span style="color:#B392F0">pow</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">2</span><span style="color:#E1E4E8">, i);   </span><span style="color:#6A737D">// 100ms, 200ms, 400ms</span></span>
+<span class="line"><span style="color:#F97583">      const</span><span style="color:#79B8FF"> jitter</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> Math.</span><span style="color:#B392F0">random</span><span style="color:#E1E4E8">() </span><span style="color:#F97583">*</span><span style="color:#E1E4E8"> base;</span></span>
+<span class="line"><span style="color:#B392F0">      sleep</span><span style="color:#E1E4E8">(base </span><span style="color:#F97583">+</span><span style="color:#E1E4E8"> jitter);</span></span>
+<span class="line"><span style="color:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#E1E4E8">  }</span></span>
+<span class="line"><span style="color:#E1E4E8">  successRate.</span><span style="color:#B392F0">add</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">false</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// Strategy 3: per-VU circuit breaker. After N failures, fast-fail.</span></span>
+<span class="line"><span style="color:#6A737D">// State is per-VU because each k6 VU has its own JS runtime.</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> THRESHOLD</span><span style="color:#F97583"> =</span><span style="color:#79B8FF"> 5</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> COOLDOWN_MS</span><span style="color:#F97583"> =</span><span style="color:#79B8FF"> 3000</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">let</span><span style="color:#E1E4E8"> breakerState </span><span style="color:#F97583">=</span><span style="color:#9ECBFF"> 'closed'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">let</span><span style="color:#E1E4E8"> consecutiveFails </span><span style="color:#F97583">=</span><span style="color:#79B8FF"> 0</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">let</span><span style="color:#E1E4E8"> openedAt </span><span style="color:#F97583">=</span><span style="color:#79B8FF"> 0</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> function</span><span style="color:#B392F0"> withBreaker</span><span style="color:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#E1E4E8">  totalAttempts.</span><span style="color:#B392F0">add</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">1</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  // Check if we should fast-fail</span></span>
+<span class="line"><span style="color:#F97583">  if</span><span style="color:#E1E4E8"> (breakerState </span><span style="color:#F97583">===</span><span style="color:#9ECBFF"> 'open'</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#F97583">    if</span><span style="color:#E1E4E8"> (Date.</span><span style="color:#B392F0">now</span><span style="color:#E1E4E8">() </span><span style="color:#F97583">-</span><span style="color:#E1E4E8"> openedAt </span><span style="color:#F97583">&#x3C;</span><span style="color:#79B8FF"> COOLDOWN_MS</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#E1E4E8">      breakerRejects.</span><span style="color:#B392F0">add</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">1</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">      successRate.</span><span style="color:#B392F0">add</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">false</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">      return</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#E1E4E8">    breakerState </span><span style="color:#F97583">=</span><span style="color:#9ECBFF"> 'half-open'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#E1E4E8">  }</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> res</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> http.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">URL</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  if</span><span style="color:#E1E4E8"> (res.status </span><span style="color:#F97583">===</span><span style="color:#79B8FF"> 200</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#E1E4E8">    consecutiveFails </span><span style="color:#F97583">=</span><span style="color:#79B8FF"> 0</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#E1E4E8">    breakerState </span><span style="color:#F97583">=</span><span style="color:#9ECBFF"> 'closed'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#E1E4E8">    successRate.</span><span style="color:#B392F0">add</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">true</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  } </span><span style="color:#F97583">else</span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">    consecutiveFails</span><span style="color:#F97583">++</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">    if</span><span style="color:#E1E4E8"> (consecutiveFails </span><span style="color:#F97583">>=</span><span style="color:#79B8FF"> THRESHOLD</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#E1E4E8">      breakerState </span><span style="color:#F97583">=</span><span style="color:#9ECBFF"> 'open'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#E1E4E8">      openedAt </span><span style="color:#F97583">=</span><span style="color:#E1E4E8"> Date.</span><span style="color:#B392F0">now</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">    }</span></span>
+<span class="line"><span style="color:#E1E4E8">    successRate.</span><span style="color:#B392F0">add</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">false</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  }</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span></code></pre>a:Tbbe,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#6A737D"># Kata 70 — Retry Storms and Circuit Breakers (Artillery solution)</span></span>
+<span class="line"><span style="color:#6A737D">#</span></span>
+<span class="line"><span style="color:#6A737D"># Artillery doesn't have first-class retry config or circuit-breaker</span></span>
+<span class="line"><span style="color:#6A737D"># state. Implementing those would require a custom JS processor.</span></span>
+<span class="line"><span style="color:#6A737D"># This file just demonstrates the chaos load against /lab/flaky;</span></span>
+<span class="line"><span style="color:#6A737D"># for the strategy comparisons (naive vs backoff vs breaker), see</span></span>
+<span class="line"><span style="color:#6A737D"># the k6 solution which has per-VU state.</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#85E89D">config</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">  target</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"http://localhost:3000"</span></span>
+<span class="line"><span style="color:#85E89D">  phases</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">    - </span><span style="color:#85E89D">duration</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">15</span></span>
+<span class="line"><span style="color:#85E89D">      arrivalRate</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">30</span></span>
+<span class="line"><span style="color:#85E89D">      name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"chaos load"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#85E89D">scenarios</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">  - </span><span style="color:#85E89D">name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"flaky probe"</span></span>
+<span class="line"><span style="color:#85E89D">    flow</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">get</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">          url</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"/lab/flaky?errorRate=0.4"</span></span>
+<span class="line"><span style="color:#85E89D">          expect</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">            - </span><span style="color:#85E89D">statusCode</span><span style="color:#E1E4E8">: [</span><span style="color:#79B8FF">200</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">500</span><span style="color:#E1E4E8">]</span></span>
+<span class="line"></span></code></pre>0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"kata":{"slug":"70-retry-storms-and-circuit-breakers","number":70,"title":"Retry Storms and Circuit Breakers","phaseSlug":"phase-17-chaos-and-resilience","phaseNumber":17,"phaseName":"Chaos And Resilience","readmeRaw":"$3","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"70-retry-storms-and-circuit-breakers.test.js","content":"$4"}],"artilleryFiles":[{"filename":"70-retry-storms-and-circuit-breakers.yml","content":"# Kata 70 — Retry Storms and Circuit Breakers (Artillery solution)\n#\n# Artillery doesn't have first-class retry config or circuit-breaker\n# state. Implementing those would require a custom JS processor.\n# This file just demonstrates the chaos load against /lab/flaky;\n# for the strategy comparisons (naive vs backoff vs breaker), see\n# the k6 solution which has per-VU state.\n\nconfig:\n  target: \"http://localhost:3000\"\n  phases:\n    - duration: 15\n      arrivalRate: 30\n      name: \"chaos load\"\n\nscenarios:\n  - name: \"flaky probe\"\n    flow:\n      - get:\n          url: \"/lab/flaky?errorRate=0.4\"\n          expect:\n            - statusCode: [200, 500]\n"}],"jmeterFiles":[]},"prev":{"slug":"69-fault-injection-with-toxiproxy","number":69,"title":"Fault Injection with Toxiproxy","phaseSlug":"phase-17-chaos-and-resilience","phaseNumber":17,"phaseName":"Chaos And Resilience","readmeRaw":"$5","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"69-fault-injection-with-toxiproxy.test.js","content":"$6"}],"artilleryFiles":[{"filename":"69-fault-injection-with-toxiproxy.yml","content":"# Kata 69 — Fault Injection (Artillery solution)\n\nconfig:\n  target: \"http://localhost:3000\"\n  phases:\n    - duration: 10\n      arrivalRate: 30\n      name: \"clean baseline\"\n    - duration: 15\n      arrivalRate: 30\n      name: \"chaos\"\n\nscenarios:\n  - name: \"clean\"\n    weight: 40\n    flow:\n      - get:\n          url: \"/lab/echo\"\n          expect:\n            - statusCode: 200\n\n  - name: \"latency injection\"\n    weight: 30\n    flow:\n      - get:\n          url: \"/lab/slow?ms=300\"\n          expect:\n            - statusCode: 200\n\n  - name: \"error injection\"\n    weight: 30\n    flow:\n      - get:\n          url: \"/lab/flaky?errorRate=0.15\"\n          expect:\n            - statusCode: [200, 500]\n"}],"jmeterFiles":[]},"next":{"slug":"71-ci-gates-and-baselines","number":71,"title":"CI Gates and Baselines","phaseSlug":"phase-18-cicd-and-capstone","phaseNumber":18,"phaseName":"Cicd And Capstone","readmeRaw":"$7","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"71-ci-gates-and-baselines.test.js","content":"$8"}],"artilleryFiles":[{"filename":"71-ci-gates-and-baselines.yml","content":"# Kata 71 — CI Gates and Baselines (Artillery solution)\n#\n# Artillery's `ensure` block is the equivalent of k6 thresholds — failed\n# ensures exit non-zero, gating the CI build. For baseline comparison,\n# Artillery has artillery.io/cloud or you can pipe `--output report.json`\n# into a custom script (same pattern as the k6 solution's compare-baseline.js).\n\nconfig:\n  target: \"http://localhost:3000\"\n  phases:\n    - duration: 30\n      arrivalRate: 50\n      name: \"ci smoke\"\n  ensure:\n    p95: 200    # 80% of SLO budget (250ms)\n    p99: 400    # 80% of SLO budget (500ms)\n    maxErrorRate: 0.1\n\nscenarios:\n  - name: \"ci smoke probe\"\n    flow:\n      - get:\n          url: \"/lab/echo\"\n          expect:\n            - statusCode: 200\n"}],"jmeterFiles":[]},"frameworks":[{"id":"k6","label":"k6","files":[{"filename":"70-retry-storms-and-circuit-breakers.test.js","html":"$9"}]},{"id":"artillery","label":"Artillery","files":[{"filename":"70-retry-storms-and-circuit-breakers.yml","html":"$a"}]},{"id":"jmeter","label":"JMeter","files":[]},{"id":"playwright","label":"Playwright","files":[]},{"id":"cypress","label":"Cypress","files":[]}]}],["$Lb"],"$Lc"]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"UzMlu93LkryOOruE2pxnW"}
+b:["$","script","script-0",{"src":"/qa-labs/_next/static/chunks/01luku1w1f06_.js","async":true}]
+c:["$","$Ld",null,{"children":["$","$e",null,{"name":"Next.MetadataOutlet","children":"$@f"}]}]
+f:null

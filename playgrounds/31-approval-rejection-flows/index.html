@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kata 31: Approval & Rejection Flows | QA Labs</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #1e293b; padding: 2rem; }
+    .header { background: #0f172a; color: white; padding: 1rem 2rem; margin: -2rem -2rem 2rem; }
+    .header h1 { font-size: 1.25rem; }
+    .kata-badge { display: inline-block; background: #38bdf8; color: #0f172a; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 4px; margin-right: 0.5rem; }
+
+    .section { margin-bottom: 1.5rem; padding: 1.5rem; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); max-width: 900px; margin-left: auto; margin-right: auto; }
+    h2 { font-size: 1rem; color: #475569; margin-bottom: 1rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.5rem; }
+
+    button { padding: 0.4rem 0.9rem; border: none; border-radius: 6px; font-size: 0.8rem; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+    .btn-approve { background: #16a34a; color: white; }
+    .btn-approve:hover { background: #15803d; }
+    .btn-reject { background: #ef4444; color: white; }
+    .btn-reject:hover { background: #dc2626; }
+    .btn-escalate { background: #f59e0b; color: white; }
+    .btn-escalate:hover { background: #d97706; }
+    .btn-primary { background: #3b82f6; color: white; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-secondary { background: #e2e8f0; color: #334155; }
+    .btn-secondary:hover { background: #cbd5e1; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* Filter bar */
+    .filter-bar { display: flex; gap: 0.5rem; margin-bottom: 1rem; align-items: center; flex-wrap: wrap; }
+    .filter-bar select { padding: 0.4rem 0.75rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.85rem; }
+
+    /* Bulk actions */
+    .bulk-bar { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem; padding: 0.75rem 1rem; background: #f1f5f9; border-radius: 6px; }
+    .bulk-bar label { font-size: 0.85rem; font-weight: 600; color: #475569; }
+    .bulk-count { font-size: 0.8rem; color: #64748b; margin-left: 0.5rem; }
+
+    /* Application cards */
+    .app-list { display: flex; flex-direction: column; gap: 0.75rem; }
+    .app-card { border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem; display: flex; align-items: center; gap: 1rem; transition: border-color 0.2s; }
+    .app-card:hover { border-color: #cbd5e1; }
+    .app-card.status-approved { border-left: 4px solid #16a34a; }
+    .app-card.status-rejected { border-left: 4px solid #ef4444; }
+    .app-card.status-escalated { border-left: 4px solid #f59e0b; }
+    .app-card.status-pending { border-left: 4px solid #94a3b8; }
+
+    .app-checkbox { width: 18px; height: 18px; cursor: pointer; }
+    .app-info { flex: 1; }
+    .app-name { font-weight: 700; font-size: 0.9rem; }
+    .app-detail { font-size: 0.75rem; color: #64748b; margin-top: 0.15rem; }
+    .app-actions { display: flex; gap: 0.4rem; }
+
+    .status-badge { display: inline-block; padding: 0.15rem 0.6rem; border-radius: 10px; font-size: 0.7rem; font-weight: 600; margin-left: 0.5rem; }
+    .badge-pending { background: #e2e8f0; color: #64748b; }
+    .badge-approved { background: #dcfce7; color: #166534; }
+    .badge-rejected { background: #fee2e2; color: #991b1b; }
+    .badge-escalated { background: #fef3c7; color: #92400e; }
+
+    /* Dialog overlay */
+    .dialog-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 100; align-items: center; justify-content: center; }
+    .dialog-overlay.visible { display: flex; }
+    .dialog { background: white; border-radius: 8px; padding: 1.5rem; width: 400px; max-width: 90%; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
+    .dialog h3 { font-size: 1rem; margin-bottom: 0.75rem; }
+    .dialog p { font-size: 0.85rem; color: #64748b; margin-bottom: 1rem; }
+    .dialog textarea { width: 100%; padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.85rem; resize: vertical; min-height: 80px; margin-bottom: 0.75rem; }
+    .dialog textarea:focus { outline: none; border-color: #3b82f6; }
+    .dialog-actions { display: flex; gap: 0.5rem; justify-content: flex-end; }
+    .dialog .error-msg { color: #dc2626; font-size: 0.75rem; display: none; margin-bottom: 0.5rem; }
+
+    /* History log */
+    .history-list { list-style: none; max-height: 250px; overflow-y: auto; }
+    .history-item { padding: 0.5rem 0; border-bottom: 1px solid #f1f5f9; font-size: 0.8rem; display: flex; justify-content: space-between; }
+    .history-item:last-child { border-bottom: none; }
+    .history-action { font-weight: 600; }
+    .history-time { color: #94a3b8; font-size: 0.7rem; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1><span class="kata-badge">KATA 31</span> Approval & Rejection Flows</h1>
+</div>
+
+<div class="section">
+  <h2>Admin Review Panel</h2>
+
+  <!-- Filter bar -->
+  <div class="filter-bar" data-testid="filter-bar">
+    <label style="font-size:0.85rem;font-weight:600;color:#475569;">Filter by status:</label>
+    <select data-testid="filter-status" onchange="filterApplications()">
+      <option value="all">All</option>
+      <option value="pending">Pending</option>
+      <option value="approved">Approved</option>
+      <option value="rejected">Rejected</option>
+      <option value="escalated">Escalated</option>
+    </select>
+    <span data-testid="filter-count" style="font-size:0.8rem;color:#64748b;">Showing 5 of 5</span>
+  </div>
+
+  <!-- Bulk actions bar -->
+  <div class="bulk-bar" data-testid="bulk-bar">
+    <input type="checkbox" class="app-checkbox" data-testid="select-all" onchange="toggleSelectAll(this.checked)">
+    <label>Select All</label>
+    <span class="bulk-count" data-testid="selected-count">0 selected</span>
+    <button class="btn-approve" data-testid="btn-bulk-approve" onclick="bulkApprove()" disabled>Approve Selected</button>
+  </div>
+
+  <!-- Application list -->
+  <div class="app-list" data-testid="app-list">
+    <!-- Applications are rendered by JavaScript below -->
+  </div>
+</div>
+
+<!-- Approval Confirmation Dialog -->
+<div class="dialog-overlay" data-testid="approve-dialog">
+  <div class="dialog">
+    <h3>Confirm Approval</h3>
+    <p data-testid="approve-dialog-text">Are you sure you want to approve this application?</p>
+    <div class="dialog-actions">
+      <button class="btn-secondary" data-testid="approve-dialog-cancel" onclick="closeDialog('approve')">Cancel</button>
+      <button class="btn-approve" data-testid="approve-dialog-confirm" onclick="confirmApprove()">Approve</button>
+    </div>
+  </div>
+</div>
+
+<!-- Rejection Dialog -->
+<div class="dialog-overlay" data-testid="reject-dialog">
+  <div class="dialog">
+    <h3>Reject Application</h3>
+    <p>Please provide a reason for rejection:</p>
+    <textarea data-testid="reject-reason" placeholder="Enter rejection reason..."></textarea>
+    <div class="error-msg" data-testid="reject-error">Rejection reason is required</div>
+    <div class="dialog-actions">
+      <button class="btn-secondary" data-testid="reject-dialog-cancel" onclick="closeDialog('reject')">Cancel</button>
+      <button class="btn-reject" data-testid="reject-dialog-confirm" onclick="confirmReject()">Reject</button>
+    </div>
+  </div>
+</div>
+
+<!-- Escalation Dialog -->
+<div class="dialog-overlay" data-testid="escalate-dialog">
+  <div class="dialog">
+    <h3>Escalate Application</h3>
+    <p>Provide escalation notes:</p>
+    <textarea data-testid="escalate-notes" placeholder="Enter escalation notes..."></textarea>
+    <div class="dialog-actions">
+      <button class="btn-secondary" data-testid="escalate-dialog-cancel" onclick="closeDialog('escalate')">Cancel</button>
+      <button class="btn-escalate" data-testid="escalate-dialog-confirm" onclick="confirmEscalate()">Escalate</button>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>Action History</h2>
+  <ul class="history-list" data-testid="history-list">
+    <li class="history-item" style="color:#94a3b8;text-align:center;">No actions yet</li>
+  </ul>
+</div>
+
+<script>
+  // ─── State ─────────────────────────────────────────────────────────
+  // applications: array of application objects with id, name, risk score, and status.
+  const applications = [
+    { id: 'APP-001', name: 'Alice Johnson', email: 'alice@example.com', riskScore: 12, status: 'pending' },
+    { id: 'APP-002', name: 'Bob Williams', email: 'bob@example.com', riskScore: 45, status: 'pending' },
+    { id: 'APP-003', name: 'Carol Davis', email: 'carol@example.com', riskScore: 78, status: 'pending' },
+    { id: 'APP-004', name: 'David Martinez', email: 'david@example.com', riskScore: 22, status: 'pending' },
+    { id: 'APP-005', name: 'Emma Thompson', email: 'emma@example.com', riskScore: 55, status: 'pending' }
+  ];
+
+  // actionHistory: array of action log entries.
+  const actionHistory = [];
+
+  // currentActionAppId: the app ID being acted on in a dialog.
+  let currentActionAppId = null;
+
+  // ─── renderApplications() ─────────────────────────────────────────
+  // Renders the application cards based on the current filter.
+  function renderApplications() {
+    const filter = document.querySelector('[data-testid="filter-status"]').value;
+    const list = document.querySelector('[data-testid="app-list"]');
+    list.innerHTML = '';
+
+    // Filter applications based on the selected status.
+    const filtered = filter === 'all' ? applications : applications.filter(a => a.status === filter);
+
+    filtered.forEach(app => {
+      const card = document.createElement('div');
+      card.className = `app-card status-${app.status}`;
+      card.setAttribute('data-testid', `app-card-${app.id}`);
+      card.setAttribute('data-status', app.status);
+
+      // Determine badge class from status.
+      const badgeClass = `badge-${app.status}`;
+      const badgeText = app.status.charAt(0).toUpperCase() + app.status.slice(1);
+
+      // Build the card HTML.
+      card.innerHTML = `
+        <input type="checkbox" class="app-checkbox" data-testid="checkbox-${app.id}"
+               data-app-id="${app.id}" onchange="updateSelectedCount()"
+               ${app.status !== 'pending' ? 'disabled' : ''}>
+        <div class="app-info">
+          <div class="app-name">${app.name} <span class="status-badge ${badgeClass}" data-testid="status-${app.id}">${badgeText}</span></div>
+          <div class="app-detail">${app.id} | ${app.email} | Risk: ${app.riskScore}</div>
+        </div>
+        <div class="app-actions">
+          ${app.status === 'pending' ? `
+            <button class="btn-approve" data-testid="btn-approve-${app.id}" onclick="openApproveDialog('${app.id}')">Approve</button>
+            <button class="btn-reject" data-testid="btn-reject-${app.id}" onclick="openRejectDialog('${app.id}')">Reject</button>
+            <button class="btn-escalate" data-testid="btn-escalate-${app.id}" onclick="openEscalateDialog('${app.id}')">Escalate</button>
+          ` : ''}
+        </div>
+      `;
+
+      list.appendChild(card);
+    });
+
+    // Update the filter count display.
+    document.querySelector('[data-testid="filter-count"]').textContent =
+      `Showing ${filtered.length} of ${applications.length}`;
+
+    updateSelectedCount();
+  }
+
+  // ─── filterApplications() ─────────────────────────────────────────
+  // Called when the filter dropdown changes. Re-renders the list.
+  function filterApplications() {
+    renderApplications();
+  }
+
+  // ─── toggleSelectAll(checked) ─────────────────────────────────────
+  // Selects or deselects all visible pending application checkboxes.
+  function toggleSelectAll(checked) {
+    document.querySelectorAll('.app-checkbox[data-app-id]').forEach(cb => {
+      if (!cb.disabled) cb.checked = checked;
+    });
+    updateSelectedCount();
+  }
+
+  // ─── updateSelectedCount() ────────────────────────────────────────
+  // Counts selected checkboxes and updates the display and bulk button state.
+  function updateSelectedCount() {
+    const checked = document.querySelectorAll('.app-checkbox[data-app-id]:checked');
+    const count = checked.length;
+    document.querySelector('[data-testid="selected-count"]').textContent = count + ' selected';
+    document.querySelector('[data-testid="btn-bulk-approve"]').disabled = count === 0;
+  }
+
+  // ─── openApproveDialog(appId) ─────────────────────────────────────
+  // Opens the approval confirmation dialog for the given application.
+  function openApproveDialog(appId) {
+    currentActionAppId = appId;
+    const app = applications.find(a => a.id === appId);
+    document.querySelector('[data-testid="approve-dialog-text"]').textContent =
+      `Are you sure you want to approve ${app.name}'s application (${appId})?`;
+    document.querySelector('[data-testid="approve-dialog"]').classList.add('visible');
+  }
+
+  // ─── confirmApprove() ─────────────────────────────────────────────
+  // Confirms the approval and updates the application status.
+  function confirmApprove() {
+    if (!currentActionAppId) return;
+    updateAppStatus(currentActionAppId, 'approved');
+    addHistory(currentActionAppId, 'Approved');
+    closeDialog('approve');
+  }
+
+  // ─── openRejectDialog(appId) ──────────────────────────────────────
+  // Opens the rejection dialog with a required reason textarea.
+  function openRejectDialog(appId) {
+    currentActionAppId = appId;
+    document.querySelector('[data-testid="reject-reason"]').value = '';
+    document.querySelector('[data-testid="reject-error"]').style.display = 'none';
+    document.querySelector('[data-testid="reject-dialog"]').classList.add('visible');
+  }
+
+  // ─── confirmReject() ──────────────────────────────────────────────
+  // Validates the rejection reason, then updates the application.
+  function confirmReject() {
+    const reason = document.querySelector('[data-testid="reject-reason"]').value.trim();
+    if (!reason) {
+      // Show error if no reason provided.
+      document.querySelector('[data-testid="reject-error"]').style.display = 'block';
+      return;
+    }
+    updateAppStatus(currentActionAppId, 'rejected');
+    addHistory(currentActionAppId, 'Rejected', reason);
+    closeDialog('reject');
+  }
+
+  // ─── openEscalateDialog(appId) ────────────────────────────────────
+  // Opens the escalation dialog with a notes textarea.
+  function openEscalateDialog(appId) {
+    currentActionAppId = appId;
+    document.querySelector('[data-testid="escalate-notes"]').value = '';
+    document.querySelector('[data-testid="escalate-dialog"]').classList.add('visible');
+  }
+
+  // ─── confirmEscalate() ────────────────────────────────────────────
+  // Confirms the escalation and updates the application status.
+  function confirmEscalate() {
+    const notes = document.querySelector('[data-testid="escalate-notes"]').value.trim();
+    updateAppStatus(currentActionAppId, 'escalated');
+    addHistory(currentActionAppId, 'Escalated', notes || 'No notes provided');
+    closeDialog('escalate');
+  }
+
+  // ─── closeDialog(type) ────────────────────────────────────────────
+  // Closes the specified dialog overlay.
+  function closeDialog(type) {
+    document.querySelector(`[data-testid="${type}-dialog"]`).classList.remove('visible');
+    currentActionAppId = null;
+  }
+
+  // ─── updateAppStatus(appId, newStatus) ────────────────────────────
+  // Finds the application by ID and updates its status. Re-renders the list.
+  function updateAppStatus(appId, newStatus) {
+    const app = applications.find(a => a.id === appId);
+    if (app) app.status = newStatus;
+    renderApplications();
+  }
+
+  // ─── bulkApprove() ────────────────────────────────────────────────
+  // Approves all selected pending applications.
+  function bulkApprove() {
+    const checked = document.querySelectorAll('.app-checkbox[data-app-id]:checked');
+    checked.forEach(cb => {
+      const appId = cb.getAttribute('data-app-id');
+      updateAppStatus(appId, 'approved');
+      addHistory(appId, 'Approved (Bulk)');
+    });
+    renderApplications();
+  }
+
+  // ─── addHistory(appId, action, detail) ────────────────────────────
+  // Adds an entry to the action history log.
+  function addHistory(appId, action, detail) {
+    const app = applications.find(a => a.id === appId);
+    actionHistory.push({
+      appId, appName: app ? app.name : appId,
+      action, detail: detail || '',
+      time: new Date().toLocaleTimeString()
+    });
+    renderHistory();
+  }
+
+  // ─── renderHistory() ──────────────────────────────────────────────
+  // Renders the action history log.
+  function renderHistory() {
+    const list = document.querySelector('[data-testid="history-list"]');
+    if (actionHistory.length === 0) {
+      list.innerHTML = '<li class="history-item" style="color:#94a3b8;text-align:center;">No actions yet</li>';
+      return;
+    }
+
+    list.innerHTML = '';
+    // Show newest entries first.
+    [...actionHistory].reverse().forEach((entry, index) => {
+      const li = document.createElement('li');
+      li.className = 'history-item';
+      li.setAttribute('data-testid', `history-item-${actionHistory.length - index - 1}`);
+      li.innerHTML = `
+        <span>
+          <span class="history-action">${entry.action}</span> — ${entry.appName} (${entry.appId})
+          ${entry.detail ? `<br><span style="color:#94a3b8;font-size:0.7rem;">Reason: ${entry.detail}</span>` : ''}
+        </span>
+        <span class="history-time">${entry.time}</span>
+      `;
+      list.appendChild(li);
+    });
+  }
+
+  // Initial render.
+  renderApplications();
+</script>
+</body>
+</html>

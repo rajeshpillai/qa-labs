@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kata 21: Tabs and Windows | QA Labs</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #1e293b; padding: 2rem; }
+    .header { background: #0f172a; color: white; padding: 1rem 2rem; margin: -2rem -2rem 2rem; }
+    .header h1 { font-size: 1.25rem; }
+    .kata-badge { display: inline-block; background: #38bdf8; color: #0f172a; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 4px; margin-right: 0.5rem; }
+
+    .layout { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; max-width: 900px; }
+
+    .section {
+      background: white; border-radius: 8px; padding: 1.5rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 1.5rem;
+    }
+    .section h2 { font-size: 1rem; color: #475569; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid #e2e8f0; }
+    .section p { font-size: 0.875rem; color: #64748b; margin-bottom: 0.75rem; line-height: 1.5; }
+
+    .btn {
+      display: inline-block; padding: 0.5rem 1.25rem; border: none; border-radius: 6px;
+      font-size: 0.875rem; font-weight: 600; cursor: pointer;
+      margin-right: 0.5rem; margin-bottom: 0.5rem; text-decoration: none;
+    }
+    .btn-primary { background: #3b82f6; color: white; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-success { background: #22c55e; color: white; }
+    .btn-success:hover { background: #16a34a; }
+    .btn-secondary { background: #64748b; color: white; }
+    .btn-secondary:hover { background: #475569; }
+    .btn-warning { background: #f59e0b; color: #0f172a; }
+    .btn-warning:hover { background: #d97706; }
+
+    /* Status display */
+    .status-bar {
+      padding: 0.75rem 1rem; background: #f1f5f9; border-radius: 6px;
+      font-size: 0.85rem; color: #475569; margin-top: 0.75rem;
+    }
+
+    /* Message display */
+    .message-log {
+      font-family: monospace; font-size: 0.8rem; background: #f8fafc;
+      border: 1px solid #e2e8f0; border-radius: 6px; padding: 0.75rem;
+      max-height: 200px; overflow-y: auto; margin-top: 0.75rem;
+    }
+    .message-log .entry {
+      padding: 0.25rem 0; border-bottom: 1px solid #f1f5f9;
+    }
+    .message-log .entry:last-child { border-bottom: none; }
+
+    /* Link styled as text link */
+    .text-link { color: #3b82f6; text-decoration: underline; cursor: pointer; font-size: 0.875rem; }
+    .text-link:hover { color: #2563eb; }
+
+    /* Popup status indicators */
+    .popup-status { display: flex; align-items: center; gap: 0.5rem; margin-top: 0.5rem; }
+    .popup-status .indicator {
+      width: 10px; height: 10px; border-radius: 50%;
+    }
+    .popup-status .indicator.open { background: #22c55e; }
+    .popup-status .indicator.closed { background: #ef4444; }
+    .popup-status .label { font-size: 0.8rem; color: #64748b; }
+  </style>
+</head>
+<body>
+
+  <header class="header" data-testid="page-header">
+    <span class="kata-badge">KATA 21</span>
+    <h1>KYC Portal - Tabs and Windows</h1>
+  </header>
+
+  <div class="layout">
+
+    <!-- Left column: New Tab and Popup actions -->
+    <div>
+
+      <!-- Link that opens in a new tab -->
+      <div class="section" data-testid="new-tab-section">
+        <h2>Terms and Conditions</h2>
+        <p>Review our terms and conditions before proceeding with your KYC application.</p>
+        <!-- target="_blank" causes the link to open in a new browser tab.
+             We intentionally do NOT set rel="noopener" here because the
+             terms.html page uses window.opener.postMessage() to notify
+             the parent when the user accepts/declines. With rel="noopener",
+             window.opener would be null and those messages would be lost. -->
+        <a href="terms.html" target="_blank" class="btn btn-primary" data-testid="link-view-terms" id="link-view-terms">
+          View Terms (opens in new tab)
+        </a>
+        <div class="status-bar" data-testid="tab-status" id="tab-status">
+          No new tab opened yet.
+        </div>
+      </div>
+
+      <!-- Button that opens a popup window via window.open() -->
+      <div class="section" data-testid="popup-section">
+        <h2>Video Verification Call</h2>
+        <p>Start a video call with our KYC verification agent for identity confirmation.</p>
+        <button class="btn btn-success" data-testid="btn-video-call" id="btn-video-call">
+          Start Video Call
+        </button>
+        <div class="popup-status" data-testid="video-popup-status" id="video-popup-status">
+          <span class="indicator closed" data-testid="video-indicator" id="video-indicator"></span>
+          <span class="label" data-testid="video-status-label" id="video-status-label">Video call not started</span>
+        </div>
+      </div>
+
+      <!-- Consent form popup -->
+      <div class="section" data-testid="consent-section">
+        <h2>Data Consent</h2>
+        <p>You must provide consent for data processing before we can proceed.</p>
+        <button class="btn btn-warning" data-testid="btn-consent-form" id="btn-consent-form">
+          Open Consent Form
+        </button>
+        <div class="popup-status" data-testid="consent-popup-status" id="consent-popup-status">
+          <span class="indicator closed" data-testid="consent-indicator" id="consent-indicator"></span>
+          <span class="label" data-testid="consent-status-label" id="consent-status-label">Consent not provided</span>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Right column: Cross-window messaging and status -->
+    <div>
+
+      <!-- Cross-window messaging -->
+      <div class="section" data-testid="messaging-section">
+        <h2>Cross-Window Messages</h2>
+        <p>Messages received from popup windows and new tabs appear here. This uses the browser's postMessage API.</p>
+        <button class="btn btn-secondary" data-testid="btn-clear-messages" id="btn-clear-messages">
+          Clear Messages
+        </button>
+        <div class="message-log" data-testid="message-log" id="message-log">
+          <div class="entry" data-testid="message-placeholder">Waiting for messages...</div>
+        </div>
+      </div>
+
+      <!-- Parent state display -->
+      <div class="section" data-testid="parent-state-section">
+        <h2>Parent Window State</h2>
+        <p>This section tracks the state of the parent window based on popup interactions.</p>
+        <div class="status-bar">
+          Terms accepted: <strong data-testid="terms-accepted" id="terms-accepted">No</strong>
+        </div>
+        <div class="status-bar" style="margin-top: 0.5rem;">
+          Video call completed: <strong data-testid="video-completed" id="video-completed">No</strong>
+        </div>
+        <div class="status-bar" style="margin-top: 0.5rem;">
+          Consent given: <strong data-testid="consent-given" id="consent-given">No</strong>
+        </div>
+        <div class="status-bar" style="margin-top: 0.5rem;">
+          Active popups: <strong data-testid="active-popups" id="active-popups">0</strong>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    // -----------------------------------------------------------------------
+    // Track open popup windows
+    // -----------------------------------------------------------------------
+    // We keep references to opened popups so we can count them and
+    // detect when they are closed.
+    const openPopups = [];
+
+    function updateActivePopups() {
+      // Filter out closed popups. A popup's .closed property is true
+      // once the window has been closed.
+      const active = openPopups.filter(p => !p.closed);
+      document.getElementById('active-popups').textContent = active.length;
+    }
+
+    // Periodically check if popups have been closed.
+    setInterval(updateActivePopups, 500);
+
+    // -----------------------------------------------------------------------
+    // 1. "View Terms" link — opens terms.html in a new tab
+    // -----------------------------------------------------------------------
+    // The link uses target="_blank" in the HTML, so clicking it naturally
+    // opens a new tab. We also listen for the click to update the status.
+    document.getElementById('link-view-terms').addEventListener('click', () => {
+      document.getElementById('tab-status').textContent = 'Terms page opened in new tab.';
+    });
+
+    // -----------------------------------------------------------------------
+    // 2. "Start Video Call" — opens a popup via window.open()
+    // -----------------------------------------------------------------------
+    // window.open(url, windowName, features) opens a new browser window
+    // or tab. The 'features' string controls the popup size and position.
+    document.getElementById('btn-video-call').addEventListener('click', () => {
+      // Open video-call.html in a popup window sized 500x400.
+      // The features string 'width=500,height=400' makes it a popup
+      // instead of a regular tab.
+      const popup = window.open(
+        'video-call.html',
+        'videoCall',
+        'width=500,height=400,left=200,top=200'
+      );
+
+      if (popup) {
+        openPopups.push(popup);
+        document.getElementById('video-indicator').classList.remove('closed');
+        document.getElementById('video-indicator').classList.add('open');
+        document.getElementById('video-status-label').textContent = 'Video call in progress...';
+        updateActivePopups();
+      }
+    });
+
+    // -----------------------------------------------------------------------
+    // 3. "Open Consent Form" — opens a popup for data consent
+    // -----------------------------------------------------------------------
+    document.getElementById('btn-consent-form').addEventListener('click', () => {
+      const popup = window.open(
+        'consent-form.html',
+        'consentForm',
+        'width=450,height=350,left=250,top=250'
+      );
+
+      if (popup) {
+        openPopups.push(popup);
+        document.getElementById('consent-indicator').classList.remove('closed');
+        document.getElementById('consent-indicator').classList.add('open');
+        document.getElementById('consent-status-label').textContent = 'Consent form open...';
+        updateActivePopups();
+      }
+    });
+
+    // -----------------------------------------------------------------------
+    // 4. Cross-Window Messaging via postMessage
+    // -----------------------------------------------------------------------
+    // window.addEventListener('message', handler) listens for messages
+    // sent from other windows/tabs/iframes using postMessage().
+    //
+    // postMessage(data, targetOrigin) sends a message to another window.
+    // The 'message' event has these properties:
+    //   event.data   — the message payload (any serializable value)
+    //   event.origin — the origin of the sender
+    //   event.source — reference to the sender window
+    const messageLog = document.getElementById('message-log');
+    let messageCount = 0;
+
+    window.addEventListener('message', (event) => {
+      messageCount++;
+
+      // Remove the placeholder on first message.
+      const placeholder = document.querySelector('[data-testid="message-placeholder"]');
+      if (placeholder) placeholder.remove();
+
+      // Create a new entry in the message log.
+      const entry = document.createElement('div');
+      entry.className = 'entry';
+      entry.setAttribute('data-testid', 'message-entry-' + messageCount);
+
+      // event.data contains the message payload.
+      if (typeof event.data === 'object' && event.data !== null) {
+        entry.textContent = `[${event.data.type || 'unknown'}] ${event.data.message || JSON.stringify(event.data)}`;
+
+        // Update parent state based on message type.
+        if (event.data.type === 'terms-accepted') {
+          document.getElementById('terms-accepted').textContent = 'Yes';
+        } else if (event.data.type === 'video-completed') {
+          document.getElementById('video-completed').textContent = 'Yes';
+          document.getElementById('video-indicator').classList.remove('open');
+          document.getElementById('video-indicator').classList.add('closed');
+          document.getElementById('video-status-label').textContent = 'Video call completed';
+        } else if (event.data.type === 'consent-given') {
+          document.getElementById('consent-given').textContent = 'Yes';
+          document.getElementById('consent-indicator').classList.remove('open');
+          document.getElementById('consent-indicator').classList.add('closed');
+          document.getElementById('consent-status-label').textContent = 'Consent provided';
+        }
+      } else {
+        entry.textContent = String(event.data);
+      }
+
+      messageLog.appendChild(entry);
+      updateActivePopups();
+    });
+
+    // Clear messages button.
+    document.getElementById('btn-clear-messages').addEventListener('click', () => {
+      messageLog.innerHTML = '<div class="entry" data-testid="message-placeholder">Waiting for messages...</div>';
+      messageCount = 0;
+    });
+  </script>
+
+</body>
+</html>

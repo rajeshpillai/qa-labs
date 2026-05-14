@@ -1,0 +1,574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kata 16: Date Pickers and Dropdowns | QA Labs</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #1e293b; padding: 2rem; }
+    .header { background: #0f172a; color: white; padding: 1rem 2rem; margin: -2rem -2rem 2rem; }
+    .header h1 { font-size: 1.25rem; }
+    .kata-badge { display: inline-block; background: #38bdf8; color: #0f172a; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 4px; margin-right: 0.5rem; }
+
+    .form-container { max-width: 650px; margin: 0 auto; }
+    .section { background: white; border-radius: 8px; padding: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 1.5rem; }
+    .section h2 { font-size: 1rem; color: #334155; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 2px solid #e2e8f0; }
+
+    .form-group { margin-bottom: 1.25rem; }
+    .form-group label { display: block; font-size: 0.85rem; font-weight: 600; color: #475569; margin-bottom: 0.3rem; }
+    .form-group input, .form-group select {
+      width: 100%; padding: 0.55rem 0.7rem; border: 2px solid #cbd5e1;
+      border-radius: 6px; font-size: 0.85rem; outline: none;
+    }
+    .form-group input:focus, .form-group select:focus { border-color: #3b82f6; }
+
+    .selected-display { font-size: 0.8rem; color: #475569; margin-top: 0.3rem; }
+    .error-text { font-size: 0.78rem; color: #ef4444; margin-top: 0.3rem; display: none; }
+    .error-text.visible { display: block; }
+
+    /* Custom calendar picker */
+    .calendar-wrapper { position: relative; }
+    .calendar-trigger {
+      width: 100%; padding: 0.55rem 0.7rem; border: 2px solid #cbd5e1;
+      border-radius: 6px; font-size: 0.85rem; cursor: pointer; background: white;
+      text-align: left; color: #1e293b;
+    }
+    .calendar-trigger:focus { border-color: #3b82f6; outline: none; }
+    .calendar-trigger.placeholder { color: #94a3b8; }
+
+    .calendar-popup {
+      display: none; position: absolute; top: calc(100% + 4px); left: 0;
+      background: white; border: 2px solid #e2e8f0; border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15); padding: 1rem; z-index: 100;
+      width: 280px;
+    }
+    .calendar-popup.open { display: block; }
+
+    .calendar-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }
+    .calendar-header .month-year { font-weight: 600; font-size: 0.9rem; color: #334155; }
+    .calendar-header button {
+      background: #f1f5f9; border: none; width: 28px; height: 28px; border-radius: 4px;
+      cursor: pointer; font-size: 0.85rem; color: #475569;
+    }
+    .calendar-header button:hover { background: #e2e8f0; }
+
+    .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; text-align: center; }
+    .calendar-grid .day-label { font-size: 0.7rem; font-weight: 600; color: #94a3b8; padding: 0.3rem; }
+    .calendar-grid .day {
+      padding: 0.35rem; font-size: 0.8rem; border-radius: 4px; cursor: pointer;
+      color: #334155; transition: background 0.15s;
+    }
+    .calendar-grid .day:hover { background: #eff6ff; }
+    .calendar-grid .day.selected { background: #2563eb; color: white; }
+    .calendar-grid .day.today { border: 1px solid #3b82f6; }
+    .calendar-grid .day.other-month { color: #cbd5e1; }
+
+    /* Searchable dropdown */
+    .search-dropdown { position: relative; }
+    .search-dropdown .search-input {
+      width: 100%; padding: 0.55rem 0.7rem; border: 2px solid #cbd5e1;
+      border-radius: 6px; font-size: 0.85rem; outline: none;
+    }
+    .search-dropdown .search-input:focus { border-color: #3b82f6; }
+    .search-dropdown .dropdown-list {
+      display: none; position: absolute; top: calc(100% + 2px); left: 0; right: 0;
+      background: white; border: 2px solid #e2e8f0; border-radius: 6px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.1); max-height: 200px; overflow-y: auto;
+      z-index: 50;
+    }
+    .search-dropdown .dropdown-list.open { display: block; }
+    .search-dropdown .dropdown-option {
+      padding: 0.5rem 0.75rem; cursor: pointer; font-size: 0.85rem; transition: background 0.1s;
+    }
+    .search-dropdown .dropdown-option:hover { background: #eff6ff; }
+    .search-dropdown .dropdown-option.selected { background: #dbeafe; font-weight: 600; }
+
+    /* Multi-select tags */
+    .tag-container { display: flex; flex-wrap: wrap; gap: 0.35rem; margin-top: 0.4rem; }
+    .tag {
+      display: inline-flex; align-items: center; gap: 0.3rem;
+      background: #dbeafe; color: #1e40af; padding: 0.25rem 0.6rem;
+      border-radius: 20px; font-size: 0.75rem; font-weight: 600;
+    }
+    .tag .tag-remove {
+      cursor: pointer; color: #3b82f6; font-size: 0.85rem; font-weight: 700;
+      margin-left: 0.15rem; line-height: 1;
+    }
+    .tag .tag-remove:hover { color: #1d4ed8; }
+
+    /* Clear button */
+    .btn-clear {
+      background: #f1f5f9; color: #64748b; border: 1px solid #cbd5e1;
+      padding: 0.3rem 0.75rem; border-radius: 4px; cursor: pointer;
+      font-size: 0.78rem; margin-top: 0.4rem;
+    }
+    .btn-clear:hover { background: #e2e8f0; }
+  </style>
+</head>
+<body>
+
+  <header class="header" data-testid="page-header">
+    <span class="kata-badge">KATA 16</span>
+    <h1>KYC Form - Date Pickers & Dropdowns</h1>
+  </header>
+
+  <div class="form-container">
+
+    <!-- Section 1: Native Date Input -->
+    <div class="section">
+      <h2>Date of Birth (Native Input)</h2>
+      <div class="form-group">
+        <label for="native-date">Select your date of birth</label>
+        <input type="date" id="native-date" data-testid="input-native-date"
+               min="1920-01-01" max="2010-12-31">
+        <div class="selected-display" data-testid="display-native-date">Selected: <strong data-testid="value-native-date">None</strong></div>
+        <div class="error-text" data-testid="error-native-date">Date must be between 1920 and 2010.</div>
+      </div>
+    </div>
+
+    <!-- Section 2: Custom Calendar Picker -->
+    <div class="section">
+      <h2>Account Opening Date (Custom Calendar)</h2>
+      <div class="form-group">
+        <label>Pick a date from the calendar</label>
+        <div class="calendar-wrapper" data-testid="calendar-wrapper">
+          <button class="calendar-trigger placeholder" data-testid="calendar-trigger" id="calendar-trigger">
+            Click to select a date...
+          </button>
+          <div class="calendar-popup" data-testid="calendar-popup" id="calendar-popup">
+            <div class="calendar-header">
+              <button data-testid="btn-prev-month" id="btn-prev-month">&larr;</button>
+              <span class="month-year" data-testid="calendar-month-year" id="calendar-month-year"></span>
+              <button data-testid="btn-next-month" id="btn-next-month">&rarr;</button>
+            </div>
+            <div class="calendar-grid" data-testid="calendar-grid" id="calendar-grid">
+              <span class="day-label">Su</span><span class="day-label">Mo</span>
+              <span class="day-label">Tu</span><span class="day-label">We</span>
+              <span class="day-label">Th</span><span class="day-label">Fr</span>
+              <span class="day-label">Sa</span>
+            </div>
+          </div>
+        </div>
+        <div class="selected-display" data-testid="display-calendar-date">Selected: <strong data-testid="value-calendar-date">None</strong></div>
+      </div>
+    </div>
+
+    <!-- Section 3: Searchable Country Dropdown -->
+    <div class="section">
+      <h2>Country of Residence (Searchable Dropdown)</h2>
+      <div class="form-group">
+        <label>Type to search for a country</label>
+        <div class="search-dropdown" data-testid="country-dropdown">
+          <input type="text" class="search-input" data-testid="input-country-search"
+                 placeholder="Search country..." autocomplete="off">
+          <div class="dropdown-list" data-testid="country-list" id="country-list"></div>
+        </div>
+        <div class="selected-display" data-testid="display-country">Selected: <strong data-testid="value-country">None</strong></div>
+      </div>
+    </div>
+
+    <!-- Section 4: Cascading Dropdown (Industry -> Occupation) -->
+    <div class="section">
+      <h2>Occupation (Cascading Dropdown)</h2>
+      <div class="form-group">
+        <label for="industry-select">Industry</label>
+        <select id="industry-select" data-testid="select-industry">
+          <option value="">-- Select Industry --</option>
+          <option value="finance">Finance & Banking</option>
+          <option value="technology">Technology</option>
+          <option value="healthcare">Healthcare</option>
+          <option value="education">Education</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="occupation-select">Occupation</label>
+        <select id="occupation-select" data-testid="select-occupation" disabled>
+          <option value="">-- Select Industry First --</option>
+        </select>
+        <div class="selected-display" data-testid="display-occupation">Selected: <strong data-testid="value-occupation">None</strong></div>
+      </div>
+    </div>
+
+    <!-- Section 5: Time Picker -->
+    <div class="section">
+      <h2>Preferred Appointment Time</h2>
+      <div class="form-group">
+        <label for="time-input">Select a time for your KYC verification call</label>
+        <input type="time" id="time-input" data-testid="input-time" min="09:00" max="17:00">
+        <div class="selected-display" data-testid="display-time">Selected: <strong data-testid="value-time">None</strong></div>
+      </div>
+    </div>
+
+    <!-- Section 6: Multi-Select Tags -->
+    <div class="section">
+      <h2>Document Types Required (Multi-Select)</h2>
+      <div class="form-group">
+        <label>Select all document types that apply</label>
+        <div class="search-dropdown" data-testid="doc-type-dropdown">
+          <input type="text" class="search-input" data-testid="input-doc-search"
+                 placeholder="Search document types..." autocomplete="off">
+          <div class="dropdown-list" data-testid="doc-type-list" id="doc-type-list"></div>
+        </div>
+        <div class="tag-container" data-testid="tag-container" id="tag-container"></div>
+        <div class="selected-display" data-testid="display-doc-types">Selected: <strong data-testid="value-doc-types">None</strong></div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    // -----------------------------------------------------------------------
+    // 1. Native Date Input — simple change event listener
+    // -----------------------------------------------------------------------
+    const nativeDateInput = document.getElementById('native-date');
+    const nativeDateDisplay = document.querySelector('[data-testid="value-native-date"]');
+    const nativeDateError = document.querySelector('[data-testid="error-native-date"]');
+
+    // addEventListener('change', handler) fires when the user picks a date.
+    nativeDateInput.addEventListener('change', () => {
+      const val = nativeDateInput.value; // Format: "YYYY-MM-DD"
+      nativeDateError.classList.remove('visible');
+
+      if (val) {
+        const year = parseInt(val.split('-')[0]);
+        if (year < 1920 || year > 2010) {
+          nativeDateError.classList.add('visible');
+          nativeDateDisplay.textContent = 'None';
+        } else {
+          // toLocaleDateString formats the date in a human-readable way.
+          nativeDateDisplay.textContent = new Date(val).toLocaleDateString('en-US', {
+            year: 'numeric', month: 'long', day: 'numeric'
+          });
+        }
+      } else {
+        nativeDateDisplay.textContent = 'None';
+      }
+    });
+
+    // -----------------------------------------------------------------------
+    // 2. Custom Calendar Picker — vanilla JS date picker
+    // -----------------------------------------------------------------------
+    const calTrigger = document.getElementById('calendar-trigger');
+    const calPopup = document.getElementById('calendar-popup');
+    const calGrid = document.getElementById('calendar-grid');
+    const calMonthYear = document.getElementById('calendar-month-year');
+    const calDateDisplay = document.querySelector('[data-testid="value-calendar-date"]');
+
+    let calYear = 2026;
+    let calMonth = 3; // April (0-indexed: 0=Jan, 3=Apr)
+    let selectedCalDate = null;
+
+    // Toggle the calendar popup open/closed when clicking the trigger button.
+    calTrigger.addEventListener('click', () => {
+      calPopup.classList.toggle('open');
+      if (calPopup.classList.contains('open')) {
+        renderCalendar();
+      }
+    });
+
+    // Close the calendar when clicking outside it.
+    document.addEventListener('click', (e) => {
+      if (!document.querySelector('[data-testid="calendar-wrapper"]').contains(e.target)) {
+        calPopup.classList.remove('open');
+      }
+    });
+
+    // Previous month button.
+    document.getElementById('btn-prev-month').addEventListener('click', (e) => {
+      e.stopPropagation(); // Prevent the click from bubbling to the close handler.
+      calMonth--;
+      if (calMonth < 0) { calMonth = 11; calYear--; }
+      renderCalendar();
+    });
+
+    // Next month button.
+    document.getElementById('btn-next-month').addEventListener('click', (e) => {
+      e.stopPropagation();
+      calMonth++;
+      if (calMonth > 11) { calMonth = 0; calYear++; }
+      renderCalendar();
+    });
+
+    // MONTH_NAMES: Array of month names for display.
+    const MONTH_NAMES = ['January','February','March','April','May','June',
+                         'July','August','September','October','November','December'];
+
+    // renderCalendar() rebuilds the calendar grid for the current calYear/calMonth.
+    function renderCalendar() {
+      calMonthYear.textContent = `${MONTH_NAMES[calMonth]} ${calYear}`;
+
+      // Remove existing day elements (but keep the day labels).
+      calGrid.querySelectorAll('.day').forEach(d => d.remove());
+
+      // new Date(year, month, 1).getDay() returns the weekday of the 1st (0=Sun).
+      const firstDay = new Date(calYear, calMonth, 1).getDay();
+
+      // new Date(year, month+1, 0).getDate() returns the last date of the month.
+      const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+
+      // Previous month's days to show (greyed out).
+      const prevMonthDays = new Date(calYear, calMonth, 0).getDate();
+      for (let i = firstDay - 1; i >= 0; i--) {
+        const span = document.createElement('span');
+        span.className = 'day other-month';
+        span.textContent = prevMonthDays - i;
+        calGrid.appendChild(span);
+      }
+
+      // Current month's days.
+      const today = new Date();
+      for (let d = 1; d <= daysInMonth; d++) {
+        const span = document.createElement('span');
+        span.className = 'day';
+        span.textContent = d;
+        // data-date stores the ISO date string for this day.
+        const dateStr = `${calYear}-${String(calMonth + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        span.setAttribute('data-date', dateStr);
+        span.setAttribute('data-testid', `cal-day-${d}`);
+
+        // Highlight today's date with a border.
+        if (calYear === today.getFullYear() && calMonth === today.getMonth() && d === today.getDate()) {
+          span.classList.add('today');
+        }
+        // Highlight the selected date.
+        if (selectedCalDate === dateStr) {
+          span.classList.add('selected');
+        }
+
+        span.addEventListener('click', (e) => {
+          e.stopPropagation();
+          selectCalendarDate(dateStr, d);
+        });
+
+        calGrid.appendChild(span);
+      }
+
+      // Next month's days to fill the grid.
+      const totalCells = firstDay + daysInMonth;
+      const remaining = totalCells % 7 === 0 ? 0 : 7 - (totalCells % 7);
+      for (let i = 1; i <= remaining; i++) {
+        const span = document.createElement('span');
+        span.className = 'day other-month';
+        span.textContent = i;
+        calGrid.appendChild(span);
+      }
+    }
+
+    // selectCalendarDate(dateStr, day) updates the selected date and display.
+    function selectCalendarDate(dateStr, day) {
+      selectedCalDate = dateStr;
+      calTrigger.textContent = new Date(dateStr).toLocaleDateString('en-US', {
+        year: 'numeric', month: 'long', day: 'numeric'
+      });
+      calTrigger.classList.remove('placeholder');
+      calDateDisplay.textContent = calTrigger.textContent;
+      calPopup.classList.remove('open');
+      renderCalendar(); // Re-render to update the "selected" highlight.
+    }
+
+    // -----------------------------------------------------------------------
+    // 3. Searchable Country Dropdown
+    // -----------------------------------------------------------------------
+    const COUNTRIES = [
+      'Afghanistan','Argentina','Australia','Brazil','Canada','China',
+      'Denmark','Egypt','Finland','France','Germany','India','Indonesia',
+      'Japan','Kenya','Malaysia','Mexico','Netherlands','New Zealand',
+      'Nigeria','Norway','Pakistan','Philippines','Russia','Saudi Arabia',
+      'Singapore','South Africa','South Korea','Spain','Sweden',
+      'Switzerland','Thailand','Turkey','United Arab Emirates',
+      'United Kingdom','United States','Vietnam'
+    ];
+
+    const countrySearch = document.querySelector('[data-testid="input-country-search"]');
+    const countryList = document.getElementById('country-list');
+    const countryDisplay = document.querySelector('[data-testid="value-country"]');
+
+    // renderCountryList(filter) renders the filtered country options.
+    function renderCountryList(filter = '') {
+      countryList.innerHTML = '';
+      const filtered = COUNTRIES.filter(c =>
+        c.toLowerCase().includes(filter.toLowerCase())
+      );
+      filtered.forEach(country => {
+        const div = document.createElement('div');
+        div.className = 'dropdown-option';
+        div.textContent = country;
+        div.setAttribute('data-testid', `country-option-${country.toLowerCase().replace(/\s+/g, '-')}`);
+        div.addEventListener('click', () => {
+          countrySearch.value = country;
+          countryDisplay.textContent = country;
+          countryList.classList.remove('open');
+        });
+        countryList.appendChild(div);
+      });
+    }
+
+    // Show the dropdown when the search input gets focus.
+    countrySearch.addEventListener('focus', () => {
+      renderCountryList(countrySearch.value);
+      countryList.classList.add('open');
+    });
+
+    // Filter as the user types.
+    // addEventListener('input', handler) fires on every keystroke.
+    countrySearch.addEventListener('input', () => {
+      renderCountryList(countrySearch.value);
+      countryList.classList.add('open');
+    });
+
+    // Close the dropdown when clicking outside.
+    document.addEventListener('click', (e) => {
+      if (!document.querySelector('[data-testid="country-dropdown"]').contains(e.target)) {
+        countryList.classList.remove('open');
+      }
+    });
+
+    // -----------------------------------------------------------------------
+    // 4. Cascading Dropdown: Industry -> Occupation
+    // -----------------------------------------------------------------------
+    const OCCUPATIONS = {
+      finance: ['Accountant', 'Financial Analyst', 'Bank Teller', 'Investment Banker', 'Auditor'],
+      technology: ['Software Engineer', 'Data Scientist', 'Product Manager', 'DevOps Engineer', 'QA Engineer'],
+      healthcare: ['Doctor', 'Nurse', 'Pharmacist', 'Lab Technician', 'Surgeon'],
+      education: ['Teacher', 'Professor', 'Researcher', 'School Administrator', 'Librarian'],
+    };
+
+    const industrySelect = document.getElementById('industry-select');
+    const occupationSelect = document.getElementById('occupation-select');
+    const occupationDisplay = document.querySelector('[data-testid="value-occupation"]');
+
+    // When the industry changes, populate the occupation dropdown with
+    // the matching occupations.
+    industrySelect.addEventListener('change', () => {
+      const industry = industrySelect.value;
+      // Clear existing options.
+      occupationSelect.innerHTML = '';
+
+      if (industry && OCCUPATIONS[industry]) {
+        // Enable the dropdown.
+        occupationSelect.disabled = false;
+        // Add a placeholder option.
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = '-- Select Occupation --';
+        occupationSelect.appendChild(placeholder);
+        // Add occupation options for the selected industry.
+        OCCUPATIONS[industry].forEach(occ => {
+          const opt = document.createElement('option');
+          opt.value = occ.toLowerCase().replace(/\s+/g, '-');
+          opt.textContent = occ;
+          occupationSelect.appendChild(opt);
+        });
+      } else {
+        occupationSelect.disabled = true;
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = '-- Select Industry First --';
+        occupationSelect.appendChild(placeholder);
+      }
+      occupationDisplay.textContent = 'None';
+    });
+
+    // When an occupation is selected, update the display.
+    occupationSelect.addEventListener('change', () => {
+      const selected = occupationSelect.options[occupationSelect.selectedIndex];
+      occupationDisplay.textContent = selected.value ? selected.textContent : 'None';
+    });
+
+    // -----------------------------------------------------------------------
+    // 5. Time Picker — simple change listener
+    // -----------------------------------------------------------------------
+    const timeInput = document.getElementById('time-input');
+    const timeDisplay = document.querySelector('[data-testid="value-time"]');
+
+    timeInput.addEventListener('change', () => {
+      timeDisplay.textContent = timeInput.value || 'None';
+    });
+
+    // -----------------------------------------------------------------------
+    // 6. Multi-Select Document Types with Tags
+    // -----------------------------------------------------------------------
+    const DOC_TYPES = [
+      'Passport', 'National ID Card', 'Driver License', 'Utility Bill',
+      'Bank Statement', 'Tax Return', 'Employment Letter', 'Birth Certificate'
+    ];
+
+    const docSearch = document.querySelector('[data-testid="input-doc-search"]');
+    const docTypeList = document.getElementById('doc-type-list');
+    const tagContainer = document.getElementById('tag-container');
+    const docTypeDisplay = document.querySelector('[data-testid="value-doc-types"]');
+
+    let selectedDocTypes = [];
+
+    function renderDocTypeList(filter = '') {
+      docTypeList.innerHTML = '';
+      const filtered = DOC_TYPES.filter(d =>
+        d.toLowerCase().includes(filter.toLowerCase())
+      );
+      filtered.forEach(docType => {
+        const div = document.createElement('div');
+        div.className = 'dropdown-option';
+        if (selectedDocTypes.includes(docType)) div.classList.add('selected');
+        div.textContent = docType;
+        div.setAttribute('data-testid', `doc-option-${docType.toLowerCase().replace(/\s+/g, '-')}`);
+        div.addEventListener('click', () => {
+          toggleDocType(docType);
+        });
+        docTypeList.appendChild(div);
+      });
+    }
+
+    function toggleDocType(docType) {
+      if (selectedDocTypes.includes(docType)) {
+        selectedDocTypes = selectedDocTypes.filter(d => d !== docType);
+      } else {
+        selectedDocTypes.push(docType);
+      }
+      renderTags();
+      renderDocTypeList(docSearch.value);
+      updateDocTypeDisplay();
+    }
+
+    function renderTags() {
+      tagContainer.innerHTML = '';
+      selectedDocTypes.forEach(docType => {
+        const tag = document.createElement('span');
+        tag.className = 'tag';
+        tag.setAttribute('data-testid', `tag-${docType.toLowerCase().replace(/\s+/g, '-')}`);
+        tag.innerHTML = `${docType} <span class="tag-remove" data-testid="remove-tag-${docType.toLowerCase().replace(/\s+/g, '-')}">&times;</span>`;
+        tag.querySelector('.tag-remove').addEventListener('click', () => {
+          toggleDocType(docType);
+        });
+        tagContainer.appendChild(tag);
+      });
+    }
+
+    function updateDocTypeDisplay() {
+      docTypeDisplay.textContent = selectedDocTypes.length > 0
+        ? selectedDocTypes.join(', ')
+        : 'None';
+    }
+
+    docSearch.addEventListener('focus', () => {
+      renderDocTypeList(docSearch.value);
+      docTypeList.classList.add('open');
+    });
+
+    docSearch.addEventListener('input', () => {
+      renderDocTypeList(docSearch.value);
+      docTypeList.classList.add('open');
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!document.querySelector('[data-testid="doc-type-dropdown"]').contains(e.target)) {
+        docTypeList.classList.remove('open');
+      }
+    });
+
+    // Initialize the calendar.
+    renderCalendar();
+  </script>
+
+</body>
+</html>

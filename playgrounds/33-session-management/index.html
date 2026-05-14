@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kata 33: Session Management | QA Labs</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #1e293b; padding: 2rem; }
+    .header { background: #0f172a; color: white; padding: 1rem 2rem; margin: -2rem -2rem 2rem; }
+    .header h1 { font-size: 1.25rem; }
+    .kata-badge { display: inline-block; background: #38bdf8; color: #0f172a; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 4px; margin-right: 0.5rem; }
+
+    /* Login form */
+    .login-panel {
+      max-width: 400px; margin: 3rem auto; background: white;
+      border-radius: 8px; padding: 2rem; box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .login-panel h2 { margin-bottom: 1rem; font-size: 1.1rem; }
+    .form-group { margin-bottom: 1rem; }
+    .form-group label { display: block; font-size: 0.8rem; font-weight: 600; color: #475569; margin-bottom: 0.25rem; }
+    .form-group input {
+      width: 100%; padding: 0.6rem; border: 1px solid #cbd5e1;
+      border-radius: 4px; font-size: 0.875rem;
+    }
+    .btn {
+      padding: 0.6rem 1.5rem; border: none; border-radius: 6px;
+      font-weight: 600; font-size: 0.875rem; cursor: pointer;
+      transition: background 0.2s;
+    }
+    .btn-primary { background: #3b82f6; color: white; width: 100%; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-secondary { background: #f1f5f9; color: #334155; }
+    .btn-secondary:hover { background: #e2e8f0; }
+    .btn-danger { background: #ef4444; color: white; }
+    .btn-danger:hover { background: #dc2626; }
+
+    .error-msg { color: #dc2626; font-size: 0.8rem; margin-top: 0.5rem; display: none; }
+
+    /* Dashboard (visible after login) */
+    .dashboard { display: none; }
+    .dashboard.active { display: block; }
+    .login-panel.hidden { display: none; }
+
+    .session-info {
+      background: white; border-radius: 8px; padding: 1.5rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 1.5rem;
+    }
+    .session-info h3 { font-size: 1rem; margin-bottom: 1rem; color: #334155; }
+    .info-row { display: flex; justify-content: space-between; margin-bottom: 0.5rem; font-size: 0.875rem; }
+    .info-row .label { color: #64748b; }
+    .info-row .value { font-weight: 600; font-family: monospace; }
+
+    .session-active { color: #16a34a; }
+    .session-warning { color: #d97706; }
+    .session-expired { color: #dc2626; }
+
+    .token-display {
+      background: #1e293b; color: #a5f3fc; border-radius: 6px;
+      padding: 1rem; font-family: monospace; font-size: 0.75rem;
+      word-break: break-all; margin: 1rem 0; max-height: 80px; overflow-y: auto;
+    }
+
+    .actions { display: flex; gap: 0.75rem; margin-top: 1rem; }
+
+    /* Session warning banner */
+    .warning-banner {
+      display: none; background: #fef3c7; border: 1px solid #f59e0b;
+      color: #92400e; padding: 0.75rem 1rem; border-radius: 6px;
+      margin-bottom: 1rem; font-size: 0.875rem; font-weight: 600;
+    }
+    .warning-banner.visible { display: flex; justify-content: space-between; align-items: center; }
+
+    /* Session expired overlay */
+    .expired-overlay {
+      display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.7); z-index: 1000;
+      justify-content: center; align-items: center;
+    }
+    .expired-overlay.visible { display: flex; }
+    .expired-dialog {
+      background: white; border-radius: 12px; padding: 2rem;
+      max-width: 400px; text-align: center;
+    }
+    .expired-dialog h2 { color: #dc2626; margin-bottom: 0.5rem; }
+    .expired-dialog p { color: #64748b; margin-bottom: 1.5rem; font-size: 0.875rem; }
+
+    /* Timer display */
+    .timer {
+      font-size: 1.5rem; font-weight: 700; text-align: center;
+      padding: 1rem; border-radius: 8px; margin-bottom: 1rem;
+    }
+
+    .activity-log {
+      background: white; border-radius: 8px; padding: 1rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-top: 1rem;
+    }
+    .activity-log h3 { font-size: 0.9rem; margin-bottom: 0.5rem; color: #334155; }
+    .activity-log ul { list-style: none; max-height: 120px; overflow-y: auto; }
+    .activity-log li { font-size: 0.8rem; color: #64748b; padding: 0.25rem 0; border-bottom: 1px solid #f1f5f9; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <span class="kata-badge">KATA 33</span>
+    <h1>Session Management</h1>
+  </div>
+
+  <!-- Login Panel -->
+  <div class="login-panel" id="loginPanel" data-testid="login-panel">
+    <h2>Sign In</h2>
+    <div class="form-group">
+      <label for="username">Username</label>
+      <input type="text" id="username" data-testid="username-input" placeholder="admin">
+    </div>
+    <div class="form-group">
+      <label for="password">Password</label>
+      <input type="password" id="password" data-testid="password-input" placeholder="password123">
+    </div>
+    <div class="error-msg" data-testid="login-error" id="loginError">Invalid credentials</div>
+    <button class="btn btn-primary" data-testid="login-btn" onclick="handleLogin()">Sign In</button>
+  </div>
+
+  <!-- Dashboard (shown after login) -->
+  <div class="dashboard" id="dashboard" data-testid="dashboard">
+
+    <!-- Session warning banner (appears at 10s) -->
+    <div class="warning-banner" id="warningBanner" data-testid="session-warning">
+      <span>Your session will expire soon. Click "Refresh" to stay logged in.</span>
+      <button class="btn btn-secondary" data-testid="warning-refresh-btn" onclick="refreshSession()">Refresh</button>
+    </div>
+
+    <!-- Session timer -->
+    <div class="timer" data-testid="session-timer" id="sessionTimer">15s</div>
+
+    <!-- Session info -->
+    <div class="session-info">
+      <h3>Session Details</h3>
+      <div class="info-row">
+        <span class="label">Status:</span>
+        <span class="value" data-testid="session-status" id="sessionStatus">Active</span>
+      </div>
+      <div class="info-row">
+        <span class="label">User:</span>
+        <span class="value" data-testid="session-user" id="sessionUser">—</span>
+      </div>
+      <div class="info-row">
+        <span class="label">Login Time:</span>
+        <span class="value" data-testid="login-time" id="loginTime">—</span>
+      </div>
+      <div class="info-row">
+        <span class="label">Token Refreshes:</span>
+        <span class="value" data-testid="refresh-count" id="refreshCount">0</span>
+      </div>
+    </div>
+
+    <!-- Token display -->
+    <div>
+      <strong style="font-size: 0.8rem; color: #475569;">Access Token (Mock JWT):</strong>
+      <div class="token-display" data-testid="token-display" id="tokenDisplay">—</div>
+    </div>
+
+    <!-- Action buttons -->
+    <div class="actions">
+      <button class="btn btn-secondary" data-testid="refresh-session-btn" onclick="refreshSession()">Refresh Session</button>
+      <button class="btn btn-secondary" data-testid="interact-btn" onclick="recordInteraction()">Interact</button>
+      <button class="btn btn-danger" data-testid="logout-btn" onclick="handleLogout()">Logout</button>
+    </div>
+
+    <!-- Activity log -->
+    <div class="activity-log">
+      <h3>Activity Log</h3>
+      <ul data-testid="activity-log" id="activityLog"></ul>
+    </div>
+  </div>
+
+  <!-- Session Expired Overlay -->
+  <div class="expired-overlay" id="expiredOverlay" data-testid="expired-overlay">
+    <div class="expired-dialog">
+      <h2>Session Expired</h2>
+      <p data-testid="expired-message">Your session has timed out due to inactivity. Please sign in again to continue.</p>
+      <button class="btn btn-primary" data-testid="relogin-btn" onclick="handleRelogin()">Sign In Again</button>
+    </div>
+  </div>
+
+  <script>
+    // -------------------------------------------------------------------
+    // Session configuration — short timeouts for testing purposes.
+    // WARNING_TIME: seconds after login when the warning banner appears.
+    // EXPIRE_TIME:  seconds after login when the session expires.
+    // -------------------------------------------------------------------
+    const WARNING_TIME = 10;
+    const EXPIRE_TIME = 15;
+
+    // Session state variables.
+    let sessionActive = false;
+    let sessionTimerId = null;
+    let tickTimerId = null;
+    let remainingSeconds = EXPIRE_TIME;
+    let refreshCounter = 0;
+    let currentToken = '';
+    let lastInteractionTime = null;
+
+    // -------------------------------------------------------------------
+    // generateMockJWT(username) — creates a fake JWT-like token string.
+    // Real JWTs have three base64-encoded parts: header.payload.signature.
+    // We mimic this format with random characters for realism.
+    //
+    // NOTE: btoa() only accepts Latin-1 characters, so we pass the
+    // username explicitly rather than reading it from the DOM (where the
+    // placeholder is the em-dash "—" which is outside Latin-1 and would
+    // crash btoa). We also fall back to an empty "sub" if the username
+    // happens to contain characters outside Latin-1.
+    // -------------------------------------------------------------------
+    function generateMockJWT(username) {
+      const safeUsername = typeof username === 'string' ? username : '';
+      const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+      let payload;
+      try {
+        payload = btoa(JSON.stringify({
+          sub: safeUsername,
+          iat: Math.floor(Date.now() / 1000),
+          exp: Math.floor(Date.now() / 1000) + EXPIRE_TIME,
+          jti: Math.random().toString(36).substring(2, 10),
+        }));
+      } catch (e) {
+        // Fallback if the username contains non-Latin-1 characters.
+        payload = btoa(JSON.stringify({
+          sub: '',
+          iat: Math.floor(Date.now() / 1000),
+          exp: Math.floor(Date.now() / 1000) + EXPIRE_TIME,
+          jti: Math.random().toString(36).substring(2, 10),
+        }));
+      }
+      const signature = btoa(Math.random().toString(36).substring(2, 30));
+      return header + '.' + payload + '.' + signature;
+    }
+
+    // -------------------------------------------------------------------
+    // addLog(message) — adds a timestamped entry to the activity log.
+    // -------------------------------------------------------------------
+    function addLog(message) {
+      const li = document.createElement('li');
+      const time = new Date().toLocaleTimeString();
+      li.textContent = `[${time}] ${message}`;
+      const log = document.getElementById('activityLog');
+      log.insertBefore(li, log.firstChild);
+    }
+
+    // -------------------------------------------------------------------
+    // handleLogin() — validates credentials and starts the session.
+    // Accepted credentials: username "admin", password "password123".
+    // -------------------------------------------------------------------
+    function handleLogin() {
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value.trim();
+
+      // Simple credential check.
+      if (username === 'admin' && password === 'password123') {
+        startSession(username);
+      } else {
+        // Show error message for invalid credentials.
+        document.getElementById('loginError').style.display = 'block';
+      }
+    }
+
+    // -------------------------------------------------------------------
+    // startSession(username) — initializes session state and starts the
+    // countdown timer. Switches from login panel to dashboard view.
+    // -------------------------------------------------------------------
+    function startSession(username) {
+      sessionActive = true;
+      remainingSeconds = EXPIRE_TIME;
+      refreshCounter = 0;
+      lastInteractionTime = Date.now();
+
+      // Generate the initial access token. Pass the username explicitly
+      // so generateMockJWT doesn't have to read it from the DOM.
+      currentToken = generateMockJWT(username);
+
+      // Update the UI.
+      document.getElementById('loginPanel').classList.add('hidden');
+      document.getElementById('dashboard').classList.add('active');
+      document.getElementById('sessionUser').textContent = username;
+      document.getElementById('loginTime').textContent = new Date().toLocaleTimeString();
+      document.getElementById('sessionStatus').textContent = 'Active';
+      document.getElementById('sessionStatus').className = 'value session-active';
+      document.getElementById('tokenDisplay').textContent = currentToken;
+      document.getElementById('refreshCount').textContent = '0';
+      document.getElementById('activityLog').innerHTML = '';
+      document.getElementById('warningBanner').classList.remove('visible');
+      document.getElementById('loginError').style.display = 'none';
+
+      // Save session to sessionStorage so it survives page reloads.
+      // sessionStorage persists data for the duration of the browser tab.
+      sessionStorage.setItem('session', JSON.stringify({
+        username,
+        token: currentToken,
+        loginTime: Date.now(),
+        expiresAt: Date.now() + (EXPIRE_TIME * 1000),
+        refreshCount: 0,
+      }));
+
+      addLog('Session started for user: ' + username);
+
+      // Start the countdown timer. setInterval calls the callback every
+      // 1000ms (1 second). We store the timer ID so we can cancel it later.
+      tickTimerId = setInterval(tick, 1000);
+    }
+
+    // -------------------------------------------------------------------
+    // tick() — runs every second while a session is active. Updates the
+    // countdown timer, shows the warning banner, and expires the session.
+    // -------------------------------------------------------------------
+    function tick() {
+      if (!sessionActive) return;
+
+      remainingSeconds--;
+      const timer = document.getElementById('sessionTimer');
+      timer.textContent = remainingSeconds + 's';
+
+      // Change timer color based on remaining time.
+      if (remainingSeconds <= 5) {
+        timer.className = 'timer session-expired';
+      } else if (remainingSeconds <= WARNING_TIME) {
+        timer.className = 'timer session-warning';
+      } else {
+        timer.className = 'timer session-active';
+      }
+
+      // Show warning banner when remaining time hits WARNING_TIME.
+      if (remainingSeconds === WARNING_TIME) {
+        document.getElementById('warningBanner').classList.add('visible');
+        document.getElementById('sessionStatus').textContent = 'Warning';
+        document.getElementById('sessionStatus').className = 'value session-warning';
+        addLog('Session warning: expiring soon');
+      }
+
+      // Expire the session when timer reaches 0.
+      if (remainingSeconds <= 0) {
+        expireSession();
+      }
+    }
+
+    // -------------------------------------------------------------------
+    // refreshSession() — resets the countdown timer and generates a new
+    // token, simulating a token refresh flow. The warning banner is hidden.
+    // -------------------------------------------------------------------
+    function refreshSession() {
+      if (!sessionActive) return;
+
+      remainingSeconds = EXPIRE_TIME;
+      refreshCounter++;
+      lastInteractionTime = Date.now();
+
+      // Generate a new token (simulating refresh token exchange).
+      // Read the current username directly from the DOM; it was set on
+      // login and may contain only Latin-1 characters for the test user.
+      const currentUsername = document.getElementById('sessionUser').textContent;
+      currentToken = generateMockJWT(currentUsername);
+
+      // Update the UI.
+      document.getElementById('tokenDisplay').textContent = currentToken;
+      document.getElementById('refreshCount').textContent = String(refreshCounter);
+      document.getElementById('sessionTimer').textContent = EXPIRE_TIME + 's';
+      document.getElementById('sessionTimer').className = 'timer session-active';
+      document.getElementById('warningBanner').classList.remove('visible');
+      document.getElementById('sessionStatus').textContent = 'Active';
+      document.getElementById('sessionStatus').className = 'value session-active';
+
+      // Update sessionStorage with new expiry and token.
+      const stored = JSON.parse(sessionStorage.getItem('session') || '{}');
+      stored.token = currentToken;
+      stored.expiresAt = Date.now() + (EXPIRE_TIME * 1000);
+      stored.refreshCount = refreshCounter;
+      sessionStorage.setItem('session', JSON.stringify(stored));
+
+      addLog('Session refreshed (token #' + refreshCounter + ')');
+    }
+
+    // -------------------------------------------------------------------
+    // recordInteraction() — simulates a user interaction that resets the
+    // inactivity timer (like clicking a button in a real app).
+    // -------------------------------------------------------------------
+    function recordInteraction() {
+      if (!sessionActive) return;
+      lastInteractionTime = Date.now();
+      remainingSeconds = EXPIRE_TIME;
+      document.getElementById('sessionTimer').textContent = EXPIRE_TIME + 's';
+      document.getElementById('sessionTimer').className = 'timer session-active';
+      document.getElementById('warningBanner').classList.remove('visible');
+      document.getElementById('sessionStatus').textContent = 'Active';
+      document.getElementById('sessionStatus').className = 'value session-active';
+      addLog('User interaction recorded');
+    }
+
+    // -------------------------------------------------------------------
+    // expireSession() — marks the session as expired and shows the
+    // overlay dialog prompting the user to sign in again.
+    // -------------------------------------------------------------------
+    function expireSession() {
+      sessionActive = false;
+      clearInterval(tickTimerId);
+
+      document.getElementById('sessionStatus').textContent = 'Expired';
+      document.getElementById('sessionStatus').className = 'value session-expired';
+      document.getElementById('sessionTimer').textContent = '0s';
+      document.getElementById('sessionTimer').className = 'timer session-expired';
+      document.getElementById('expiredOverlay').classList.add('visible');
+
+      // Clear session from sessionStorage.
+      sessionStorage.removeItem('session');
+
+      addLog('Session expired');
+    }
+
+    // -------------------------------------------------------------------
+    // handleLogout() — manually ends the session and returns to login.
+    // -------------------------------------------------------------------
+    function handleLogout() {
+      sessionActive = false;
+      clearInterval(tickTimerId);
+      sessionStorage.removeItem('session');
+
+      document.getElementById('dashboard').classList.remove('active');
+      document.getElementById('loginPanel').classList.remove('hidden');
+      document.getElementById('expiredOverlay').classList.remove('visible');
+      document.getElementById('username').value = '';
+      document.getElementById('password').value = '';
+
+      addLog('User logged out');
+    }
+
+    // -------------------------------------------------------------------
+    // handleRelogin() — closes the expired overlay and returns to the
+    // login form so the user can sign in again.
+    // -------------------------------------------------------------------
+    function handleRelogin() {
+      document.getElementById('expiredOverlay').classList.remove('visible');
+      document.getElementById('dashboard').classList.remove('active');
+      document.getElementById('loginPanel').classList.remove('hidden');
+      document.getElementById('username').value = '';
+      document.getElementById('password').value = '';
+    }
+
+    // -------------------------------------------------------------------
+    // On page load, check sessionStorage for an existing session.
+    // If found and not expired, restore the dashboard view.
+    // -------------------------------------------------------------------
+    (function restoreSession() {
+      const stored = sessionStorage.getItem('session');
+      if (!stored) return;
+
+      try {
+        const session = JSON.parse(stored);
+        const now = Date.now();
+
+        if (session.expiresAt > now) {
+          // Session is still valid — restore it.
+          sessionActive = true;
+          remainingSeconds = Math.ceil((session.expiresAt - now) / 1000);
+          refreshCounter = session.refreshCount || 0;
+          currentToken = session.token;
+
+          document.getElementById('loginPanel').classList.add('hidden');
+          document.getElementById('dashboard').classList.add('active');
+          document.getElementById('sessionUser').textContent = session.username;
+          document.getElementById('loginTime').textContent = new Date(session.loginTime).toLocaleTimeString();
+          document.getElementById('sessionStatus').textContent = 'Active';
+          document.getElementById('sessionStatus').className = 'value session-active';
+          document.getElementById('tokenDisplay').textContent = currentToken;
+          document.getElementById('refreshCount').textContent = String(refreshCounter);
+          document.getElementById('sessionTimer').textContent = remainingSeconds + 's';
+
+          addLog('Session restored from storage');
+
+          tickTimerId = setInterval(tick, 1000);
+        } else {
+          // Session has expired — clear it.
+          sessionStorage.removeItem('session');
+        }
+      } catch (e) {
+        sessionStorage.removeItem('session');
+      }
+    })();
+  </script>
+</body>
+</html>

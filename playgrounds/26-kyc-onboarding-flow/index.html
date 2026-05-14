@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kata 26: KYC Onboarding Flow | QA Labs</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #1e293b; padding: 2rem; }
+    .header { background: #0f172a; color: white; padding: 1rem 2rem; margin: -2rem -2rem 2rem; }
+    .header h1 { font-size: 1.25rem; }
+    .kata-badge { display: inline-block; background: #38bdf8; color: #0f172a; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 4px; margin-right: 0.5rem; }
+
+    .section { margin-bottom: 1.5rem; padding: 1.5rem; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); max-width: 700px; margin-left: auto; margin-right: auto; }
+
+    /* Progress bar */
+    .progress-container { display: flex; justify-content: space-between; margin-bottom: 2rem; position: relative; }
+    .progress-container::before { content: ''; position: absolute; top: 50%; left: 0; right: 0; height: 2px; background: #e2e8f0; z-index: 0; }
+    .progress-step { width: 2rem; height: 2rem; border-radius: 50%; background: #e2e8f0; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: 700; z-index: 1; color: #64748b; transition: background 0.3s, color 0.3s; }
+    .progress-step.active { background: #3b82f6; color: white; }
+    .progress-step.completed { background: #16a34a; color: white; }
+    .progress-label { text-align: center; font-size: 0.65rem; color: #94a3b8; margin-top: 0.25rem; }
+    .progress-item { display: flex; flex-direction: column; align-items: center; }
+
+    button { padding: 0.5rem 1.25rem; border: none; border-radius: 6px; font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+    .btn-primary { background: #3b82f6; color: white; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-secondary { background: #e2e8f0; color: #334155; }
+    .btn-secondary:hover { background: #cbd5e1; }
+    .btn-success { background: #16a34a; color: white; }
+    .btn-success:hover { background: #15803d; }
+    .btn-primary:disabled, .btn-success:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .nav-buttons { display: flex; justify-content: space-between; margin-top: 1.5rem; }
+
+    label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.25rem; color: #475569; }
+    input, select, textarea { width: 100%; padding: 0.5rem 0.75rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.9rem; margin-bottom: 0.75rem; }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.2); }
+
+    .error { color: #dc2626; font-size: 0.75rem; margin-top: -0.5rem; margin-bottom: 0.5rem; display: none; }
+    .error.visible { display: block; }
+
+    .step { display: none; }
+    .step.active { display: block; }
+
+    .upload-area { border: 2px dashed #cbd5e1; border-radius: 8px; padding: 2rem; text-align: center; cursor: pointer; transition: border-color 0.2s; margin-bottom: 1rem; }
+    .upload-area:hover { border-color: #3b82f6; }
+    .upload-area.has-file { border-color: #16a34a; background: #f0fdf4; }
+    .upload-icon { font-size: 2rem; margin-bottom: 0.5rem; }
+    .upload-text { font-size: 0.85rem; color: #64748b; }
+    .upload-filename { font-size: 0.85rem; color: #16a34a; font-weight: 600; margin-top: 0.5rem; }
+
+    .review-table { width: 100%; border-collapse: collapse; }
+    .review-table th { text-align: left; padding: 0.5rem; font-size: 0.75rem; color: #64748b; border-bottom: 1px solid #e2e8f0; }
+    .review-table td { padding: 0.5rem; font-size: 0.85rem; border-bottom: 1px solid #f1f5f9; }
+
+    .result-card { text-align: center; padding: 2rem; }
+    .result-icon { font-size: 3rem; margin-bottom: 1rem; }
+    .result-title { font-size: 1.25rem; font-weight: 700; margin-bottom: 0.5rem; }
+    .result-message { font-size: 0.9rem; color: #64748b; }
+    .result-ref { font-size: 0.8rem; color: #94a3b8; margin-top: 1rem; }
+
+    .welcome-text { font-size: 0.95rem; line-height: 1.6; color: #475569; margin-bottom: 1rem; }
+    .welcome-list { font-size: 0.85rem; color: #64748b; line-height: 1.8; padding-left: 1.5rem; margin-bottom: 1rem; }
+
+    h2 { font-size: 1rem; color: #475569; margin-bottom: 1rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.5rem; }
+    h3 { font-size: 1.1rem; margin-bottom: 0.75rem; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1><span class="kata-badge">KATA 26</span> KYC Onboarding Flow</h1>
+</div>
+
+<div class="section">
+  <!-- Progress Bar -->
+  <div class="progress-container" data-testid="progress-bar">
+    <div class="progress-item">
+      <div class="progress-step active" data-testid="progress-step-1">1</div>
+      <div class="progress-label">Welcome</div>
+    </div>
+    <div class="progress-item">
+      <div class="progress-step" data-testid="progress-step-2">2</div>
+      <div class="progress-label">Personal</div>
+    </div>
+    <div class="progress-item">
+      <div class="progress-step" data-testid="progress-step-3">3</div>
+      <div class="progress-label">Document</div>
+    </div>
+    <div class="progress-item">
+      <div class="progress-step" data-testid="progress-step-4">4</div>
+      <div class="progress-label">Review</div>
+    </div>
+    <div class="progress-item">
+      <div class="progress-step" data-testid="progress-step-5">5</div>
+      <div class="progress-label">Result</div>
+    </div>
+  </div>
+
+  <!-- Step 1: Welcome -->
+  <div class="step active" data-testid="step-welcome">
+    <h3>Welcome to KYC Onboarding</h3>
+    <p class="welcome-text">
+      Complete your Know Your Customer verification to activate your account.
+      This process takes about 5 minutes.
+    </p>
+    <ul class="welcome-list">
+      <li>Provide your personal information</li>
+      <li>Upload an identity document</li>
+      <li>Review and confirm your details</li>
+    </ul>
+    <div class="nav-buttons">
+      <span></span>
+      <button class="btn-primary" data-testid="btn-start" onclick="goToStep(2)">Get Started</button>
+    </div>
+  </div>
+
+  <!-- Step 2: Personal Info -->
+  <div class="step" data-testid="step-personal">
+    <h3>Personal Information</h3>
+
+    <label for="first-name">First Name *</label>
+    <input type="text" id="first-name" data-testid="input-first-name" placeholder="Enter first name">
+    <div class="error" data-testid="error-first-name">First name is required</div>
+
+    <label for="last-name">Last Name *</label>
+    <input type="text" id="last-name" data-testid="input-last-name" placeholder="Enter last name">
+    <div class="error" data-testid="error-last-name">Last name is required</div>
+
+    <label for="email">Email Address *</label>
+    <input type="email" id="email" data-testid="input-email" placeholder="Enter email address">
+    <div class="error" data-testid="error-email">Valid email is required</div>
+
+    <label for="dob">Date of Birth *</label>
+    <input type="date" id="dob" data-testid="input-dob">
+    <div class="error" data-testid="error-dob">Date of birth is required</div>
+
+    <label for="country">Country *</label>
+    <select id="country" data-testid="select-country">
+      <option value="">Select country</option>
+      <option value="US">United States</option>
+      <option value="UK">United Kingdom</option>
+      <option value="IN">India</option>
+      <option value="DE">Germany</option>
+      <option value="SG">Singapore</option>
+    </select>
+    <div class="error" data-testid="error-country">Country is required</div>
+
+    <div class="nav-buttons">
+      <button class="btn-secondary" data-testid="btn-back-personal" onclick="goToStep(1)">Back</button>
+      <button class="btn-primary" data-testid="btn-next-personal" onclick="validateAndNext(3)">Next</button>
+    </div>
+  </div>
+
+  <!-- Step 3: Document Upload -->
+  <div class="step" data-testid="step-document">
+    <h3>Document Upload</h3>
+    <p style="font-size:0.85rem;color:#64748b;margin-bottom:1rem;">Upload a government-issued photo ID (passport, driver's license, or national ID).</p>
+
+    <label for="doc-type">Document Type *</label>
+    <select id="doc-type" data-testid="select-doc-type">
+      <option value="">Select document type</option>
+      <option value="passport">Passport</option>
+      <option value="drivers-license">Driver's License</option>
+      <option value="national-id">National ID</option>
+    </select>
+    <div class="error" data-testid="error-doc-type">Document type is required</div>
+
+    <div class="upload-area" data-testid="upload-area" onclick="simulateUpload()">
+      <div class="upload-icon">&#128196;</div>
+      <div class="upload-text" data-testid="upload-text">Click to upload or drag and drop</div>
+      <div class="upload-filename" data-testid="upload-filename" style="display:none;"></div>
+    </div>
+    <div class="error" data-testid="error-upload">Please upload a document</div>
+
+    <!-- Hidden file input for programmatic interaction -->
+    <input type="file" id="file-input" data-testid="file-input" style="display:none;" accept=".pdf,.jpg,.png" onchange="handleFileSelect(event)">
+
+    <div class="nav-buttons">
+      <button class="btn-secondary" data-testid="btn-back-document" onclick="goToStep(2)">Back</button>
+      <button class="btn-primary" data-testid="btn-next-document" onclick="validateAndNext(4)">Next</button>
+    </div>
+  </div>
+
+  <!-- Step 4: Review -->
+  <div class="step" data-testid="step-review">
+    <h3>Review Your Information</h3>
+    <p style="font-size:0.85rem;color:#64748b;margin-bottom:1rem;">Please review the details below before submitting.</p>
+
+    <table class="review-table" data-testid="review-table">
+      <tr><th>Field</th><th>Value</th></tr>
+      <tr><td>First Name</td><td data-testid="review-first-name">-</td></tr>
+      <tr><td>Last Name</td><td data-testid="review-last-name">-</td></tr>
+      <tr><td>Email</td><td data-testid="review-email">-</td></tr>
+      <tr><td>Date of Birth</td><td data-testid="review-dob">-</td></tr>
+      <tr><td>Country</td><td data-testid="review-country">-</td></tr>
+      <tr><td>Document Type</td><td data-testid="review-doc-type">-</td></tr>
+      <tr><td>Document File</td><td data-testid="review-doc-file">-</td></tr>
+    </table>
+
+    <div class="nav-buttons">
+      <button class="btn-secondary" data-testid="btn-back-review" onclick="goToStep(3)">Back</button>
+      <button class="btn-success" data-testid="btn-submit" onclick="submitApplication()">Submit Application</button>
+    </div>
+  </div>
+
+  <!-- Step 5: Result -->
+  <div class="step" data-testid="step-result">
+    <div class="result-card">
+      <div class="result-icon" data-testid="result-icon"></div>
+      <div class="result-title" data-testid="result-title"></div>
+      <div class="result-message" data-testid="result-message"></div>
+      <div class="result-ref" data-testid="result-ref"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ─── State ─────────────────────────────────────────────────────────
+  // currentStep tracks which step (1-5) the user is on.
+  let currentStep = 1;
+  // uploadedFile stores the name of the "uploaded" document.
+  let uploadedFile = null;
+
+  // ─── goToStep(step) ────────────────────────────────────────────────
+  // Navigates to the given step number (1-5).
+  // It hides all steps, shows the target step, and updates the progress bar.
+  function goToStep(step) {
+    // Hide all steps by removing the 'active' class.
+    document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+
+    // Map step numbers to their data-testid values.
+    const stepNames = { 1: 'step-welcome', 2: 'step-personal', 3: 'step-document', 4: 'step-review', 5: 'step-result' };
+    // Show the target step by adding the 'active' class.
+    document.querySelector(`[data-testid="${stepNames[step]}"]`).classList.add('active');
+
+    // Update the progress bar indicators.
+    for (let i = 1; i <= 5; i++) {
+      const el = document.querySelector(`[data-testid="progress-step-${i}"]`);
+      el.classList.remove('active', 'completed');
+      if (i < step) el.classList.add('completed');
+      else if (i === step) el.classList.add('active');
+    }
+
+    // If we're going to the Review step, populate the review table.
+    if (step === 4) populateReview();
+
+    currentStep = step;
+  }
+
+  // ─── validateAndNext(nextStep) ─────────────────────────────────────
+  // Validates the current step's required fields, then advances if valid.
+  function validateAndNext(nextStep) {
+    let valid = true;
+
+    if (currentStep === 2) {
+      // Validate Personal Info step: all fields required.
+      const fields = [
+        { input: 'input-first-name', error: 'error-first-name' },
+        { input: 'input-last-name', error: 'error-last-name' },
+        { input: 'input-email', error: 'error-email' },
+        { input: 'input-dob', error: 'error-dob' },
+        { input: 'select-country', error: 'error-country' }
+      ];
+      fields.forEach(f => {
+        const el = document.querySelector(`[data-testid="${f.input}"]`);
+        const err = document.querySelector(`[data-testid="${f.error}"]`);
+        if (!el.value.trim()) {
+          err.classList.add('visible');
+          valid = false;
+        } else {
+          err.classList.remove('visible');
+        }
+      });
+      // Extra email format check.
+      const emailEl = document.querySelector('[data-testid="input-email"]');
+      if (emailEl.value && !emailEl.value.includes('@')) {
+        document.querySelector('[data-testid="error-email"]').classList.add('visible');
+        valid = false;
+      }
+    }
+
+    if (currentStep === 3) {
+      // Validate Document Upload step.
+      const docType = document.querySelector('[data-testid="select-doc-type"]').value;
+      const errDocType = document.querySelector('[data-testid="error-doc-type"]');
+      if (!docType) { errDocType.classList.add('visible'); valid = false; }
+      else { errDocType.classList.remove('visible'); }
+
+      const errUpload = document.querySelector('[data-testid="error-upload"]');
+      if (!uploadedFile) { errUpload.classList.add('visible'); valid = false; }
+      else { errUpload.classList.remove('visible'); }
+    }
+
+    if (valid) goToStep(nextStep);
+  }
+
+  // ─── simulateUpload() ─────────────────────────────────────────────
+  // Triggers the hidden file input when the upload area is clicked.
+  function simulateUpload() {
+    document.getElementById('file-input').click();
+  }
+
+  // ─── handleFileSelect(event) ───────────────────────────────────────
+  // Called when a file is selected via the hidden input.
+  // Updates the upload area to show the selected filename.
+  function handleFileSelect(event) {
+    const file = event.target.files[0];
+    if (file) {
+      uploadedFile = file.name;
+      const area = document.querySelector('[data-testid="upload-area"]');
+      area.classList.add('has-file');
+      document.querySelector('[data-testid="upload-text"]').textContent = 'File uploaded';
+      const fnEl = document.querySelector('[data-testid="upload-filename"]');
+      fnEl.textContent = file.name;
+      fnEl.style.display = 'block';
+    }
+  }
+
+  // ─── populateReview() ──────────────────────────────────────────────
+  // Fills the review table with the data entered in previous steps.
+  function populateReview() {
+    document.querySelector('[data-testid="review-first-name"]').textContent =
+      document.querySelector('[data-testid="input-first-name"]').value;
+    document.querySelector('[data-testid="review-last-name"]').textContent =
+      document.querySelector('[data-testid="input-last-name"]').value;
+    document.querySelector('[data-testid="review-email"]').textContent =
+      document.querySelector('[data-testid="input-email"]').value;
+    document.querySelector('[data-testid="review-dob"]').textContent =
+      document.querySelector('[data-testid="input-dob"]').value;
+
+    // Show the display text for the selected country.
+    const countrySelect = document.querySelector('[data-testid="select-country"]');
+    document.querySelector('[data-testid="review-country"]').textContent =
+      countrySelect.options[countrySelect.selectedIndex].text;
+
+    // Show the display text for the selected document type.
+    const docSelect = document.querySelector('[data-testid="select-doc-type"]');
+    document.querySelector('[data-testid="review-doc-type"]').textContent =
+      docSelect.options[docSelect.selectedIndex].text;
+
+    document.querySelector('[data-testid="review-doc-file"]').textContent =
+      uploadedFile || '-';
+  }
+
+  // ─── submitApplication() ───────────────────────────────────────────
+  // Simulates submitting the KYC application.
+  // After a 1-second delay, shows success (or failure for test@fail.com).
+  function submitApplication() {
+    const submitBtn = document.querySelector('[data-testid="btn-submit"]');
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Submitting...';
+
+    // Simulate a network call with a 1-second delay.
+    setTimeout(() => {
+      const email = document.querySelector('[data-testid="input-email"]').value;
+
+      goToStep(5);
+
+      // If the email contains "fail", simulate a failure result.
+      if (email.includes('fail')) {
+        document.querySelector('[data-testid="result-icon"]').textContent = '❌';
+        document.querySelector('[data-testid="result-title"]').textContent = 'Verification Failed';
+        document.querySelector('[data-testid="result-message"]').textContent =
+          'We could not verify your identity. Please try again or contact support.';
+        document.querySelector('[data-testid="result-ref"]').textContent = '';
+      } else {
+        // Generate a random reference number for the success case.
+        const ref = 'KYC-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+        document.querySelector('[data-testid="result-icon"]').textContent = '✅';
+        document.querySelector('[data-testid="result-title"]').textContent = 'Application Submitted';
+        document.querySelector('[data-testid="result-message"]').textContent =
+          'Your KYC application has been submitted successfully. You will receive a confirmation email shortly.';
+        document.querySelector('[data-testid="result-ref"]').textContent = 'Reference: ' + ref;
+      }
+
+      // Reset the submit button state.
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'Submit Application';
+    }, 1000);
+  }
+</script>
+</body>
+</html>

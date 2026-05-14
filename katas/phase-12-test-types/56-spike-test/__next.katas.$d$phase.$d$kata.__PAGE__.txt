@@ -1,0 +1,764 @@
+1:"$Sreact.fragment"
+2:I[76750,["/qa-labs/_next/static/chunks/012xw9ydea0yn.js","/qa-labs/_next/static/chunks/0t2xr05rlu96l.js","/qa-labs/_next/static/chunks/0a55m.6s3qp~-.js","/qa-labs/_next/static/chunks/01luku1w1f06_.js"],"KataPageClient"]
+e:I[97367,["/qa-labs/_next/static/chunks/012xw9ydea0yn.js","/qa-labs/_next/static/chunks/0t2xr05rlu96l.js","/qa-labs/_next/static/chunks/0a55m.6s3qp~-.js"],"OutletBoundary"]
+f:"$Sreact.suspense"
+3:T1803,# Kata 56: Spike Test
+
+## What You Will Learn
+
+- What a **spike** is and why it's a different beast from gradual load
+- The two spike scenarios real systems face: **single sharp spike** and **repeated burst**
+- What an autoscaler can and can't catch (cold starts are the killer)
+- How to set thresholds that allow short-burst degradation but require recovery
+- Why a system that handles steady 1000 RPS can fall over at a 30-second spike to 500 RPS
+
+## Prerequisites
+
+- Completed [Kata 54 (Load)](../54-load-test/) and [Kata 55 (Stress)](../55-stress-and-breakpoint-test/)
+- The QA Labs server running
+
+## Concepts Explained
+
+### Spikes are not just "more load, faster"
+
+A gradual ramp gives the system time to:
+- Warm caches
+- Scale out (autoscaler reacts in seconds–minutes)
+- Stretch connection pools
+- JIT-compile hot paths
+
+A spike does **none** of that. Traffic appears, the system scrambles, and you find out fast whether it had headroom or whether it was running on fumes.
+
+### Real-world spike scenarios
+
+| Scenario | Profile |
+|----------|---------|
+| **Black Friday opening minute** | 1× → 10× in 60s |
+| **Marketing email send** | 0 → N over 30 seconds |
+| **Viral social post** | 1× → 50× in 2 minutes |
+| **Failover from another region** | 0 → full prod load instantly |
+| **Bot scrape detected and blocked, then retry storm** | Sharp burst followed by sharp drop |
+
+Each has its own profile, but the common signature is: **rate-of-change is high, autoscaler can't catch up**.
+
+### The single-spike pattern
+
+```
+RPS
+1000 │              ┌──┐
+     │              │  │
+     │              │  │
+ 100 │──────────────┘  └─────────────────
+     └────────────────────────────────────────►
+        steady     spike     recovery
+```
+
+- 30s steady at baseline (warm-up)
+- Sharp ramp to 10× over 30s
+- Hold at peak for 60s
+- Sharp ramp back to baseline
+- Hold for recovery observation
+
+The recovery period is where bugs live: did pending requests drain? Are connection counts back to normal? Are queues empty?
+
+### What thresholds make sense for a spike?
+
+You can't assert `p(95)<300` during a spike — even healthy systems degrade for the few seconds it takes the autoscaler to catch up. Instead:
+
+```javascript
+thresholds: {
+  // Recovery period must be back at SLO
+  'http_req_duration{phase:recovery}': ['p(95)<300'],
+  // During spike, allow up to 1s p95 — anything more means the system is
+  // genuinely struggling, not just rate-of-change pain
+  'http_req_duration{phase:spike}': ['p(95)<1000'],
+  // Errors during spike: allow up to 5% — but recovery should be clean
+  'http_req_failed{phase:spike}': ['rate<0.05'],
+  'http_req_failed{phase:recovery}': ['rate<0.005'],
+},
+```
+
+The pattern: **strict thresholds during steady-state, loose during spike, strict again during recovery**.
+
+### What you find with a spike test
+
+1. **Autoscale lag.** How long after RPS jumps does the system recover its SLO?
+2. **Connection pool exhaustion.** Sudden burst of new connections may exceed pool size. Latency spikes, then errors.
+3. **Cache cold start.** New instances have empty caches. First requests to them are slow.
+4. **Queue depth.** Did a queue build up that's still draining minutes after the spike? That's a backpressure bug.
+5. **Retry amplification.** A spike that causes some failures triggers client retries, amplifying the spike.
+
+### Repeated bursts (sawtooth)
+
+Some systems face **repeated** spikes — e.g., a cron-driven job that fires every 5 minutes and bursts traffic. The pattern:
+
+```
+RPS
+500 │  ┌──┐    ┌──┐    ┌──┐    ┌──┐
+    │  │  │    │  │    │  │    │  │
+100 │──┘  └────┘  └────┘  └────┘  └─
+    └─────────────────────────────────►
+```
+
+These find leaks: each burst should leave the system in the same state as the previous. If queue depth, memory, or open connections grow burst-over-burst, you have a leak that a single spike test won't catch.
+
+## Exercises
+
+1. **Build a single 10× spike** against `/lab/echo`: 30s steady at 50 RPS, sharp ramp to 500 RPS over 5s, hold for 30s, sharp drop to 50 RPS, recover for 30s. Compare p95 across the three tagged phases.
+2. **Sawtooth.** Repeat 4 cycles of: 30s at 50 RPS, 15s at 500 RPS, back to 50. Are the p95 values stable burst-over-burst? If they grow, you found a leak.
+3. **Spike against a slow endpoint.** Spike 5× against `/lab/slow?ms=200`. Why does this fail more dramatically than spiking `/lab/echo`? (Hint: Little's Law — required concurrency.)
+4. **Add a retry storm.** When a request fails during the spike, retry it once. Does this make the recovery period worse? By how much?
+
+## Common Mistakes
+
+- **Treating spike as load with a ramp.** A 60-second ramp is **not** a spike. Spikes are 0–30s.
+- **Asserting steady-state SLO during the spike itself.** Even healthy autoscaling systems briefly miss SLO during the scale-up window. Use phase-tagged thresholds.
+- **No recovery observation.** A spike test that ends right after the peak misses the queue drain, the cache thrash, the connection clean-up.
+- **One spike, one run.** Spike behavior is variable. Run 5+ times and report the worst-case (not average) — your customers experience the worst run.
+
+## Cheat Sheet
+
+| Phase | Goal | Threshold style |
+|-------|------|-----------------|
+| Steady (pre-spike) | Verify baseline | Strict (SLO) |
+| Spike | Survive the burst | Loose (degraded but no errors) |
+| Peak | Hold the new level | Moderate (SLO+50% latency) |
+| Recovery | Return to baseline | Strict (SLO) |
+
+| Common pre-spike check | Why |
+|-------------------------|-----|
+| Autoscale rule firing? | Without it, spike will overload |
+| Connection pool sized for peak × 2? | Spikes need headroom |
+| Circuit breakers tested? | Failures should fail fast, not pile up |
+| Retry budget capped? | Retry storms amplify spikes |
+4:T92a,// Kata 56 — Spike Test (k6 solution)
+//
+// Single sharp spike: 50 RPS baseline → 500 RPS in 5s → hold 30s → drop
+// back to 50 RPS in 5s → recover for 30s. Phase-tagged thresholds let us
+// require strict SLO during steady/recovery but allow degradation during
+// the spike itself.
+
+import http from 'k6/http';
+import { check } from 'k6';
+
+const BASE_URL = __ENV.K6_BASE_URL || 'http://localhost:3000';
+
+// Stage timeline (ms from test start). Used for phase tagging.
+const TS = {
+  steady_end:    30_000,   // 0–30s: baseline
+  ramp_up_end:   35_000,   // 30–35s: sharp ramp
+  spike_end:     65_000,   // 35–65s: peak
+  ramp_down_end: 70_000,   // 65–70s: drop
+  // 70s+ : recovery
+};
+
+export const options = {
+  scenarios: {
+    spike: {
+      executor: 'ramping-arrival-rate',
+      startRate: 0,
+      timeUnit: '1s',
+      preAllocatedVUs: 100,
+      maxVUs: 500,
+      stages: [
+        { duration: '30s', target: 50 },   // steady baseline
+        { duration: '5s',  target: 500 },  // sharp ramp up — the spike
+        { duration: '30s', target: 500 },  // hold at peak
+        { duration: '5s',  target: 50 },   // sharp ramp down
+        { duration: '30s', target: 50 },   // recovery
+      ],
+    },
+  },
+  thresholds: {
+    // Strict during steady — system at baseline must be at SLO
+    'http_req_duration{phase:steady}': ['p(95)<300'],
+    // Loose during the spike — degradation is expected, errors are not
+    'http_req_duration{phase:spike}': ['p(95)<2000'],
+    'http_req_failed{phase:spike}': ['rate<0.05'],
+    // Recovery: back to baseline SLO. This is the most important threshold —
+    // a system that "survives" the spike but never recovers is broken.
+    'http_req_duration{phase:recovery}': ['p(95)<300'],
+    'http_req_failed{phase:recovery}': ['rate<0.005'],
+  },
+};
+
+const TEST_START = Date.now();
+
+function currentPhase() {
+  const elapsed = Date.now() - TEST_START;
+  if (elapsed < TS.steady_end) return 'steady';
+  if (elapsed < TS.ramp_up_end) return 'ramp_up';
+  if (elapsed < TS.spike_end) return 'spike';
+  if (elapsed < TS.ramp_down_end) return 'ramp_down';
+  return 'recovery';
+}
+
+export default function () {
+  const phase = currentPhase();
+  const res = http.get(`${BASE_URL}/lab/echo`, { tags: { phase } });
+  check(res, {
+    'status is 200': (r) => r.status === 200,
+  });
+}
+5:T15ce,# Kata 55: Stress and Breakpoint Test
+
+## What You Will Learn
+
+- The difference between **stress test** (find the SLO breaking point) and **breakpoint test** (find the actual failure point)
+- The standard staircase pattern: incremental RPS steps with stable plateaus
+- How to detect "knee of the curve" — the RPS where latency starts climbing nonlinearly
+- Reading a stress-test result: capacity, breakpoint, recovery
+- When to **abort early** vs when to keep pushing
+
+## Prerequisites
+
+- Completed [Kata 54 (Load Test)](../54-load-test/)
+- The QA Labs server running
+
+## Concepts Explained
+
+### Two related but distinct tests
+
+| | Stress test | Breakpoint test |
+|---|---|---|
+| **Question** | What's the highest RPS we can handle while still meeting SLOs? | What RPS does the system actually fail at? |
+| **What you change** | Slowly ramp RPS upward | Aggressively ramp RPS until something breaks |
+| **What you measure** | RPS at which p95 exceeds SLO | RPS at which errors spike or service crashes |
+| **End state** | System still alive, just over-SLO | System genuinely degraded — timeouts, 5xx flood, OOM |
+
+The two often run together: a stress test finds the **soft limit** (SLO breach), a breakpoint test continues past it to find the **hard limit** (failure).
+
+### The staircase pattern
+
+```
+RPS
+1000 │                                       ┌────
+     │                                  ┌────┘
+ 800 │                             ┌────┘
+     │                        ┌────┘
+ 600 │                   ┌────┘
+     │              ┌────┘
+ 400 │         ┌────┘
+     │    ┌────┘
+ 200 │────┘
+     └─────────────────────────────────────────────►
+        time
+```
+
+Each step holds for ~1 minute. Why hold? You need enough samples to compute a stable p95 *at this RPS level* before moving on. Otherwise you can't tell whether p95 climbed because the system is struggling or because the sample size was small.
+
+### Reading the result
+
+After a stress test, your output looks like this (idealized):
+
+```
+RPS:    100  200  300  400  500  600  700  800   900  1000
+p95:    50   55   60   65   80   140  280  450  9999  9999  ← timeouts
+errors:  0    0    0    0    0    0    1%   3%   45%   ~100%
+```
+
+Three regions:
+- **100–500 RPS**: latency flat, errors ~0. **Capacity headroom.**
+- **600–800 RPS**: latency climbing, occasional errors. **Knee of the curve** — system is struggling.
+- **900+ RPS**: cascading failure. **Breakpoint.**
+
+### When to abort early
+
+A k6 threshold like `'http_req_failed': ['rate<0.5']` with `abortOnFail: true` will stop the test once half the requests are failing. This is good etiquette — there's no point pushing a system that's already broken.
+
+```javascript
+thresholds: {
+  'http_req_failed': [{ threshold: 'rate<0.50', abortOnFail: true, delayAbortEval: '30s' }],
+},
+```
+
+`delayAbortEval` gives a grace period at startup so initial cold-start failures don't trigger the abort.
+
+### What you actually do with the result
+
+Three numbers come out:
+
+1. **Capacity ceiling** — highest RPS where SLO held (e.g., 500 RPS).
+2. **Knee** — RPS where p95 starts climbing (e.g., 600 RPS).
+3. **Breakpoint** — RPS where the system fails outright (e.g., 900 RPS).
+
+Use them to:
+- Set autoscaling thresholds (scale before knee, target capacity ceiling).
+- Set rate limits (block traffic above breakpoint, accept above capacity).
+- Estimate Black-Friday headroom (capacity ÷ peak production RPS).
+
+### The QA Labs server is too small for a real breakpoint
+
+A Node Express server on a laptop will tap out around a few thousand RPS. The kata uses modest numbers (50 → 500 RPS) — in production, your numbers will be much bigger. The pattern is the same.
+
+## Exercises
+
+1. **Build the staircase.** 8 steps, 50 RPS each, 30s per step, hitting `/lab/jitter?p50=50&p95=200`. At which step does p95 cross 500ms?
+2. **Add abort-on-fail.** Set `'http_req_failed': [{ threshold: 'rate<0.10', abortOnFail: true }]`. Does it kick in before you reach the top step?
+3. **Find the knee in a slow endpoint.** Repeat with `/lab/slow?ms=300` (already slow at 1 RPS). The knee should appear earlier — why?
+4. **Difference between stress and load.** Compare your kata 54 load test result and the same RPS step from this stress test. Same throughput, same endpoint — should produce same p95. Did it?
+
+## Common Mistakes
+
+- **No plateau between steps.** Without holding RPS steady at each step for at least 30s, you can't tell capacity from noise.
+- **No abort on fail.** Test runs for 30 minutes against a system that crashed at minute 3. Wastes resources.
+- **Reporting only the breakpoint.** "We can handle 900 RPS!" is misleading if SLO breaks at 600. Report capacity (500), knee (600), and breakpoint (900) separately.
+- **Comparing stress-test results across different infra sizes.** Doubling the box doesn't necessarily double capacity — depends on bottleneck (CPU, IO, locks).
+
+## Cheat Sheet
+
+| Stage | What you observe | Action |
+|-------|------------------|--------|
+| Below capacity | Flat p95, 0 errors | "Headroom" — fine for production |
+| At capacity | p95 starts to creep | This is your **autoscale-up** signal |
+| Knee | p95 climbing, scattered errors | Production should never be here |
+| Past knee | Cascading errors | Add rate limit / circuit breaker |
+| Breakpoint | Service unusable | Document; test recovery (kata 70) |
+6:T894,// Kata 55 — Stress and Breakpoint Test (k6 solution)
+//
+// Staircase pattern: 50 → 500 RPS in 50-step increments, holding each
+// step for 30s to gather stable percentiles. Aborts early if error
+// rate climbs over 50% — no point continuing past breakpoint.
+//
+// Tag each step so the summary shows per-step latency. After running,
+// scan the per-step p(95) values to identify capacity, knee, breakpoint.
+
+import http from 'k6/http';
+import { check } from 'k6';
+
+const BASE_URL = __ENV.K6_BASE_URL || 'http://localhost:3000';
+const STEPS = [50, 100, 150, 200, 250, 300, 350, 400, 450, 500];
+const STEP_DURATION_S = 30;
+
+// Build the stages array dynamically — small ramp between each step,
+// then sustained plateau.
+function buildStages() {
+  const stages = [];
+  let prev = 0;
+  for (const target of STEPS) {
+    stages.push({ duration: '5s', target });           // brief ramp
+    stages.push({ duration: `${STEP_DURATION_S}s`, target });  // plateau
+    prev = target;
+  }
+  return stages;
+}
+
+export const options = {
+  scenarios: {
+    staircase: {
+      executor: 'ramping-arrival-rate',
+      startRate: 0,
+      timeUnit: '1s',
+      preAllocatedVUs: 100,
+      maxVUs: 500,
+      stages: buildStages(),
+    },
+  },
+  thresholds: {
+    // Abort the test if error rate exceeds 50% — system is broken,
+    // no point pushing further. delayAbortEval gives 10s grace at start.
+    'http_req_failed': [
+      {
+        threshold: 'rate<0.50',
+        abortOnFail: true,
+        delayAbortEval: '10s',
+      },
+    ],
+    // Whole-test threshold — informational, won't fail the test.
+    'http_req_duration': ['p(95)<5000'],
+  },
+};
+
+const TEST_START = Date.now();
+
+// Compute the current step based on elapsed time.
+// Each step is (5s ramp + 30s plateau) = 35s.
+function currentStep() {
+  const elapsedMs = Date.now() - TEST_START;
+  const stepIndex = Math.floor(elapsedMs / 35_000);
+  return STEPS[Math.min(stepIndex, STEPS.length - 1)];
+}
+
+export default function () {
+  const step = currentStep();
+  const res = http.get(`${BASE_URL}/lab/jitter?p50=50&p95=200`, {
+    tags: { step: `rps_${step}` },
+  });
+  check(res, {
+    'status is 200': (r) => r.status === 200,
+  });
+}
+7:T57e,# Kata 55 — Stress and Breakpoint Test (Artillery solution)
+#
+# Same staircase pattern as the k6 solution. Each phase is a step in the
+# staircase. Artillery doesn't have a built-in "abort on error rate"
+# mechanism — if the system breaks at step 6 you'll keep pushing until
+# the test ends naturally. For abort-on-fail, prefer k6.
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 30
+      arrivalRate: 50
+      name: "step-50"
+    - duration: 30
+      arrivalRate: 100
+      name: "step-100"
+    - duration: 30
+      arrivalRate: 150
+      name: "step-150"
+    - duration: 30
+      arrivalRate: 200
+      name: "step-200"
+    - duration: 30
+      arrivalRate: 250
+      name: "step-250"
+    - duration: 30
+      arrivalRate: 300
+      name: "step-300"
+    - duration: 30
+      arrivalRate: 350
+      name: "step-350"
+    - duration: 30
+      arrivalRate: 400
+      name: "step-400"
+    - duration: 30
+      arrivalRate: 450
+      name: "step-450"
+    - duration: 30
+      arrivalRate: 500
+      name: "step-500"
+
+  ensure:
+    # Whole-test ensure — informational. Real analysis needs per-step
+    # data which Artillery prints in the summary but doesn't expose
+    # cleanly to ensure rules.
+    p95: 5000
+    maxErrorRate: 50
+
+scenarios:
+  - name: "stress probe"
+    flow:
+      - get:
+          url: "/lab/jitter?p50=50&p95=200"
+          expect:
+            - statusCode: 200
+8:T184c,# Kata 57: Soak / Endurance Test
+
+## What You Will Learn
+
+- What a **soak test** finds that a 5-minute load test cannot — leaks, drift, degradation
+- The realistic duration spectrum: **CI smoke** (5 min) → **CI soak** (30 min) → **release soak** (4–24 hours)
+- Memory leaks, file-descriptor leaks, connection-pool drift, log-rotation issues
+- Why p95 over a 4-hour test is more meaningful than p95 over 5 minutes
+- How to run a soak in CI without burning hours of CI minutes
+
+## Prerequisites
+
+- Completed all earlier phase 12 katas (load, stress, spike)
+- The QA Labs server running
+
+## Concepts Explained
+
+### What soak tests find
+
+Imagine you ran kata 54's load test for 5 minutes and it passed. Production crashes 7 hours after deploy. The 5-minute test missed:
+
+| Bug class | Why short tests miss it |
+|-----------|-------------------------|
+| **Memory leak** | A few KB/min leak shows as hundreds of MB after hours, but invisible in 5 min |
+| **File descriptor leak** | Hits limit (typically 1024 or 65k) only after thousands of operations |
+| **Connection pool drift** | Pool slowly fills with stale connections that never get reaped |
+| **Log rotation bugs** | Log file fills disk, daemon crashes |
+| **Cache eviction storms** | Caches fill up over hours, then thrash on every request |
+| **DB index bloat** | Index size grows over time, queries slow proportionally |
+| **Time-based bugs** | Cron jobs, daily resets, rate-limit window resets |
+
+A soak test is the only way to find these in pre-production.
+
+### Duration spectrum
+
+| Duration | Use case | What you'll catch |
+|----------|----------|-------------------|
+| **5 min** (smoke) | Every CI commit | Crashes, immediate regressions |
+| **30 min** (load) | Per-PR or pre-merge | Most steady-state regressions, p95 stability |
+| **2 hours** (mini-soak) | Nightly | Slow leaks, queue drift |
+| **4 hours** | Pre-release | Memory leaks under sustained load |
+| **24 hours** | Release validation | Time-of-day bugs, log rotation, full leak realization |
+| **7 days** | Major release / capacity planning | Long-tail anomalies, full leak unrolled |
+
+Real teams run a 4-hour soak before every release and a 24-hour soak monthly.
+
+### What to monitor
+
+A soak test isn't just "the load test, but longer." You need to watch dimensions that don't matter in short tests:
+
+- **p95 over time** (not just final p95). A passing final p95 can mask drift if the trend is upward.
+- **Memory RSS** (resident set size) over time. Growing? You have a leak.
+- **Open file descriptors** over time.
+- **Connection counts** to backends.
+- **Error rate by hour.** If errors spike at hour 6, you have a time-based bug.
+
+In k6 you can record some of these as custom metrics if your service exposes them. Most observability comes from outside k6 (Prometheus, Grafana, your APM).
+
+### Soak in CI: the cost problem
+
+A 4-hour soak times your concurrent test runs costs significant CI minutes. Tactics:
+
+1. **Tiered cadence.** Smoke on every commit, 30-min soak nightly, 4-hour soak weekly.
+2. **Compressed soak.** Run for 30 min but at higher RPS than production peak. Doesn't catch all soak bugs but catches some at lower cost.
+3. **Run on dedicated soak hardware.** Don't tie up the main CI fleet.
+4. **Background scheduled jobs.** GitHub Actions schedules, cron in your CI.
+
+### Useful k6 patterns for soak
+
+#### Periodic checkpoints
+
+Add a "checkpoint" log every 10 minutes so you can scan the log and see whether p95 was stable:
+
+```javascript
+export default function () {
+  const minute = Math.floor((Date.now() - START) / 60_000);
+  if (minute % 10 === 0 && __ITER === 0) {
+    console.log(`Soak checkpoint: minute ${minute}`);
+  }
+  // ... actual test work ...
+}
+```
+
+#### Per-hour tagging
+
+Tag samples by hour so you can compare hour 1 vs hour 4:
+
+```javascript
+const hour = Math.floor((Date.now() - START) / 3_600_000);
+http.get(url, { tags: { hour: `h${hour}` } });
+```
+
+Then:
+```javascript
+'http_req_duration{hour:h0}': ['p(95)<300'],
+'http_req_duration{hour:h3}': ['p(95)<300'],  // must hold after 3 hours
+```
+
+If `h3` p95 is much worse than `h0` p95, you have drift.
+
+### The QA Labs kata is short by design
+
+The provided solution runs **60 seconds** by default — long enough to demonstrate the pattern, short enough to actually run during a workshop. To do a real soak, set `SOAK_DURATION=30m k6 run ...` (or hours) and run on a long-lived host.
+
+## Exercises
+
+1. **Run the kata as-shipped (60s).** Note p95. Re-run with `SOAK_DURATION=10m`. Did p95 change?
+2. **Add per-hour tagging.** Run for 30 min. Compare p95 across the three 10-minute slices. Stable? Drifting?
+3. **Find a synthetic leak.** Modify the kata to log requests to an in-memory array (which intentionally never gets cleared). Watch memory grow via `process.memoryUsage()` printed every minute.
+4. **Compressed soak.** What's the relationship between RPS multiplier and soak duration? Can a 30-min run at 2× production RPS substitute for a 1-hour run at 1×?
+
+## Common Mistakes
+
+- **Conflating soak with load.** A soak run is at *baseline* production RPS, not peak. The point is duration, not magnitude.
+- **No outside observability.** The k6 output alone won't show memory growth — you need APM/Prometheus.
+- **Assuming short test = soak.** A 5-minute test at high RPS finds different bugs than a 4-hour test at moderate RPS.
+- **Skipping the recovery period.** If your test ends at hour 4 with the system in a degraded state, you don't know whether it would have recovered or crashed.
+
+## Cheat Sheet
+
+| Want to find... | Run for... | At what load |
+|-----------------|------------|--------------|
+| Crashes | 5 min | Production peak |
+| Steady-state regression | 30 min | Production peak |
+| Memory leak | 4 hours | Production baseline |
+| FD leak | 4 hours | High request count |
+| Time-based bug | 24 hours | Production baseline |
+| Cache eviction storm | 4-12 hours | Production peak with realistic data variety |
+
+| Soak red flag | Likely cause |
+|---------------|--------------|
+| p95 climbing | Memory pressure → GC → slow paths |
+| RSS climbing | Leak |
+| Errors spiking after N hours | Quota / rate limit / disk full |
+| Throughput dropping | DB index bloat / cache eviction |
+9:T86e,// Kata 57 — Soak / Endurance Test (k6 solution)
+//
+// Steady production-baseline RPS for an extended duration. Default is
+// short (60s) to keep the kata runnable in a workshop; override with
+// SOAK_DURATION env var for a real soak:
+//
+//   SOAK_DURATION=30m k6 run 57-soak-endurance-test.test.js
+//   SOAK_DURATION=4h  k6 run 57-soak-endurance-test.test.js
+//
+// Tags samples by 10-minute slice so per-period thresholds reveal drift.
+
+import http from 'k6/http';
+import { check } from 'k6';
+
+const BASE_URL = __ENV.K6_BASE_URL || 'http://localhost:3000';
+const SOAK_DURATION = __ENV.SOAK_DURATION || '60s';
+
+export const options = {
+  scenarios: {
+    soak: {
+      executor: 'constant-arrival-rate',
+      rate: 50,                   // baseline production RPS — NOT peak
+      timeUnit: '1s',
+      duration: SOAK_DURATION,
+      preAllocatedVUs: 30,
+      maxVUs: 60,
+    },
+  },
+  thresholds: {
+    // Whole-test threshold — catches average degradation
+    'http_req_duration': ['p(95)<300'],
+    'http_req_failed': ['rate<0.01'],
+    // Per-slice threshold — same numbers must hold across the whole run.
+    // If slice0 passes but slice2 fails, you have drift.
+    'http_req_duration{slice:0}': ['p(95)<300'],
+    'http_req_duration{slice:1}': ['p(95)<300'],
+    'http_req_duration{slice:2}': ['p(95)<300'],
+  },
+};
+
+const TEST_START = Date.now();
+const SLICE_DURATION_MS = 10 * 60 * 1000; // 10 minutes per slice
+let lastCheckpointMin = -1;
+
+function currentSlice() {
+  const elapsed = Date.now() - TEST_START;
+  return Math.min(Math.floor(elapsed / SLICE_DURATION_MS), 2);
+}
+
+export default function () {
+  const slice = currentSlice();
+  const minute = Math.floor((Date.now() - TEST_START) / 60_000);
+
+  // Periodic checkpoint log so you can grep the run output and see
+  // whether each minute started healthy.
+  if (minute > lastCheckpointMin && minute % 5 === 0 && __ITER < 5) {
+    console.log(`[soak] minute=${minute} slice=${slice}`);
+    lastCheckpointMin = minute;
+  }
+
+  const res = http.get(`${BASE_URL}/lab/echo`, {
+    tags: { slice: String(slice) },
+  });
+  check(res, {
+    'status is 200': (r) => r.status === 200,
+  });
+}
+a:T2e69,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#6A737D">// Kata 56 — Spike Test (k6 solution)</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// Single sharp spike: 50 RPS baseline → 500 RPS in 5s → hold 30s → drop</span></span>
+<span class="line"><span style="color:#6A737D">// back to 50 RPS in 5s → recover for 30s. Phase-tagged thresholds let us</span></span>
+<span class="line"><span style="color:#6A737D">// require strict SLO during steady/recovery but allow degradation during</span></span>
+<span class="line"><span style="color:#6A737D">// the spike itself.</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> http </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> 'k6/http'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { check } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> 'k6'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> BASE_URL</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> __ENV.</span><span style="color:#79B8FF">K6_BASE_URL</span><span style="color:#F97583"> ||</span><span style="color:#9ECBFF"> 'http://localhost:3000'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// Stage timeline (ms from test start). Used for phase tagging.</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> TS</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">  steady_end:    </span><span style="color:#79B8FF">30_000</span><span style="color:#E1E4E8">,   </span><span style="color:#6A737D">// 0–30s: baseline</span></span>
+<span class="line"><span style="color:#E1E4E8">  ramp_up_end:   </span><span style="color:#79B8FF">35_000</span><span style="color:#E1E4E8">,   </span><span style="color:#6A737D">// 30–35s: sharp ramp</span></span>
+<span class="line"><span style="color:#E1E4E8">  spike_end:     </span><span style="color:#79B8FF">65_000</span><span style="color:#E1E4E8">,   </span><span style="color:#6A737D">// 35–65s: peak</span></span>
+<span class="line"><span style="color:#E1E4E8">  ramp_down_end: </span><span style="color:#79B8FF">70_000</span><span style="color:#E1E4E8">,   </span><span style="color:#6A737D">// 65–70s: drop</span></span>
+<span class="line"><span style="color:#6A737D">  // 70s+ : recovery</span></span>
+<span class="line"><span style="color:#E1E4E8">};</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> const</span><span style="color:#79B8FF"> options</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">  scenarios: {</span></span>
+<span class="line"><span style="color:#E1E4E8">    spike: {</span></span>
+<span class="line"><span style="color:#E1E4E8">      executor: </span><span style="color:#9ECBFF">'ramping-arrival-rate'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      startRate: </span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      timeUnit: </span><span style="color:#9ECBFF">'1s'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      preAllocatedVUs: </span><span style="color:#79B8FF">100</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      maxVUs: </span><span style="color:#79B8FF">500</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      stages: [</span></span>
+<span class="line"><span style="color:#E1E4E8">        { duration: </span><span style="color:#9ECBFF">'30s'</span><span style="color:#E1E4E8">, target: </span><span style="color:#79B8FF">50</span><span style="color:#E1E4E8"> },   </span><span style="color:#6A737D">// steady baseline</span></span>
+<span class="line"><span style="color:#E1E4E8">        { duration: </span><span style="color:#9ECBFF">'5s'</span><span style="color:#E1E4E8">,  target: </span><span style="color:#79B8FF">500</span><span style="color:#E1E4E8"> },  </span><span style="color:#6A737D">// sharp ramp up — the spike</span></span>
+<span class="line"><span style="color:#E1E4E8">        { duration: </span><span style="color:#9ECBFF">'30s'</span><span style="color:#E1E4E8">, target: </span><span style="color:#79B8FF">500</span><span style="color:#E1E4E8"> },  </span><span style="color:#6A737D">// hold at peak</span></span>
+<span class="line"><span style="color:#E1E4E8">        { duration: </span><span style="color:#9ECBFF">'5s'</span><span style="color:#E1E4E8">,  target: </span><span style="color:#79B8FF">50</span><span style="color:#E1E4E8"> },   </span><span style="color:#6A737D">// sharp ramp down</span></span>
+<span class="line"><span style="color:#E1E4E8">        { duration: </span><span style="color:#9ECBFF">'30s'</span><span style="color:#E1E4E8">, target: </span><span style="color:#79B8FF">50</span><span style="color:#E1E4E8"> },   </span><span style="color:#6A737D">// recovery</span></span>
+<span class="line"><span style="color:#E1E4E8">      ],</span></span>
+<span class="line"><span style="color:#E1E4E8">    },</span></span>
+<span class="line"><span style="color:#E1E4E8">  },</span></span>
+<span class="line"><span style="color:#E1E4E8">  thresholds: {</span></span>
+<span class="line"><span style="color:#6A737D">    // Strict during steady — system at baseline must be at SLO</span></span>
+<span class="line"><span style="color:#9ECBFF">    'http_req_duration{phase:steady}'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'p(95)&#x3C;300'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#6A737D">    // Loose during the spike — degradation is expected, errors are not</span></span>
+<span class="line"><span style="color:#9ECBFF">    'http_req_duration{phase:spike}'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'p(95)&#x3C;2000'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#9ECBFF">    'http_req_failed{phase:spike}'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'rate&#x3C;0.05'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#6A737D">    // Recovery: back to baseline SLO. This is the most important threshold —</span></span>
+<span class="line"><span style="color:#6A737D">    // a system that "survives" the spike but never recovers is broken.</span></span>
+<span class="line"><span style="color:#9ECBFF">    'http_req_duration{phase:recovery}'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'p(95)&#x3C;300'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#9ECBFF">    'http_req_failed{phase:recovery}'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'rate&#x3C;0.005'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#E1E4E8">  },</span></span>
+<span class="line"><span style="color:#E1E4E8">};</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> TEST_START</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> Date.</span><span style="color:#B392F0">now</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">function</span><span style="color:#B392F0"> currentPhase</span><span style="color:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> elapsed</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> Date.</span><span style="color:#B392F0">now</span><span style="color:#E1E4E8">() </span><span style="color:#F97583">-</span><span style="color:#79B8FF"> TEST_START</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">  if</span><span style="color:#E1E4E8"> (elapsed </span><span style="color:#F97583">&#x3C;</span><span style="color:#79B8FF"> TS</span><span style="color:#E1E4E8">.steady_end) </span><span style="color:#F97583">return</span><span style="color:#9ECBFF"> 'steady'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">  if</span><span style="color:#E1E4E8"> (elapsed </span><span style="color:#F97583">&#x3C;</span><span style="color:#79B8FF"> TS</span><span style="color:#E1E4E8">.ramp_up_end) </span><span style="color:#F97583">return</span><span style="color:#9ECBFF"> 'ramp_up'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">  if</span><span style="color:#E1E4E8"> (elapsed </span><span style="color:#F97583">&#x3C;</span><span style="color:#79B8FF"> TS</span><span style="color:#E1E4E8">.spike_end) </span><span style="color:#F97583">return</span><span style="color:#9ECBFF"> 'spike'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">  if</span><span style="color:#E1E4E8"> (elapsed </span><span style="color:#F97583">&#x3C;</span><span style="color:#79B8FF"> TS</span><span style="color:#E1E4E8">.ramp_down_end) </span><span style="color:#F97583">return</span><span style="color:#9ECBFF"> 'ramp_down'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">  return</span><span style="color:#9ECBFF"> 'recovery'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> default</span><span style="color:#F97583"> function</span><span style="color:#E1E4E8"> () {</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> phase</span><span style="color:#F97583"> =</span><span style="color:#B392F0"> currentPhase</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> res</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> http.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/echo`</span><span style="color:#E1E4E8">, { tags: { phase } });</span></span>
+<span class="line"><span style="color:#B392F0">  check</span><span style="color:#E1E4E8">(res, {</span></span>
+<span class="line"><span style="color:#9ECBFF">    'status is 200'</span><span style="color:#E1E4E8">: (</span><span style="color:#FFAB70">r</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> r.status </span><span style="color:#F97583">===</span><span style="color:#79B8FF"> 200</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span></code></pre>b:T1619,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#6A737D"># Kata 56 — Spike Test (Artillery solution)</span></span>
+<span class="line"><span style="color:#6A737D">#</span></span>
+<span class="line"><span style="color:#6A737D"># Same single-spike profile as the k6 solution. Artillery's `phases`</span></span>
+<span class="line"><span style="color:#6A737D"># can do `rampTo` for sharp transitions. ensure block is whole-test</span></span>
+<span class="line"><span style="color:#6A737D"># (Artillery doesn't support phase-tagged ensures).</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#85E89D">config</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">  target</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"http://localhost:3000"</span></span>
+<span class="line"><span style="color:#85E89D">  phases</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">    - </span><span style="color:#85E89D">duration</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">30</span></span>
+<span class="line"><span style="color:#85E89D">      arrivalRate</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">50</span></span>
+<span class="line"><span style="color:#85E89D">      name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"steady"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    - </span><span style="color:#85E89D">duration</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">5</span></span>
+<span class="line"><span style="color:#85E89D">      arrivalRate</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">50</span></span>
+<span class="line"><span style="color:#85E89D">      rampTo</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">500</span></span>
+<span class="line"><span style="color:#85E89D">      name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"ramp-up (the spike)"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    - </span><span style="color:#85E89D">duration</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">30</span></span>
+<span class="line"><span style="color:#85E89D">      arrivalRate</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">500</span></span>
+<span class="line"><span style="color:#85E89D">      name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"peak"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    - </span><span style="color:#85E89D">duration</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">5</span></span>
+<span class="line"><span style="color:#85E89D">      arrivalRate</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">500</span></span>
+<span class="line"><span style="color:#85E89D">      rampTo</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">50</span></span>
+<span class="line"><span style="color:#85E89D">      name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"ramp-down"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    - </span><span style="color:#85E89D">duration</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">30</span></span>
+<span class="line"><span style="color:#85E89D">      arrivalRate</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">50</span></span>
+<span class="line"><span style="color:#85E89D">      name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"recovery"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#85E89D">  ensure</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#6A737D">    # Whole-test threshold — generous to allow spike degradation. For</span></span>
+<span class="line"><span style="color:#6A737D">    # tighter per-phase asserts, use k6.</span></span>
+<span class="line"><span style="color:#85E89D">    p95</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">2000</span></span>
+<span class="line"><span style="color:#85E89D">    maxErrorRate</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">5</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#85E89D">scenarios</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">  - </span><span style="color:#85E89D">name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"spike probe"</span></span>
+<span class="line"><span style="color:#85E89D">    flow</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">get</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">          url</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"/lab/echo"</span></span>
+<span class="line"><span style="color:#85E89D">          expect</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">            - </span><span style="color:#85E89D">statusCode</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">200</span></span>
+<span class="line"></span></code></pre>0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"kata":{"slug":"56-spike-test","number":56,"title":"Spike Test","phaseSlug":"phase-12-test-types","phaseNumber":12,"phaseName":"Test Types","readmeRaw":"$3","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"56-spike-test.test.js","content":"$4"}],"artilleryFiles":[{"filename":"56-spike-test.yml","content":"# Kata 56 — Spike Test (Artillery solution)\n#\n# Same single-spike profile as the k6 solution. Artillery's `phases`\n# can do `rampTo` for sharp transitions. ensure block is whole-test\n# (Artillery doesn't support phase-tagged ensures).\n\nconfig:\n  target: \"http://localhost:3000\"\n  phases:\n    - duration: 30\n      arrivalRate: 50\n      name: \"steady\"\n\n    - duration: 5\n      arrivalRate: 50\n      rampTo: 500\n      name: \"ramp-up (the spike)\"\n\n    - duration: 30\n      arrivalRate: 500\n      name: \"peak\"\n\n    - duration: 5\n      arrivalRate: 500\n      rampTo: 50\n      name: \"ramp-down\"\n\n    - duration: 30\n      arrivalRate: 50\n      name: \"recovery\"\n\n  ensure:\n    # Whole-test threshold — generous to allow spike degradation. For\n    # tighter per-phase asserts, use k6.\n    p95: 2000\n    maxErrorRate: 5\n\nscenarios:\n  - name: \"spike probe\"\n    flow:\n      - get:\n          url: \"/lab/echo\"\n          expect:\n            - statusCode: 200\n"}],"jmeterFiles":[]},"prev":{"slug":"55-stress-and-breakpoint-test","number":55,"title":"Stress and Breakpoint Test","phaseSlug":"phase-12-test-types","phaseNumber":12,"phaseName":"Test Types","readmeRaw":"$5","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"55-stress-and-breakpoint-test.test.js","content":"$6"}],"artilleryFiles":[{"filename":"55-stress-and-breakpoint-test.yml","content":"$7"}],"jmeterFiles":[]},"next":{"slug":"57-soak-endurance-test","number":57,"title":"Soak / Endurance Test","phaseSlug":"phase-12-test-types","phaseNumber":12,"phaseName":"Test Types","readmeRaw":"$8","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"57-soak-endurance-test.test.js","content":"$9"}],"artilleryFiles":[{"filename":"57-soak-endurance-test.yml","content":"# Kata 57 — Soak / Endurance Test (Artillery solution)\n#\n# Single sustained phase at production-baseline RPS. Default is 60s;\n# extend by editing the duration or supplying `--config '{ phases: [...] }'`.\n# For a real soak (hours), Artillery's per-second resolution is overkill —\n# k6 with custom slice tagging is more useful for analyzing drift.\n\nconfig:\n  target: \"http://localhost:3000\"\n  phases:\n    - duration: 60\n      arrivalRate: 50\n      name: \"soak baseline\"\n\n  ensure:\n    p95: 300\n    maxErrorRate: 1\n\nscenarios:\n  - name: \"soak probe\"\n    flow:\n      - get:\n          url: \"/lab/echo\"\n          expect:\n            - statusCode: 200\n"}],"jmeterFiles":[]},"frameworks":[{"id":"k6","label":"k6","files":[{"filename":"56-spike-test.test.js","html":"$a"}]},{"id":"artillery","label":"Artillery","files":[{"filename":"56-spike-test.yml","html":"$b"}]},{"id":"jmeter","label":"JMeter","files":[]},{"id":"playwright","label":"Playwright","files":[]},{"id":"cypress","label":"Cypress","files":[]}]}],["$Lc"],"$Ld"]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"UzMlu93LkryOOruE2pxnW"}
+c:["$","script","script-0",{"src":"/qa-labs/_next/static/chunks/01luku1w1f06_.js","async":true}]
+d:["$","$Le",null,{"children":["$","$f",null,{"name":"Next.MetadataOutlet","children":"$@10"}]}]
+10:null

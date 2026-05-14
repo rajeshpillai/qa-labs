@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kata 28: Document Verification | QA Labs</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #1e293b; padding: 2rem; }
+    .header { background: #0f172a; color: white; padding: 1rem 2rem; margin: -2rem -2rem 2rem; }
+    .header h1 { font-size: 1.25rem; }
+    .kata-badge { display: inline-block; background: #38bdf8; color: #0f172a; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 4px; margin-right: 0.5rem; }
+
+    .section { margin-bottom: 1.5rem; padding: 1.5rem; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); max-width: 700px; margin-left: auto; margin-right: auto; }
+    h2 { font-size: 1rem; color: #475569; margin-bottom: 1rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.5rem; }
+
+    button { padding: 0.5rem 1.25rem; border: none; border-radius: 6px; font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+    .btn-primary { background: #3b82f6; color: white; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-danger { background: #ef4444; color: white; }
+    .btn-danger:hover { background: #dc2626; }
+    .btn-success { background: #16a34a; color: white; }
+    .btn-success:hover { background: #15803d; }
+    .btn-secondary { background: #e2e8f0; color: #334155; }
+    .btn-secondary:hover { background: #cbd5e1; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .upload-area { border: 2px dashed #cbd5e1; border-radius: 8px; padding: 2rem; text-align: center; cursor: pointer; transition: border-color 0.2s, background 0.2s; margin-bottom: 1rem; }
+    .upload-area:hover { border-color: #3b82f6; }
+    .upload-area.has-file { border-color: #16a34a; background: #f0fdf4; }
+    .upload-area.invalid { border-color: #ef4444; background: #fef2f2; }
+    .upload-icon { font-size: 2rem; margin-bottom: 0.5rem; }
+    .upload-text { font-size: 0.85rem; color: #64748b; }
+    .upload-filename { font-size: 0.85rem; color: #16a34a; font-weight: 600; margin-top: 0.5rem; display: none; }
+
+    .status-bar { display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1.5rem; padding: 0.75rem 1rem; background: #f8fafc; border-radius: 6px; border: 1px solid #e2e8f0; }
+    .status-label { font-size: 0.85rem; color: #64748b; margin-right: 0.5rem; }
+    .status-badge { display: inline-block; padding: 0.2rem 0.75rem; border-radius: 10px; font-size: 0.75rem; font-weight: 600; }
+    .status-upload { background: #e2e8f0; color: #475569; }
+    .status-processing { background: #fef3c7; color: #92400e; }
+    .status-review { background: #dbeafe; color: #1e40af; }
+    .status-confirmed { background: #dcfce7; color: #166534; }
+    .status-failed { background: #fee2e2; color: #991b1b; }
+
+    .spinner { display: none; text-align: center; padding: 2rem; }
+    .spinner.visible { display: block; }
+    .spinner-circle { width: 40px; height: 40px; border: 4px solid #e2e8f0; border-top: 4px solid #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 1rem; }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    .spinner-text { font-size: 0.85rem; color: #64748b; }
+
+    label { display: block; font-size: 0.85rem; font-weight: 600; margin-bottom: 0.25rem; color: #475569; }
+    input { width: 100%; padding: 0.5rem 0.75rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.9rem; margin-bottom: 0.75rem; }
+    input:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 2px rgba(59,130,246,0.2); }
+    input:disabled { background: #f1f5f9; color: #94a3b8; }
+
+    .extracted-fields { display: none; }
+    .extracted-fields.visible { display: block; }
+
+    .actions { display: flex; gap: 0.5rem; margin-top: 1rem; }
+
+    .error-banner { display: none; padding: 1rem; background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px; margin-bottom: 1rem; }
+    .error-banner.visible { display: block; }
+    .error-banner p { font-size: 0.85rem; color: #991b1b; }
+
+    .steps-indicator { display: flex; gap: 0.25rem; margin-bottom: 1.5rem; }
+    .step-pill { flex: 1; text-align: center; padding: 0.4rem; font-size: 0.7rem; font-weight: 600; border-radius: 4px; background: #e2e8f0; color: #94a3b8; }
+    .step-pill.active { background: #3b82f6; color: white; }
+    .step-pill.completed { background: #16a34a; color: white; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1><span class="kata-badge">KATA 28</span> Document Verification</h1>
+</div>
+
+<div class="section">
+  <!-- Status steps indicator -->
+  <div class="steps-indicator" data-testid="steps-indicator">
+    <div class="step-pill active" data-testid="step-upload-pill">Upload</div>
+    <div class="step-pill" data-testid="step-processing-pill">Processing</div>
+    <div class="step-pill" data-testid="step-review-pill">Review</div>
+    <div class="step-pill" data-testid="step-confirmed-pill">Confirmed</div>
+  </div>
+
+  <!-- Current status bar -->
+  <div class="status-bar">
+    <span class="status-label">Current Status:</span>
+    <span class="status-badge status-upload" data-testid="current-status">Upload</span>
+  </div>
+
+  <!-- Upload area -->
+  <div id="upload-section" data-testid="upload-section">
+    <h2>Upload Document</h2>
+    <p style="font-size:0.85rem;color:#64748b;margin-bottom:1rem;">
+      Upload a government-issued ID document for OCR extraction and verification.
+    </p>
+
+    <select id="doc-type" data-testid="select-doc-type" style="width:100%;padding:0.5rem;border:1px solid #cbd5e1;border-radius:6px;margin-bottom:1rem;font-size:0.9rem;">
+      <option value="">Select document type</option>
+      <option value="passport">Passport</option>
+      <option value="drivers-license">Driver's License</option>
+      <option value="national-id">National ID</option>
+    </select>
+
+    <div class="upload-area" data-testid="upload-area" onclick="document.getElementById('file-input').click()">
+      <div class="upload-icon">&#128196;</div>
+      <div class="upload-text" data-testid="upload-text">Click to upload document</div>
+      <div class="upload-filename" data-testid="upload-filename"></div>
+    </div>
+
+    <input type="file" id="file-input" data-testid="file-input" style="display:none;" accept=".pdf,.jpg,.png" onchange="handleFileSelect(event)">
+
+    <button class="btn-primary" data-testid="btn-process" onclick="startProcessing()" disabled>Process Document</button>
+  </div>
+
+  <!-- Processing spinner -->
+  <div class="spinner" data-testid="processing-spinner">
+    <div class="spinner-circle"></div>
+    <div class="spinner-text" data-testid="processing-text">Extracting text via OCR...</div>
+  </div>
+
+  <!-- Error banner -->
+  <div class="error-banner" data-testid="error-banner">
+    <p data-testid="error-message">Document could not be processed. The image may be too blurry or the document type is not supported.</p>
+    <button class="btn-secondary" data-testid="btn-retry" onclick="retryUpload()" style="margin-top:0.75rem;">Try Again</button>
+  </div>
+
+  <!-- Extracted fields (OCR results) -->
+  <div class="extracted-fields" data-testid="extracted-fields">
+    <h2>Extracted Information</h2>
+    <p style="font-size:0.85rem;color:#64748b;margin-bottom:1rem;">
+      Review the extracted fields below. You may edit any field if the OCR result is incorrect.
+    </p>
+
+    <label for="extracted-name">Full Name</label>
+    <input type="text" id="extracted-name" data-testid="extracted-name">
+
+    <label for="extracted-dob">Date of Birth</label>
+    <input type="text" id="extracted-dob" data-testid="extracted-dob">
+
+    <label for="extracted-id-number">ID Number</label>
+    <input type="text" id="extracted-id-number" data-testid="extracted-id-number">
+
+    <label for="extracted-address">Address</label>
+    <input type="text" id="extracted-address" data-testid="extracted-address">
+
+    <label for="extracted-expiry">Expiry Date</label>
+    <input type="text" id="extracted-expiry" data-testid="extracted-expiry">
+
+    <div class="actions">
+      <button class="btn-success" data-testid="btn-confirm" onclick="confirmVerification()">Confirm Verification</button>
+      <button class="btn-secondary" data-testid="btn-edit-cancel" onclick="retryUpload()">Re-upload</button>
+    </div>
+  </div>
+
+  <!-- Confirmed message -->
+  <div id="confirmed-section" data-testid="confirmed-section" style="display:none;text-align:center;padding:2rem;">
+    <div style="font-size:3rem;margin-bottom:1rem;">&#9989;</div>
+    <h3 data-testid="confirmed-title">Document Verified</h3>
+    <p style="font-size:0.9rem;color:#64748b;margin-top:0.5rem;" data-testid="confirmed-message">All extracted fields have been confirmed. Verification complete.</p>
+  </div>
+</div>
+
+<script>
+  // ─── State ─────────────────────────────────────────────────────────
+  // currentStatus tracks the current phase: 'upload', 'processing', 'review', 'confirmed', 'failed'
+  let currentStatus = 'upload';
+  // uploadedFileName stores the name of the uploaded file.
+  let uploadedFileName = null;
+
+  // ─── Simulated OCR results ─────────────────────────────────────────
+  // These are the "extracted" fields that the simulated OCR returns.
+  // In a real app, these would come from an OCR API.
+  const ocrResults = {
+    passport: { name: 'Jane Alice Doe', dob: '15-Mar-1990', idNumber: 'P12345678', address: '123 Main St, New York, NY 10001', expiry: '15-Mar-2030' },
+    'drivers-license': { name: 'John Michael Smith', dob: '22-Jul-1985', idNumber: 'DL-9876543', address: '456 Oak Ave, Los Angeles, CA 90001', expiry: '22-Jul-2028' },
+    'national-id': { name: 'Maria Garcia Lopez', dob: '01-Jan-1992', idNumber: 'NID-5551234', address: '789 Pine Rd, Chicago, IL 60601', expiry: '01-Jan-2032' }
+  };
+
+  // ─── handleFileSelect(event) ───────────────────────────────────────
+  // Called when a file is selected via the hidden file input.
+  // Updates the upload area UI and enables the Process button.
+  function handleFileSelect(event) {
+    const file = event.target.files[0];
+    if (file) {
+      uploadedFileName = file.name;
+
+      // Check if the file is an "invalid" document (filename contains "invalid").
+      // This simulates a bad document for testing purposes.
+      const isInvalid = file.name.toLowerCase().includes('invalid');
+
+      const area = document.querySelector('[data-testid="upload-area"]');
+      if (isInvalid) {
+        area.classList.add('invalid');
+        area.classList.remove('has-file');
+      } else {
+        area.classList.add('has-file');
+        area.classList.remove('invalid');
+      }
+
+      document.querySelector('[data-testid="upload-text"]').textContent = 'File selected';
+      const fnEl = document.querySelector('[data-testid="upload-filename"]');
+      fnEl.textContent = file.name;
+      fnEl.style.display = 'block';
+
+      // Enable the Process button.
+      document.querySelector('[data-testid="btn-process"]').disabled = false;
+    }
+  }
+
+  // ─── updateStatus(status) ──────────────────────────────────────────
+  // Updates the status badge and step pills to reflect the current phase.
+  function updateStatus(status) {
+    currentStatus = status;
+
+    // Update the status badge text and CSS class.
+    const badge = document.querySelector('[data-testid="current-status"]');
+    const labels = { upload: 'Upload', processing: 'Processing', review: 'Review', confirmed: 'Confirmed', failed: 'Failed' };
+    badge.textContent = labels[status] || status;
+    badge.className = 'status-badge status-' + status;
+
+    // Update step pills: completed for past steps, active for current.
+    const steps = ['upload', 'processing', 'review', 'confirmed'];
+    const currentIndex = steps.indexOf(status);
+    steps.forEach((step, i) => {
+      const pill = document.querySelector(`[data-testid="step-${step}-pill"]`);
+      pill.classList.remove('active', 'completed');
+      if (status === 'failed') {
+        // On failure, mark upload as active (ready to retry).
+        if (step === 'upload') pill.classList.add('active');
+      } else if (i < currentIndex) {
+        pill.classList.add('completed');
+      } else if (i === currentIndex) {
+        pill.classList.add('active');
+      }
+    });
+  }
+
+  // ─── startProcessing() ────────────────────────────────────────────
+  // Begins the simulated OCR processing.
+  // Shows a spinner, hides the upload section, then after 2 seconds
+  // either shows extracted results or an error.
+  function startProcessing() {
+    const docType = document.querySelector('[data-testid="select-doc-type"]').value;
+
+    // Hide upload section, show spinner.
+    document.querySelector('[data-testid="upload-section"]').style.display = 'none';
+    document.querySelector('[data-testid="processing-spinner"]').classList.add('visible');
+    document.querySelector('[data-testid="error-banner"]').classList.remove('visible');
+
+    updateStatus('processing');
+
+    // Simulate OCR processing with a 2-second delay.
+    // setTimeout(callback, ms) runs the callback once after ms milliseconds.
+    setTimeout(() => {
+      // Hide spinner.
+      document.querySelector('[data-testid="processing-spinner"]').classList.remove('visible');
+
+      // Check if the uploaded file is "invalid" (simulates OCR failure).
+      if (uploadedFileName && uploadedFileName.toLowerCase().includes('invalid')) {
+        // Show error state.
+        document.querySelector('[data-testid="error-banner"]').classList.add('visible');
+        updateStatus('failed');
+        return;
+      }
+
+      // Get OCR results based on document type (default to passport).
+      const results = ocrResults[docType] || ocrResults.passport;
+
+      // Populate the extracted fields with OCR results.
+      document.querySelector('[data-testid="extracted-name"]').value = results.name;
+      document.querySelector('[data-testid="extracted-dob"]').value = results.dob;
+      document.querySelector('[data-testid="extracted-id-number"]').value = results.idNumber;
+      document.querySelector('[data-testid="extracted-address"]').value = results.address;
+      document.querySelector('[data-testid="extracted-expiry"]').value = results.expiry;
+
+      // Show the extracted fields section.
+      document.querySelector('[data-testid="extracted-fields"]').classList.add('visible');
+
+      updateStatus('review');
+    }, 2000);
+  }
+
+  // ─── confirmVerification() ────────────────────────────────────────
+  // Confirms the extracted fields and transitions to the "confirmed" state.
+  function confirmVerification() {
+    // Hide extracted fields, show confirmed message.
+    document.querySelector('[data-testid="extracted-fields"]').classList.remove('visible');
+    document.querySelector('[data-testid="confirmed-section"]').style.display = 'block';
+
+    updateStatus('confirmed');
+  }
+
+  // ─── retryUpload() ────────────────────────────────────────────────
+  // Resets the page back to the upload state for a retry.
+  function retryUpload() {
+    // Reset file state.
+    uploadedFileName = null;
+    document.getElementById('file-input').value = '';
+
+    // Reset upload area.
+    const area = document.querySelector('[data-testid="upload-area"]');
+    area.classList.remove('has-file', 'invalid');
+    document.querySelector('[data-testid="upload-text"]').textContent = 'Click to upload document';
+    document.querySelector('[data-testid="upload-filename"]').style.display = 'none';
+    document.querySelector('[data-testid="btn-process"]').disabled = true;
+
+    // Show upload section, hide everything else.
+    document.querySelector('[data-testid="upload-section"]').style.display = 'block';
+    document.querySelector('[data-testid="processing-spinner"]').classList.remove('visible');
+    document.querySelector('[data-testid="error-banner"]').classList.remove('visible');
+    document.querySelector('[data-testid="extracted-fields"]').classList.remove('visible');
+    document.querySelector('[data-testid="confirmed-section"]').style.display = 'none';
+
+    updateStatus('upload');
+  }
+</script>
+</body>
+</html>

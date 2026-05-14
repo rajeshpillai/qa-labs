@@ -1,0 +1,1253 @@
+1:"$Sreact.fragment"
+2:I[76750,["/qa-labs/_next/static/chunks/012xw9ydea0yn.js","/qa-labs/_next/static/chunks/0t2xr05rlu96l.js","/qa-labs/_next/static/chunks/0a55m.6s3qp~-.js","/qa-labs/_next/static/chunks/01luku1w1f06_.js"],"KataPageClient"]
+10:I[97367,["/qa-labs/_next/static/chunks/012xw9ydea0yn.js","/qa-labs/_next/static/chunks/0t2xr05rlu96l.js","/qa-labs/_next/static/chunks/0a55m.6s3qp~-.js"],"OutletBoundary"]
+11:"$Sreact.suspense"
+3:T16cd,# Kata 52: Authentication Flows
+
+## What You Will Learn
+
+- The four common auth patterns in load tests: **login per iteration**, **login once per VU**, **shared token pool**, **pre-baked tokens**
+- When each pattern matches reality (and when each is wrong)
+- Handling token expiry mid-test
+- Refresh-token flow under load
+- Detecting and handling 401s without polluting your latency metrics
+
+## Prerequisites
+
+- Completed [Kata 51 (Parameterization)](../51-parameterization-and-data-driven-tests/)
+- The QA Labs server running
+
+## Concepts Explained
+
+### Why auth deserves its own kata
+
+If your load test logs in 10,000 times in 30 seconds against an endpoint that's not the one you're trying to measure, you've turned the test into a **login** stress test, not the test you wanted.
+
+Worse, login latency drowns out the latency of the endpoint you actually care about. The numbers look bad, you think the system is slow, but the bottleneck is just *how you wrote the test*.
+
+### Four patterns
+
+#### 1. Login per iteration (almost always wrong)
+
+```javascript
+export default function () {
+  const token = login();          // ← every iteration
+  http.get('/api/dashboard', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+```
+
+**When it's right:** specifically testing the login endpoint.
+**When it's wrong:** anywhere else. Wastes load on `/login`, distorts ratios, shadows downstream latency.
+
+#### 2. Login once per VU (the usual default)
+
+Each VU logs in once at scenario start, reuses the token for every iteration.
+
+```javascript
+import { sleep } from 'k6';
+
+let token = null;
+
+export default function () {
+  if (!token) token = login();
+  http.get('/api/dashboard', {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+}
+```
+
+**When it's right:** each "user" in your simulated load is a long-lived session.
+**Issue:** doesn't catch login latency at all — if you care about login under load, run it as a separate scenario.
+
+#### 3. Shared token pool (login bursts pre-test)
+
+For very high RPS where even per-VU logins are too many, pre-warm a pool of tokens before the actual test:
+
+```javascript
+import { SharedArray } from 'k6/data';
+import http from 'k6/http';
+
+const tokens = new SharedArray('tokens', function () {
+  // This runs ONCE in init context — make N login calls upfront
+  const arr = [];
+  for (let i = 0; i < 50; i++) {
+    const res = http.post(/* login */);
+    arr.push(res.json('token'));
+  }
+  return arr;
+});
+
+export default function () {
+  const token = tokens[__VU % tokens.length];
+  http.get('/api/dashboard', { headers: { Authorization: `Bearer ${token}` } });
+}
+```
+
+**When it's right:** ultra-high RPS, login isn't part of the perf hypothesis.
+
+#### 4. Pre-baked tokens (loaded from CSV / vault)
+
+Login pool is generated outside k6 entirely:
+
+```javascript
+const tokens = new SharedArray('tokens', () => JSON.parse(open('./tokens.json')));
+```
+
+**When it's right:** can't or shouldn't hit `/login` in a load test (rate limits, audit logs, etc.).
+
+### Handling token expiry
+
+Even per-VU tokens can expire mid-test. Two strategies:
+
+**Reactive:** if a request returns 401, refresh:
+```javascript
+let res = http.get(url, { headers: { Authorization: `Bearer ${token}` } });
+if (res.status === 401) {
+  token = login();
+  res = http.get(url, { headers: { Authorization: `Bearer ${token}` } });
+}
+```
+
+**Proactive:** track token age, refresh before it expires.
+
+The reactive approach is simpler but adds 401 → 200 retries to your latency stats, which can confuse percentile reading. Tag the retry to exclude:
+
+```javascript
+http.get(url, { tags: { retry: 'true' } });
+// Then in thresholds:
+'http_req_duration{retry:false}': ['p(95)<300'],
+```
+
+### Refresh-token flow
+
+Real auth often uses access + refresh tokens. Mirror this in tests if production does:
+
+```javascript
+let access = null;
+let refresh = null;
+
+function ensureToken() {
+  if (!access) {
+    const r = login();
+    access = r.access;
+    refresh = r.refresh;
+  }
+}
+
+function refreshAccess() {
+  const r = http.post('/auth/refresh', { refresh });
+  access = r.json('access');
+}
+```
+
+The QA Labs server uses simple bearer tokens (no expiry, no refresh) for kata simplicity. In a real test, swap in your real auth API.
+
+### Don't let 401s pollute metrics
+
+If 5% of requests return 401 (because tokens just expired and you're refreshing), they show up in `http_req_failed` and inflate your error rate. Two fixes:
+
+1. **Tag and exclude** failed-auth requests from your error threshold.
+2. **Don't measure** the auth-fixup hops in your main latency assertions.
+
+## Exercises
+
+1. **Login per iteration** vs **login once per VU.** Build both and compare RPS to `/lab/auth/me` between them under the same VU count. By how much does the per-iteration version distort the test?
+2. **Pre-warm a token pool of 20 tokens.** Run 50 VUs sharing those 20 tokens. Does the test reach the target RPS? What's the bottleneck?
+3. **Simulate 5% expiry.** Tag random requests to send a deliberately bad token (`token + 'x'`). Catch the 401, refresh, retry. Verify your latency p95 doesn't include retry hops.
+
+## Common Mistakes
+
+- **Login + 1 request per iteration.** You're testing the login endpoint, not the protected one. RPS to `/dashboard` will be half what it could be.
+- **Hardcoded token in the test file.** Tokens expire, breaks the test.
+- **Counting 401-then-retry as a successful response.** Inflates throughput, hides the problem.
+
+## Cheat Sheet
+
+| Pattern | When | Cost |
+|---------|------|------|
+| Login per iteration | Testing login itself | Stresses login, distorts other metrics |
+| Login once per VU | Most simulated-user tests | Adds N login calls at start |
+| Shared token pool | High RPS, login isn't the focus | Init time grows with pool size |
+| Pre-baked tokens | Can't hit login in test | Maintenance overhead |
+4:Td0d,// Kata 52 — Authentication Flows (k6 solution)
+//
+// Compares three auth patterns side-by-side using the QA Labs lab server:
+// - per_iter:    login on every iteration (anti-pattern, baseline)
+// - per_vu:      login once per VU, reuse token
+// - token_pool:  pre-warm a shared pool, every VU pulls from it
+//
+// Run all three at once and inspect per-scenario http_reqs to see how the
+// patterns distort the test's actual focus (calls to /lab/auth/me).
+
+import http from 'k6/http';
+import { check } from 'k6';
+import { SharedArray } from 'k6/data';
+
+const BASE_URL = __ENV.K6_BASE_URL || 'http://localhost:3000';
+const POOL_SIZE = 20;
+
+// Pre-warmed token pool — runs ONCE in init context (before any VU starts).
+// Every VU sees the same array; selection is round-robin via __VU.
+const tokenPool = new SharedArray('token_pool', function () {
+  const arr = [];
+  for (let i = 0; i < POOL_SIZE; i++) {
+    const res = http.post(
+      `${BASE_URL}/lab/auth/login`,
+      JSON.stringify({ username: `pool-user-${i}`, password: 'pw' }),
+      { headers: { 'Content-Type': 'application/json' } }
+    );
+    if (res.status === 200) arr.push(res.json('token'));
+  }
+  return arr;
+});
+
+export const options = {
+  scenarios: {
+    per_iter: {
+      executor: 'constant-vus',
+      vus: 5,
+      duration: '15s',
+      exec: 'loginEveryIteration',
+      tags: { auth_pattern: 'per_iter' },
+    },
+    per_vu: {
+      executor: 'constant-vus',
+      vus: 5,
+      duration: '15s',
+      exec: 'loginOncePerVu',
+      tags: { auth_pattern: 'per_vu' },
+    },
+    token_pool: {
+      executor: 'constant-vus',
+      vus: 5,
+      duration: '15s',
+      exec: 'usePool',
+      tags: { auth_pattern: 'token_pool' },
+    },
+  },
+  thresholds: {
+    'http_req_failed': ['rate<0.01'],
+    // Only assert on the protected endpoint — exclude login retries.
+    'http_req_duration{endpoint:me}': ['p(95)<200'],
+  },
+};
+
+// Anti-pattern: login on every iteration. Logs into N times more than needed.
+export function loginEveryIteration() {
+  const loginRes = http.post(
+    `${BASE_URL}/lab/auth/login`,
+    JSON.stringify({ username: `per-iter-${__VU}`, password: 'pw' }),
+    { headers: { 'Content-Type': 'application/json' }, tags: { endpoint: 'login' } }
+  );
+  if (loginRes.status !== 200) return;
+
+  hitMe(loginRes.json('token'));
+}
+
+// Sensible default: login once per VU, cache the token in module-level state.
+// In k6, `vuToken` is per-VU because each VU gets its own JS runtime.
+let vuToken = null;
+export function loginOncePerVu() {
+  if (!vuToken) {
+    const res = http.post(
+      `${BASE_URL}/lab/auth/login`,
+      JSON.stringify({ username: `per-vu-${__VU}`, password: 'pw' }),
+      { headers: { 'Content-Type': 'application/json' }, tags: { endpoint: 'login' } }
+    );
+    if (res.status !== 200) return;
+    vuToken = res.json('token');
+  }
+  hitMe(vuToken);
+}
+
+// High-RPS pattern: pull from pre-warmed shared pool. Zero login calls
+// during the test phase.
+export function usePool() {
+  if (tokenPool.length === 0) return;
+  const token = tokenPool[__VU % tokenPool.length];
+  hitMe(token);
+}
+
+function hitMe(token) {
+  const res = http.get(`${BASE_URL}/lab/auth/me`, {
+    headers: { Authorization: `Bearer ${token}` },
+    tags: { endpoint: 'me' },
+  });
+  check(res, {
+    'me status is 200': (r) => r.status === 200,
+  });
+}
+5:T86c,# Kata 52 — Authentication Flows (Artillery solution)
+#
+# Artillery's `flow` is per-scenario; every scenario starts fresh, so the
+# "login once per VU" pattern from k6 maps to "login at scenario start,
+# capture token, use across remaining steps". This is the realistic default.
+#
+# The three approaches the kata covers:
+# - login_then_many_calls: login → many calls (idiomatic Artillery)
+# - login_per_iteration:   each "iteration" is its own scenario (Artillery
+#                          re-runs scenarios per arrival, so login happens
+#                          on every arrival — equivalent to per-iter)
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 20
+      arrivalRate: 10
+      name: "main"
+  ensure:
+    p95: 300
+    maxErrorRate: 1
+
+scenarios:
+  # Idiomatic: each VU logs in once, then makes several /me calls.
+  # This is the closest Artillery equivalent of "login once per VU".
+  - name: "login then many calls"
+    weight: 70
+    flow:
+      - post:
+          url: "/lab/auth/login"
+          json:
+            username: "burst-{{ $randomString() }}"
+            password: "pw"
+          capture:
+            - json: "$.token"
+              as: "token"
+          expect:
+            - statusCode: 200
+
+      # Reuse the captured token for several /me calls before the VU exits.
+      - loop:
+          - get:
+              url: "/lab/auth/me"
+              headers:
+                Authorization: "Bearer {{ token }}"
+              expect:
+                - statusCode: 200
+        count: 5
+
+  # Anti-pattern: each "iteration" (here, scenario invocation) does
+  # exactly one login + one /me. Useful only when login is the focus.
+  - name: "login per iteration"
+    weight: 30
+    flow:
+      - post:
+          url: "/lab/auth/login"
+          json:
+            username: "per-iter-{{ $randomString() }}"
+            password: "pw"
+          capture:
+            - json: "$.token"
+              as: "token"
+          expect:
+            - statusCode: 200
+
+      - get:
+          url: "/lab/auth/me"
+          headers:
+            Authorization: "Bearer {{ token }}"
+          expect:
+            - statusCode: 200
+6:T16d2,# Kata 51: Parameterization and Data-Driven Tests
+
+## What You Will Learn
+
+- Why hammering the **same** request repeatedly is misleading — and what realistic tests do instead
+- **k6's `SharedArray`**: load test data once, share across VUs, no copy per VU
+- Loading users / payloads from JSON or CSV
+- Generating data on the fly: per-iteration unique IDs, random selections, sequential cycling
+- Picking the right strategy: **fixed dataset** vs **synthetic generation** vs **production sample**
+- Artillery's `payload` config for the same job
+
+## Prerequisites
+
+- Completed phase 10 (k6 basics)
+- The QA Labs server running
+
+## Concepts Explained
+
+### Why parameterize?
+
+A test that does this:
+
+```javascript
+http.get('/api/users/42');
+```
+
+… on every iteration is probably hitting one warm cache entry forever. Real traffic queries hundreds of different users. If your cache hit rate in the test is 100% and in production is 60%, you've measured the wrong thing.
+
+Three sources of variety you should care about:
+
+1. **Different inputs per iteration** — different users, products, cart contents.
+2. **Different inputs per VU** — each "user" should look like a separate session.
+3. **Realistic distributions** — long tail, not uniform random. Most queries hit popular items; a few hit obscure ones.
+
+### `SharedArray` — k6's data-loading primitive
+
+Naive approach (broken):
+
+```javascript
+const users = JSON.parse(open('./users.json')); // ← runs in EVERY VU init
+```
+
+With 200 VUs, this loads `users.json` 200 times into 200 separate memory regions. Memory blows up; loading is slow.
+
+Correct approach:
+
+```javascript
+import { SharedArray } from 'k6/data';
+
+const users = new SharedArray('users', function () {
+  return JSON.parse(open('./users.json'));
+});
+```
+
+`SharedArray` loads once, shares the underlying memory across all VUs, and exposes a read-only array. Suitable for thousands of records.
+
+### Selection patterns
+
+```javascript
+// 1. Random pick — every iteration grabs a random row
+const user = users[Math.floor(Math.random() * users.length)];
+
+// 2. Per-VU pick — each VU sticks to its own subset
+const user = users[__VU % users.length];
+
+// 3. Sequential cycle — every iteration moves forward
+const user = users[__ITER % users.length];
+
+// 4. Stratified — 70% common users, 30% long-tail
+const isHot = Math.random() < 0.7;
+const user = isHot ? hotUsers[__ITER % hotUsers.length] : longTail[Math.floor(Math.random() * longTail.length)];
+```
+
+`__VU` is the virtual-user ID, `__ITER` is the iteration counter (per VU). Both are k6-provided globals.
+
+### Generating data on the fly
+
+If you don't have fixed data:
+
+```javascript
+const username = `user-${__VU}-${__ITER}-${Date.now()}`; // unique per request
+const email = `qa-${__VU}@example.com`;
+const cartTotal = Math.floor(Math.random() * 1000);
+```
+
+Avoid `Date.now()` alone for uniqueness — it'll collide at high RPS. Combine with `__VU` and `__ITER`.
+
+### Artillery: `payload` config
+
+Artillery loads CSV via the `payload` block:
+
+```yaml
+config:
+  target: "http://localhost:3000"
+  payload:
+    path: "./users.csv"
+    fields: ["username", "password"]
+    order: random  # or "sequence"
+  phases:
+    - duration: 30
+      arrivalRate: 10
+```
+
+In scenarios, refer to fields with `{{ username }}` / `{{ password }}`.
+
+CSV format expected:
+```csv
+username,password
+alice,pw1
+bob,pw2
+```
+
+### When to use which
+
+| Source | When | Trade-off |
+|--------|------|-----------|
+| **Static JSON / CSV** | Have a fixed set of test accounts | Repeats — caches stay warm |
+| **Synthetic generation** | Need unique data per request | No realistic distribution |
+| **Production sample (anonymized)** | Highest fidelity | Privacy + maintenance cost |
+
+For the QA Labs server's `/lab/auth/login`, any non-empty username/password works, so we'll generate users on the fly.
+
+## Exercises
+
+1. **Load 100 users from JSON.** Create `users.json` with 100 fake accounts, load via `SharedArray`, hit `/lab/auth/login` per iteration with random selection. What's the test duration if each iteration takes ~50ms and you need every user to be hit at least once?
+2. **Per-VU stickiness.** Modify exercise 1 so each VU always uses the same user across iterations. Why might this matter for cache-based perf? (Hint: session state in the server.)
+3. **Stratified load.** 80% of iterations hit one of 10 "hot" users; 20% hit a long tail of 1000. Implement and observe how it changes the auth-flow latency distribution.
+4. **CSV vs JSON.** Replicate exercise 1 in Artillery using `payload` + CSV. Compare ergonomics.
+
+## Common Mistakes
+
+- **`open()` outside `SharedArray`.** Calling `open('./data.json')` directly in module scope works but copies into every VU. With large datasets, this blows up memory.
+- **Loading data inside `default()`.** The init code runs once per VU; the default function runs every iteration. Loading data inside the iteration is *very* slow.
+- **`Math.random()` without seeding.** Useful for variation; not for deterministic reproduction. If you need the test to be repeatable, seed with `__VU`/`__ITER`.
+- **CSVs with too many columns.** Artillery's `payload.fields` has to list every column you want to use.
+
+## Cheat Sheet
+
+```javascript
+// k6 — fixed data, shared across VUs
+import { SharedArray } from 'k6/data';
+const users = new SharedArray('users', () => JSON.parse(open('./users.json')));
+
+// k6 — synthetic per-iteration uniqueness
+const username = `u-${__VU}-${__ITER}-${Date.now()}`;
+
+// k6 — selection patterns
+users[Math.floor(Math.random() * users.length)];  // random
+users[__VU % users.length];                       // per-VU
+users[__ITER % users.length];                     // sequential
+```
+
+```yaml
+# Artillery — CSV payload
+config:
+  payload:
+    path: "./users.csv"
+    fields: ["username", "password"]
+    order: random
+```
+7:Tae5,// Kata 51 — Parameterization and Data-Driven Tests (k6 solution)
+//
+// Demonstrates three selection strategies in one test:
+// 1. Random pick from a fixed dataset (loaded via SharedArray)
+// 2. Per-VU stickiness (each VU uses the same user across iterations)
+// 3. Synthetic generation (unique per iteration, no fixed dataset)
+
+import http from 'k6/http';
+import { check } from 'k6';
+import { SharedArray } from 'k6/data';
+
+const BASE_URL = __ENV.K6_BASE_URL || 'http://localhost:3000';
+
+// Loaded ONCE in init context, shared across all VUs.
+// Without SharedArray, each VU would get its own copy in memory.
+const users = new SharedArray('users', function () {
+  return JSON.parse(open('./users.json'));
+});
+
+export const options = {
+  scenarios: {
+    random_pick: {
+      executor: 'constant-arrival-rate',
+      rate: 10,
+      timeUnit: '1s',
+      duration: '15s',
+      preAllocatedVUs: 10,
+      exec: 'randomPick',
+    },
+    per_vu: {
+      executor: 'constant-vus',
+      vus: 5,
+      duration: '15s',
+      exec: 'perVuPick',
+    },
+    synthetic: {
+      executor: 'constant-arrival-rate',
+      rate: 5,
+      timeUnit: '1s',
+      duration: '15s',
+      preAllocatedVUs: 10,
+      exec: 'syntheticUser',
+    },
+  },
+  thresholds: {
+    'http_req_failed': ['rate<0.01'],
+    'http_req_duration': ['p(95)<300'],
+  },
+};
+
+// Strategy 1: random pick from the fixed dataset.
+// Each iteration grabs a random user. Same user may be picked multiple
+// times — that's fine, mirrors real traffic patterns.
+export function randomPick() {
+  const user = users[Math.floor(Math.random() * users.length)];
+  login(user.username, user.password, 'random');
+}
+
+// Strategy 2: per-VU pick — each VU sticks to its own user.
+// Useful when the server keeps per-session state and you want each
+// "user" in the test to behave like a real session.
+export function perVuPick() {
+  const user = users[__VU % users.length];
+  login(user.username, user.password, 'per_vu');
+}
+
+// Strategy 3: synthetic — generate a fresh username per iteration.
+// Use when you don't have a fixed dataset, or when you specifically want
+// to force cache misses. Combine __VU + __ITER + Date.now() for uniqueness
+// at high RPS — Date.now() alone collides at ms boundaries.
+export function syntheticUser() {
+  const username = `synthetic-${__VU}-${__ITER}-${Date.now()}`;
+  login(username, 'pw', 'synthetic');
+}
+
+function login(username, password, strategy) {
+  const res = http.post(
+    `${BASE_URL}/lab/auth/login`,
+    JSON.stringify({ username, password }),
+    {
+      headers: { 'Content-Type': 'application/json' },
+      tags: { strategy },
+    }
+  );
+  check(res, {
+    'login status is 200': (r) => r.status === 200,
+    'response has token': (r) => typeof r.json('token') === 'string',
+  });
+}
+8:T4ca,# Kata 51 — Parameterization and Data-Driven Tests (Artillery solution)
+#
+# Demonstrates two strategies side-by-side:
+# 1. Fixed CSV dataset, random selection per iteration (`payload.order: random`)
+# 2. Synthetic generation per request via Artillery's built-in helpers
+#
+# Run:  artillery run 51-parameterization-and-data-driven-tests.yml
+
+config:
+  target: "http://localhost:3000"
+  payload:
+    path: "./users.csv"
+    fields:
+      - "username"
+      - "password"
+    order: random
+  phases:
+    - duration: 20
+      arrivalRate: 10
+      name: "main"
+  ensure:
+    p95: 300
+    maxErrorRate: 1
+
+scenarios:
+  - name: "fixed-dataset login"
+    weight: 50
+    flow:
+      - post:
+          url: "/lab/auth/login"
+          json:
+            username: "{{ username }}"
+            password: "{{ password }}"
+          expect:
+            - statusCode: 200
+            - hasProperty: "token"
+
+  - name: "synthetic login"
+    weight: 50
+    flow:
+      - post:
+          url: "/lab/auth/login"
+          # $randomString() and $timestamp() are Artillery built-ins
+          json:
+            username: "synth-{{ $randomString() }}-{{ $timestamp() }}"
+            password: "pw"
+          expect:
+            - statusCode: 200
+9:T17d1,# Kata 53: Fintech KYC at Scale
+
+## What You Will Learn
+
+- How to model a **multi-step user journey** as a single perf scenario
+- **Capturing IDs** between requests (the response of step 1 feeds the URL of step 2)
+- **Think time** — `sleep()` between steps to mimic real users
+- **Per-step assertions and timings** — measure each leg of the funnel separately
+- Building a **scenario weighting** profile that mirrors production: 80% complete, 10% bail at docs, 10% bail at video
+- Reading **funnel completion rates** from custom metrics — your business cares about this number, not p95
+
+## Prerequisites
+
+- Completed [Kata 51](../51-parameterization-and-data-driven-tests/) and [Kata 52](../52-authentication-flows/)
+- The QA Labs server running — exposes `/lab/kyc/*` (apply → documents → video → decision)
+
+## Concepts Explained
+
+### The KYC funnel
+
+Most fintech onboarding flows look like this:
+
+```
+Apply  →  Upload docs  →  Video verify  →  Decision
+ 90%        85%             80%             75%
+```
+
+Each arrow is a drop-off. A perf test that goes **all the way through** every iteration ignores reality. You'd test the decision endpoint at 100% of traffic when production sees only 75%.
+
+### Modeling the funnel in k6
+
+Three approaches:
+
+#### 1. Single scenario, capture IDs along the way
+
+```javascript
+export default function () {
+  const apply = http.post(`${BASE_URL}/lab/kyc/apply`, JSON.stringify({ user: `u-${__VU}` }), opts);
+  const id = apply.json('id');
+
+  http.post(`${BASE_URL}/lab/kyc/${id}/documents`);
+  http.post(`${BASE_URL}/lab/kyc/${id}/video`);
+  http.post(`${BASE_URL}/lab/kyc/${id}/decision`);
+}
+```
+
+Simple, but every iteration goes through 100% of the funnel. Doesn't match reality.
+
+#### 2. Multiple scenarios with weighted volume
+
+```javascript
+export const options = {
+  scenarios: {
+    completes:        { executor: 'constant-arrival-rate', rate: 75, ... exec: 'fullFlow' },
+    bails_at_docs:    { executor: 'constant-arrival-rate', rate: 15, ... exec: 'bailDocs' },
+    bails_at_video:   { executor: 'constant-arrival-rate', rate: 5,  ... exec: 'bailVideo' },
+    bails_at_apply:   { executor: 'constant-arrival-rate', rate: 5,  ... exec: 'bailApply' },
+  },
+};
+```
+
+Each scenario does a different prefix of the funnel. The `rate` per scenario adds up to 100 RPS, mimicking production drop-off. **This is the right way.**
+
+#### 3. Single scenario with branching probability
+
+```javascript
+export default function () {
+  const id = doApply();
+  if (Math.random() > 0.10) doDocuments(id);
+  else return;
+  if (Math.random() > 0.05) doVideo(id);
+  else return;
+  doDecision(id);
+}
+```
+
+Cheap to write, gives you the same drop-off pattern. Loses the per-stage-scenario metrics k6 produces automatically.
+
+### Think time — `sleep()` between steps
+
+Real users don't paste their ID, upload a doc, and complete a video selfie in 200ms. They take seconds-to-minutes between steps. Without `sleep()`, every VU hammers the system as fast as possible — producing spikes the system never sees in production.
+
+```javascript
+import { sleep } from 'k6';
+
+http.post(`/lab/kyc/${id}/documents`);
+sleep(2 + Math.random() * 5);  // 2–7s of "user thinking"
+http.post(`/lab/kyc/${id}/video`);
+```
+
+**Don't go overboard with sleep.** If sleep dominates the iteration time, you need vastly more VUs to maintain RPS — and you're then spending memory just to wait around. Use the **open-model executors** (`constant-arrival-rate`) which don't care about per-iteration time.
+
+### Per-step timings via `Trend`
+
+You want to know p95 of each leg of the funnel separately. Use a `Trend` metric per step:
+
+```javascript
+import { Trend } from 'k6/metrics';
+const tApply = new Trend('kyc_apply_ms', true);
+const tDocs = new Trend('kyc_documents_ms', true);
+const tVideo = new Trend('kyc_video_ms', true);
+const tDecision = new Trend('kyc_decision_ms', true);
+
+const res = http.post(/* apply */);
+tApply.add(res.timings.duration);
+```
+
+Then thresholds per step:
+
+```javascript
+thresholds: {
+  'kyc_apply_ms': ['p(95)<150'],
+  'kyc_documents_ms': ['p(95)<300'],
+  'kyc_video_ms': ['p(95)<1000'],
+  'kyc_decision_ms': ['p(95)<500'],
+}
+```
+
+If `kyc_video_ms` is the only one breaching, you know exactly which step regressed.
+
+### Funnel completion rate
+
+Track it as a `Rate`:
+
+```javascript
+import { Rate } from 'k6/metrics';
+const completion = new Rate('kyc_completion');
+
+// at the end of fullFlow:
+completion.add(true);
+
+// in any bail-out scenario:
+completion.add(false);
+```
+
+Threshold: `'kyc_completion': ['rate>0.70']`. This is the *business* assertion — fail the perf test if the funnel completion rate drops below acceptable, regardless of latency.
+
+## Exercises
+
+1. **Build the weighted funnel.** Replicate the 75/15/5/5 split using four `constant-arrival-rate` scenarios. Total 100 RPS for 30 seconds.
+2. **Add per-step think time.** 1–3s after apply, 3–8s after documents (uploads are slow), 5–15s after video.
+3. **Measure funnel time end-to-end.** Custom Trend `kyc_total_funnel_ms` for VUs that complete. Compare to sum of per-step times — gap is total think time.
+4. **Asymmetric latency.** What if `/lab/kyc/:id/decision` becomes 2× slower? Which threshold catches it first? Which catches it most clearly?
+
+## Common Mistakes
+
+- **Treating the whole flow as one HTTP request.** The flow is a sequence of HTTP requests; each has its own latency story.
+- **Going 100% through every iteration.** Doesn't match production traffic shape; over-tests downstream steps.
+- **No think time.** Hammers the system at iteration speed — every VU slams documents+video back-to-back.
+- **One Trend for the whole flow.** Hides which step regressed.
+
+## Cheat Sheet
+
+| Concept | k6 mechanism |
+|---------|--------------|
+| Capture ID from response 1, use in URL of response 2 | `const id = res.json('id'); http.post(\`.../${id}/...\`)` |
+| Think time | `sleep(seconds)` |
+| Per-step latency | One `Trend` per step, threshold per metric |
+| Funnel weight | Multiple scenarios with different `rate` |
+| Drop-off rate | `Rate` metric, threshold `rate>0.X` |
+a:T11a0,// Kata 53 — Fintech KYC at Scale (k6 solution)
+//
+// Models a realistic KYC funnel with weighted drop-off:
+//   75% complete the whole flow
+//   15% bail after documents
+//   5%  bail after video
+//   5%  bail right after apply
+//
+// Each step has its own custom Trend metric and threshold so a regression
+// in one leg of the funnel is immediately visible. Includes realistic
+// think time between steps.
+
+import http from 'k6/http';
+import { check, sleep } from 'k6';
+import { Rate, Trend } from 'k6/metrics';
+
+const BASE_URL = __ENV.K6_BASE_URL || 'http://localhost:3000';
+
+// Per-step timing metrics. The `true` flag formats values as milliseconds
+// in the summary output.
+const tApply = new Trend('kyc_apply_ms', true);
+const tDocs = new Trend('kyc_documents_ms', true);
+const tVideo = new Trend('kyc_video_ms', true);
+const tDecision = new Trend('kyc_decision_ms', true);
+
+// Funnel completion rate — the business metric.
+const completion = new Rate('kyc_completion');
+
+export const options = {
+  scenarios: {
+    full_flow: {
+      executor: 'constant-arrival-rate',
+      rate: 30,
+      timeUnit: '1s',
+      duration: '30s',
+      preAllocatedVUs: 60,
+      maxVUs: 120,
+      exec: 'fullFlow',
+    },
+    bail_at_video: {
+      executor: 'constant-arrival-rate',
+      rate: 5,
+      timeUnit: '1s',
+      duration: '30s',
+      preAllocatedVUs: 15,
+      exec: 'bailAtVideo',
+    },
+    bail_at_documents: {
+      executor: 'constant-arrival-rate',
+      rate: 10,
+      timeUnit: '1s',
+      duration: '30s',
+      preAllocatedVUs: 25,
+      exec: 'bailAtDocs',
+    },
+    bail_at_apply: {
+      executor: 'constant-arrival-rate',
+      rate: 5,
+      timeUnit: '1s',
+      duration: '30s',
+      preAllocatedVUs: 10,
+      exec: 'bailAtApply',
+    },
+  },
+  thresholds: {
+    // Per-step latency targets — tighter for faster steps.
+    'kyc_apply_ms': ['p(95)<200'],
+    'kyc_documents_ms': ['p(95)<400'],
+    'kyc_video_ms': ['p(95)<1500'],
+    'kyc_decision_ms': ['p(95)<800'],
+    // Business metric: at least 70% of started applications complete.
+    'kyc_completion': ['rate>0.70'],
+    'http_req_failed': ['rate<0.01'],
+  },
+};
+
+function apply() {
+  const start = Date.now();
+  const res = http.post(
+    `${BASE_URL}/lab/kyc/apply`,
+    JSON.stringify({ user: `applicant-${__VU}-${__ITER}` }),
+    { headers: { 'Content-Type': 'application/json' }, tags: { step: 'apply' } }
+  );
+  tApply.add(Date.now() - start);
+  check(res, { 'apply status is 200': (r) => r.status === 200 });
+  return res.status === 200 ? res.json('id') : null;
+}
+
+function uploadDocs(id) {
+  const start = Date.now();
+  const res = http.post(
+    `${BASE_URL}/lab/kyc/${id}/documents`,
+    null,
+    { tags: { step: 'documents' } }
+  );
+  tDocs.add(Date.now() - start);
+  return check(res, { 'documents status is 200': (r) => r.status === 200 });
+}
+
+function videoVerify(id) {
+  const start = Date.now();
+  const res = http.post(
+    `${BASE_URL}/lab/kyc/${id}/video`,
+    null,
+    { tags: { step: 'video' } }
+  );
+  tVideo.add(Date.now() - start);
+  return check(res, { 'video status is 200': (r) => r.status === 200 });
+}
+
+function decide(id) {
+  const start = Date.now();
+  const res = http.post(
+    `${BASE_URL}/lab/kyc/${id}/decision`,
+    null,
+    { tags: { step: 'decision' } }
+  );
+  tDecision.add(Date.now() - start);
+  return check(res, { 'decision status is 200': (r) => r.status === 200 });
+}
+
+// Realistic think time between steps. `sleep()` blocks the iteration —
+// open-model executors compensate by spinning up more VUs as needed.
+function think(min, max) {
+  sleep(min + Math.random() * (max - min));
+}
+
+export function fullFlow() {
+  const id = apply();
+  if (!id) return completion.add(false);
+
+  think(1, 3);
+  if (!uploadDocs(id)) return completion.add(false);
+
+  think(3, 8);
+  if (!videoVerify(id)) return completion.add(false);
+
+  think(2, 5);
+  if (!decide(id)) return completion.add(false);
+
+  completion.add(true);
+}
+
+export function bailAtVideo() {
+  const id = apply();
+  if (!id) return completion.add(false);
+  think(1, 3);
+  uploadDocs(id);
+  think(3, 8);
+  videoVerify(id);
+  // User abandons after video — no decision call.
+  completion.add(false);
+}
+
+export function bailAtDocs() {
+  const id = apply();
+  if (!id) return completion.add(false);
+  think(1, 3);
+  uploadDocs(id);
+  // User abandons after docs.
+  completion.add(false);
+}
+
+export function bailAtApply() {
+  apply();
+  // User starts the application but never uploads anything.
+  completion.add(false);
+}
+b:T8d0,# Kata 53 — Fintech KYC at Scale (Artillery solution)
+#
+# Same weighted-funnel idea as the k6 solution, but using Artillery's
+# scenario `weight` to model drop-off. Artillery doesn't have first-class
+# custom metrics like k6, so per-step latency observability is weaker —
+# this is a deliberate teaching point in the kata.
+#
+# Each scenario captures the application id and chains requests with
+# `think` blocks for realistic pacing.
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 30
+      arrivalRate: 50
+      name: "main"
+  ensure:
+    p95: 1500
+    maxErrorRate: 1
+
+scenarios:
+  - name: "full flow"
+    weight: 75
+    flow:
+      - post:
+          url: "/lab/kyc/apply"
+          json:
+            user: "applicant-{{ $randomString() }}"
+          capture:
+            - json: "$.id"
+              as: "appId"
+          expect:
+            - statusCode: 200
+      - think: 2
+
+      - post:
+          url: "/lab/kyc/{{ appId }}/documents"
+          expect:
+            - statusCode: 200
+      - think: 5
+
+      - post:
+          url: "/lab/kyc/{{ appId }}/video"
+          expect:
+            - statusCode: 200
+      - think: 3
+
+      - post:
+          url: "/lab/kyc/{{ appId }}/decision"
+          expect:
+            - statusCode: 200
+
+  - name: "bail at video"
+    weight: 5
+    flow:
+      - post:
+          url: "/lab/kyc/apply"
+          json:
+            user: "applicant-{{ $randomString() }}"
+          capture:
+            - json: "$.id"
+              as: "appId"
+      - think: 2
+      - post:
+          url: "/lab/kyc/{{ appId }}/documents"
+      - think: 5
+      - post:
+          url: "/lab/kyc/{{ appId }}/video"
+      # User abandons — no decision call
+
+  - name: "bail at documents"
+    weight: 15
+    flow:
+      - post:
+          url: "/lab/kyc/apply"
+          json:
+            user: "applicant-{{ $randomString() }}"
+          capture:
+            - json: "$.id"
+              as: "appId"
+      - think: 2
+      - post:
+          url: "/lab/kyc/{{ appId }}/documents"
+      # User abandons after upload
+
+  - name: "bail at apply"
+    weight: 5
+    flow:
+      - post:
+          url: "/lab/kyc/apply"
+          json:
+            user: "applicant-{{ $randomString() }}"
+      # Started but never uploaded
+c:T47ea,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#6A737D">// Kata 52 — Authentication Flows (k6 solution)</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// Compares three auth patterns side-by-side using the QA Labs lab server:</span></span>
+<span class="line"><span style="color:#6A737D">// - per_iter:    login on every iteration (anti-pattern, baseline)</span></span>
+<span class="line"><span style="color:#6A737D">// - per_vu:      login once per VU, reuse token</span></span>
+<span class="line"><span style="color:#6A737D">// - token_pool:  pre-warm a shared pool, every VU pulls from it</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// Run all three at once and inspect per-scenario http_reqs to see how the</span></span>
+<span class="line"><span style="color:#6A737D">// patterns distort the test's actual focus (calls to /lab/auth/me).</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> http </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> 'k6/http'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { check } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> 'k6'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { SharedArray } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> 'k6/data'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> BASE_URL</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> __ENV.</span><span style="color:#79B8FF">K6_BASE_URL</span><span style="color:#F97583"> ||</span><span style="color:#9ECBFF"> 'http://localhost:3000'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> POOL_SIZE</span><span style="color:#F97583"> =</span><span style="color:#79B8FF"> 20</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// Pre-warmed token pool — runs ONCE in init context (before any VU starts).</span></span>
+<span class="line"><span style="color:#6A737D">// Every VU sees the same array; selection is round-robin via __VU.</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> tokenPool</span><span style="color:#F97583"> =</span><span style="color:#F97583"> new</span><span style="color:#B392F0"> SharedArray</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'token_pool'</span><span style="color:#E1E4E8">, </span><span style="color:#F97583">function</span><span style="color:#E1E4E8"> () {</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> arr</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> [];</span></span>
+<span class="line"><span style="color:#F97583">  for</span><span style="color:#E1E4E8"> (</span><span style="color:#F97583">let</span><span style="color:#E1E4E8"> i </span><span style="color:#F97583">=</span><span style="color:#79B8FF"> 0</span><span style="color:#E1E4E8">; i </span><span style="color:#F97583">&#x3C;</span><span style="color:#79B8FF"> POOL_SIZE</span><span style="color:#E1E4E8">; i</span><span style="color:#F97583">++</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#F97583">    const</span><span style="color:#79B8FF"> res</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> http.</span><span style="color:#B392F0">post</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#9ECBFF">      `${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/auth/login`</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#79B8FF">      JSON</span><span style="color:#E1E4E8">.</span><span style="color:#B392F0">stringify</span><span style="color:#E1E4E8">({ username: </span><span style="color:#9ECBFF">`pool-user-${</span><span style="color:#E1E4E8">i</span><span style="color:#9ECBFF">}`</span><span style="color:#E1E4E8">, password: </span><span style="color:#9ECBFF">'pw'</span><span style="color:#E1E4E8"> }),</span></span>
+<span class="line"><span style="color:#E1E4E8">      { headers: { </span><span style="color:#9ECBFF">'Content-Type'</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">'application/json'</span><span style="color:#E1E4E8"> } }</span></span>
+<span class="line"><span style="color:#E1E4E8">    );</span></span>
+<span class="line"><span style="color:#F97583">    if</span><span style="color:#E1E4E8"> (res.status </span><span style="color:#F97583">===</span><span style="color:#79B8FF"> 200</span><span style="color:#E1E4E8">) arr.</span><span style="color:#B392F0">push</span><span style="color:#E1E4E8">(res.</span><span style="color:#B392F0">json</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'token'</span><span style="color:#E1E4E8">));</span></span>
+<span class="line"><span style="color:#E1E4E8">  }</span></span>
+<span class="line"><span style="color:#F97583">  return</span><span style="color:#E1E4E8"> arr;</span></span>
+<span class="line"><span style="color:#E1E4E8">});</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> const</span><span style="color:#79B8FF"> options</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">  scenarios: {</span></span>
+<span class="line"><span style="color:#E1E4E8">    per_iter: {</span></span>
+<span class="line"><span style="color:#E1E4E8">      executor: </span><span style="color:#9ECBFF">'constant-vus'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      vus: </span><span style="color:#79B8FF">5</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      duration: </span><span style="color:#9ECBFF">'15s'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      exec: </span><span style="color:#9ECBFF">'loginEveryIteration'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      tags: { auth_pattern: </span><span style="color:#9ECBFF">'per_iter'</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">    },</span></span>
+<span class="line"><span style="color:#E1E4E8">    per_vu: {</span></span>
+<span class="line"><span style="color:#E1E4E8">      executor: </span><span style="color:#9ECBFF">'constant-vus'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      vus: </span><span style="color:#79B8FF">5</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      duration: </span><span style="color:#9ECBFF">'15s'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      exec: </span><span style="color:#9ECBFF">'loginOncePerVu'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      tags: { auth_pattern: </span><span style="color:#9ECBFF">'per_vu'</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">    },</span></span>
+<span class="line"><span style="color:#E1E4E8">    token_pool: {</span></span>
+<span class="line"><span style="color:#E1E4E8">      executor: </span><span style="color:#9ECBFF">'constant-vus'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      vus: </span><span style="color:#79B8FF">5</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      duration: </span><span style="color:#9ECBFF">'15s'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      exec: </span><span style="color:#9ECBFF">'usePool'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      tags: { auth_pattern: </span><span style="color:#9ECBFF">'token_pool'</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">    },</span></span>
+<span class="line"><span style="color:#E1E4E8">  },</span></span>
+<span class="line"><span style="color:#E1E4E8">  thresholds: {</span></span>
+<span class="line"><span style="color:#9ECBFF">    'http_req_failed'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'rate&#x3C;0.01'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#6A737D">    // Only assert on the protected endpoint — exclude login retries.</span></span>
+<span class="line"><span style="color:#9ECBFF">    'http_req_duration{endpoint:me}'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'p(95)&#x3C;200'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#E1E4E8">  },</span></span>
+<span class="line"><span style="color:#E1E4E8">};</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// Anti-pattern: login on every iteration. Logs into N times more than needed.</span></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> function</span><span style="color:#B392F0"> loginEveryIteration</span><span style="color:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> loginRes</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> http.</span><span style="color:#B392F0">post</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#9ECBFF">    `${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/auth/login`</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#79B8FF">    JSON</span><span style="color:#E1E4E8">.</span><span style="color:#B392F0">stringify</span><span style="color:#E1E4E8">({ username: </span><span style="color:#9ECBFF">`per-iter-${</span><span style="color:#E1E4E8">__VU</span><span style="color:#9ECBFF">}`</span><span style="color:#E1E4E8">, password: </span><span style="color:#9ECBFF">'pw'</span><span style="color:#E1E4E8"> }),</span></span>
+<span class="line"><span style="color:#E1E4E8">    { headers: { </span><span style="color:#9ECBFF">'Content-Type'</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">'application/json'</span><span style="color:#E1E4E8"> }, tags: { endpoint: </span><span style="color:#9ECBFF">'login'</span><span style="color:#E1E4E8"> } }</span></span>
+<span class="line"><span style="color:#E1E4E8">  );</span></span>
+<span class="line"><span style="color:#F97583">  if</span><span style="color:#E1E4E8"> (loginRes.status </span><span style="color:#F97583">!==</span><span style="color:#79B8FF"> 200</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">return</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">  hitMe</span><span style="color:#E1E4E8">(loginRes.</span><span style="color:#B392F0">json</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'token'</span><span style="color:#E1E4E8">));</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// Sensible default: login once per VU, cache the token in module-level state.</span></span>
+<span class="line"><span style="color:#6A737D">// In k6, `vuToken` is per-VU because each VU gets its own JS runtime.</span></span>
+<span class="line"><span style="color:#F97583">let</span><span style="color:#E1E4E8"> vuToken </span><span style="color:#F97583">=</span><span style="color:#79B8FF"> null</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> function</span><span style="color:#B392F0"> loginOncePerVu</span><span style="color:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#F97583">  if</span><span style="color:#E1E4E8"> (</span><span style="color:#F97583">!</span><span style="color:#E1E4E8">vuToken) {</span></span>
+<span class="line"><span style="color:#F97583">    const</span><span style="color:#79B8FF"> res</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> http.</span><span style="color:#B392F0">post</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#9ECBFF">      `${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/auth/login`</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#79B8FF">      JSON</span><span style="color:#E1E4E8">.</span><span style="color:#B392F0">stringify</span><span style="color:#E1E4E8">({ username: </span><span style="color:#9ECBFF">`per-vu-${</span><span style="color:#E1E4E8">__VU</span><span style="color:#9ECBFF">}`</span><span style="color:#E1E4E8">, password: </span><span style="color:#9ECBFF">'pw'</span><span style="color:#E1E4E8"> }),</span></span>
+<span class="line"><span style="color:#E1E4E8">      { headers: { </span><span style="color:#9ECBFF">'Content-Type'</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">'application/json'</span><span style="color:#E1E4E8"> }, tags: { endpoint: </span><span style="color:#9ECBFF">'login'</span><span style="color:#E1E4E8"> } }</span></span>
+<span class="line"><span style="color:#E1E4E8">    );</span></span>
+<span class="line"><span style="color:#F97583">    if</span><span style="color:#E1E4E8"> (res.status </span><span style="color:#F97583">!==</span><span style="color:#79B8FF"> 200</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">return</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#E1E4E8">    vuToken </span><span style="color:#F97583">=</span><span style="color:#E1E4E8"> res.</span><span style="color:#B392F0">json</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'token'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  }</span></span>
+<span class="line"><span style="color:#B392F0">  hitMe</span><span style="color:#E1E4E8">(vuToken);</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// High-RPS pattern: pull from pre-warmed shared pool. Zero login calls</span></span>
+<span class="line"><span style="color:#6A737D">// during the test phase.</span></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> function</span><span style="color:#B392F0"> usePool</span><span style="color:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#F97583">  if</span><span style="color:#E1E4E8"> (tokenPool.</span><span style="color:#79B8FF">length</span><span style="color:#F97583"> ===</span><span style="color:#79B8FF"> 0</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">return</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> token</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> tokenPool[__VU </span><span style="color:#F97583">%</span><span style="color:#E1E4E8"> tokenPool.</span><span style="color:#79B8FF">length</span><span style="color:#E1E4E8">];</span></span>
+<span class="line"><span style="color:#B392F0">  hitMe</span><span style="color:#E1E4E8">(token);</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">function</span><span style="color:#B392F0"> hitMe</span><span style="color:#E1E4E8">(</span><span style="color:#FFAB70">token</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> res</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> http.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/auth/me`</span><span style="color:#E1E4E8">, {</span></span>
+<span class="line"><span style="color:#E1E4E8">    headers: { Authorization: </span><span style="color:#9ECBFF">`Bearer ${</span><span style="color:#E1E4E8">token</span><span style="color:#9ECBFF">}`</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">    tags: { endpoint: </span><span style="color:#9ECBFF">'me'</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"><span style="color:#B392F0">  check</span><span style="color:#E1E4E8">(res, {</span></span>
+<span class="line"><span style="color:#9ECBFF">    'me status is 200'</span><span style="color:#E1E4E8">: (</span><span style="color:#FFAB70">r</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> r.status </span><span style="color:#F97583">===</span><span style="color:#79B8FF"> 200</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span></code></pre>d:T25e7,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#6A737D"># Kata 52 — Authentication Flows (Artillery solution)</span></span>
+<span class="line"><span style="color:#6A737D">#</span></span>
+<span class="line"><span style="color:#6A737D"># Artillery's `flow` is per-scenario; every scenario starts fresh, so the</span></span>
+<span class="line"><span style="color:#6A737D"># "login once per VU" pattern from k6 maps to "login at scenario start,</span></span>
+<span class="line"><span style="color:#6A737D"># capture token, use across remaining steps". This is the realistic default.</span></span>
+<span class="line"><span style="color:#6A737D">#</span></span>
+<span class="line"><span style="color:#6A737D"># The three approaches the kata covers:</span></span>
+<span class="line"><span style="color:#6A737D"># - login_then_many_calls: login → many calls (idiomatic Artillery)</span></span>
+<span class="line"><span style="color:#6A737D"># - login_per_iteration:   each "iteration" is its own scenario (Artillery</span></span>
+<span class="line"><span style="color:#6A737D">#                          re-runs scenarios per arrival, so login happens</span></span>
+<span class="line"><span style="color:#6A737D">#                          on every arrival — equivalent to per-iter)</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#85E89D">config</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">  target</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"http://localhost:3000"</span></span>
+<span class="line"><span style="color:#85E89D">  phases</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">    - </span><span style="color:#85E89D">duration</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">20</span></span>
+<span class="line"><span style="color:#85E89D">      arrivalRate</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">10</span></span>
+<span class="line"><span style="color:#85E89D">      name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"main"</span></span>
+<span class="line"><span style="color:#85E89D">  ensure</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">    p95</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">300</span></span>
+<span class="line"><span style="color:#85E89D">    maxErrorRate</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">1</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#85E89D">scenarios</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#6A737D">  # Idiomatic: each VU logs in once, then makes several /me calls.</span></span>
+<span class="line"><span style="color:#6A737D">  # This is the closest Artillery equivalent of "login once per VU".</span></span>
+<span class="line"><span style="color:#E1E4E8">  - </span><span style="color:#85E89D">name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"login then many calls"</span></span>
+<span class="line"><span style="color:#85E89D">    weight</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">70</span></span>
+<span class="line"><span style="color:#85E89D">    flow</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">post</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">          url</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"/lab/auth/login"</span></span>
+<span class="line"><span style="color:#85E89D">          json</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">            username</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"burst-{{ $randomString() }}"</span></span>
+<span class="line"><span style="color:#85E89D">            password</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"pw"</span></span>
+<span class="line"><span style="color:#85E89D">          capture</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">            - </span><span style="color:#85E89D">json</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"$.token"</span></span>
+<span class="line"><span style="color:#85E89D">              as</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"token"</span></span>
+<span class="line"><span style="color:#85E89D">          expect</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">            - </span><span style="color:#85E89D">statusCode</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">200</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">      # Reuse the captured token for several /me calls before the VU exits.</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">loop</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">          - </span><span style="color:#85E89D">get</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">              url</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"/lab/auth/me"</span></span>
+<span class="line"><span style="color:#85E89D">              headers</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">                Authorization</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"Bearer {{ token }}"</span></span>
+<span class="line"><span style="color:#85E89D">              expect</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">                - </span><span style="color:#85E89D">statusCode</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">200</span></span>
+<span class="line"><span style="color:#85E89D">        count</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">5</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">  # Anti-pattern: each "iteration" (here, scenario invocation) does</span></span>
+<span class="line"><span style="color:#6A737D">  # exactly one login + one /me. Useful only when login is the focus.</span></span>
+<span class="line"><span style="color:#E1E4E8">  - </span><span style="color:#85E89D">name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"login per iteration"</span></span>
+<span class="line"><span style="color:#85E89D">    weight</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">30</span></span>
+<span class="line"><span style="color:#85E89D">    flow</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">post</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">          url</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"/lab/auth/login"</span></span>
+<span class="line"><span style="color:#85E89D">          json</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">            username</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"per-iter-{{ $randomString() }}"</span></span>
+<span class="line"><span style="color:#85E89D">            password</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"pw"</span></span>
+<span class="line"><span style="color:#85E89D">          capture</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">            - </span><span style="color:#85E89D">json</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"$.token"</span></span>
+<span class="line"><span style="color:#85E89D">              as</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"token"</span></span>
+<span class="line"><span style="color:#85E89D">          expect</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">            - </span><span style="color:#85E89D">statusCode</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">200</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">get</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">          url</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"/lab/auth/me"</span></span>
+<span class="line"><span style="color:#85E89D">          headers</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">            Authorization</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"Bearer {{ token }}"</span></span>
+<span class="line"><span style="color:#85E89D">          expect</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">            - </span><span style="color:#85E89D">statusCode</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">200</span></span>
+<span class="line"></span></code></pre>0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"kata":{"slug":"52-authentication-flows","number":52,"title":"Authentication Flows","phaseSlug":"phase-11-realistic-scenarios","phaseNumber":11,"phaseName":"Realistic Scenarios","readmeRaw":"$3","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"52-authentication-flows.test.js","content":"$4"}],"artilleryFiles":[{"filename":"52-authentication-flows.yml","content":"$5"}],"jmeterFiles":[]},"prev":{"slug":"51-parameterization-and-data-driven-tests","number":51,"title":"Parameterization and Data-Driven Tests","phaseSlug":"phase-11-realistic-scenarios","phaseNumber":11,"phaseName":"Realistic Scenarios","readmeRaw":"$6","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"51-parameterization-and-data-driven-tests.test.js","content":"$7"}],"artilleryFiles":[{"filename":"51-parameterization-and-data-driven-tests.yml","content":"$8"}],"jmeterFiles":[]},"next":{"slug":"53-fintech-kyc-at-scale","number":53,"title":"Fintech KYC at Scale","phaseSlug":"phase-11-realistic-scenarios","phaseNumber":11,"phaseName":"Realistic Scenarios","readmeRaw":"$9","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"53-fintech-kyc-at-scale.test.js","content":"$a"}],"artilleryFiles":[{"filename":"53-fintech-kyc-at-scale.yml","content":"$b"}],"jmeterFiles":[]},"frameworks":[{"id":"k6","label":"k6","files":[{"filename":"52-authentication-flows.test.js","html":"$c"}]},{"id":"artillery","label":"Artillery","files":[{"filename":"52-authentication-flows.yml","html":"$d"}]},{"id":"jmeter","label":"JMeter","files":[]},{"id":"playwright","label":"Playwright","files":[]},{"id":"cypress","label":"Cypress","files":[]}]}],["$Le"],"$Lf"]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"UzMlu93LkryOOruE2pxnW"}
+e:["$","script","script-0",{"src":"/qa-labs/_next/static/chunks/01luku1w1f06_.js","async":true}]
+f:["$","$L10",null,{"children":["$","$11",null,{"name":"Next.MetadataOutlet","children":"$@12"}]}]
+12:null

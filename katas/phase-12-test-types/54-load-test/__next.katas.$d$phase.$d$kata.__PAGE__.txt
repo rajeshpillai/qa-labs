@@ -1,0 +1,1039 @@
+1:"$Sreact.fragment"
+2:I[76750,["/qa-labs/_next/static/chunks/012xw9ydea0yn.js","/qa-labs/_next/static/chunks/0t2xr05rlu96l.js","/qa-labs/_next/static/chunks/0a55m.6s3qp~-.js","/qa-labs/_next/static/chunks/01luku1w1f06_.js"],"KataPageClient"]
+10:I[97367,["/qa-labs/_next/static/chunks/012xw9ydea0yn.js","/qa-labs/_next/static/chunks/0t2xr05rlu96l.js","/qa-labs/_next/static/chunks/0a55m.6s3qp~-.js"],"OutletBoundary"]
+11:"$Sreact.suspense"
+3:T18ce,# Kata 54: Load Test
+
+## What You Will Learn
+
+- What a **load test** actually measures (as opposed to stress, spike, or soak)
+- How to pick the right RPS target — production traffic × headroom factor
+- The "warm-up + plateau + drain" pattern as the standard load shape
+- Setting **realistic SLO-based thresholds** instead of arbitrary numbers
+- Why a passing load test still tells you nothing about your **breakpoint** (that's kata 55)
+
+## Prerequisites
+
+- Completed phase 11 (realistic scenarios, parameterization, auth)
+- The QA Labs server running
+
+## Concepts Explained
+
+### Five test types in one phase
+
+This phase has four katas covering five distinct test types. They use similar tooling but answer **different questions**:
+
+| Test type | Question it answers | Kata |
+|-----------|---------------------|------|
+| **Load** | Does the system meet its SLOs at expected production load? | **54 (this one)** |
+| **Stress** | What's the maximum sustainable load before SLOs break? | 55 |
+| **Breakpoint** | Where does the system actually fail (crash, timeout)? | 55 |
+| **Spike** | What happens when traffic jumps 10× in 30 seconds? | 56 |
+| **Soak** | Are there memory leaks / connection leaks under steady load for hours? | 57 |
+
+People run "load tests" without thinking and call any of the above a load test. Each one finds different bugs.
+
+### What a load test is
+
+> **A load test verifies that the system meets its SLOs under expected production traffic.**
+
+It's an **affirmative** test: "Yes, we can handle 500 RPS with p95 < 300ms and < 1% errors." Pass = ship. Fail = either the system regressed or the SLO needs revisiting.
+
+### Picking the load target
+
+Three numbers you need:
+
+1. **Peak production RPS.** From your monitoring (e.g., Grafana, Datadog). Look at the busiest hour of the busiest day in the last 30 days.
+2. **Headroom factor.** Usually 1.2–1.5×. You want to handle today's peak *plus* unexpected growth.
+3. **Duration.** Long enough to flush warm-up effects and gather statistically meaningful percentiles. **15–30 minutes** is typical; **5 minutes minimum** for a CI variant.
+
+Example: peak is 800 RPS, factor 1.25 → load test at **1000 RPS for 15 minutes**.
+
+### The standard load shape
+
+```
+RPS
+1000 │              ┌────────────────┐
+     │             ╱                  ╲
+ 800 │            ╱                    ╲
+     │           ╱                      ╲
+   0 │__________╱                        ╲__________
+     └────────────────────────────────────────────►
+        warm-up      plateau (assert here)   drain
+        ~1 min       ~13 min                  ~1 min
+```
+
+- **Warm-up** flushes cold caches, JIT compilation, connection pool. Don't assert on this period.
+- **Plateau** is where you assert. Tag this slice and write per-tag thresholds.
+- **Drain** ensures graceful shutdown — assert connection-close behavior here.
+
+### SLO-based thresholds
+
+Bad threshold:
+```javascript
+http_req_duration: ['p(95)<500']  // why 500ms? because it sounded round?
+```
+
+Good threshold:
+```javascript
+// SLO: p95 < 300ms (defined in our service contract)
+// Test threshold: 80% of SLO budget (gives headroom for noise)
+http_req_duration: ['p(95)<240']
+```
+
+Tying the threshold to a defined SLO makes the test result actionable: a breach means the SLO is at risk. Without an SLO, the threshold is opinion.
+
+### Common load-test pitfalls
+
+- **Treating max RPS as the load.** Max RPS is what you find with a stress test (kata 55). Production load is *typical* peak, not max.
+- **Asserting on whole-test data including warm-up.** Tag the plateau and assert only on the plateau samples.
+- **No `sleep()` in user-flow tests.** Real users have think time. See kata 53.
+- **Single-region test against multi-region service.** Make sure your load generator's network path resembles real users.
+
+## Exercises
+
+1. **Build the canonical load test.** 100 RPS, 1-minute warm-up to plateau, 3-minute plateau at 100 RPS, 30s drain. Tag the plateau samples. Threshold: `p(95)<300` on plateau only.
+2. **Tighten then break.** Drop the plateau threshold to `p(95)<150`. Run again. Did it pass? If yes, your service is faster than the SLO needs — discuss whether to tighten the SLO or save the headroom.
+3. **Add a per-endpoint slice.** Hit two endpoints (`/lab/echo` fast, `/lab/slow?ms=200` deliberately slow) at a 70/30 split. Threshold p95 *separately* per endpoint. Why is whole-test p95 misleading here?
+4. **What about the median?** Add `p(50)<50` for `/lab/echo`. Why might you assert both p50 and p95? Hint: a system can have great avg latency but a terrible long tail.
+
+## Common Mistakes
+
+- **Confusing load test with stress test.** Load = "can we handle today's traffic?" Stress = "how much can we handle?"
+- **One run is not a benchmark.** Latency varies between runs — establish a baseline by averaging 3+ runs before fighting noise.
+- **Tightening thresholds to "make the test feel meaningful."** That's a recipe for flaky CI. Anchor to SLOs.
+- **Running load tests in production without coordination.** Real-world consequence: you DOS your own users. Use a load environment that mirrors prod, not prod itself.
+
+## Cheat Sheet
+
+```javascript
+// k6 load test skeleton
+import { tagWithCurrentStageProfile } from 'k6/execution';  // experimental
+
+export const options = {
+  scenarios: {
+    realistic_load: {
+      executor: 'ramping-arrival-rate',
+      startRate: 0,
+      timeUnit: '1s',
+      preAllocatedVUs: 100,
+      maxVUs: 200,
+      stages: [
+        { duration: '1m', target: 100 },   // warm-up
+        { duration: '3m', target: 100 },   // plateau ← assert here
+        { duration: '30s', target: 0 },    // drain
+      ],
+    },
+  },
+  thresholds: {
+    // Use { aborOnFail: true } in CI to fail fast
+    'http_req_duration{phase:plateau}': [{ threshold: 'p(95)<300', abortOnFail: false }],
+    'http_req_failed': ['rate<0.01'],
+  },
+};
+```
+
+| Step | Why |
+|------|-----|
+| Use **open model** (`ramping-arrival-rate`) | Closed model bottlenecks on VU count under slowdown |
+| Tag the plateau | Assert only on representative data |
+| Threshold ties to SLO | Result is actionable, not opinion |
+| Multiple runs for baseline | Single-run data is noise |
+4:T89e,// Kata 54 — Load Test (k6 solution)
+//
+// Canonical load shape: ramp → plateau → drain.
+// Asserts SLO-aligned thresholds against the plateau slice only,
+// excluding warm-up samples that would distort percentiles.
+//
+// Total runtime ~2.5 min. Increase plateau duration in real CI.
+
+import http from 'k6/http';
+import { check } from 'k6';
+
+const BASE_URL = __ENV.K6_BASE_URL || 'http://localhost:3000';
+
+// SLO definitions — tied to a (hypothetical) service contract.
+// In a real project, these come from your service's published SLO.
+const SLO_P95_MS = 300;
+const SLO_ERROR_RATE = 0.01;
+
+// Test thresholds use 80% of SLO budget for headroom.
+const TEST_P95_MS = Math.floor(SLO_P95_MS * 0.8);
+
+export const options = {
+  scenarios: {
+    realistic_load: {
+      executor: 'ramping-arrival-rate',
+      startRate: 0,
+      timeUnit: '1s',
+      preAllocatedVUs: 50,
+      maxVUs: 100,
+      stages: [
+        { duration: '20s', target: 100 },  // warm-up: 0 → 100 RPS
+        { duration: '90s', target: 100 },  // plateau: 100 RPS sustained ← assert here
+        { duration: '20s', target: 0 },    // drain
+      ],
+    },
+  },
+  thresholds: {
+    // Whole-test threshold: more generous, accounts for warm-up and drain.
+    'http_req_duration': [`p(95)<${SLO_P95_MS * 1.5}`],
+    // Plateau-only threshold: tight, SLO-aligned.
+    [`http_req_duration{phase:plateau}`]: [`p(95)<${TEST_P95_MS}`],
+    'http_req_failed': [`rate<${SLO_ERROR_RATE}`],
+  },
+};
+
+const TEST_START_MS = Date.now();
+const WARMUP_END_MS = 20_000;
+const PLATEAU_END_MS = WARMUP_END_MS + 90_000;
+
+function currentPhase() {
+  const elapsed = Date.now() - TEST_START_MS;
+  if (elapsed < WARMUP_END_MS) return 'warmup';
+  if (elapsed < PLATEAU_END_MS) return 'plateau';
+  return 'drain';
+}
+
+export default function () {
+  const phase = currentPhase();
+  // Mix of endpoints: 70% fast (/lab/echo), 30% slow (/lab/jitter)
+  // — represents a typical traffic mix, not a single endpoint.
+  const url =
+    Math.random() < 0.7
+      ? `${BASE_URL}/lab/echo`
+      : `${BASE_URL}/lab/jitter?p50=80&p95=200`;
+
+  const res = http.get(url, { tags: { phase } });
+  check(res, {
+    'status is 200': (r) => r.status === 200,
+  });
+}
+5:T404,# Kata 54 — Load Test (Artillery solution)
+#
+# Same shape as the k6 solution — warm-up, plateau, drain. Artillery's
+# `phases` are open-model by default, which is what you want for a
+# load test. The `ensure` block at the end uses overall test stats
+# (Artillery doesn't support per-phase tagged thresholds the way k6 does).
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 20
+      arrivalRate: 5
+      rampTo: 100
+      name: "warm-up"
+
+    - duration: 90
+      arrivalRate: 100
+      name: "plateau"
+
+    - duration: 20
+      arrivalRate: 100
+      rampTo: 0
+      name: "drain"
+
+  ensure:
+    # SLO-aligned threshold (whole-test, can't slice by phase here)
+    p95: 300
+    maxErrorRate: 1
+
+scenarios:
+  - name: "fast endpoint"
+    weight: 70
+    flow:
+      - get:
+          url: "/lab/echo"
+          expect:
+            - statusCode: 200
+
+  - name: "slower endpoint"
+    weight: 30
+    flow:
+      - get:
+          url: "/lab/jitter?p50=80&p95=200"
+          expect:
+            - statusCode: 200
+6:T17d1,# Kata 53: Fintech KYC at Scale
+
+## What You Will Learn
+
+- How to model a **multi-step user journey** as a single perf scenario
+- **Capturing IDs** between requests (the response of step 1 feeds the URL of step 2)
+- **Think time** — `sleep()` between steps to mimic real users
+- **Per-step assertions and timings** — measure each leg of the funnel separately
+- Building a **scenario weighting** profile that mirrors production: 80% complete, 10% bail at docs, 10% bail at video
+- Reading **funnel completion rates** from custom metrics — your business cares about this number, not p95
+
+## Prerequisites
+
+- Completed [Kata 51](../51-parameterization-and-data-driven-tests/) and [Kata 52](../52-authentication-flows/)
+- The QA Labs server running — exposes `/lab/kyc/*` (apply → documents → video → decision)
+
+## Concepts Explained
+
+### The KYC funnel
+
+Most fintech onboarding flows look like this:
+
+```
+Apply  →  Upload docs  →  Video verify  →  Decision
+ 90%        85%             80%             75%
+```
+
+Each arrow is a drop-off. A perf test that goes **all the way through** every iteration ignores reality. You'd test the decision endpoint at 100% of traffic when production sees only 75%.
+
+### Modeling the funnel in k6
+
+Three approaches:
+
+#### 1. Single scenario, capture IDs along the way
+
+```javascript
+export default function () {
+  const apply = http.post(`${BASE_URL}/lab/kyc/apply`, JSON.stringify({ user: `u-${__VU}` }), opts);
+  const id = apply.json('id');
+
+  http.post(`${BASE_URL}/lab/kyc/${id}/documents`);
+  http.post(`${BASE_URL}/lab/kyc/${id}/video`);
+  http.post(`${BASE_URL}/lab/kyc/${id}/decision`);
+}
+```
+
+Simple, but every iteration goes through 100% of the funnel. Doesn't match reality.
+
+#### 2. Multiple scenarios with weighted volume
+
+```javascript
+export const options = {
+  scenarios: {
+    completes:        { executor: 'constant-arrival-rate', rate: 75, ... exec: 'fullFlow' },
+    bails_at_docs:    { executor: 'constant-arrival-rate', rate: 15, ... exec: 'bailDocs' },
+    bails_at_video:   { executor: 'constant-arrival-rate', rate: 5,  ... exec: 'bailVideo' },
+    bails_at_apply:   { executor: 'constant-arrival-rate', rate: 5,  ... exec: 'bailApply' },
+  },
+};
+```
+
+Each scenario does a different prefix of the funnel. The `rate` per scenario adds up to 100 RPS, mimicking production drop-off. **This is the right way.**
+
+#### 3. Single scenario with branching probability
+
+```javascript
+export default function () {
+  const id = doApply();
+  if (Math.random() > 0.10) doDocuments(id);
+  else return;
+  if (Math.random() > 0.05) doVideo(id);
+  else return;
+  doDecision(id);
+}
+```
+
+Cheap to write, gives you the same drop-off pattern. Loses the per-stage-scenario metrics k6 produces automatically.
+
+### Think time — `sleep()` between steps
+
+Real users don't paste their ID, upload a doc, and complete a video selfie in 200ms. They take seconds-to-minutes between steps. Without `sleep()`, every VU hammers the system as fast as possible — producing spikes the system never sees in production.
+
+```javascript
+import { sleep } from 'k6';
+
+http.post(`/lab/kyc/${id}/documents`);
+sleep(2 + Math.random() * 5);  // 2–7s of "user thinking"
+http.post(`/lab/kyc/${id}/video`);
+```
+
+**Don't go overboard with sleep.** If sleep dominates the iteration time, you need vastly more VUs to maintain RPS — and you're then spending memory just to wait around. Use the **open-model executors** (`constant-arrival-rate`) which don't care about per-iteration time.
+
+### Per-step timings via `Trend`
+
+You want to know p95 of each leg of the funnel separately. Use a `Trend` metric per step:
+
+```javascript
+import { Trend } from 'k6/metrics';
+const tApply = new Trend('kyc_apply_ms', true);
+const tDocs = new Trend('kyc_documents_ms', true);
+const tVideo = new Trend('kyc_video_ms', true);
+const tDecision = new Trend('kyc_decision_ms', true);
+
+const res = http.post(/* apply */);
+tApply.add(res.timings.duration);
+```
+
+Then thresholds per step:
+
+```javascript
+thresholds: {
+  'kyc_apply_ms': ['p(95)<150'],
+  'kyc_documents_ms': ['p(95)<300'],
+  'kyc_video_ms': ['p(95)<1000'],
+  'kyc_decision_ms': ['p(95)<500'],
+}
+```
+
+If `kyc_video_ms` is the only one breaching, you know exactly which step regressed.
+
+### Funnel completion rate
+
+Track it as a `Rate`:
+
+```javascript
+import { Rate } from 'k6/metrics';
+const completion = new Rate('kyc_completion');
+
+// at the end of fullFlow:
+completion.add(true);
+
+// in any bail-out scenario:
+completion.add(false);
+```
+
+Threshold: `'kyc_completion': ['rate>0.70']`. This is the *business* assertion — fail the perf test if the funnel completion rate drops below acceptable, regardless of latency.
+
+## Exercises
+
+1. **Build the weighted funnel.** Replicate the 75/15/5/5 split using four `constant-arrival-rate` scenarios. Total 100 RPS for 30 seconds.
+2. **Add per-step think time.** 1–3s after apply, 3–8s after documents (uploads are slow), 5–15s after video.
+3. **Measure funnel time end-to-end.** Custom Trend `kyc_total_funnel_ms` for VUs that complete. Compare to sum of per-step times — gap is total think time.
+4. **Asymmetric latency.** What if `/lab/kyc/:id/decision` becomes 2× slower? Which threshold catches it first? Which catches it most clearly?
+
+## Common Mistakes
+
+- **Treating the whole flow as one HTTP request.** The flow is a sequence of HTTP requests; each has its own latency story.
+- **Going 100% through every iteration.** Doesn't match production traffic shape; over-tests downstream steps.
+- **No think time.** Hammers the system at iteration speed — every VU slams documents+video back-to-back.
+- **One Trend for the whole flow.** Hides which step regressed.
+
+## Cheat Sheet
+
+| Concept | k6 mechanism |
+|---------|--------------|
+| Capture ID from response 1, use in URL of response 2 | `const id = res.json('id'); http.post(\`.../${id}/...\`)` |
+| Think time | `sleep(seconds)` |
+| Per-step latency | One `Trend` per step, threshold per metric |
+| Funnel weight | Multiple scenarios with different `rate` |
+| Drop-off rate | `Rate` metric, threshold `rate>0.X` |
+7:T11a0,// Kata 53 — Fintech KYC at Scale (k6 solution)
+//
+// Models a realistic KYC funnel with weighted drop-off:
+//   75% complete the whole flow
+//   15% bail after documents
+//   5%  bail after video
+//   5%  bail right after apply
+//
+// Each step has its own custom Trend metric and threshold so a regression
+// in one leg of the funnel is immediately visible. Includes realistic
+// think time between steps.
+
+import http from 'k6/http';
+import { check, sleep } from 'k6';
+import { Rate, Trend } from 'k6/metrics';
+
+const BASE_URL = __ENV.K6_BASE_URL || 'http://localhost:3000';
+
+// Per-step timing metrics. The `true` flag formats values as milliseconds
+// in the summary output.
+const tApply = new Trend('kyc_apply_ms', true);
+const tDocs = new Trend('kyc_documents_ms', true);
+const tVideo = new Trend('kyc_video_ms', true);
+const tDecision = new Trend('kyc_decision_ms', true);
+
+// Funnel completion rate — the business metric.
+const completion = new Rate('kyc_completion');
+
+export const options = {
+  scenarios: {
+    full_flow: {
+      executor: 'constant-arrival-rate',
+      rate: 30,
+      timeUnit: '1s',
+      duration: '30s',
+      preAllocatedVUs: 60,
+      maxVUs: 120,
+      exec: 'fullFlow',
+    },
+    bail_at_video: {
+      executor: 'constant-arrival-rate',
+      rate: 5,
+      timeUnit: '1s',
+      duration: '30s',
+      preAllocatedVUs: 15,
+      exec: 'bailAtVideo',
+    },
+    bail_at_documents: {
+      executor: 'constant-arrival-rate',
+      rate: 10,
+      timeUnit: '1s',
+      duration: '30s',
+      preAllocatedVUs: 25,
+      exec: 'bailAtDocs',
+    },
+    bail_at_apply: {
+      executor: 'constant-arrival-rate',
+      rate: 5,
+      timeUnit: '1s',
+      duration: '30s',
+      preAllocatedVUs: 10,
+      exec: 'bailAtApply',
+    },
+  },
+  thresholds: {
+    // Per-step latency targets — tighter for faster steps.
+    'kyc_apply_ms': ['p(95)<200'],
+    'kyc_documents_ms': ['p(95)<400'],
+    'kyc_video_ms': ['p(95)<1500'],
+    'kyc_decision_ms': ['p(95)<800'],
+    // Business metric: at least 70% of started applications complete.
+    'kyc_completion': ['rate>0.70'],
+    'http_req_failed': ['rate<0.01'],
+  },
+};
+
+function apply() {
+  const start = Date.now();
+  const res = http.post(
+    `${BASE_URL}/lab/kyc/apply`,
+    JSON.stringify({ user: `applicant-${__VU}-${__ITER}` }),
+    { headers: { 'Content-Type': 'application/json' }, tags: { step: 'apply' } }
+  );
+  tApply.add(Date.now() - start);
+  check(res, { 'apply status is 200': (r) => r.status === 200 });
+  return res.status === 200 ? res.json('id') : null;
+}
+
+function uploadDocs(id) {
+  const start = Date.now();
+  const res = http.post(
+    `${BASE_URL}/lab/kyc/${id}/documents`,
+    null,
+    { tags: { step: 'documents' } }
+  );
+  tDocs.add(Date.now() - start);
+  return check(res, { 'documents status is 200': (r) => r.status === 200 });
+}
+
+function videoVerify(id) {
+  const start = Date.now();
+  const res = http.post(
+    `${BASE_URL}/lab/kyc/${id}/video`,
+    null,
+    { tags: { step: 'video' } }
+  );
+  tVideo.add(Date.now() - start);
+  return check(res, { 'video status is 200': (r) => r.status === 200 });
+}
+
+function decide(id) {
+  const start = Date.now();
+  const res = http.post(
+    `${BASE_URL}/lab/kyc/${id}/decision`,
+    null,
+    { tags: { step: 'decision' } }
+  );
+  tDecision.add(Date.now() - start);
+  return check(res, { 'decision status is 200': (r) => r.status === 200 });
+}
+
+// Realistic think time between steps. `sleep()` blocks the iteration —
+// open-model executors compensate by spinning up more VUs as needed.
+function think(min, max) {
+  sleep(min + Math.random() * (max - min));
+}
+
+export function fullFlow() {
+  const id = apply();
+  if (!id) return completion.add(false);
+
+  think(1, 3);
+  if (!uploadDocs(id)) return completion.add(false);
+
+  think(3, 8);
+  if (!videoVerify(id)) return completion.add(false);
+
+  think(2, 5);
+  if (!decide(id)) return completion.add(false);
+
+  completion.add(true);
+}
+
+export function bailAtVideo() {
+  const id = apply();
+  if (!id) return completion.add(false);
+  think(1, 3);
+  uploadDocs(id);
+  think(3, 8);
+  videoVerify(id);
+  // User abandons after video — no decision call.
+  completion.add(false);
+}
+
+export function bailAtDocs() {
+  const id = apply();
+  if (!id) return completion.add(false);
+  think(1, 3);
+  uploadDocs(id);
+  // User abandons after docs.
+  completion.add(false);
+}
+
+export function bailAtApply() {
+  apply();
+  // User starts the application but never uploads anything.
+  completion.add(false);
+}
+8:T8d0,# Kata 53 — Fintech KYC at Scale (Artillery solution)
+#
+# Same weighted-funnel idea as the k6 solution, but using Artillery's
+# scenario `weight` to model drop-off. Artillery doesn't have first-class
+# custom metrics like k6, so per-step latency observability is weaker —
+# this is a deliberate teaching point in the kata.
+#
+# Each scenario captures the application id and chains requests with
+# `think` blocks for realistic pacing.
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 30
+      arrivalRate: 50
+      name: "main"
+  ensure:
+    p95: 1500
+    maxErrorRate: 1
+
+scenarios:
+  - name: "full flow"
+    weight: 75
+    flow:
+      - post:
+          url: "/lab/kyc/apply"
+          json:
+            user: "applicant-{{ $randomString() }}"
+          capture:
+            - json: "$.id"
+              as: "appId"
+          expect:
+            - statusCode: 200
+      - think: 2
+
+      - post:
+          url: "/lab/kyc/{{ appId }}/documents"
+          expect:
+            - statusCode: 200
+      - think: 5
+
+      - post:
+          url: "/lab/kyc/{{ appId }}/video"
+          expect:
+            - statusCode: 200
+      - think: 3
+
+      - post:
+          url: "/lab/kyc/{{ appId }}/decision"
+          expect:
+            - statusCode: 200
+
+  - name: "bail at video"
+    weight: 5
+    flow:
+      - post:
+          url: "/lab/kyc/apply"
+          json:
+            user: "applicant-{{ $randomString() }}"
+          capture:
+            - json: "$.id"
+              as: "appId"
+      - think: 2
+      - post:
+          url: "/lab/kyc/{{ appId }}/documents"
+      - think: 5
+      - post:
+          url: "/lab/kyc/{{ appId }}/video"
+      # User abandons — no decision call
+
+  - name: "bail at documents"
+    weight: 15
+    flow:
+      - post:
+          url: "/lab/kyc/apply"
+          json:
+            user: "applicant-{{ $randomString() }}"
+          capture:
+            - json: "$.id"
+              as: "appId"
+      - think: 2
+      - post:
+          url: "/lab/kyc/{{ appId }}/documents"
+      # User abandons after upload
+
+  - name: "bail at apply"
+    weight: 5
+    flow:
+      - post:
+          url: "/lab/kyc/apply"
+          json:
+            user: "applicant-{{ $randomString() }}"
+      # Started but never uploaded
+9:T15ce,# Kata 55: Stress and Breakpoint Test
+
+## What You Will Learn
+
+- The difference between **stress test** (find the SLO breaking point) and **breakpoint test** (find the actual failure point)
+- The standard staircase pattern: incremental RPS steps with stable plateaus
+- How to detect "knee of the curve" — the RPS where latency starts climbing nonlinearly
+- Reading a stress-test result: capacity, breakpoint, recovery
+- When to **abort early** vs when to keep pushing
+
+## Prerequisites
+
+- Completed [Kata 54 (Load Test)](../54-load-test/)
+- The QA Labs server running
+
+## Concepts Explained
+
+### Two related but distinct tests
+
+| | Stress test | Breakpoint test |
+|---|---|---|
+| **Question** | What's the highest RPS we can handle while still meeting SLOs? | What RPS does the system actually fail at? |
+| **What you change** | Slowly ramp RPS upward | Aggressively ramp RPS until something breaks |
+| **What you measure** | RPS at which p95 exceeds SLO | RPS at which errors spike or service crashes |
+| **End state** | System still alive, just over-SLO | System genuinely degraded — timeouts, 5xx flood, OOM |
+
+The two often run together: a stress test finds the **soft limit** (SLO breach), a breakpoint test continues past it to find the **hard limit** (failure).
+
+### The staircase pattern
+
+```
+RPS
+1000 │                                       ┌────
+     │                                  ┌────┘
+ 800 │                             ┌────┘
+     │                        ┌────┘
+ 600 │                   ┌────┘
+     │              ┌────┘
+ 400 │         ┌────┘
+     │    ┌────┘
+ 200 │────┘
+     └─────────────────────────────────────────────►
+        time
+```
+
+Each step holds for ~1 minute. Why hold? You need enough samples to compute a stable p95 *at this RPS level* before moving on. Otherwise you can't tell whether p95 climbed because the system is struggling or because the sample size was small.
+
+### Reading the result
+
+After a stress test, your output looks like this (idealized):
+
+```
+RPS:    100  200  300  400  500  600  700  800   900  1000
+p95:    50   55   60   65   80   140  280  450  9999  9999  ← timeouts
+errors:  0    0    0    0    0    0    1%   3%   45%   ~100%
+```
+
+Three regions:
+- **100–500 RPS**: latency flat, errors ~0. **Capacity headroom.**
+- **600–800 RPS**: latency climbing, occasional errors. **Knee of the curve** — system is struggling.
+- **900+ RPS**: cascading failure. **Breakpoint.**
+
+### When to abort early
+
+A k6 threshold like `'http_req_failed': ['rate<0.5']` with `abortOnFail: true` will stop the test once half the requests are failing. This is good etiquette — there's no point pushing a system that's already broken.
+
+```javascript
+thresholds: {
+  'http_req_failed': [{ threshold: 'rate<0.50', abortOnFail: true, delayAbortEval: '30s' }],
+},
+```
+
+`delayAbortEval` gives a grace period at startup so initial cold-start failures don't trigger the abort.
+
+### What you actually do with the result
+
+Three numbers come out:
+
+1. **Capacity ceiling** — highest RPS where SLO held (e.g., 500 RPS).
+2. **Knee** — RPS where p95 starts climbing (e.g., 600 RPS).
+3. **Breakpoint** — RPS where the system fails outright (e.g., 900 RPS).
+
+Use them to:
+- Set autoscaling thresholds (scale before knee, target capacity ceiling).
+- Set rate limits (block traffic above breakpoint, accept above capacity).
+- Estimate Black-Friday headroom (capacity ÷ peak production RPS).
+
+### The QA Labs server is too small for a real breakpoint
+
+A Node Express server on a laptop will tap out around a few thousand RPS. The kata uses modest numbers (50 → 500 RPS) — in production, your numbers will be much bigger. The pattern is the same.
+
+## Exercises
+
+1. **Build the staircase.** 8 steps, 50 RPS each, 30s per step, hitting `/lab/jitter?p50=50&p95=200`. At which step does p95 cross 500ms?
+2. **Add abort-on-fail.** Set `'http_req_failed': [{ threshold: 'rate<0.10', abortOnFail: true }]`. Does it kick in before you reach the top step?
+3. **Find the knee in a slow endpoint.** Repeat with `/lab/slow?ms=300` (already slow at 1 RPS). The knee should appear earlier — why?
+4. **Difference between stress and load.** Compare your kata 54 load test result and the same RPS step from this stress test. Same throughput, same endpoint — should produce same p95. Did it?
+
+## Common Mistakes
+
+- **No plateau between steps.** Without holding RPS steady at each step for at least 30s, you can't tell capacity from noise.
+- **No abort on fail.** Test runs for 30 minutes against a system that crashed at minute 3. Wastes resources.
+- **Reporting only the breakpoint.** "We can handle 900 RPS!" is misleading if SLO breaks at 600. Report capacity (500), knee (600), and breakpoint (900) separately.
+- **Comparing stress-test results across different infra sizes.** Doubling the box doesn't necessarily double capacity — depends on bottleneck (CPU, IO, locks).
+
+## Cheat Sheet
+
+| Stage | What you observe | Action |
+|-------|------------------|--------|
+| Below capacity | Flat p95, 0 errors | "Headroom" — fine for production |
+| At capacity | p95 starts to creep | This is your **autoscale-up** signal |
+| Knee | p95 climbing, scattered errors | Production should never be here |
+| Past knee | Cascading errors | Add rate limit / circuit breaker |
+| Breakpoint | Service unusable | Document; test recovery (kata 70) |
+a:T894,// Kata 55 — Stress and Breakpoint Test (k6 solution)
+//
+// Staircase pattern: 50 → 500 RPS in 50-step increments, holding each
+// step for 30s to gather stable percentiles. Aborts early if error
+// rate climbs over 50% — no point continuing past breakpoint.
+//
+// Tag each step so the summary shows per-step latency. After running,
+// scan the per-step p(95) values to identify capacity, knee, breakpoint.
+
+import http from 'k6/http';
+import { check } from 'k6';
+
+const BASE_URL = __ENV.K6_BASE_URL || 'http://localhost:3000';
+const STEPS = [50, 100, 150, 200, 250, 300, 350, 400, 450, 500];
+const STEP_DURATION_S = 30;
+
+// Build the stages array dynamically — small ramp between each step,
+// then sustained plateau.
+function buildStages() {
+  const stages = [];
+  let prev = 0;
+  for (const target of STEPS) {
+    stages.push({ duration: '5s', target });           // brief ramp
+    stages.push({ duration: `${STEP_DURATION_S}s`, target });  // plateau
+    prev = target;
+  }
+  return stages;
+}
+
+export const options = {
+  scenarios: {
+    staircase: {
+      executor: 'ramping-arrival-rate',
+      startRate: 0,
+      timeUnit: '1s',
+      preAllocatedVUs: 100,
+      maxVUs: 500,
+      stages: buildStages(),
+    },
+  },
+  thresholds: {
+    // Abort the test if error rate exceeds 50% — system is broken,
+    // no point pushing further. delayAbortEval gives 10s grace at start.
+    'http_req_failed': [
+      {
+        threshold: 'rate<0.50',
+        abortOnFail: true,
+        delayAbortEval: '10s',
+      },
+    ],
+    // Whole-test threshold — informational, won't fail the test.
+    'http_req_duration': ['p(95)<5000'],
+  },
+};
+
+const TEST_START = Date.now();
+
+// Compute the current step based on elapsed time.
+// Each step is (5s ramp + 30s plateau) = 35s.
+function currentStep() {
+  const elapsedMs = Date.now() - TEST_START;
+  const stepIndex = Math.floor(elapsedMs / 35_000);
+  return STEPS[Math.min(stepIndex, STEPS.length - 1)];
+}
+
+export default function () {
+  const step = currentStep();
+  const res = http.get(`${BASE_URL}/lab/jitter?p50=50&p95=200`, {
+    tags: { step: `rps_${step}` },
+  });
+  check(res, {
+    'status is 200': (r) => r.status === 200,
+  });
+}
+b:T57e,# Kata 55 — Stress and Breakpoint Test (Artillery solution)
+#
+# Same staircase pattern as the k6 solution. Each phase is a step in the
+# staircase. Artillery doesn't have a built-in "abort on error rate"
+# mechanism — if the system breaks at step 6 you'll keep pushing until
+# the test ends naturally. For abort-on-fail, prefer k6.
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 30
+      arrivalRate: 50
+      name: "step-50"
+    - duration: 30
+      arrivalRate: 100
+      name: "step-100"
+    - duration: 30
+      arrivalRate: 150
+      name: "step-150"
+    - duration: 30
+      arrivalRate: 200
+      name: "step-200"
+    - duration: 30
+      arrivalRate: 250
+      name: "step-250"
+    - duration: 30
+      arrivalRate: 300
+      name: "step-300"
+    - duration: 30
+      arrivalRate: 350
+      name: "step-350"
+    - duration: 30
+      arrivalRate: 400
+      name: "step-400"
+    - duration: 30
+      arrivalRate: 450
+      name: "step-450"
+    - duration: 30
+      arrivalRate: 500
+      name: "step-500"
+
+  ensure:
+    # Whole-test ensure — informational. Real analysis needs per-step
+    # data which Artillery prints in the summary but doesn't expose
+    # cleanly to ensure rules.
+    p95: 5000
+    maxErrorRate: 50
+
+scenarios:
+  - name: "stress probe"
+    flow:
+      - get:
+          url: "/lab/jitter?p50=50&p95=200"
+          expect:
+            - statusCode: 200
+c:T2dca,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#6A737D">// Kata 54 — Load Test (k6 solution)</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// Canonical load shape: ramp → plateau → drain.</span></span>
+<span class="line"><span style="color:#6A737D">// Asserts SLO-aligned thresholds against the plateau slice only,</span></span>
+<span class="line"><span style="color:#6A737D">// excluding warm-up samples that would distort percentiles.</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// Total runtime ~2.5 min. Increase plateau duration in real CI.</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> http </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> 'k6/http'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { check } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> 'k6'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> BASE_URL</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> __ENV.</span><span style="color:#79B8FF">K6_BASE_URL</span><span style="color:#F97583"> ||</span><span style="color:#9ECBFF"> 'http://localhost:3000'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// SLO definitions — tied to a (hypothetical) service contract.</span></span>
+<span class="line"><span style="color:#6A737D">// In a real project, these come from your service's published SLO.</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> SLO_P95_MS</span><span style="color:#F97583"> =</span><span style="color:#79B8FF"> 300</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> SLO_ERROR_RATE</span><span style="color:#F97583"> =</span><span style="color:#79B8FF"> 0.01</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">// Test thresholds use 80% of SLO budget for headroom.</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> TEST_P95_MS</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> Math.</span><span style="color:#B392F0">floor</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">SLO_P95_MS</span><span style="color:#F97583"> *</span><span style="color:#79B8FF"> 0.8</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> const</span><span style="color:#79B8FF"> options</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">  scenarios: {</span></span>
+<span class="line"><span style="color:#E1E4E8">    realistic_load: {</span></span>
+<span class="line"><span style="color:#E1E4E8">      executor: </span><span style="color:#9ECBFF">'ramping-arrival-rate'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      startRate: </span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      timeUnit: </span><span style="color:#9ECBFF">'1s'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      preAllocatedVUs: </span><span style="color:#79B8FF">50</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      maxVUs: </span><span style="color:#79B8FF">100</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      stages: [</span></span>
+<span class="line"><span style="color:#E1E4E8">        { duration: </span><span style="color:#9ECBFF">'20s'</span><span style="color:#E1E4E8">, target: </span><span style="color:#79B8FF">100</span><span style="color:#E1E4E8"> },  </span><span style="color:#6A737D">// warm-up: 0 → 100 RPS</span></span>
+<span class="line"><span style="color:#E1E4E8">        { duration: </span><span style="color:#9ECBFF">'90s'</span><span style="color:#E1E4E8">, target: </span><span style="color:#79B8FF">100</span><span style="color:#E1E4E8"> },  </span><span style="color:#6A737D">// plateau: 100 RPS sustained ← assert here</span></span>
+<span class="line"><span style="color:#E1E4E8">        { duration: </span><span style="color:#9ECBFF">'20s'</span><span style="color:#E1E4E8">, target: </span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8"> },    </span><span style="color:#6A737D">// drain</span></span>
+<span class="line"><span style="color:#E1E4E8">      ],</span></span>
+<span class="line"><span style="color:#E1E4E8">    },</span></span>
+<span class="line"><span style="color:#E1E4E8">  },</span></span>
+<span class="line"><span style="color:#E1E4E8">  thresholds: {</span></span>
+<span class="line"><span style="color:#6A737D">    // Whole-test threshold: more generous, accounts for warm-up and drain.</span></span>
+<span class="line"><span style="color:#9ECBFF">    'http_req_duration'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">`p(95)&#x3C;${</span><span style="color:#79B8FF">SLO_P95_MS</span><span style="color:#F97583"> *</span><span style="color:#79B8FF"> 1.5</span><span style="color:#9ECBFF">}`</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#6A737D">    // Plateau-only threshold: tight, SLO-aligned.</span></span>
+<span class="line"><span style="color:#E1E4E8">    [</span><span style="color:#9ECBFF">`http_req_duration{phase:plateau}`</span><span style="color:#E1E4E8">]: [</span><span style="color:#9ECBFF">`p(95)&#x3C;${</span><span style="color:#79B8FF">TEST_P95_MS</span><span style="color:#9ECBFF">}`</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#9ECBFF">    'http_req_failed'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">`rate&#x3C;${</span><span style="color:#79B8FF">SLO_ERROR_RATE</span><span style="color:#9ECBFF">}`</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#E1E4E8">  },</span></span>
+<span class="line"><span style="color:#E1E4E8">};</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> TEST_START_MS</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> Date.</span><span style="color:#B392F0">now</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> WARMUP_END_MS</span><span style="color:#F97583"> =</span><span style="color:#79B8FF"> 20_000</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> PLATEAU_END_MS</span><span style="color:#F97583"> =</span><span style="color:#79B8FF"> WARMUP_END_MS</span><span style="color:#F97583"> +</span><span style="color:#79B8FF"> 90_000</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">function</span><span style="color:#B392F0"> currentPhase</span><span style="color:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> elapsed</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> Date.</span><span style="color:#B392F0">now</span><span style="color:#E1E4E8">() </span><span style="color:#F97583">-</span><span style="color:#79B8FF"> TEST_START_MS</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">  if</span><span style="color:#E1E4E8"> (elapsed </span><span style="color:#F97583">&#x3C;</span><span style="color:#79B8FF"> WARMUP_END_MS</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">return</span><span style="color:#9ECBFF"> 'warmup'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">  if</span><span style="color:#E1E4E8"> (elapsed </span><span style="color:#F97583">&#x3C;</span><span style="color:#79B8FF"> PLATEAU_END_MS</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">return</span><span style="color:#9ECBFF"> 'plateau'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">  return</span><span style="color:#9ECBFF"> 'drain'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> default</span><span style="color:#F97583"> function</span><span style="color:#E1E4E8"> () {</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> phase</span><span style="color:#F97583"> =</span><span style="color:#B392F0"> currentPhase</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#6A737D">  // Mix of endpoints: 70% fast (/lab/echo), 30% slow (/lab/jitter)</span></span>
+<span class="line"><span style="color:#6A737D">  // — represents a typical traffic mix, not a single endpoint.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> url</span><span style="color:#F97583"> =</span></span>
+<span class="line"><span style="color:#E1E4E8">    Math.</span><span style="color:#B392F0">random</span><span style="color:#E1E4E8">() </span><span style="color:#F97583">&#x3C;</span><span style="color:#79B8FF"> 0.7</span></span>
+<span class="line"><span style="color:#F97583">      ?</span><span style="color:#9ECBFF"> `${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/echo`</span></span>
+<span class="line"><span style="color:#F97583">      :</span><span style="color:#9ECBFF"> `${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/jitter?p50=80&#x26;p95=200`</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> res</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> http.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(url, { tags: { phase } });</span></span>
+<span class="line"><span style="color:#B392F0">  check</span><span style="color:#E1E4E8">(res, {</span></span>
+<span class="line"><span style="color:#9ECBFF">    'status is 200'</span><span style="color:#E1E4E8">: (</span><span style="color:#FFAB70">r</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> r.status </span><span style="color:#F97583">===</span><span style="color:#79B8FF"> 200</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span></code></pre>d:T1715,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#6A737D"># Kata 54 — Load Test (Artillery solution)</span></span>
+<span class="line"><span style="color:#6A737D">#</span></span>
+<span class="line"><span style="color:#6A737D"># Same shape as the k6 solution — warm-up, plateau, drain. Artillery's</span></span>
+<span class="line"><span style="color:#6A737D"># `phases` are open-model by default, which is what you want for a</span></span>
+<span class="line"><span style="color:#6A737D"># load test. The `ensure` block at the end uses overall test stats</span></span>
+<span class="line"><span style="color:#6A737D"># (Artillery doesn't support per-phase tagged thresholds the way k6 does).</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#85E89D">config</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">  target</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"http://localhost:3000"</span></span>
+<span class="line"><span style="color:#85E89D">  phases</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">    - </span><span style="color:#85E89D">duration</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">20</span></span>
+<span class="line"><span style="color:#85E89D">      arrivalRate</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">5</span></span>
+<span class="line"><span style="color:#85E89D">      rampTo</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">100</span></span>
+<span class="line"><span style="color:#85E89D">      name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"warm-up"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    - </span><span style="color:#85E89D">duration</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">90</span></span>
+<span class="line"><span style="color:#85E89D">      arrivalRate</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">100</span></span>
+<span class="line"><span style="color:#85E89D">      name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"plateau"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    - </span><span style="color:#85E89D">duration</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">20</span></span>
+<span class="line"><span style="color:#85E89D">      arrivalRate</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">100</span></span>
+<span class="line"><span style="color:#85E89D">      rampTo</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">0</span></span>
+<span class="line"><span style="color:#85E89D">      name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"drain"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#85E89D">  ensure</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#6A737D">    # SLO-aligned threshold (whole-test, can't slice by phase here)</span></span>
+<span class="line"><span style="color:#85E89D">    p95</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">300</span></span>
+<span class="line"><span style="color:#85E89D">    maxErrorRate</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">1</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#85E89D">scenarios</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">  - </span><span style="color:#85E89D">name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"fast endpoint"</span></span>
+<span class="line"><span style="color:#85E89D">    weight</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">70</span></span>
+<span class="line"><span style="color:#85E89D">    flow</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">get</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">          url</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"/lab/echo"</span></span>
+<span class="line"><span style="color:#85E89D">          expect</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">            - </span><span style="color:#85E89D">statusCode</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">200</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">  - </span><span style="color:#85E89D">name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"slower endpoint"</span></span>
+<span class="line"><span style="color:#85E89D">    weight</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">30</span></span>
+<span class="line"><span style="color:#85E89D">    flow</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">get</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">          url</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"/lab/jitter?p50=80&#x26;p95=200"</span></span>
+<span class="line"><span style="color:#85E89D">          expect</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">            - </span><span style="color:#85E89D">statusCode</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">200</span></span>
+<span class="line"></span></code></pre>0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"kata":{"slug":"54-load-test","number":54,"title":"Load Test","phaseSlug":"phase-12-test-types","phaseNumber":12,"phaseName":"Test Types","readmeRaw":"$3","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"54-load-test.test.js","content":"$4"}],"artilleryFiles":[{"filename":"54-load-test.yml","content":"$5"}],"jmeterFiles":[]},"prev":{"slug":"53-fintech-kyc-at-scale","number":53,"title":"Fintech KYC at Scale","phaseSlug":"phase-11-realistic-scenarios","phaseNumber":11,"phaseName":"Realistic Scenarios","readmeRaw":"$6","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"53-fintech-kyc-at-scale.test.js","content":"$7"}],"artilleryFiles":[{"filename":"53-fintech-kyc-at-scale.yml","content":"$8"}],"jmeterFiles":[]},"next":{"slug":"55-stress-and-breakpoint-test","number":55,"title":"Stress and Breakpoint Test","phaseSlug":"phase-12-test-types","phaseNumber":12,"phaseName":"Test Types","readmeRaw":"$9","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"55-stress-and-breakpoint-test.test.js","content":"$a"}],"artilleryFiles":[{"filename":"55-stress-and-breakpoint-test.yml","content":"$b"}],"jmeterFiles":[]},"frameworks":[{"id":"k6","label":"k6","files":[{"filename":"54-load-test.test.js","html":"$c"}]},{"id":"artillery","label":"Artillery","files":[{"filename":"54-load-test.yml","html":"$d"}]},{"id":"jmeter","label":"JMeter","files":[]},{"id":"playwright","label":"Playwright","files":[]},{"id":"cypress","label":"Cypress","files":[]}]}],["$Le"],"$Lf"]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"UzMlu93LkryOOruE2pxnW"}
+e:["$","script","script-0",{"src":"/qa-labs/_next/static/chunks/01luku1w1f06_.js","async":true}]
+f:["$","$L10",null,{"children":["$","$11",null,{"name":"Next.MetadataOutlet","children":"$@12"}]}]
+12:null

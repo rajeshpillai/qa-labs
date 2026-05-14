@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Video Verification Call | KYC Portal</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #e2e8f0; padding: 2rem; text-align: center; }
+    h1 { font-size: 1.25rem; margin-bottom: 1rem; }
+    p { font-size: 0.875rem; color: #94a3b8; margin-bottom: 1rem; line-height: 1.5; }
+    .video-placeholder {
+      width: 100%; height: 200px; background: #1e293b; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      color: #475569; font-size: 0.9rem; margin-bottom: 1rem;
+    }
+    .btn {
+      padding: 0.5rem 1.5rem; border: none; border-radius: 6px;
+      font-size: 0.875rem; font-weight: 600; cursor: pointer; margin: 0.25rem;
+    }
+    .btn-end { background: #ef4444; color: white; }
+    .btn-end:hover { background: #dc2626; }
+    .status { margin-top: 1rem; font-size: 0.8rem; color: #94a3b8; }
+  </style>
+</head>
+<body>
+
+  <h1 data-testid="video-call-title">Video Verification Call</h1>
+  <p data-testid="video-call-description">Your identity is being verified by our KYC agent. Please hold your ID document up to the camera.</p>
+
+  <div class="video-placeholder" data-testid="video-placeholder">
+    Camera Feed Placeholder
+  </div>
+
+  <button class="btn btn-end" data-testid="btn-end-call" id="btn-end-call">End Call</button>
+
+  <p class="status" data-testid="video-call-status" id="video-call-status">Call in progress...</p>
+
+  <script>
+    // "End Call" sends a message to the parent window and closes this popup.
+    document.getElementById('btn-end-call').addEventListener('click', () => {
+      document.getElementById('video-call-status').textContent = 'Call ended. Closing...';
+
+      // window.opener is the parent window that opened this popup.
+      if (window.opener) {
+        window.opener.postMessage(
+          { type: 'video-completed', message: 'Video verification call completed successfully' },
+          '*'
+        );
+      }
+
+      // Close this popup window after a brief delay.
+      setTimeout(() => window.close(), 300);
+    });
+  </script>
+
+</body>
+</html>

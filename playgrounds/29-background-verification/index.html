@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kata 29: Background Verification | QA Labs</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #1e293b; padding: 2rem; }
+    .header { background: #0f172a; color: white; padding: 1rem 2rem; margin: -2rem -2rem 2rem; }
+    .header h1 { font-size: 1.25rem; }
+    .kata-badge { display: inline-block; background: #38bdf8; color: #0f172a; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 4px; margin-right: 0.5rem; }
+
+    .section { margin-bottom: 1.5rem; padding: 1.5rem; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); max-width: 700px; margin-left: auto; margin-right: auto; }
+    h2 { font-size: 1rem; color: #475569; margin-bottom: 1rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.5rem; }
+
+    button { padding: 0.5rem 1.25rem; border: none; border-radius: 6px; font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: background 0.2s; }
+    .btn-primary { background: #3b82f6; color: white; }
+    .btn-primary:hover { background: #2563eb; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* Progress bar */
+    .progress-bar-container { height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; margin-bottom: 1rem; }
+    .progress-bar-fill { height: 100%; background: #3b82f6; border-radius: 4px; transition: width 0.5s ease; }
+
+    .info-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; font-size: 0.85rem; }
+    .info-label { color: #64748b; }
+    .info-value { font-weight: 600; }
+
+    /* Check items */
+    .check-list { list-style: none; }
+    .check-item { display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; border: 1px solid #e2e8f0; border-radius: 6px; margin-bottom: 0.5rem; transition: border-color 0.3s; }
+    .check-item.completed { border-color: #16a34a; background: #f0fdf4; }
+    .check-item.failed { border-color: #ef4444; background: #fef2f2; }
+    .check-item.in-progress { border-color: #f59e0b; background: #fffbeb; }
+
+    .check-name { font-weight: 600; font-size: 0.9rem; }
+    .check-detail { font-size: 0.75rem; color: #64748b; margin-top: 0.15rem; }
+
+    .check-status-badge { padding: 0.15rem 0.6rem; border-radius: 10px; font-size: 0.7rem; font-weight: 600; white-space: nowrap; }
+    .badge-pending { background: #e2e8f0; color: #64748b; }
+    .badge-in-progress { background: #fef3c7; color: #92400e; }
+    .badge-complete { background: #dcfce7; color: #166534; }
+    .badge-failed { background: #fee2e2; color: #991b1b; }
+
+    .overall-status { text-align: center; padding: 1rem; margin-top: 1rem; border-radius: 6px; font-weight: 700; font-size: 1rem; }
+    .overall-pending { background: #f1f5f9; color: #64748b; }
+    .overall-in-progress { background: #fffbeb; color: #d97706; }
+    .overall-complete { background: #f0fdf4; color: #16a34a; }
+    .overall-failed { background: #fef2f2; color: #dc2626; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1><span class="kata-badge">KATA 29</span> Background Verification</h1>
+</div>
+
+<div class="section">
+  <h2>Background Check Dashboard</h2>
+
+  <button class="btn-primary" data-testid="btn-start-checks" onclick="startChecks()">Start Background Checks</button>
+
+  <div style="margin-top:1.5rem;">
+    <div class="info-row">
+      <span class="info-label">Overall Progress:</span>
+      <span class="info-value" data-testid="progress-percentage">0%</span>
+    </div>
+    <div class="progress-bar-container" data-testid="progress-bar">
+      <div class="progress-bar-fill" data-testid="progress-bar-fill" style="width: 0%;"></div>
+    </div>
+    <div class="info-row">
+      <span class="info-label">Estimated Time Remaining:</span>
+      <span class="info-value" data-testid="estimated-time">--</span>
+    </div>
+    <div class="info-row">
+      <span class="info-label">Checks Completed:</span>
+      <span class="info-value" data-testid="checks-completed">0 / 5</span>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>Verification Checks</h2>
+
+  <ul class="check-list" data-testid="check-list">
+    <li class="check-item" data-testid="check-criminal">
+      <div>
+        <div class="check-name">Criminal Record</div>
+        <div class="check-detail" data-testid="check-criminal-detail">National criminal database search</div>
+      </div>
+      <span class="check-status-badge badge-pending" data-testid="check-criminal-status">Pending</span>
+    </li>
+    <li class="check-item" data-testid="check-credit">
+      <div>
+        <div class="check-name">Credit Score</div>
+        <div class="check-detail" data-testid="check-credit-detail">Credit bureau report check</div>
+      </div>
+      <span class="check-status-badge badge-pending" data-testid="check-credit-status">Pending</span>
+    </li>
+    <li class="check-item" data-testid="check-employment">
+      <div>
+        <div class="check-name">Employment</div>
+        <div class="check-detail" data-testid="check-employment-detail">Employment history verification</div>
+      </div>
+      <span class="check-status-badge badge-pending" data-testid="check-employment-status">Pending</span>
+    </li>
+    <li class="check-item" data-testid="check-education">
+      <div>
+        <div class="check-name">Education</div>
+        <div class="check-detail" data-testid="check-education-detail">Degree and institution verification</div>
+      </div>
+      <span class="check-status-badge badge-pending" data-testid="check-education-status">Pending</span>
+    </li>
+    <li class="check-item" data-testid="check-reference">
+      <div>
+        <div class="check-name">Reference</div>
+        <div class="check-detail" data-testid="check-reference-detail">Professional reference check</div>
+      </div>
+      <span class="check-status-badge badge-pending" data-testid="check-reference-status">Pending</span>
+    </li>
+  </ul>
+</div>
+
+<div class="section">
+  <div class="overall-status overall-pending" data-testid="overall-status">
+    Not Started
+  </div>
+</div>
+
+<script>
+  // ─── State ─────────────────────────────────────────────────────────
+  // checks: array of check objects, each with an id, status, and timing info.
+  // The checks run sequentially with simulated delays.
+  const checks = [
+    { id: 'criminal',   delay: 2000, result: 'Complete', detail: 'No records found' },
+    { id: 'credit',     delay: 3000, result: 'Complete', detail: 'Score: 750 (Good)' },
+    { id: 'employment', delay: 2000, result: 'Complete', detail: 'Verified: 3 employers' },
+    { id: 'education',  delay: 2500, result: 'Failed',   detail: 'Could not verify degree' },
+    { id: 'reference',  delay: 2000, result: 'Complete', detail: '2 of 2 references confirmed' }
+  ];
+
+  // checksStarted: whether the background checks have been kicked off.
+  let checksStarted = false;
+  // updateInterval: the setInterval ID for the estimated time countdown.
+  let updateInterval = null;
+  // totalEstimatedSeconds: total estimated time for all checks.
+  let totalEstimatedSeconds = 0;
+  // elapsedSeconds: how many seconds have passed since checks started.
+  let elapsedSeconds = 0;
+
+  // ─── startChecks() ────────────────────────────────────────────────
+  // Begins the background verification process.
+  // Each check runs after a cumulative delay (simulating real processing).
+  function startChecks() {
+    if (checksStarted) return;
+    checksStarted = true;
+
+    // Disable the start button to prevent double-clicks.
+    document.querySelector('[data-testid="btn-start-checks"]').disabled = true;
+
+    // Calculate total estimated time in seconds.
+    totalEstimatedSeconds = checks.reduce((sum, c) => sum + c.delay, 0) / 1000;
+
+    // Update the overall status to "In Progress".
+    const overallEl = document.querySelector('[data-testid="overall-status"]');
+    overallEl.textContent = 'In Progress';
+    overallEl.className = 'overall-status overall-in-progress';
+
+    // Update estimated time display.
+    document.querySelector('[data-testid="estimated-time"]').textContent =
+      Math.ceil(totalEstimatedSeconds) + 's';
+
+    // Start a 1-second interval to update the estimated time countdown.
+    // setInterval(callback, ms) calls callback repeatedly every ms milliseconds.
+    updateInterval = setInterval(() => {
+      elapsedSeconds++;
+      const remaining = Math.max(0, Math.ceil(totalEstimatedSeconds) - elapsedSeconds);
+      document.querySelector('[data-testid="estimated-time"]').textContent = remaining + 's';
+    }, 1000);
+
+    // Schedule each check to transition through "In Progress" -> "Complete"/"Failed".
+    // We use cumulative delays so checks run one after another.
+    let cumulativeDelay = 0;
+    let completedCount = 0;
+
+    checks.forEach((check, index) => {
+      // After a small initial delay, mark the check as "In Progress".
+      // setTimeout(callback, ms) runs the callback once after ms milliseconds.
+      setTimeout(() => {
+        setCheckStatus(check.id, 'In Progress', 'Verifying...');
+      }, cumulativeDelay + 200);
+
+      // After the check's full delay, mark it as complete or failed.
+      cumulativeDelay += check.delay;
+      setTimeout(() => {
+        setCheckStatus(check.id, check.result, check.detail);
+        completedCount++;
+
+        // Update progress.
+        const progress = Math.round((completedCount / checks.length) * 100);
+        document.querySelector('[data-testid="progress-percentage"]').textContent = progress + '%';
+        document.querySelector('[data-testid="progress-bar-fill"]').style.width = progress + '%';
+        document.querySelector('[data-testid="checks-completed"]').textContent =
+          completedCount + ' / ' + checks.length;
+
+        // If all checks are done, update overall status.
+        if (completedCount === checks.length) {
+          clearInterval(updateInterval);
+          document.querySelector('[data-testid="estimated-time"]').textContent = '0s';
+
+          // Check if any check failed.
+          const hasFailed = checks.some(c => c.result === 'Failed');
+          if (hasFailed) {
+            overallEl.textContent = 'Completed with Issues';
+            overallEl.className = 'overall-status overall-failed';
+          } else {
+            overallEl.textContent = 'All Checks Passed';
+            overallEl.className = 'overall-status overall-complete';
+          }
+        }
+      }, cumulativeDelay);
+    });
+  }
+
+  // ─── setCheckStatus(checkId, status, detail) ──────────────────────
+  // Updates the status badge and detail text for a specific check.
+  // Also updates the check item's CSS class for visual styling.
+  function setCheckStatus(checkId, status, detail) {
+    const item = document.querySelector(`[data-testid="check-${checkId}"]`);
+    const badge = document.querySelector(`[data-testid="check-${checkId}-status"]`);
+    const detailEl = document.querySelector(`[data-testid="check-${checkId}-detail"]`);
+
+    // Update the badge text and CSS class.
+    badge.textContent = status;
+    badge.className = 'check-status-badge';
+
+    // Remove previous item state classes.
+    item.classList.remove('completed', 'failed', 'in-progress');
+
+    if (status === 'In Progress') {
+      badge.classList.add('badge-in-progress');
+      item.classList.add('in-progress');
+    } else if (status === 'Complete') {
+      badge.classList.add('badge-complete');
+      item.classList.add('completed');
+    } else if (status === 'Failed') {
+      badge.classList.add('badge-failed');
+      item.classList.add('failed');
+    } else {
+      badge.classList.add('badge-pending');
+    }
+
+    // Update the detail text.
+    detailEl.textContent = detail;
+  }
+
+  // ─── Expose state for test interaction ─────────────────────────────
+  // window.bgChecks provides programmatic access for tests.
+  window.bgChecks = {
+    // getCheckStatus returns the current text of a check's status badge.
+    getCheckStatus: (id) => document.querySelector(`[data-testid="check-${id}-status"]`).textContent,
+    // isStarted returns whether the checks have begun.
+    isStarted: () => checksStarted
+  };
+</script>
+</body>
+</html>

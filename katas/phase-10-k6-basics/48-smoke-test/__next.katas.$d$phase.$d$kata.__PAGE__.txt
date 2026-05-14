@@ -1,0 +1,653 @@
+1:"$Sreact.fragment"
+2:I[76750,["/qa-labs/_next/static/chunks/012xw9ydea0yn.js","/qa-labs/_next/static/chunks/0t2xr05rlu96l.js","/qa-labs/_next/static/chunks/0a55m.6s3qp~-.js","/qa-labs/_next/static/chunks/01luku1w1f06_.js"],"KataPageClient"]
+d:I[97367,["/qa-labs/_next/static/chunks/012xw9ydea0yn.js","/qa-labs/_next/static/chunks/0t2xr05rlu96l.js","/qa-labs/_next/static/chunks/0a55m.6s3qp~-.js"],"OutletBoundary"]
+e:"$Sreact.suspense"
+3:T10d9,# Kata 48: Smoke Test
+
+## What You Will Learn
+
+- What a **smoke test** is in load-testing terms (and how it differs from a smoke test in functional QA)
+- Why every perf project should start with one — and run it on every commit
+- The minimal k6 / Artillery script that constitutes a smoke test
+- How to gate a CI pipeline on a smoke test before running heavier loads
+
+## Prerequisites
+
+- Completed phase 9 (HTTP basics, percentiles, Little's Law)
+- k6 installed (`k6 version`)
+- The QA Labs server running (`cd server && npm start`)
+
+## Concepts Explained
+
+### What is a smoke test in load testing?
+
+In **functional** QA, a smoke test is a quick "does the build even start" check.
+
+In **load** testing, a smoke test is the same idea but for your perf scripts: the smallest possible run that proves:
+
+1. The script compiles and runs without errors.
+2. The target system responds.
+3. Your assertions pass under trivial load (1 VU, ~1 minute).
+
+It is **not** a load test. It does not measure capacity. It just answers "is the perf testing pipeline alive?"
+
+### Why bother?
+
+Two reasons:
+
+**1. Catch broken scripts before paying for a 30-minute load test.** If your `BASE_URL` is wrong, your auth token expired, or the API contract changed, you want to know in 60 seconds, not 30 minutes.
+
+**2. Make perf tests part of CI.** A full load test is too slow for every PR. But a smoke test takes ~1 minute and can run on every commit — catching regressions where the *script* breaks (separate from regressions in *performance*, which need bigger runs).
+
+### Anatomy of a good smoke test
+
+```
+1 VU          ← exactly one user, no concurrency
+30-60 seconds ← long enough to make ~30 requests
+Tight thresholds:
+  - http_req_failed: rate<0.01      (fewer than 1% errors)
+  - http_req_duration: p(95)<500    (clearly fast)
+checks on response shape
+```
+
+The thresholds are **tighter** than what your real load test would assert. Why? Because under a single VU there's nothing competing for resources — if even *this* is slow, something is fundamentally wrong.
+
+### Smoke test vs load test
+
+| | Smoke | Load |
+|---|---|---|
+| **VUs** | 1 | 100s |
+| **Duration** | 30-60s | 5-30 min |
+| **What you assert** | "It works" | "It works at scale" |
+| **Where it runs** | Every CI commit | Nightly / pre-release |
+| **What a failure means** | Pipeline broken or system unreachable | Capacity regression |
+
+### Don't skip the checks
+
+A smoke test that does nothing but `http.get()` and never asserts on the response is worse than nothing — it'll pass even when the server returns 500 every time. Use `check()` for at least:
+
+- `status === 200`
+- One field of the JSON body has the expected shape
+
+## Exercises
+
+1. **Write a smoke test for `/lab/auth/me` (the protected endpoint).** It needs an auth token first — make a smoke test that logs in via `/lab/auth/login`, then hits `/me`, and asserts both calls succeed.
+2. **Make it fail.** Stop the QA Labs server and run the smoke test. The `http_req_failed` threshold should fire. Read the failure output.
+3. **Tighten until it breaks.** Set `p(95)<5` and run against `/lab/echo`. Why does it fail? What's the right tightness?
+4. **Wire it to fail-fast in CI.** What's the exit code on a threshold breach? How would you wire that into a GitHub Actions job that aborts the rest of the pipeline?
+
+## Common Mistakes
+
+- **Treating smoke as load.** Cranking VUs to "see what happens" turns a smoke test into a load test that's too short to be useful.
+- **No assertions.** A test that doesn't assert anything is theatre. Always include at least one `check()` and one threshold.
+- **Skipping smoke and going straight to load.** Then you spend 25 minutes waiting for a load test that fails because of a typo in the URL.
+
+## Cheat Sheet
+
+```javascript
+// Skeleton smoke test
+import http from 'k6/http';
+import { check } from 'k6';
+
+export const options = {
+  vus: 1,
+  duration: '30s',
+  thresholds: {
+    http_req_failed: ['rate<0.01'],
+    http_req_duration: ['p(95)<500'],
+  },
+};
+
+export default function () {
+  const res = http.get('http://localhost:3000/lab/echo');
+  check(res, { 'status is 200': (r) => r.status === 200 });
+}
+```
+
+If this passes consistently in CI, you've earned the right to run heavier scenarios. If it doesn't, fix the script before doing anything else.
+4:T93f,// Kata 48 — Smoke Test (k6 solution)
+//
+// The simplest possible perf test: one VU, 30 seconds, tight thresholds,
+// hits a representative endpoint to verify the perf pipeline is alive.
+// This kata's solution covers two flows the readme exercise asks for:
+// 1. A bare-minimum smoke test against /lab/echo
+// 2. An auth flow smoke test (login → /me) — see the second scenario
+
+import http from 'k6/http';
+import { check, group } from 'k6';
+
+const BASE_URL = __ENV.K6_BASE_URL || 'http://localhost:3000';
+
+export const options = {
+  scenarios: {
+    // Scenario 1: trivial GET smoke
+    echo_smoke: {
+      executor: 'constant-vus',
+      vus: 1,
+      duration: '30s',
+      exec: 'echoSmoke',
+    },
+    // Scenario 2: auth flow smoke
+    auth_smoke: {
+      executor: 'constant-vus',
+      vus: 1,
+      duration: '30s',
+      exec: 'authSmoke',
+      startTime: '0s', // run in parallel — that's fine for a smoke
+    },
+  },
+  thresholds: {
+    // Tighter than a load test: this is 1 VU on an unloaded system,
+    // anything beyond these numbers means something is fundamentally broken.
+    'http_req_failed': ['rate<0.01'],
+    'http_req_duration': ['p(95)<500'],
+    // Per-scenario assertion: every login + /me call must succeed
+    'checks{scenario:auth_smoke}': ['rate>0.99'],
+  },
+};
+
+export function echoSmoke() {
+  const res = http.get(`${BASE_URL}/lab/echo`);
+  check(res, {
+    'echo status is 200': (r) => r.status === 200,
+    'echo body has ok=true': (r) => r.json('ok') === true,
+  });
+}
+
+export function authSmoke() {
+  let token;
+
+  group('login', () => {
+    const loginRes = http.post(
+      `${BASE_URL}/lab/auth/login`,
+      JSON.stringify({ username: 'smoke-user', password: 'anything-works' }),
+      { headers: { 'Content-Type': 'application/json' }, tags: { scenario: 'auth_smoke' } }
+    );
+    check(loginRes, {
+      'login status is 200': (r) => r.status === 200,
+      'login returns a token': (r) => typeof r.json('token') === 'string',
+    });
+    token = loginRes.json('token');
+  });
+
+  group('me', () => {
+    const meRes = http.get(`${BASE_URL}/lab/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` },
+      tags: { scenario: 'auth_smoke' },
+    });
+    check(meRes, {
+      'me status is 200': (r) => r.status === 200,
+      'me returns the user': (r) => r.json('user') === 'smoke-user',
+    });
+  });
+}
+5:T144d,# Kata 47: Throughput and Little's Law
+
+## What You Will Learn
+
+- The relationship between **virtual users (VUs)**, **response time**, and **throughput** — and why it's NOT just `VUs × RPS`
+- **Little's Law:** the equation that ties them together: `L = λ × W`
+- Why doubling VUs doesn't always double throughput
+- The difference between **closed** and **open** workload models — and why most real traffic is open
+- How to choose `vus` vs `arrivalRate` in k6 / Artillery
+
+## Prerequisites
+
+- Completed [Kata 45](../45-http-and-latency-basics/) and [Kata 46](../46-percentiles-and-distribution/)
+- The QA Labs server running locally (`/lab/slow` and `/lab/jitter`)
+
+## Concepts Explained
+
+### Little's Law
+
+A simple but powerful equation from queueing theory:
+
+```
+L = λ × W
+```
+
+Where:
+- **L** = average concurrency (requests in flight at any moment)
+- **λ** (lambda) = throughput (requests per second)
+- **W** = average response time (seconds per request)
+
+Solve for any one when you know the other two. For example:
+- If **W = 200ms** and you want **λ = 500 RPS**, then **L = 500 × 0.2 = 100** concurrent in-flight requests.
+- If you have **100 VUs** holding the line and **W = 200ms**, you'll get **λ = 100 / 0.2 = 500 RPS**.
+
+This is why "100 VUs" doesn't directly translate to a throughput number — it depends on how long each request takes.
+
+### Closed vs open workload
+
+This trips up most beginners.
+
+#### Closed model — fixed concurrency
+
+Each VU does: send request → wait for response → think → repeat. The number of in-flight requests is **at most** the VU count. If the system slows down, throughput drops because VUs are stuck waiting.
+
+```javascript
+// k6 closed model — the default
+export const options = {
+  vus: 100,           // 100 simultaneous "users"
+  duration: '30s',
+};
+```
+
+Real users behave more like the closed model **per session** — but real *traffic* is open: new users keep arriving regardless of how slow the system is.
+
+#### Open model — fixed arrival rate
+
+New requests start at a steady rate, regardless of whether previous ones finished. If the system slows down, requests pile up. This better simulates real traffic — and it's how production overload looks.
+
+```javascript
+// k6 open model
+export const options = {
+  scenarios: {
+    steady: {
+      executor: 'constant-arrival-rate',
+      rate: 500,           // 500 requests per second
+      timeUnit: '1s',
+      duration: '30s',
+      preAllocatedVUs: 100, // worker pool — must be enough
+      maxVUs: 200,
+    },
+  },
+};
+```
+
+Artillery's `arrivalRate` in `phases` is also open-model.
+
+> **Why this matters:** if you load-test in closed mode at "100 VUs" and the system slows down, your test artificially backs off. You'll never observe overload. Open mode is what real traffic looks like — and what causes real outages.
+
+### What VU count to pick (closed model)
+
+If you're using closed mode (k6 default), pick VUs roughly equal to expected concurrency:
+
+```
+VUs needed ≈ target_RPS × expected_response_time_seconds
+```
+
+For 500 RPS at 200ms response time: ~100 VUs. If the system slows to 500ms response time, you'd need 250 VUs to maintain 500 RPS. With 100 VUs, you'd only achieve `100 / 0.5 = 200 RPS`.
+
+## Exercises
+
+1. **Closed mode warm-up.** Run the k6 test against `/lab/slow?ms=100` with 10 VUs for 10 seconds. What throughput do you observe? Apply Little's Law: does it match `10 / 0.1 = 100 RPS`?
+2. **Increase VUs.** Same endpoint, 20 VUs. Does throughput double? It should, until the server can't keep up.
+3. **Increase server-side delay.** Hit `/lab/slow?ms=500` with 10 VUs. Throughput should be ~`10 / 0.5 = 20 RPS`.
+4. **Open mode.** Switch to `constant-arrival-rate` at 200 RPS against `/lab/slow?ms=100`. Does it sustain 200 RPS? Now point it at `/lab/slow?ms=600` — what happens? (You'll see queueing.)
+5. **Calculate VUs needed.** You want 1000 RPS sustained against an endpoint with p95 = 250ms. How many `preAllocatedVUs` should you start with?
+
+## Common Mistakes
+
+- **Reporting throughput from a closed-mode test as your system's capacity.** It's bounded by your VU count — not the system's actual limit.
+- **Forgetting `preAllocatedVUs` is a pool, not a target.** k6 will warn if your `rate` requires more VUs than allocated; bump `preAllocatedVUs` and `maxVUs` accordingly.
+- **Comparing closed-mode results across different systems.** If response times differ, throughput differs even at the same VU count — it's apples to oranges.
+
+## Cheat Sheet
+
+| You want to test... | Use this model | k6 executor |
+|---------------------|----------------|-------------|
+| Steady traffic at known RPS | Open | `constant-arrival-rate` |
+| User-session load (think time) | Closed | default `vus` + `duration` |
+| Ramp from 0 → N RPS | Open | `ramping-arrival-rate` |
+| Ramp from 0 → N concurrent | Closed | `ramping-vus` |
+| Spike test | Open | `ramping-arrival-rate` with sharp ramp |
+
+| Symptom | Likely cause |
+|---------|--------------|
+| Throughput plateaus while VUs increase | System saturated |
+| Throughput < target rate in open mode | Server can't keep up; queue is growing |
+| `preAllocatedVUs` warning in k6 | Bump the pool size |
+6:T55d,// Kata 47 — Throughput and Little's Law (k6 solution)
+//
+// Demonstrates open-model load using `constant-arrival-rate`. We TARGET
+// 200 RPS against a 100ms endpoint. Little's Law says we'll need
+// L = λ × W = 200 × 0.1 = 20 in-flight requests on average — so 40
+// preAllocatedVUs gives us 2× headroom for jitter.
+//
+// Try changing the URL to /lab/slow?ms=600 and watch the test struggle to
+// hit the 200 RPS target — that's queueing, exactly as Little's Law predicts.
+
+import http from 'k6/http';
+import { check } from 'k6';
+
+const BASE_URL = __ENV.K6_BASE_URL || 'http://localhost:3000';
+
+export const options = {
+  scenarios: {
+    steady_rps: {
+      executor: 'constant-arrival-rate',
+      rate: 200,                  // 200 requests per second...
+      timeUnit: '1s',             // ...per second
+      duration: '15s',
+      preAllocatedVUs: 40,        // worker pool: enough for L=20 + headroom
+      maxVUs: 80,
+    },
+  },
+  thresholds: {
+    'http_req_duration': ['p(95)<300'],
+    'http_req_failed': ['rate<0.01'],
+    // The test should hit at least 95% of the target throughput.
+    // (200 RPS × 15s = 3000 expected; allow some slack for ramp.)
+    'http_reqs': ['count>2700'],
+  },
+};
+
+export default function () {
+  const res = http.get(`${BASE_URL}/lab/slow?ms=100`);
+  check(res, {
+    'status is 200': (r) => r.status === 200,
+  });
+}
+7:T144b,# Kata 49: Ramping VUs and Stages
+
+## What You Will Learn
+
+- Why a flat constant load misses real-world bugs
+- How to use **stages** in k6 (and **phases** in Artillery) to ramp users up and down
+- Three classic shapes: **gradual ramp**, **sustained plateau**, **graceful drain**
+- The difference between `ramping-vus` (closed model) and `ramping-arrival-rate` (open model) — and when to pick each
+- How ramp shape affects what bugs you find
+
+## Prerequisites
+
+- Completed [Kata 47 (Throughput and Little's Law)](../../phase-09-perf-foundations/47-throughput-and-littles-law/) — closed vs open workload
+- The QA Labs server running
+
+## Concepts Explained
+
+### Why ramps matter
+
+Real traffic doesn't appear all at once. Customers wake up, marketing emails fire, a viral tweet hits — load builds and recedes. A flat "100 VUs for 5 minutes" test misses two whole categories of bug:
+
+1. **Cold-start bugs** — slow connection-pool warm-up, lazy DB index, JIT warm-up. A flat test with `vus: 100, duration: '5m'` punishes the system harder at the start than at the end. A ramp gives the system a fair chance to settle.
+
+2. **Drain bugs** — what happens when traffic recedes? Stale connections, leaked goroutines, half-closed sockets. A test that ends abruptly never exercises drain. A ramp-down does.
+
+### Stages in k6
+
+A "stage" is `{ duration, target }` — k6 linearly interpolates VUs from the *current* count to `target` over `duration`.
+
+```javascript
+export const options = {
+  stages: [
+    { duration: '30s', target: 50 },   // ramp 0 → 50 over 30s
+    { duration: '2m',  target: 50 },   // hold at 50 for 2m
+    { duration: '30s', target: 100 },  // ramp 50 → 100 over 30s
+    { duration: '2m',  target: 100 },  // hold at 100 for 2m
+    { duration: '30s', target: 0 },    // ramp down 100 → 0 over 30s
+  ],
+};
+```
+
+Total duration: 5min 30s. Three classic patterns visible: **ramp**, **plateau**, **drain**.
+
+### Stages: closed vs open
+
+`stages` defaults to closed model (target VU count). For open model, use `executor: 'ramping-arrival-rate'` with `stages` having `target` as RPS:
+
+```javascript
+export const options = {
+  scenarios: {
+    realistic: {
+      executor: 'ramping-arrival-rate',
+      startRate: 0,
+      timeUnit: '1s',
+      preAllocatedVUs: 100,
+      maxVUs: 200,
+      stages: [
+        { duration: '30s', target: 100 },  // 0 → 100 RPS
+        { duration: '2m',  target: 100 },  // hold 100 RPS
+        { duration: '30s', target: 0 },    // drain
+      ],
+    },
+  },
+};
+```
+
+### Phases in Artillery
+
+Artillery's `phases` are similar but use **arrival rate** by default (open model — better for most use cases):
+
+```yaml
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 30
+      arrivalRate: 1
+      rampTo: 50
+      name: "warm-up"
+    - duration: 120
+      arrivalRate: 50
+      name: "plateau"
+    - duration: 30
+      arrivalRate: 50
+      rampTo: 0
+      name: "drain"
+```
+
+`arrivalRate` is the start rate, `rampTo` is the end rate. Without `rampTo`, the rate is constant for the phase.
+
+### Pitfalls
+
+**Ramp too steep.** Going from 0 → 1000 VUs in 1 second is a *spike*, not a ramp. Spike tests have their own kata (54 in phase 12); a normal ramp should take at least 30s per 100 VU step.
+
+**No drain.** Ending the test with the system at full load and immediately killing the test misses graceful-shutdown bugs. Always include a drain step.
+
+**Ignoring the warm-up window.** Don't include the first 30s of latency data in your assertions — caches are cold, JITs aren't warm. Either drop those samples or assert only on the plateau period using `tags`.
+
+## Exercises
+
+1. **Build a 5-minute ramp test** against `/lab/jitter?p50=50&p95=200`: 30s ramp 0→50, 3min plateau at 50, 1min ramp to 100, 30s drain. Plot `http_req_duration` vs time mentally — what should it look like?
+2. **Add a per-stage assertion.** Tag the plateau stage and assert `p(95)<300` only on samples from that stage (drop the warm-up). Hint: k6 stage tags via custom tags.
+3. **Compare closed vs open.** Run the same shape once with `stages` (closed) and once with `ramping-arrival-rate` (open). At what RPS do they diverge?
+4. **Find a drain bug.** Hit `/lab/limit` (rate-limited) with a ramp 0→100 over 30s. The bucket gets exhausted partway through. What does the drain phase look like? Are errors recovering?
+
+## Common Mistakes
+
+- **Treating `stages` as cumulative VUs added per stage.** It's the *target*, not the delta. `[{target:50}, {target:50}]` means "ramp to 50, then hold at 50" — not "ramp to 50, then ramp another 50 to 100."
+- **Mixing `vus`/`duration` with `stages` in the same options.** k6 will warn — pick one.
+- **Asserting on the whole test including warm-up.** Cold cache + JIT + connection pools makes early samples unrepresentative.
+
+## Cheat Sheet
+
+| Shape | When to use |
+|-------|-------------|
+| Pure ramp (0→N) | Capacity finding — see what RPS the system tops out at |
+| Ramp + plateau + drain | Realistic load profile, perf budget verification |
+| Sawtooth (ramps up + down repeatedly) | Resource leak hunting |
+| Spike (sharp ramp + immediate drain) | See kata 54 — spike tests deserve their own kata |
+8:T918,// Kata 49 — Ramping VUs and Stages (k6 solution)
+//
+// Demonstrates the classic ramp + plateau + drain shape using
+// `ramping-arrival-rate` (open model). Targets /lab/jitter to simulate
+// realistic latency variance.
+//
+// Total duration ~3 minutes. Reduce stages durations if iterating quickly.
+
+import http from 'k6/http';
+import { check } from 'k6';
+
+const BASE_URL = __ENV.K6_BASE_URL || 'http://localhost:3000';
+
+export const options = {
+  scenarios: {
+    realistic_ramp: {
+      executor: 'ramping-arrival-rate',
+      startRate: 0,
+      timeUnit: '1s',
+      preAllocatedVUs: 50,
+      maxVUs: 100,
+      stages: [
+        { duration: '20s', target: 50 },   // warm-up: 0 → 50 RPS
+        { duration: '60s', target: 50 },   // plateau: 50 RPS sustained
+        { duration: '20s', target: 100 },  // ramp: 50 → 100 RPS
+        { duration: '40s', target: 100 },  // plateau: 100 RPS sustained
+        { duration: '20s', target: 0 },    // drain: 100 → 0 RPS
+      ],
+      tags: { phase: 'unspecified' },
+    },
+  },
+  thresholds: {
+    'http_req_failed': ['rate<0.01'],
+    // Whole-test threshold — generous to absorb warm-up.
+    'http_req_duration': ['p(95)<800'],
+    // Tighter threshold on the plateau only — set the `plateau` tag inside
+    // the test function during plateau windows.
+    'http_req_duration{phase:plateau}': ['p(95)<400'],
+  },
+};
+
+export default function () {
+  // Tag this iteration based on test elapsed time, so we can assert on the
+  // plateau separately from warm-up and drain.
+  // k6 has no built-in current-time per-iteration tag, so we approximate
+  // by using `__ITER` and `__VU`. Cleaner option: use scenario.startTime
+  // metadata via `exec.scenario` (k6 v0.42+), but tagging by phase here
+  // keeps the example simple.
+  const elapsedMs = Date.now() - START_MS;
+  const phase =
+    elapsedMs < 20_000
+      ? 'warm-up'
+      : elapsedMs < 80_000
+        ? 'plateau'
+        : elapsedMs < 100_000
+          ? 'ramp'
+          : elapsedMs < 140_000
+            ? 'plateau'
+            : 'drain';
+
+  const res = http.get(`${BASE_URL}/lab/jitter?p50=50&p95=200`, {
+    tags: { phase },
+  });
+
+  check(res, {
+    'status is 200': (r) => r.status === 200,
+  });
+}
+
+// Captured at module load time — k6 evaluates this once per VU on init.
+const START_MS = Date.now();
+9:T3371,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#6A737D">// Kata 48 — Smoke Test (k6 solution)</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// The simplest possible perf test: one VU, 30 seconds, tight thresholds,</span></span>
+<span class="line"><span style="color:#6A737D">// hits a representative endpoint to verify the perf pipeline is alive.</span></span>
+<span class="line"><span style="color:#6A737D">// This kata's solution covers two flows the readme exercise asks for:</span></span>
+<span class="line"><span style="color:#6A737D">// 1. A bare-minimum smoke test against /lab/echo</span></span>
+<span class="line"><span style="color:#6A737D">// 2. An auth flow smoke test (login → /me) — see the second scenario</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> http </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> 'k6/http'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { check, group } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> 'k6'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> BASE_URL</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> __ENV.</span><span style="color:#79B8FF">K6_BASE_URL</span><span style="color:#F97583"> ||</span><span style="color:#9ECBFF"> 'http://localhost:3000'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> const</span><span style="color:#79B8FF"> options</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">  scenarios: {</span></span>
+<span class="line"><span style="color:#6A737D">    // Scenario 1: trivial GET smoke</span></span>
+<span class="line"><span style="color:#E1E4E8">    echo_smoke: {</span></span>
+<span class="line"><span style="color:#E1E4E8">      executor: </span><span style="color:#9ECBFF">'constant-vus'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      vus: </span><span style="color:#79B8FF">1</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      duration: </span><span style="color:#9ECBFF">'30s'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      exec: </span><span style="color:#9ECBFF">'echoSmoke'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">    },</span></span>
+<span class="line"><span style="color:#6A737D">    // Scenario 2: auth flow smoke</span></span>
+<span class="line"><span style="color:#E1E4E8">    auth_smoke: {</span></span>
+<span class="line"><span style="color:#E1E4E8">      executor: </span><span style="color:#9ECBFF">'constant-vus'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      vus: </span><span style="color:#79B8FF">1</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      duration: </span><span style="color:#9ECBFF">'30s'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      exec: </span><span style="color:#9ECBFF">'authSmoke'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      startTime: </span><span style="color:#9ECBFF">'0s'</span><span style="color:#E1E4E8">, </span><span style="color:#6A737D">// run in parallel — that's fine for a smoke</span></span>
+<span class="line"><span style="color:#E1E4E8">    },</span></span>
+<span class="line"><span style="color:#E1E4E8">  },</span></span>
+<span class="line"><span style="color:#E1E4E8">  thresholds: {</span></span>
+<span class="line"><span style="color:#6A737D">    // Tighter than a load test: this is 1 VU on an unloaded system,</span></span>
+<span class="line"><span style="color:#6A737D">    // anything beyond these numbers means something is fundamentally broken.</span></span>
+<span class="line"><span style="color:#9ECBFF">    'http_req_failed'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'rate&#x3C;0.01'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#9ECBFF">    'http_req_duration'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'p(95)&#x3C;500'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#6A737D">    // Per-scenario assertion: every login + /me call must succeed</span></span>
+<span class="line"><span style="color:#9ECBFF">    'checks{scenario:auth_smoke}'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'rate>0.99'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#E1E4E8">  },</span></span>
+<span class="line"><span style="color:#E1E4E8">};</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> function</span><span style="color:#B392F0"> echoSmoke</span><span style="color:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> res</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> http.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/echo`</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#B392F0">  check</span><span style="color:#E1E4E8">(res, {</span></span>
+<span class="line"><span style="color:#9ECBFF">    'echo status is 200'</span><span style="color:#E1E4E8">: (</span><span style="color:#FFAB70">r</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> r.status </span><span style="color:#F97583">===</span><span style="color:#79B8FF"> 200</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#9ECBFF">    'echo body has ok=true'</span><span style="color:#E1E4E8">: (</span><span style="color:#FFAB70">r</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> r.</span><span style="color:#B392F0">json</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'ok'</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">===</span><span style="color:#79B8FF"> true</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> function</span><span style="color:#B392F0"> authSmoke</span><span style="color:#E1E4E8">() {</span></span>
+<span class="line"><span style="color:#F97583">  let</span><span style="color:#E1E4E8"> token;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">  group</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'login'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">    const</span><span style="color:#79B8FF"> loginRes</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> http.</span><span style="color:#B392F0">post</span><span style="color:#E1E4E8">(</span></span>
+<span class="line"><span style="color:#9ECBFF">      `${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/auth/login`</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#79B8FF">      JSON</span><span style="color:#E1E4E8">.</span><span style="color:#B392F0">stringify</span><span style="color:#E1E4E8">({ username: </span><span style="color:#9ECBFF">'smoke-user'</span><span style="color:#E1E4E8">, password: </span><span style="color:#9ECBFF">'anything-works'</span><span style="color:#E1E4E8"> }),</span></span>
+<span class="line"><span style="color:#E1E4E8">      { headers: { </span><span style="color:#9ECBFF">'Content-Type'</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">'application/json'</span><span style="color:#E1E4E8"> }, tags: { scenario: </span><span style="color:#9ECBFF">'auth_smoke'</span><span style="color:#E1E4E8"> } }</span></span>
+<span class="line"><span style="color:#E1E4E8">    );</span></span>
+<span class="line"><span style="color:#B392F0">    check</span><span style="color:#E1E4E8">(loginRes, {</span></span>
+<span class="line"><span style="color:#9ECBFF">      'login status is 200'</span><span style="color:#E1E4E8">: (</span><span style="color:#FFAB70">r</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> r.status </span><span style="color:#F97583">===</span><span style="color:#79B8FF"> 200</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#9ECBFF">      'login returns a token'</span><span style="color:#E1E4E8">: (</span><span style="color:#FFAB70">r</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#F97583"> typeof</span><span style="color:#E1E4E8"> r.</span><span style="color:#B392F0">json</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'token'</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">===</span><span style="color:#9ECBFF"> 'string'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"><span style="color:#E1E4E8">    token </span><span style="color:#F97583">=</span><span style="color:#E1E4E8"> loginRes.</span><span style="color:#B392F0">json</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'token'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">  group</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'me'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">    const</span><span style="color:#79B8FF"> meRes</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> http.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">`${</span><span style="color:#79B8FF">BASE_URL</span><span style="color:#9ECBFF">}/lab/auth/me`</span><span style="color:#E1E4E8">, {</span></span>
+<span class="line"><span style="color:#E1E4E8">      headers: { Authorization: </span><span style="color:#9ECBFF">`Bearer ${</span><span style="color:#E1E4E8">token</span><span style="color:#9ECBFF">}`</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">      tags: { scenario: </span><span style="color:#9ECBFF">'auth_smoke'</span><span style="color:#E1E4E8"> },</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"><span style="color:#B392F0">    check</span><span style="color:#E1E4E8">(meRes, {</span></span>
+<span class="line"><span style="color:#9ECBFF">      'me status is 200'</span><span style="color:#E1E4E8">: (</span><span style="color:#FFAB70">r</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> r.status </span><span style="color:#F97583">===</span><span style="color:#79B8FF"> 200</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#9ECBFF">      'me returns the user'</span><span style="color:#E1E4E8">: (</span><span style="color:#FFAB70">r</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> r.</span><span style="color:#B392F0">json</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'user'</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">===</span><span style="color:#9ECBFF"> 'smoke-user'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span></code></pre>a:T17ad,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#6A737D"># Kata 48 — Smoke Test (Artillery solution)</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#85E89D">config</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">  target</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"http://localhost:3000"</span></span>
+<span class="line"><span style="color:#85E89D">  phases</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">    - </span><span style="color:#85E89D">duration</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">30</span></span>
+<span class="line"><span style="color:#85E89D">      arrivalRate</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">1</span></span>
+<span class="line"><span style="color:#85E89D">      name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"smoke"</span></span>
+<span class="line"><span style="color:#85E89D">  ensure</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">    p95</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">500</span></span>
+<span class="line"><span style="color:#85E89D">    maxErrorRate</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">1</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#85E89D">scenarios</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">  - </span><span style="color:#85E89D">name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"echo smoke"</span></span>
+<span class="line"><span style="color:#85E89D">    weight</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">1</span></span>
+<span class="line"><span style="color:#85E89D">    flow</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">get</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">          url</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"/lab/echo"</span></span>
+<span class="line"><span style="color:#85E89D">          expect</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">            - </span><span style="color:#85E89D">statusCode</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">200</span></span>
+<span class="line"><span style="color:#E1E4E8">            - </span><span style="color:#85E89D">hasProperty</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"ok"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">  - </span><span style="color:#85E89D">name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"auth flow smoke"</span></span>
+<span class="line"><span style="color:#85E89D">    weight</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">1</span></span>
+<span class="line"><span style="color:#85E89D">    flow</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">post</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">          url</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"/lab/auth/login"</span></span>
+<span class="line"><span style="color:#85E89D">          json</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">            username</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"smoke-user"</span></span>
+<span class="line"><span style="color:#85E89D">            password</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"anything-works"</span></span>
+<span class="line"><span style="color:#85E89D">          capture</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">            - </span><span style="color:#85E89D">json</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"$.token"</span></span>
+<span class="line"><span style="color:#85E89D">              as</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"token"</span></span>
+<span class="line"><span style="color:#85E89D">          expect</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">            - </span><span style="color:#85E89D">statusCode</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">200</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">get</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">          url</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"/lab/auth/me"</span></span>
+<span class="line"><span style="color:#85E89D">          headers</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">            Authorization</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"Bearer {{ token }}"</span></span>
+<span class="line"><span style="color:#85E89D">          expect</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">            - </span><span style="color:#85E89D">statusCode</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">200</span></span>
+<span class="line"><span style="color:#E1E4E8">            - </span><span style="color:#85E89D">hasProperty</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"user"</span></span>
+<span class="line"></span></code></pre>0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"kata":{"slug":"48-smoke-test","number":48,"title":"Smoke Test","phaseSlug":"phase-10-k6-basics","phaseNumber":10,"phaseName":"K6 Basics","readmeRaw":"$3","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"48-smoke-test.test.js","content":"$4"}],"artilleryFiles":[{"filename":"48-smoke-test.yml","content":"# Kata 48 — Smoke Test (Artillery solution)\n\nconfig:\n  target: \"http://localhost:3000\"\n  phases:\n    - duration: 30\n      arrivalRate: 1\n      name: \"smoke\"\n  ensure:\n    p95: 500\n    maxErrorRate: 1\n\nscenarios:\n  - name: \"echo smoke\"\n    weight: 1\n    flow:\n      - get:\n          url: \"/lab/echo\"\n          expect:\n            - statusCode: 200\n            - hasProperty: \"ok\"\n\n  - name: \"auth flow smoke\"\n    weight: 1\n    flow:\n      - post:\n          url: \"/lab/auth/login\"\n          json:\n            username: \"smoke-user\"\n            password: \"anything-works\"\n          capture:\n            - json: \"$.token\"\n              as: \"token\"\n          expect:\n            - statusCode: 200\n\n      - get:\n          url: \"/lab/auth/me\"\n          headers:\n            Authorization: \"Bearer {{ token }}\"\n          expect:\n            - statusCode: 200\n            - hasProperty: \"user\"\n"}],"jmeterFiles":[]},"prev":{"slug":"47-throughput-and-littles-law","number":47,"title":"Throughput and Little's Law","phaseSlug":"phase-09-perf-foundations","phaseNumber":9,"phaseName":"Perf Foundations","readmeRaw":"$5","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"47-throughput-and-littles-law.test.js","content":"$6"}],"artilleryFiles":[{"filename":"47-throughput-and-littles-law.yml","content":"# Kata 47 — Throughput and Little's Law (Artillery solution)\n#\n# Artillery's `arrivalRate` is open-model by default — exactly what we want.\n# Same target as the k6 solution: 200 RPS for 15 seconds against /lab/slow.\n\nconfig:\n  target: \"http://localhost:3000\"\n  phases:\n    - duration: 15\n      arrivalRate: 200\n      name: \"200 rps steady\"\n  ensure:\n    p95: 300\n    maxErrorRate: 1\n\nscenarios:\n  - name: \"constant rps against 100ms endpoint\"\n    flow:\n      - get:\n          url: \"/lab/slow?ms=100\"\n          expect:\n            - statusCode: 200\n"}],"jmeterFiles":[]},"next":{"slug":"49-ramping-vus-and-stages","number":49,"title":"Ramping VUs and Stages","phaseSlug":"phase-10-k6-basics","phaseNumber":10,"phaseName":"K6 Basics","readmeRaw":"$7","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"49-ramping-vus-and-stages.test.js","content":"$8"}],"artilleryFiles":[{"filename":"49-ramping-vus-and-stages.yml","content":"# Kata 49 — Ramping VUs and Stages (Artillery solution)\n#\n# Same shape as the k6 solution: warm-up → plateau → ramp → plateau → drain.\n# Artillery's `phases` are open-model (arrivalRate) by default.\n\nconfig:\n  target: \"http://localhost:3000\"\n  phases:\n    - duration: 20\n      arrivalRate: 1\n      rampTo: 50\n      name: \"warm-up\"\n\n    - duration: 60\n      arrivalRate: 50\n      name: \"plateau-low\"\n\n    - duration: 20\n      arrivalRate: 50\n      rampTo: 100\n      name: \"ramp-up\"\n\n    - duration: 40\n      arrivalRate: 100\n      name: \"plateau-high\"\n\n    - duration: 20\n      arrivalRate: 100\n      rampTo: 0\n      name: \"drain\"\n\n  ensure:\n    p95: 800\n    maxErrorRate: 1\n\nscenarios:\n  - name: \"jitter under load\"\n    flow:\n      - get:\n          url: \"/lab/jitter?p50=50&p95=200\"\n          expect:\n            - statusCode: 200\n"}],"jmeterFiles":[]},"frameworks":[{"id":"k6","label":"k6","files":[{"filename":"48-smoke-test.test.js","html":"$9"}]},{"id":"artillery","label":"Artillery","files":[{"filename":"48-smoke-test.yml","html":"$a"}]},{"id":"jmeter","label":"JMeter","files":[]},{"id":"playwright","label":"Playwright","files":[]},{"id":"cypress","label":"Cypress","files":[]}]}],["$Lb"],"$Lc"]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"UzMlu93LkryOOruE2pxnW"}
+b:["$","script","script-0",{"src":"/qa-labs/_next/static/chunks/01luku1w1f06_.js","async":true}]
+c:["$","$Ld",null,{"children":["$","$e",null,{"name":"Next.MetadataOutlet","children":"$@f"}]}]
+f:null

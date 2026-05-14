@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kata 02: Assertions | QA Labs</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #1e293b; padding: 2rem; }
+    .header { background: #0f172a; color: white; padding: 1rem 2rem; margin: -2rem -2rem 2rem; }
+    .header h1 { font-size: 1.25rem; }
+    .kata-badge { display: inline-block; background: #38bdf8; color: #0f172a; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 4px; margin-right: 0.5rem; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+    .section { margin-bottom: 2rem; padding: 1.5rem; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .section h2 { font-size: 1rem; color: #475569; margin-bottom: 1rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.5rem; }
+    .stat-card { display: flex; align-items: center; justify-content: space-between; padding: 1rem; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 0.75rem; }
+    .stat-card .label { font-size: 0.875rem; color: #64748b; }
+    .stat-card .value { font-size: 1.5rem; font-weight: 700; }
+    .stat-card .value.positive { color: #22c55e; }
+    .stat-card .value.negative { color: #ef4444; }
+    .stat-card .value.neutral { color: #3b82f6; }
+    .status-badge { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; }
+    .status-active { background: #dcfce7; color: #166534; }
+    .status-inactive { background: #fecaca; color: #991b1b; }
+    .status-warning { background: #fef3c7; color: #92400e; }
+    button { padding: 0.5rem 1rem; border: none; border-radius: 6px; font-size: 0.875rem; cursor: pointer; margin-right: 0.5rem; margin-bottom: 0.5rem; }
+    .btn-primary { background: #3b82f6; color: white; }
+    .btn-danger { background: #ef4444; color: white; }
+    .progress-bar { width: 100%; height: 8px; background: #e2e8f0; border-radius: 4px; overflow: hidden; margin-bottom: 0.5rem; }
+    .progress-fill { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
+    .progress-green { background: #22c55e; }
+    .progress-yellow { background: #eab308; }
+    .progress-red { background: #ef4444; }
+    .alert { padding: 0.75rem 1rem; border-radius: 6px; margin-bottom: 0.75rem; font-size: 0.875rem; }
+    .alert-success { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+    .alert-error { background: #fecaca; color: #991b1b; border: 1px solid #fca5a5; }
+    .alert-warning { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+    .hidden { display: none; }
+    input { padding: 0.5rem; border: 1px solid #cbd5e1; border-radius: 6px; font-size: 0.875rem; width: 100%; margin-bottom: 0.75rem; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 0.5rem; text-align: left; border-bottom: 1px solid #e2e8f0; font-size: 0.875rem; }
+    th { color: #64748b; font-weight: 600; }
+    .tag { display: inline-block; padding: 0.15rem 0.5rem; background: #e0e7ff; color: #3730a3; border-radius: 4px; font-size: 0.75rem; margin-right: 0.25rem; }
+    .empty-state { text-align: center; padding: 2rem; color: #94a3b8; }
+    .tooltip { position: relative; display: inline-block; cursor: help; border-bottom: 1px dashed #64748b; }
+    .list-item { padding: 0.5rem 0; border-bottom: 1px solid #f1f5f9; font-size: 0.875rem; display: flex; justify-content: space-between; align-items: center; }
+  </style>
+</head>
+<body>
+
+  <header class="header" data-testid="page-header">
+    <span class="kata-badge">KATA 02</span>
+    <h1>KYC Dashboard - Assertions Practice</h1>
+  </header>
+
+  <div class="grid">
+    <!-- LEFT COLUMN -->
+    <div>
+      <!-- Stats -->
+      <div class="section" data-testid="stats-section">
+        <h2>Application Statistics</h2>
+        <div class="stat-card" data-testid="stat-total">
+          <span class="label">Total Applications</span>
+          <span class="value neutral" data-testid="stat-total-value">1,247</span>
+        </div>
+        <div class="stat-card" data-testid="stat-approved">
+          <span class="label">Approved</span>
+          <span class="value positive" data-testid="stat-approved-value">892</span>
+        </div>
+        <div class="stat-card" data-testid="stat-rejected">
+          <span class="label">Rejected</span>
+          <span class="value negative" data-testid="stat-rejected-value">156</span>
+        </div>
+        <div class="stat-card" data-testid="stat-pending">
+          <span class="label">Pending Review</span>
+          <span class="value neutral" data-testid="stat-pending-value">199</span>
+        </div>
+      </div>
+
+      <!-- Progress Bars -->
+      <div class="section" data-testid="progress-section">
+        <h2>Verification Progress</h2>
+        <div data-testid="progress-identity">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 0.25rem;">
+            <span style="font-size: 0.875rem;">Identity Check</span>
+            <span style="font-size: 0.875rem;" data-testid="progress-identity-pct">85%</span>
+          </div>
+          <div class="progress-bar">
+            <div class="progress-fill progress-green" style="width: 85%;" data-testid="progress-identity-bar"></div>
+          </div>
+        </div>
+        <div data-testid="progress-address">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 0.25rem;">
+            <span style="font-size: 0.875rem;">Address Verification</span>
+            <span style="font-size: 0.875rem;" data-testid="progress-address-pct">62%</span>
+          </div>
+          <div class="progress-bar">
+            <div class="progress-fill progress-yellow" style="width: 62%;" data-testid="progress-address-bar"></div>
+          </div>
+        </div>
+        <div data-testid="progress-background">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 0.25rem;">
+            <span style="font-size: 0.875rem;">Background Check</span>
+            <span style="font-size: 0.875rem;" data-testid="progress-background-pct">30%</span>
+          </div>
+          <div class="progress-bar">
+            <div class="progress-fill progress-red" style="width: 30%;" data-testid="progress-background-bar"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Alerts -->
+      <div class="section" data-testid="alerts-section">
+        <h2>System Alerts</h2>
+        <div class="alert alert-success" data-testid="alert-success">
+          <strong>Success:</strong> 12 applications processed in the last hour.
+        </div>
+        <div class="alert alert-warning" data-testid="alert-warning">
+          <strong>Warning:</strong> 3 applications require manual review.
+        </div>
+        <div class="alert alert-error" data-testid="alert-error">
+          <strong>Error:</strong> Document verification service is experiencing delays.
+        </div>
+      </div>
+
+      <!-- Toggle content -->
+      <div class="section" data-testid="toggle-section">
+        <h2>Dynamic Content</h2>
+        <button class="btn-primary" data-testid="btn-add-alert" id="btn-add-alert">Add Alert</button>
+        <button class="btn-danger" data-testid="btn-clear-alerts" id="btn-clear-alerts">Clear Alerts</button>
+        <div id="dynamic-alerts" data-testid="dynamic-alerts" style="margin-top: 1rem;"></div>
+
+        <div style="margin-top: 1rem;">
+          <p style="font-size: 0.875rem; margin-bottom: 0.5rem;">Counter: <strong data-testid="counter-value" id="counter-value">0</strong></p>
+          <button class="btn-primary" data-testid="btn-increment" id="btn-increment">+1</button>
+          <button class="btn-primary" data-testid="btn-decrement" id="btn-decrement">-1</button>
+          <button class="btn-danger" data-testid="btn-reset-counter" id="btn-reset-counter">Reset</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div>
+      <!-- Application List -->
+      <div class="section" data-testid="applications-section">
+        <h2>Recent Applications</h2>
+        <table data-testid="app-table">
+          <thead>
+            <tr>
+              <th>Applicant</th>
+              <th>Risk</th>
+              <th>Status</th>
+              <th>Tags</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr data-testid="app-row-1">
+              <td data-testid="app-name-1">Alice Johnson</td>
+              <td data-testid="app-risk-1">Low</td>
+              <td><span class="status-badge status-active" data-testid="app-status-1">Active</span></td>
+              <td><span class="tag" data-testid="tag-individual">Individual</span><span class="tag" data-testid="tag-verified">Verified</span></td>
+            </tr>
+            <tr data-testid="app-row-2">
+              <td data-testid="app-name-2">Bob Chen</td>
+              <td data-testid="app-risk-2">Medium</td>
+              <td><span class="status-badge status-warning" data-testid="app-status-2">Under Review</span></td>
+              <td><span class="tag">Business</span></td>
+            </tr>
+            <tr data-testid="app-row-3">
+              <td data-testid="app-name-3">Carol Williams</td>
+              <td data-testid="app-risk-3">High</td>
+              <td><span class="status-badge status-inactive" data-testid="app-status-3">Suspended</span></td>
+              <td><span class="tag">Individual</span><span class="tag">Flagged</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Element attributes and classes -->
+      <div class="section" data-testid="attributes-section">
+        <h2>Element Attributes</h2>
+        <input type="text" data-testid="input-readonly" value="KYC-2024-0001" readonly />
+        <input type="text" data-testid="input-disabled" value="Cannot edit" disabled />
+        <input type="text" data-testid="input-required" placeholder="Required field *" required />
+        <input type="number" data-testid="input-risk-score" value="72" min="0" max="100" />
+
+        <a href="https://example.com/terms" data-testid="link-terms" target="_blank" rel="noopener">Terms of Service</a>
+
+        <div data-testid="data-attributes"
+             data-status="active"
+             data-priority="high"
+             data-count="42"
+             data-user-role="admin"
+             style="margin-top: 1rem; padding: 0.5rem; background: #f1f5f9; border-radius: 4px; font-size: 0.875rem;">
+          Element with custom data attributes (inspect me!)
+        </div>
+      </div>
+
+      <!-- CSS classes and styles -->
+      <div class="section" data-testid="styles-section">
+        <h2>CSS & Styles</h2>
+        <div data-testid="colored-box" style="width: 100px; height: 100px; background-color: rgb(59, 130, 246); border-radius: 8px; margin-bottom: 1rem;"></div>
+        <button class="btn-primary" data-testid="btn-change-color" id="btn-change-color">Change Color</button>
+
+        <div style="margin-top: 1rem;">
+          <p data-testid="text-uppercase" style="text-transform: uppercase; font-size: 0.875rem;">this text is uppercase</p>
+          <p data-testid="text-bold" style="font-weight: 700; font-size: 0.875rem;">This text is bold</p>
+          <p data-testid="text-italic" style="font-style: italic; font-size: 0.875rem;">This text is italic</p>
+          <p data-testid="text-linethrough" style="text-decoration: line-through; font-size: 0.875rem;">This text has strikethrough</p>
+        </div>
+      </div>
+
+      <!-- Empty and non-empty states -->
+      <div class="section" data-testid="state-section">
+        <h2>Empty & Loading States</h2>
+        <div data-testid="empty-list" class="empty-state">
+          <p data-testid="empty-message">No pending verifications.</p>
+        </div>
+        <div data-testid="items-list" style="margin-top: 1rem;">
+          <div class="list-item" data-testid="list-item-1">
+            <span>Document #1</span>
+            <span class="status-badge status-active">Complete</span>
+          </div>
+          <div class="list-item" data-testid="list-item-2">
+            <span>Document #2</span>
+            <span class="status-badge status-warning">In Progress</span>
+          </div>
+          <div class="list-item" data-testid="list-item-3">
+            <span>Document #3</span>
+            <span class="status-badge status-inactive">Failed</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Counter logic
+    let counter = 0;
+    const counterEl = document.getElementById('counter-value');
+
+    document.getElementById('btn-increment').addEventListener('click', () => {
+      counter++;
+      counterEl.textContent = counter;
+    });
+
+    document.getElementById('btn-decrement').addEventListener('click', () => {
+      counter--;
+      counterEl.textContent = counter;
+    });
+
+    document.getElementById('btn-reset-counter').addEventListener('click', () => {
+      counter = 0;
+      counterEl.textContent = counter;
+    });
+
+    // Dynamic alerts
+    let alertCount = 0;
+    document.getElementById('btn-add-alert').addEventListener('click', () => {
+      alertCount++;
+      const div = document.createElement('div');
+      div.className = 'alert alert-warning';
+      div.setAttribute('data-testid', 'dynamic-alert-' + alertCount);
+      div.innerHTML = '<strong>Alert #' + alertCount + ':</strong> New application requires review.';
+      document.getElementById('dynamic-alerts').appendChild(div);
+    });
+
+    document.getElementById('btn-clear-alerts').addEventListener('click', () => {
+      document.getElementById('dynamic-alerts').innerHTML = '';
+      alertCount = 0;
+    });
+
+    // Color change
+    let isBlue = true;
+    document.getElementById('btn-change-color').addEventListener('click', () => {
+      const box = document.querySelector('[data-testid="colored-box"]');
+      if (isBlue) {
+        box.style.backgroundColor = 'rgb(239, 68, 68)';
+      } else {
+        box.style.backgroundColor = 'rgb(59, 130, 246)';
+      }
+      isBlue = !isBlue;
+    });
+  </script>
+
+</body>
+</html>

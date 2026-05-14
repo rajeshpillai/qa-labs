@@ -1,0 +1,1088 @@
+1:"$Sreact.fragment"
+2:I[76750,["/qa-labs/_next/static/chunks/012xw9ydea0yn.js","/qa-labs/_next/static/chunks/0t2xr05rlu96l.js","/qa-labs/_next/static/chunks/0a55m.6s3qp~-.js","/qa-labs/_next/static/chunks/01luku1w1f06_.js"],"KataPageClient"]
+e:I[97367,["/qa-labs/_next/static/chunks/012xw9ydea0yn.js","/qa-labs/_next/static/chunks/0t2xr05rlu96l.js","/qa-labs/_next/static/chunks/0a55m.6s3qp~-.js"],"OutletBoundary"]
+f:"$Sreact.suspense"
+3:T1ce3,# Kata 62: WebSocket Testing
+
+## What You Will Learn
+
+- Why WebSocket load testing is fundamentally different from HTTP
+- The k6 `ws` module: connecting, sending, receiving, closing
+- Measuring **roundtrip latency** for echo-style protocols
+- Testing **connection capacity**: how many concurrent sockets can the server hold?
+- Handling **server-pushed messages** (the WS-specific part of the test)
+- Why open-model load makes no sense for WebSocket — closed model is correct
+
+## Prerequisites
+
+- Phases 9–13
+- The QA Labs server running (exposes a WebSocket at `ws://localhost:3000/lab/ws`)
+- Familiarity with the WebSocket protocol basics (handshake, frames, close codes)
+
+## Concepts Explained
+
+### Why WebSocket is different
+
+HTTP is **request-response**: every metric is per-request. WebSocket is a **persistent connection** with bidirectional messaging. Different metrics matter:
+
+| HTTP cares about | WebSocket cares about |
+|------------------|----------------------|
+| RPS, p95 latency | Connections held, message rate |
+| Time to first byte | Time to first frame after open |
+| HTTP status codes | Close codes, ping/pong cadence |
+| Per-request errors | Per-connection drops |
+
+Most importantly: **a WebSocket test holds connections open**. You can't ramp up "RPS" because requests don't really exist; you ramp up **connection count**.
+
+### The k6 `ws` module
+
+```javascript
+import ws from 'k6/ws';
+
+export default function () {
+  const url = 'ws://localhost:3000/lab/ws';
+  const params = { tags: { kind: 'echo' } };
+
+  // Connect; the callback runs once per VU iteration
+  const res = ws.connect(url, params, function (socket) {
+    socket.on('open', () => {
+      socket.send('hello');
+    });
+
+    socket.on('message', (msg) => {
+      console.log('received:', msg);
+    });
+
+    socket.on('close', () => {
+      console.log('connection closed');
+    });
+
+    socket.setTimeout(() => socket.close(), 5000);
+  });
+}
+```
+
+`ws.connect` is **synchronous from the test's perspective** — the iteration doesn't return until the socket closes.
+
+### The lab server's `/lab/ws` endpoint
+
+Hits `ws://localhost:3000/lab/ws`. Behavior:
+- On connect, server sends `{ "type": "hello", "ts": <ts> }` immediately
+- Plain text messages are echoed back as `{ "type": "echo", "msg": "<your text>", "ts": <ts> }`
+- Send `{ "op": "slow", "ms": 500 }` → server waits 500ms before echoing
+- Send `{ "op": "broadcast", "msg": "hi" }` → server forwards to ALL connected clients
+
+This lets you test echo latency, latency injection, and broadcast fan-out in one endpoint.
+
+### Measuring roundtrip latency
+
+Track time from `send` to `message` for each frame:
+
+```javascript
+import { Trend } from 'k6/metrics';
+const wsLatency = new Trend('ws_roundtrip_ms', true);
+
+ws.connect(url, params, function (socket) {
+  socket.on('open', () => {
+    for (let i = 0; i < 10; i++) {
+      const start = Date.now();
+      socket.setTimeout(() => {
+        socket.send(JSON.stringify({ seq: i, sentAt: start }));
+      }, i * 100);  // send every 100ms
+    }
+  });
+
+  socket.on('message', (raw) => {
+    const msg = JSON.parse(raw);
+    if (msg.type === 'echo') {
+      const original = JSON.parse(msg.msg);
+      wsLatency.add(Date.now() - original.sentAt);
+    }
+  });
+
+  socket.setTimeout(() => socket.close(), 3000);
+});
+```
+
+`ws_roundtrip_ms` becomes a custom Trend metric you can threshold on.
+
+### Closed-model is the only option for WS
+
+You can't say "100 RPS" for WebSocket — there are no requests. You say "100 concurrent connections" or "100 messages/second across N connections."
+
+```javascript
+// k6 closed-model: N connections held simultaneously
+export const options = {
+  scenarios: {
+    sustained_connections: {
+      executor: 'constant-vus',
+      vus: 100,           // 100 concurrent socket connections
+      duration: '60s',
+    },
+  },
+};
+```
+
+Each VU holds one socket. To find connection capacity, ramp VUs:
+
+```javascript
+{ executor: 'ramping-vus', stages: [
+  { duration: '30s', target: 100 },
+  { duration: '30s', target: 500 },
+  { duration: '30s', target: 1000 },
+]}
+```
+
+### Common WebSocket failure modes
+
+| Symptom | Cause |
+|---------|-------|
+| Connections fail at N | OS file descriptor limit (`ulimit -n`) on client or server |
+| Latency climbs with connection count | Server thread/event-loop bottleneck |
+| Messages dropped | Server backpressure, no flow control |
+| `1006 Abnormal Closure` | Connection forcibly closed (timeout, server crash) |
+| Slow ping/pong | Idle keepalive interval too aggressive |
+
+### Artillery WebSocket support
+
+Artillery can do WebSocket via the `engine: 'ws'`:
+
+```yaml
+config:
+  target: "ws://localhost:3000/lab/ws"
+  engine: ws
+  phases:
+    - duration: 30
+      arrivalRate: 10
+scenarios:
+  - flow:
+      - send: "hello"
+      - think: 1
+      - send: "hello again"
+```
+
+Less ergonomic than k6 for complex flows (no Trend metrics, limited message validation). For real WS work, **k6 is significantly better.**
+
+## Exercises
+
+1. **Echo latency baseline.** Connect, send 5 messages 100ms apart, measure roundtrip latency. p95 should be < 50ms locally.
+2. **Latency injection.** Use the `{ "op": "slow", "ms": 500 }` message to see what happens when the server takes time. Does your roundtrip metric reflect the 500ms?
+3. **Connection capacity.** Ramp from 10 → 200 connections over 60s. At what count does the server start dropping or slowing?
+4. **Broadcast fan-out.** With 50 VUs each connected, have ONE VU send a `{ "op": "broadcast", "msg": "hi" }`. Each of the 50 VUs should receive the broadcast frame. Measure the fan-out latency (broadcast send → all-clients-received).
+5. **Cleanup.** What happens to your test if you forget `socket.close()`? Does k6 hang? (Yes — set a timeout.)
+
+## Common Mistakes
+
+- **Treating WS tests like HTTP load.** `arrivalRate` and `RPS` don't translate. Use `vus` + `duration`.
+- **Not setting a timeout.** A socket that never receives the expected message will hang the iteration forever — set `socket.setTimeout()` to force-close.
+- **Forgetting `await` semantics.** `ws.connect` blocks the iteration until close, even though it looks like it returns immediately. Don't try to make HTTP calls "after" `ws.connect`.
+- **Hardcoding `localhost`.** Use `__ENV.K6_BASE_URL` and derive the WS URL from it (replace `http://` with `ws://`).
+- **Mixing protocols in one connection.** A k6 VU can either do HTTP or WebSocket per iteration easily; try not to do both in the same iteration.
+
+## Cheat Sheet
+
+```javascript
+import ws from 'k6/ws';
+import { Trend, Counter } from 'k6/metrics';
+
+const latency = new Trend('ws_roundtrip_ms', true);
+const errors = new Counter('ws_errors');
+
+ws.connect(url, params, function (socket) {
+  socket.on('open', () => { /* start sending */ });
+  socket.on('message', (m) => { /* record metrics */ });
+  socket.on('close', () => { /* expected end */ });
+  socket.on('error', () => errors.add(1));
+
+  // Always set a timeout — otherwise iteration hangs
+  socket.setTimeout(() => socket.close(), 5000);
+});
+```
+
+| Goal | Approach |
+|------|----------|
+| Measure echo latency | Connect, send, time `open` → `message` event |
+| Find connection capacity | Ramp VUs, watch `ws_session_duration` and connect failures |
+| Test pub/sub fan-out | Many subscribers, one publisher, count receives |
+| Test reconnection logic | Force-close from server, measure reconnect time |
+4:Tc73,// Kata 62 — WebSocket Testing (k6 solution)
+//
+// Connects to ws://localhost:3000/lab/ws, sends 10 ping messages spaced
+// 100ms apart, measures roundtrip latency. Each VU holds one socket
+// for 3 seconds.
+//
+// To find connection capacity, switch to the `ramping_connections`
+// scenario by uncommenting it below.
+
+import ws from 'k6/ws';
+import { check } from 'k6';
+import { Trend, Counter } from 'k6/metrics';
+
+const BASE_HTTP = __ENV.K6_BASE_URL || 'http://localhost:3000';
+const WS_URL = BASE_HTTP.replace(/^http/, 'ws') + '/lab/ws';
+
+const wsRoundtrip = new Trend('ws_roundtrip_ms', true);
+const wsConnectErrors = new Counter('ws_connect_errors');
+const wsMessages = new Counter('ws_messages_received');
+
+export const options = {
+  scenarios: {
+    echo_latency: {
+      executor: 'constant-vus',
+      vus: 10,
+      duration: '15s',
+    },
+    // Uncomment to find connection capacity:
+    // ramping_connections: {
+    //   executor: 'ramping-vus',
+    //   startVUs: 0,
+    //   stages: [
+    //     { duration: '15s', target: 50 },
+    //     { duration: '15s', target: 200 },
+    //     { duration: '15s', target: 500 },
+    //   ],
+    // },
+  },
+  thresholds: {
+    'ws_roundtrip_ms': ['p(95)<100'],
+    'ws_connect_errors': ['count<5'],
+    // Each VU connects ~5 times in 15s; we expect at least the hello frames
+    // back. Real-world tests would assert on roundtrip metrics, not raw count.
+    'ws_messages_received': ['count>=10'],
+  },
+};
+
+export default function () {
+  // Map of seq → sentAt so we can compute roundtrip when the echo arrives.
+  const pendingSends = new Map();
+
+  const res = ws.connect(WS_URL, {}, function (socket) {
+    socket.on('open', () => {
+      // Send 10 messages, 100ms apart. k6 v2 requires setTimeout > 0,
+      // so send the first one immediately and schedule the rest.
+      const sendOne = (seq) => {
+        if (socket.readyState !== 1) return;  // not OPEN
+        const sentAt = Date.now();
+        pendingSends.set(seq, sentAt);
+        socket.send(JSON.stringify({ seq, sentAt }));
+      };
+      sendOne(0);
+      for (let i = 1; i < 10; i++) {
+        socket.setTimeout(() => sendOne(i), i * 100);
+      }
+    });
+
+    socket.on('message', (raw) => {
+      wsMessages.add(1);
+      try {
+        const msg = JSON.parse(raw);
+        if (msg.type === 'hello') return;  // server greeting on connect
+        if (msg.type === 'echo') {
+          // Server wraps our text inside { type: 'echo', msg: <our text> }
+          const original = JSON.parse(msg.msg);
+          if (typeof original?.seq === 'number') {
+            const sentAt = pendingSends.get(original.seq);
+            if (sentAt) {
+              wsRoundtrip.add(Date.now() - sentAt);
+              pendingSends.delete(original.seq);
+            }
+          }
+        }
+      } catch {
+        // Ignore non-JSON frames
+      }
+    });
+
+    socket.on('error', (e) => {
+      console.log('WS error:', e?.error || e);
+      wsConnectErrors.add(1);
+    });
+
+    // Force-close after 3s — caps iteration duration.
+    socket.setTimeout(() => socket.close(), 3000);
+  });
+
+  check(res, {
+    'ws connect ok (status 101)': (r) => r && r.status === 101,
+  });
+}
+5:T1b22,# Kata 61: Batched HTTP and REST Patterns
+
+## What You Will Learn
+
+- The difference between **sequential**, **parallel**, and **batched** request patterns — and what each costs
+- k6's `http.batch()` for parallel requests, and **why "parallel" doesn't mean "free"**
+- The "fan-out" pattern: kicking off N parallel calls and waiting for all of them
+- How to model a typical API user: dashboard load = 5 parallel calls, profile click = 1 sequential call
+- When to use `Promise.all`-style parallelism vs sequential vs pipelined
+
+## Prerequisites
+
+- Phases 9–13 (you understand load shapes, percentiles, threshold patterns)
+- The QA Labs server running
+
+## Concepts Explained
+
+### Three request patterns
+
+When a single user action triggers multiple API calls, the test should match the *real* pattern, not just "send N requests."
+
+#### Sequential (request-then-request)
+
+```
+A ──┐
+    ▼
+    B ──┐
+        ▼
+        C
+```
+
+Total time = A + B + C. Each call waits for the previous one's response. This is slowest but unavoidable when **C depends on B's response**.
+
+```javascript
+// k6
+const a = http.get('/api/user');
+const b = http.get(`/api/user/${a.json('id')}/orders`);  // depends on A
+const c = http.get(`/api/orders/${b.json('orders')[0].id}`);  // depends on B
+```
+
+#### Parallel (fan-out)
+
+```
+A ──┐
+B ──┼──► all return
+C ──┘
+```
+
+Total time = max(A, B, C). All three fire simultaneously; finishes when the slowest one returns. Use when **none of the calls depend on each other**.
+
+```javascript
+// k6 — http.batch sends all in parallel
+const responses = http.batch([
+  ['GET', '/api/dashboard/widgets'],
+  ['GET', '/api/dashboard/notifications'],
+  ['GET', '/api/dashboard/feed'],
+]);
+```
+
+#### Pipelined / staggered
+
+```
+A ──────────►
+   B ──────────►
+      C ──────────►
+```
+
+Hybrid: subsequent requests start *before* the previous one finishes, but you wait for all of them. Useful for prefetching. Less common in test code; common in browser code.
+
+### Why "parallel" still costs
+
+Parallel doesn't mean free. Five parallel `http.batch` calls:
+- Use 5× the connections (or pipeline through HTTP/2)
+- Hit the server with a sudden burst (server CPU spike)
+- May saturate the **client's** outbound bandwidth
+
+If your test does 100 batches × 5 parallel = 500 simultaneous connections per VU, and you have 10 VUs, you're at 5000 simultaneous. Most servers don't like that.
+
+### `http.batch` semantics
+
+```javascript
+const responses = http.batch([
+  { method: 'GET', url: 'https://api.example.com/users' },
+  { method: 'GET', url: 'https://api.example.com/posts' },
+  { method: 'POST', url: 'https://api.example.com/event', body: JSON.stringify({}) },
+]);
+
+// responses is an array, same order as the input
+console.log(responses[0].status); // 200
+```
+
+Each entry can be:
+- A 2-element array `[method, url]`
+- A 3-element array `[method, url, body]`
+- A 4-element array `[method, url, body, params]`
+- An object with `method`, `url`, `body`, `params` keys
+
+All requests in the batch fire **at the same time**. Return is when the last one completes.
+
+### Modeling a "dashboard load"
+
+A dashboard typically:
+1. Logs in (sequential, must complete first)
+2. Fetches 4-6 widgets in parallel
+3. Fetches user notifications in parallel with widgets
+4. After all return, may make follow-up calls
+
+```javascript
+// 1. Auth (sequential)
+const token = login();
+
+// 2-3. Parallel dashboard load
+const responses = http.batch([
+  ['GET', `${BASE}/dashboard/widget-a`, null, { headers: authHeader(token) }],
+  ['GET', `${BASE}/dashboard/widget-b`, null, { headers: authHeader(token) }],
+  ['GET', `${BASE}/dashboard/widget-c`, null, { headers: authHeader(token) }],
+  ['GET', `${BASE}/notifications`, null, { headers: authHeader(token) }],
+]);
+
+// 4. Conditional follow-up
+if (responses[3].json('count') > 0) {
+  http.get(`${BASE}/notifications/details`, { headers: authHeader(token) });
+}
+```
+
+This realistically tests the dashboard endpoint — not by hammering it with N independent requests, but by simulating the **request shape** real users produce.
+
+### Sequential and chained — when you must
+
+Some flows are inherently sequential:
+- Submit form → get ID → fetch details for that ID
+- Create order → confirm payment → get receipt
+
+Sequential calls have a **multiplier** effect on latency: if each is p95 = 200ms, three in series = p95 ≈ 600ms (slightly less due to percentile math, but close). One slow step ruins the whole flow.
+
+### Artillery's `loop` and `parallel`
+
+Artillery can do batches via `loop` (sequential repetition):
+
+```yaml
+- loop:
+    - get: { url: "/api/widget-a" }
+    - get: { url: "/api/widget-b" }
+  count: 3
+```
+
+For true parallelism within a scenario, Artillery's options are limited — you'd run multiple parallel scenarios at the config level. **k6 wins for parallel-within-a-flow.**
+
+## Exercises
+
+1. **Sequential vs parallel.** Hit `/lab/echo` 3 times sequentially, then 3 times via `http.batch`. Compare iteration durations. With echo's near-zero latency the difference is small; try `/lab/slow?ms=200` for a clearer comparison.
+2. **Realistic dashboard.** Log in to `/lab/auth/login`, then `http.batch` four GETs to `/lab/echo` (simulating widget loads) using the auth token. Assert all four are 200.
+3. **Conditional follow-up.** If the auth user is "admin" (string match the username), fetch an extra endpoint after the batch. Otherwise skip.
+4. **Cost of parallelism.** Run 50 VUs each doing batches of 10 parallel requests against `/lab/echo`. What's the actual concurrent connection count? (Hint: VUs × batch size.) Why might this overload a small dev server?
+
+## Common Mistakes
+
+- **Treating sequential as the default.** If A and B don't depend on each other, doing them sequentially needlessly doubles iteration latency.
+- **Over-parallelizing.** Sending 50 parallel requests per iteration is rarely realistic; users don't do that.
+- **Ignoring slow responses in a batch.** A `batch` of 5 returns when the slowest finishes — but if 1 request is timing out, all 5 in your test wait for it. Add per-request timeout.
+- **Same `params` across batch entries.** Common bug: forget to pass tags per request, can't slice metrics by URL.
+
+## Cheat Sheet
+
+```javascript
+// k6 batch
+const res = http.batch([
+  ['GET', `${BASE}/a`, null, { tags: { name: 'a' } }],
+  ['GET', `${BASE}/b`, null, { tags: { name: 'b' } }],
+]);
+
+// Per-URL threshold via tags
+thresholds: {
+  'http_req_duration{name:a}': ['p(95)<200'],
+  'http_req_duration{name:b}': ['p(95)<300'],
+}
+```
+
+| Pattern | When | Total time |
+|---------|------|------------|
+| Sequential | Step N depends on step N-1 | Sum of all |
+| Parallel (`http.batch`) | Steps are independent | Max of all |
+| Pipelined | Prefetch / overlap-safe | Between sequential and parallel |
+| Conditional follow-up | Some steps optional | Depends on branching |
+6:Te86,// Kata 61 — Batched HTTP and REST Patterns (k6 solution)
+//
+// Compares sequential, parallel (batched), and conditional patterns
+// against the lab server. Each scenario tagged so per-pattern percentiles
+// are visible in the summary.
+
+import http from 'k6/http';
+import { check } from 'k6';
+
+const BASE_URL = __ENV.K6_BASE_URL || 'http://localhost:3000';
+
+export const options = {
+  scenarios: {
+    sequential: {
+      executor: 'constant-vus',
+      vus: 5,
+      duration: '15s',
+      exec: 'sequentialFlow',
+    },
+    batched: {
+      executor: 'constant-vus',
+      vus: 5,
+      duration: '15s',
+      exec: 'batchedFlow',
+    },
+    realistic: {
+      executor: 'constant-vus',
+      vus: 3,
+      duration: '15s',
+      exec: 'realisticDashboard',
+    },
+  },
+  thresholds: {
+    'http_req_failed': ['rate<0.01'],
+    // Same workload, different patterns. Per-pattern p95 makes the
+    // sequential vs parallel cost visible.
+    'iteration_duration{pattern:sequential}': ['p(95)<1500'],
+    'iteration_duration{pattern:batched}': ['p(95)<700'],
+  },
+};
+
+// Pattern 1: hit three slow endpoints sequentially.
+// Total ≈ 3 × 200ms = 600ms minimum.
+export function sequentialFlow() {
+  http.get(`${BASE_URL}/lab/slow?ms=200`, { tags: { pattern: 'sequential', step: 'a' } });
+  http.get(`${BASE_URL}/lab/slow?ms=200`, { tags: { pattern: 'sequential', step: 'b' } });
+  http.get(`${BASE_URL}/lab/slow?ms=200`, { tags: { pattern: 'sequential', step: 'c' } });
+}
+
+// Pattern 2: same three calls but in parallel via http.batch.
+// Total ≈ max(200ms, 200ms, 200ms) = 200ms.
+export function batchedFlow() {
+  const responses = http.batch([
+    ['GET', `${BASE_URL}/lab/slow?ms=200`, null, { tags: { pattern: 'batched', step: 'a' } }],
+    ['GET', `${BASE_URL}/lab/slow?ms=200`, null, { tags: { pattern: 'batched', step: 'b' } }],
+    ['GET', `${BASE_URL}/lab/slow?ms=200`, null, { tags: { pattern: 'batched', step: 'c' } }],
+  ]);
+  check(responses[0], { 'a returned 200': (r) => r.status === 200 });
+  check(responses[1], { 'b returned 200': (r) => r.status === 200 });
+  check(responses[2], { 'c returned 200': (r) => r.status === 200 });
+}
+
+// Pattern 3: realistic dashboard — sequential auth, then parallel widgets,
+// optional follow-up depending on the response.
+export function realisticDashboard() {
+  // 1. Sequential: login, must complete first.
+  const loginRes = http.post(
+    `${BASE_URL}/lab/auth/login`,
+    JSON.stringify({ username: `dash-${__VU}`, password: 'pw' }),
+    { headers: { 'Content-Type': 'application/json' } }
+  );
+  if (loginRes.status !== 200) return;
+  const token = loginRes.json('token');
+  const authHeaders = { Authorization: `Bearer ${token}` };
+
+  // 2. Parallel: 4 simulated widget loads + 1 notifications poll.
+  const responses = http.batch([
+    ['GET', `${BASE_URL}/lab/echo?widget=a`, null, { headers: authHeaders, tags: { widget: 'a' } }],
+    ['GET', `${BASE_URL}/lab/echo?widget=b`, null, { headers: authHeaders, tags: { widget: 'b' } }],
+    ['GET', `${BASE_URL}/lab/echo?widget=c`, null, { headers: authHeaders, tags: { widget: 'c' } }],
+    ['GET', `${BASE_URL}/lab/echo?widget=d`, null, { headers: authHeaders, tags: { widget: 'd' } }],
+    ['GET', `${BASE_URL}/lab/auth/me`, null, { headers: authHeaders, tags: { widget: 'me' } }],
+  ]);
+
+  for (const r of responses) {
+    check(r, { 'widget loaded': (res) => res.status === 200 });
+  }
+
+  // 3. Conditional: only fetch the extra endpoint if auth confirms it.
+  // (Trivial example — in real flows: "fetch alerts if user has admin role".)
+  const meRes = responses[4];
+  if (meRes.status === 200 && meRes.json('user')) {
+    http.get(`${BASE_URL}/lab/health`, { tags: { followup: 'true' } });
+  }
+}
+7:T754,# Kata 61 — Batched HTTP and REST Patterns (Artillery solution)
+#
+# Artillery's flow steps are sequential by default. There's no first-class
+# `parallel` block in the YAML config — for true parallelism within a flow,
+# use the engine: 'http' with custom JS, or just run multiple parallel
+# scenarios at the config level. This file shows both.
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    - duration: 15
+      arrivalRate: 5
+      name: "main"
+  ensure:
+    p95: 1500
+    maxErrorRate: 1
+
+scenarios:
+  - name: "sequential dashboard load"
+    weight: 50
+    flow:
+      # Login (must be sequential — token feeds subsequent requests)
+      - post:
+          url: "/lab/auth/login"
+          json:
+            username: "dash-{{ $randomString() }}"
+            password: "pw"
+          capture:
+            - json: "$.token"
+              as: "token"
+          expect:
+            - statusCode: 200
+
+      # Sequential widget calls — each waits for the previous.
+      # Note total iteration time = sum of all latencies.
+      - get:
+          url: "/lab/echo?widget=a"
+          headers:
+            Authorization: "Bearer {{ token }}"
+      - get:
+          url: "/lab/echo?widget=b"
+          headers:
+            Authorization: "Bearer {{ token }}"
+      - get:
+          url: "/lab/echo?widget=c"
+          headers:
+            Authorization: "Bearer {{ token }}"
+      - get:
+          url: "/lab/echo?widget=d"
+          headers:
+            Authorization: "Bearer {{ token }}"
+
+  # To approximate parallelism, run a separate scenario that fires single
+  # widget requests at a higher arrival rate. Different test, same workload
+  # in aggregate. For real parallel-within-flow, use k6.
+  - name: "concurrent widget loads"
+    weight: 50
+    flow:
+      - get:
+          url: "/lab/echo?widget=concurrent"
+          expect:
+            - statusCode: 200
+8:T1f34,# Kata 63: Rate Limit Handling
+
+## What You Will Learn
+
+- The three common rate-limit response shapes: **`429 Too Many Requests`**, **`Retry-After` header**, and **silent slowdown**
+- How to write a load test that **respects** rate limits (so you measure the rate-limited endpoint, not just hammer it)
+- The "retry storm" anti-pattern and why naive retries make things worse
+- **Token bucket** vs **fixed window** vs **leaky bucket** — what each looks like under load
+- Backoff strategies: linear, exponential, jittered exponential
+- How to test that your **client code** handles rate limits gracefully (separate from "does the server enforce them")
+
+## Prerequisites
+
+- Phases 9–13
+- The QA Labs server running — exposes `/lab/limit` (token bucket: 5 req/sec per IP)
+
+## Concepts Explained
+
+### Rate limiting: server side
+
+Most public APIs limit requests per client. Common implementations:
+
+| Algorithm | How | Behavior under burst |
+|-----------|-----|---------------------|
+| **Token bucket** | Refill N tokens/sec; each request consumes one | Allows short bursts up to bucket capacity |
+| **Fixed window** | Count requests per minute; reset at minute boundary | Hard cliff at boundary; "thundering herd" risk |
+| **Sliding window** | Rolling count over the last N seconds | Smoother, more accurate, more expensive to compute |
+| **Leaky bucket** | Requests queue, drained at fixed rate | Adds latency before rejection |
+
+The lab server's `/lab/limit` is **token bucket**: 5 requests/sec per IP, capacity 5 tokens. Send a burst of 10 → first 5 accepted, rest get 429.
+
+### Rate limiting: response shape
+
+Three patterns the client must recognize:
+
+#### 1. `429 Too Many Requests`
+
+```http
+HTTP/1.1 429 Too Many Requests
+Retry-After: 1
+Content-Type: application/json
+
+{"error": "rate limit exceeded", "retryAfterMs": 1000}
+```
+
+The standard. `Retry-After` is the spec-compliant way to say "wait this long."
+
+#### 2. Silent slowdown / queueing
+
+The server queues your request internally and responds slowly (200 but takes 5s). No 429. Hard to detect from the client side; looks like server is "just slow." Common with leaky-bucket implementations.
+
+#### 3. Connection drop
+
+Server closes the TCP connection without responding. Manifests as `ECONNRESET` or `ETIMEDOUT` in your client.
+
+### How to test rate-limited endpoints
+
+Two distinct things you might want to measure:
+
+#### A. Does the rate limiter work as specified?
+
+Hammer the endpoint with bursts, count how many 429s you get. Should match your config:
+- Limit: 5 RPS
+- Duration: 10s
+- Total requests: 50
+- Expected accepted: 50 (5 × 10)
+- Expected 429s: 0 (we never exceeded)
+
+Then bump to 20 RPS for 10s → expected accepted: 50, expected 429s: 150.
+
+#### B. Does the system perform under rate-limited load?
+
+If you're load-testing an endpoint that has a rate limit, you have two options:
+
+1. **Stay under the limit.** Your test sends 5 RPS. You're testing the endpoint, not the rate limiter.
+2. **Probe up to the limit.** Send 6 RPS, accept that 17% will be 429s. Assert that latency for the **accepted** requests is fine.
+
+### Backoff strategies
+
+When you get a 429, you must wait before retrying. Three strategies:
+
+```javascript
+// 1. Fixed delay — usually wrong, can cause synchronization
+sleep(1.0);
+
+// 2. Linear backoff — wait i seconds on the i-th retry
+sleep(retryCount * 1.0);
+
+// 3. Exponential backoff — doubles each retry
+sleep(2 ** retryCount);
+
+// 4. Exponential with jitter — adds randomness to break sync
+const base = 2 ** retryCount;
+sleep(base + Math.random() * base);
+```
+
+**Always use jittered exponential** unless you have a specific reason not to. Without jitter, all rate-limited clients retry at the same instant, slamming the server again.
+
+### The retry storm
+
+Anti-pattern: client gets 429, retries immediately, gets 429, retries again. Now the server gets **3× requests for 0× successful work.**
+
+```javascript
+// DO NOT DO THIS
+for (let i = 0; i < 100; i++) {
+  let res = http.get(url);
+  while (res.status === 429) {
+    res = http.get(url);  // ← retry storm
+  }
+}
+```
+
+Always cap retries (5 max) and add backoff. Better: respect `Retry-After` if the server provides it.
+
+### Testing client-side handling
+
+You can configure k6 to follow `Retry-After` automatically — but in real use you usually want to **validate** your client code handles 429s correctly. So write the test such that the rate-limited responses surface and you assert recovery behavior:
+
+```javascript
+const res = http.get(url);
+if (res.status === 429) {
+  rateLimitHits.add(1);  // counter
+  const retryAfter = parseInt(res.headers['Retry-After'] ?? '1') * 1000;
+  sleep(retryAfter / 1000);
+  // Retry once
+  const retryRes = http.get(url);
+  check(retryRes, { 'retry succeeded': (r) => r.status === 200 });
+}
+```
+
+### Tagging rate-limited responses
+
+Crucial for clean metrics: **don't include 429s in your latency p95 for the endpoint.** A 429 is fast (the rate limiter rejects without doing real work), so it'll artificially improve your latency stats while hiding the actual problem.
+
+```javascript
+const res = http.get(url, { tags: { kind: res.status === 429 ? 'limited' : 'served' } });
+// Then in thresholds:
+'http_req_duration{kind:served}': ['p(95)<300'],
+'http_req_failed{kind:served}': ['rate<0.01'],
+```
+
+(Note: tags can be set after the request via response handling — but the practical pattern is to tag based on the request, then segment metrics in your analysis.)
+
+## Exercises
+
+1. **Verify the rate limit.** Send 20 requests as fast as possible to `/lab/limit`. How many 200s? How many 429s? Should be ~5 of the first batch + slowly accumulating thereafter.
+2. **Sustain at the limit.** Send exactly 5 RPS for 10 seconds. Should produce 50 successes, 0 failures. (Boundary effects mean it may not be exactly that — within ±2 is acceptable.)
+3. **Implement exponential backoff.** When you hit 429, sleep `2 ** retryCount` seconds (cap at 8s) and retry. Measure how many requests eventually succeeded.
+4. **Add jitter.** Compare your exercise 3 results vs adding `+ Math.random() * 2` to the backoff. Does jitter improve total throughput?
+5. **Detect silent slowdown.** Hit `/lab/jitter?p50=50&p95=2000` instead of `/lab/limit`. The server doesn't return 429 but is slow under load. How would you detect "we're rate-limited via slowdown" vs "the server is just slow"?
+
+## Common Mistakes
+
+- **Treating 429 as success.** `http_req_failed` may not include 429 by default in some configs — verify your tagging.
+- **Retrying without backoff.** Retry storm — see above.
+- **Ignoring `Retry-After`.** The server told you when to retry. Listen.
+- **Mixing rate-limit retries into your latency metric.** Tag and segment.
+- **Testing rate limiter at exactly the limit.** Boundary effects — test slightly under and slightly over to see clear behavior.
+
+## Cheat Sheet
+
+```javascript
+// k6 — rate-limited endpoint with backoff
+import http from 'k6/http';
+import { sleep } from 'k6';
+import { Counter } from 'k6/metrics';
+
+const limited = new Counter('rate_limit_hits');
+
+function getWithRetry(url, maxRetries = 3) {
+  for (let i = 0; i <= maxRetries; i++) {
+    const res = http.get(url);
+    if (res.status !== 429) return res;
+    limited.add(1);
+    const retryAfter = parseFloat(res.headers['Retry-After'] ?? '1');
+    const jittered = retryAfter * (1 + Math.random());  // jitter
+    sleep(jittered);
+  }
+  return http.get(url); // give up — return whatever we get
+}
+```
+
+| Algorithm | Best for | Watch out for |
+|-----------|----------|---------------|
+| Token bucket | Bursty traffic | Burst size matters as much as rate |
+| Fixed window | Simple, fast | Boundary spike |
+| Sliding window | Accuracy | More expensive |
+| Leaky bucket | Smooth output | Adds latency |
+
+| Backoff | When |
+|---------|------|
+| Fixed | Almost never — causes sync |
+| Linear | Light retries (1-3 attempts) |
+| Exponential | More aggressive retries |
+| Exponential + jitter | **Default choice** |
+9:Tf1e,// Kata 63 — Rate Limit Handling (k6 solution)
+//
+// Three scenarios in one test, each demonstrating a different posture
+// against the lab server's token-bucket rate limiter (5 RPS, capacity 5):
+// - hammer:    naive — send as fast as possible, count 429s
+// - respect:   send AT the rate limit, no 429s expected
+// - backoff:   send over the limit but back off on 429 with jittered exponential
+
+import http from 'k6/http';
+import { sleep } from 'k6';
+import { Counter } from 'k6/metrics';
+
+const BASE_URL = __ENV.K6_BASE_URL || 'http://localhost:3000';
+const URL = `${BASE_URL}/lab/limit`;
+
+const rateLimitHits = new Counter('rate_limit_hits');
+const successes = new Counter('successful_requests');
+const giveUps = new Counter('gave_up_after_retries');
+
+export const options = {
+  // Scenarios run SEQUENTIALLY (via startTime) so each gets a fresh
+  // rate-limit bucket. Running them in parallel would have them all
+  // share one bucket and blur the per-strategy comparison.
+  scenarios: {
+    respect: {
+      executor: 'constant-arrival-rate',
+      rate: 4,             // just under the 5/sec limit
+      timeUnit: '1s',
+      duration: '10s',
+      preAllocatedVUs: 5,
+      exec: 'respectLimit',
+      tags: { strategy: 'respect' },
+      startTime: '0s',
+    },
+    hammer: {
+      executor: 'constant-arrival-rate',
+      rate: 20,            // 4× the limit — expect lots of 429s
+      timeUnit: '1s',
+      duration: '10s',
+      preAllocatedVUs: 10,
+      exec: 'hammerNaive',
+      tags: { strategy: 'hammer' },
+      startTime: '12s',    // 2s gap lets bucket refill before hammer
+    },
+    backoff: {
+      executor: 'constant-vus',
+      vus: 5,
+      duration: '15s',
+      exec: 'withBackoff',
+      tags: { strategy: 'backoff' },
+      startTime: '25s',    // gap lets bucket refill again
+    },
+  },
+  thresholds: {
+    // The 'respect' scenario should never hit a rate limit.
+    'rate_limit_hits{strategy:respect}': ['count<5'],
+    // The 'hammer' scenario will hit lots of 429s — that's the point.
+    'rate_limit_hits{strategy:hammer}': ['count>50'],
+    // The 'backoff' scenario should mostly succeed despite hitting limits.
+    'successful_requests{strategy:backoff}': ['count>30'],
+    // Don't include 429-fast-rejections in the latency story for served requests
+    'http_req_duration{kind:served}': ['p(95)<300'],
+  },
+};
+
+// Strategy 1: send naively, count what happens.
+export function hammerNaive() {
+  const res = http.get(URL, { tags: { kind: tagFor(URL) } });
+  if (res.status === 429) rateLimitHits.add(1);
+  else if (res.status === 200) successes.add(1);
+}
+
+// Strategy 2: stay under the limit. Should never see a 429.
+export function respectLimit() {
+  const res = http.get(URL, { tags: { kind: tagFor(URL) } });
+  if (res.status === 429) rateLimitHits.add(1);
+  else if (res.status === 200) successes.add(1);
+}
+
+// Strategy 3: send eagerly, but back off on 429 with jittered exponential.
+export function withBackoff() {
+  const MAX_RETRIES = 5;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const res = http.get(URL, { tags: { kind: tagFor(URL) } });
+
+    if (res.status === 200) {
+      successes.add(1);
+      return;
+    }
+
+    if (res.status === 429) {
+      rateLimitHits.add(1);
+      // Exponential backoff with jitter: 0.2s, 0.4s, 0.8s, 1.6s, 3.2s … plus jitter
+      const base = 0.2 * Math.pow(2, attempt);
+      const jitter = Math.random() * base;
+      sleep(base + jitter);
+      continue;
+    }
+
+    // Any other status — give up
+    return;
+  }
+  giveUps.add(1);
+}
+
+// Helper: in real code we'd tag based on response; for simplicity we
+// just tag everything to /lab/limit as 'served' upfront. Server-side
+// the request still hits the rate limiter; for accurate per-status
+// segmentation, see kata 63's exercise 5 in the readme.
+function tagFor(_url) {
+  return 'served';
+}
+a:T456e,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#6A737D">// Kata 62 — WebSocket Testing (k6 solution)</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// Connects to ws://localhost:3000/lab/ws, sends 10 ping messages spaced</span></span>
+<span class="line"><span style="color:#6A737D">// 100ms apart, measures roundtrip latency. Each VU holds one socket</span></span>
+<span class="line"><span style="color:#6A737D">// for 3 seconds.</span></span>
+<span class="line"><span style="color:#6A737D">//</span></span>
+<span class="line"><span style="color:#6A737D">// To find connection capacity, switch to the `ramping_connections`</span></span>
+<span class="line"><span style="color:#6A737D">// scenario by uncommenting it below.</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> ws </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> 'k6/ws'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { check } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> 'k6'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">import</span><span style="color:#E1E4E8"> { Trend, Counter } </span><span style="color:#F97583">from</span><span style="color:#9ECBFF"> 'k6/metrics'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> BASE_HTTP</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> __ENV.</span><span style="color:#79B8FF">K6_BASE_URL</span><span style="color:#F97583"> ||</span><span style="color:#9ECBFF"> 'http://localhost:3000'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> WS_URL</span><span style="color:#F97583"> =</span><span style="color:#79B8FF"> BASE_HTTP</span><span style="color:#E1E4E8">.</span><span style="color:#B392F0">replace</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">/</span><span style="color:#F97583">^</span><span style="color:#DBEDFF">http</span><span style="color:#9ECBFF">/</span><span style="color:#E1E4E8">, </span><span style="color:#9ECBFF">'ws'</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">+</span><span style="color:#9ECBFF"> '/lab/ws'</span><span style="color:#E1E4E8">;</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> wsRoundtrip</span><span style="color:#F97583"> =</span><span style="color:#F97583"> new</span><span style="color:#B392F0"> Trend</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'ws_roundtrip_ms'</span><span style="color:#E1E4E8">, </span><span style="color:#79B8FF">true</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> wsConnectErrors</span><span style="color:#F97583"> =</span><span style="color:#F97583"> new</span><span style="color:#B392F0"> Counter</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'ws_connect_errors'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">const</span><span style="color:#79B8FF"> wsMessages</span><span style="color:#F97583"> =</span><span style="color:#F97583"> new</span><span style="color:#B392F0"> Counter</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'ws_messages_received'</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> const</span><span style="color:#79B8FF"> options</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">  scenarios: {</span></span>
+<span class="line"><span style="color:#E1E4E8">    echo_latency: {</span></span>
+<span class="line"><span style="color:#E1E4E8">      executor: </span><span style="color:#9ECBFF">'constant-vus'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      vus: </span><span style="color:#79B8FF">10</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">      duration: </span><span style="color:#9ECBFF">'15s'</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">    },</span></span>
+<span class="line"><span style="color:#6A737D">    // Uncomment to find connection capacity:</span></span>
+<span class="line"><span style="color:#6A737D">    // ramping_connections: {</span></span>
+<span class="line"><span style="color:#6A737D">    //   executor: 'ramping-vus',</span></span>
+<span class="line"><span style="color:#6A737D">    //   startVUs: 0,</span></span>
+<span class="line"><span style="color:#6A737D">    //   stages: [</span></span>
+<span class="line"><span style="color:#6A737D">    //     { duration: '15s', target: 50 },</span></span>
+<span class="line"><span style="color:#6A737D">    //     { duration: '15s', target: 200 },</span></span>
+<span class="line"><span style="color:#6A737D">    //     { duration: '15s', target: 500 },</span></span>
+<span class="line"><span style="color:#6A737D">    //   ],</span></span>
+<span class="line"><span style="color:#6A737D">    // },</span></span>
+<span class="line"><span style="color:#E1E4E8">  },</span></span>
+<span class="line"><span style="color:#E1E4E8">  thresholds: {</span></span>
+<span class="line"><span style="color:#9ECBFF">    'ws_roundtrip_ms'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'p(95)&#x3C;100'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#9ECBFF">    'ws_connect_errors'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'count&#x3C;5'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#6A737D">    // Each VU connects ~5 times in 15s; we expect at least the hello frames</span></span>
+<span class="line"><span style="color:#6A737D">    // back. Real-world tests would assert on roundtrip metrics, not raw count.</span></span>
+<span class="line"><span style="color:#9ECBFF">    'ws_messages_received'</span><span style="color:#E1E4E8">: [</span><span style="color:#9ECBFF">'count>=10'</span><span style="color:#E1E4E8">],</span></span>
+<span class="line"><span style="color:#E1E4E8">  },</span></span>
+<span class="line"><span style="color:#E1E4E8">};</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">export</span><span style="color:#F97583"> default</span><span style="color:#F97583"> function</span><span style="color:#E1E4E8"> () {</span></span>
+<span class="line"><span style="color:#6A737D">  // Map of seq → sentAt so we can compute roundtrip when the echo arrives.</span></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> pendingSends</span><span style="color:#F97583"> =</span><span style="color:#F97583"> new</span><span style="color:#B392F0"> Map</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#F97583">  const</span><span style="color:#79B8FF"> res</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> ws.</span><span style="color:#B392F0">connect</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">WS_URL</span><span style="color:#E1E4E8">, {}, </span><span style="color:#F97583">function</span><span style="color:#E1E4E8"> (</span><span style="color:#FFAB70">socket</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#E1E4E8">    socket.</span><span style="color:#B392F0">on</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'open'</span><span style="color:#E1E4E8">, () </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">      // Send 10 messages, 100ms apart. k6 v2 requires setTimeout > 0,</span></span>
+<span class="line"><span style="color:#6A737D">      // so send the first one immediately and schedule the rest.</span></span>
+<span class="line"><span style="color:#F97583">      const</span><span style="color:#B392F0"> sendOne</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> (</span><span style="color:#FFAB70">seq</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">        if</span><span style="color:#E1E4E8"> (socket.readyState </span><span style="color:#F97583">!==</span><span style="color:#79B8FF"> 1</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">return</span><span style="color:#E1E4E8">;  </span><span style="color:#6A737D">// not OPEN</span></span>
+<span class="line"><span style="color:#F97583">        const</span><span style="color:#79B8FF"> sentAt</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> Date.</span><span style="color:#B392F0">now</span><span style="color:#E1E4E8">();</span></span>
+<span class="line"><span style="color:#E1E4E8">        pendingSends.</span><span style="color:#B392F0">set</span><span style="color:#E1E4E8">(seq, sentAt);</span></span>
+<span class="line"><span style="color:#E1E4E8">        socket.</span><span style="color:#B392F0">send</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">JSON</span><span style="color:#E1E4E8">.</span><span style="color:#B392F0">stringify</span><span style="color:#E1E4E8">({ seq, sentAt }));</span></span>
+<span class="line"><span style="color:#E1E4E8">      };</span></span>
+<span class="line"><span style="color:#B392F0">      sendOne</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">0</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">      for</span><span style="color:#E1E4E8"> (</span><span style="color:#F97583">let</span><span style="color:#E1E4E8"> i </span><span style="color:#F97583">=</span><span style="color:#79B8FF"> 1</span><span style="color:#E1E4E8">; i </span><span style="color:#F97583">&#x3C;</span><span style="color:#79B8FF"> 10</span><span style="color:#E1E4E8">; i</span><span style="color:#F97583">++</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#E1E4E8">        socket.</span><span style="color:#B392F0">setTimeout</span><span style="color:#E1E4E8">(() </span><span style="color:#F97583">=></span><span style="color:#B392F0"> sendOne</span><span style="color:#E1E4E8">(i), i </span><span style="color:#F97583">*</span><span style="color:#79B8FF"> 100</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">      }</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    socket.</span><span style="color:#B392F0">on</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'message'</span><span style="color:#E1E4E8">, (</span><span style="color:#FFAB70">raw</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">      wsMessages.</span><span style="color:#B392F0">add</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">1</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#F97583">      try</span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#F97583">        const</span><span style="color:#79B8FF"> msg</span><span style="color:#F97583"> =</span><span style="color:#79B8FF"> JSON</span><span style="color:#E1E4E8">.</span><span style="color:#B392F0">parse</span><span style="color:#E1E4E8">(raw);</span></span>
+<span class="line"><span style="color:#F97583">        if</span><span style="color:#E1E4E8"> (msg.type </span><span style="color:#F97583">===</span><span style="color:#9ECBFF"> 'hello'</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">return</span><span style="color:#E1E4E8">;  </span><span style="color:#6A737D">// server greeting on connect</span></span>
+<span class="line"><span style="color:#F97583">        if</span><span style="color:#E1E4E8"> (msg.type </span><span style="color:#F97583">===</span><span style="color:#9ECBFF"> 'echo'</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#6A737D">          // Server wraps our text inside { type: 'echo', msg: &#x3C;our text> }</span></span>
+<span class="line"><span style="color:#F97583">          const</span><span style="color:#79B8FF"> original</span><span style="color:#F97583"> =</span><span style="color:#79B8FF"> JSON</span><span style="color:#E1E4E8">.</span><span style="color:#B392F0">parse</span><span style="color:#E1E4E8">(msg.msg);</span></span>
+<span class="line"><span style="color:#F97583">          if</span><span style="color:#E1E4E8"> (</span><span style="color:#F97583">typeof</span><span style="color:#E1E4E8"> original?.seq </span><span style="color:#F97583">===</span><span style="color:#9ECBFF"> 'number'</span><span style="color:#E1E4E8">) {</span></span>
+<span class="line"><span style="color:#F97583">            const</span><span style="color:#79B8FF"> sentAt</span><span style="color:#F97583"> =</span><span style="color:#E1E4E8"> pendingSends.</span><span style="color:#B392F0">get</span><span style="color:#E1E4E8">(original.seq);</span></span>
+<span class="line"><span style="color:#F97583">            if</span><span style="color:#E1E4E8"> (sentAt) {</span></span>
+<span class="line"><span style="color:#E1E4E8">              wsRoundtrip.</span><span style="color:#B392F0">add</span><span style="color:#E1E4E8">(Date.</span><span style="color:#B392F0">now</span><span style="color:#E1E4E8">() </span><span style="color:#F97583">-</span><span style="color:#E1E4E8"> sentAt);</span></span>
+<span class="line"><span style="color:#E1E4E8">              pendingSends.</span><span style="color:#B392F0">delete</span><span style="color:#E1E4E8">(original.seq);</span></span>
+<span class="line"><span style="color:#E1E4E8">            }</span></span>
+<span class="line"><span style="color:#E1E4E8">          }</span></span>
+<span class="line"><span style="color:#E1E4E8">        }</span></span>
+<span class="line"><span style="color:#E1E4E8">      } </span><span style="color:#F97583">catch</span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#6A737D">        // Ignore non-JSON frames</span></span>
+<span class="line"><span style="color:#E1E4E8">      }</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#E1E4E8">    socket.</span><span style="color:#B392F0">on</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'error'</span><span style="color:#E1E4E8">, (</span><span style="color:#FFAB70">e</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> {</span></span>
+<span class="line"><span style="color:#E1E4E8">      console.</span><span style="color:#B392F0">log</span><span style="color:#E1E4E8">(</span><span style="color:#9ECBFF">'WS error:'</span><span style="color:#E1E4E8">, e?.error </span><span style="color:#F97583">||</span><span style="color:#E1E4E8"> e);</span></span>
+<span class="line"><span style="color:#E1E4E8">      wsConnectErrors.</span><span style="color:#B392F0">add</span><span style="color:#E1E4E8">(</span><span style="color:#79B8FF">1</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">    });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#6A737D">    // Force-close after 3s — caps iteration duration.</span></span>
+<span class="line"><span style="color:#E1E4E8">    socket.</span><span style="color:#B392F0">setTimeout</span><span style="color:#E1E4E8">(() </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> socket.</span><span style="color:#B392F0">close</span><span style="color:#E1E4E8">(), </span><span style="color:#79B8FF">3000</span><span style="color:#E1E4E8">);</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#B392F0">  check</span><span style="color:#E1E4E8">(res, {</span></span>
+<span class="line"><span style="color:#9ECBFF">    'ws connect ok (status 101)'</span><span style="color:#E1E4E8">: (</span><span style="color:#FFAB70">r</span><span style="color:#E1E4E8">) </span><span style="color:#F97583">=></span><span style="color:#E1E4E8"> r </span><span style="color:#F97583">&#x26;&#x26;</span><span style="color:#E1E4E8"> r.status </span><span style="color:#F97583">===</span><span style="color:#79B8FF"> 101</span><span style="color:#E1E4E8">,</span></span>
+<span class="line"><span style="color:#E1E4E8">  });</span></span>
+<span class="line"><span style="color:#E1E4E8">}</span></span>
+<span class="line"></span></code></pre>b:Tf03,<pre class="shiki github-dark" style="background-color:#24292e;color:#e1e4e8" tabindex="0"><code><span class="line"><span style="color:#6A737D"># Kata 62 — WebSocket Testing (Artillery solution)</span></span>
+<span class="line"><span style="color:#6A737D">#</span></span>
+<span class="line"><span style="color:#6A737D"># Artillery's WebSocket engine is much simpler than k6's. Each scenario</span></span>
+<span class="line"><span style="color:#6A737D"># opens a connection, sends/receives a sequence of frames, then closes.</span></span>
+<span class="line"><span style="color:#6A737D"># No first-class roundtrip-latency metric — Artillery reports overall</span></span>
+<span class="line"><span style="color:#6A737D"># session_length but not message-level RTT. For real WS perf work, k6.</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#85E89D">config</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#85E89D">  target</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"ws://localhost:3000/lab/ws"</span></span>
+<span class="line"><span style="color:#85E89D">  engine</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">ws</span></span>
+<span class="line"><span style="color:#85E89D">  phases</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">    - </span><span style="color:#85E89D">duration</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">15</span></span>
+<span class="line"><span style="color:#85E89D">      arrivalRate</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">5</span></span>
+<span class="line"><span style="color:#85E89D">      name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"main"</span></span>
+<span class="line"></span>
+<span class="line"><span style="color:#85E89D">scenarios</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#E1E4E8">  - </span><span style="color:#85E89D">name</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">"echo session"</span></span>
+<span class="line"><span style="color:#85E89D">    flow</span><span style="color:#E1E4E8">:</span></span>
+<span class="line"><span style="color:#6A737D">      # Send a frame; Artillery doesn't await responses by default,</span></span>
+<span class="line"><span style="color:#6A737D">      # but the connection stays open and the server's echo arrives</span></span>
+<span class="line"><span style="color:#6A737D">      # back asynchronously.</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">send</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">'{"seq":1,"text":"hello"}'</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">think</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">0.2</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">send</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">'{"seq":2,"text":"hello again"}'</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">think</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">0.2</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">send</span><span style="color:#E1E4E8">: </span><span style="color:#9ECBFF">'{"seq":3,"text":"final"}'</span></span>
+<span class="line"><span style="color:#E1E4E8">      - </span><span style="color:#85E89D">think</span><span style="color:#E1E4E8">: </span><span style="color:#79B8FF">0.5</span></span>
+<span class="line"></span></code></pre>0:{"rsc":["$","$1","c",{"children":[["$","$L2",null,{"kata":{"slug":"62-websocket-testing","number":62,"title":"WebSocket Testing","phaseSlug":"phase-14-apis-and-websockets","phaseNumber":14,"phaseName":"Apis And Websockets","readmeRaw":"$3","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"62-websocket-testing.test.js","content":"$4"}],"artilleryFiles":[{"filename":"62-websocket-testing.yml","content":"# Kata 62 — WebSocket Testing (Artillery solution)\n#\n# Artillery's WebSocket engine is much simpler than k6's. Each scenario\n# opens a connection, sends/receives a sequence of frames, then closes.\n# No first-class roundtrip-latency metric — Artillery reports overall\n# session_length but not message-level RTT. For real WS perf work, k6.\n\nconfig:\n  target: \"ws://localhost:3000/lab/ws\"\n  engine: ws\n  phases:\n    - duration: 15\n      arrivalRate: 5\n      name: \"main\"\n\nscenarios:\n  - name: \"echo session\"\n    flow:\n      # Send a frame; Artillery doesn't await responses by default,\n      # but the connection stays open and the server's echo arrives\n      # back asynchronously.\n      - send: '{\"seq\":1,\"text\":\"hello\"}'\n      - think: 0.2\n      - send: '{\"seq\":2,\"text\":\"hello again\"}'\n      - think: 0.2\n      - send: '{\"seq\":3,\"text\":\"final\"}'\n      - think: 0.5\n"}],"jmeterFiles":[]},"prev":{"slug":"61-batched-http-and-rest-patterns","number":61,"title":"Batched HTTP and REST Patterns","phaseSlug":"phase-14-apis-and-websockets","phaseNumber":14,"phaseName":"Apis And Websockets","readmeRaw":"$5","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"61-batched-http-and-rest-patterns.test.js","content":"$6"}],"artilleryFiles":[{"filename":"61-batched-http-and-rest-patterns.yml","content":"$7"}],"jmeterFiles":[]},"next":{"slug":"63-rate-limit-handling","number":63,"title":"Rate Limit Handling","phaseSlug":"phase-14-apis-and-websockets","phaseNumber":14,"phaseName":"Apis And Websockets","readmeRaw":"$8","hasPlayground":false,"playwrightFiles":[],"cypressFiles":[],"k6Files":[{"filename":"63-rate-limit-handling.test.js","content":"$9"}],"artilleryFiles":[{"filename":"63-rate-limit-handling.yml","content":"# Kata 63 — Rate Limit Handling (Artillery solution)\n#\n# Artillery doesn't have built-in retry-with-backoff. Each scenario hits\n# /lab/limit at a different rate so you can observe the rate limiter's\n# response. For implementing backoff in Artillery you'd use a custom\n# JS function via `processor:` — out of scope for this kata.\n\nconfig:\n  target: \"http://localhost:3000\"\n  phases:\n    - duration: 10\n      arrivalRate: 4    # Under the 5/sec limit — should mostly succeed\n      name: \"respect\"\n    - duration: 10\n      arrivalRate: 20   # Over the limit — expect many 429s\n      name: \"hammer\"\n\nscenarios:\n  - name: \"rate-limited probe\"\n    flow:\n      - get:\n          url: \"/lab/limit\"\n          # Accept either 200 (served) or 429 (limited) as expected outcomes —\n          # we WANT to see both to verify the rate limiter works.\n          expect:\n            - statusCode: [200, 429]\n"}],"jmeterFiles":[]},"frameworks":[{"id":"k6","label":"k6","files":[{"filename":"62-websocket-testing.test.js","html":"$a"}]},{"id":"artillery","label":"Artillery","files":[{"filename":"62-websocket-testing.yml","html":"$b"}]},{"id":"jmeter","label":"JMeter","files":[]},{"id":"playwright","label":"Playwright","files":[]},{"id":"cypress","label":"Cypress","files":[]}]}],["$Lc"],"$Ld"]}],"isPartial":false,"staleTime":300,"varyParams":null,"buildId":"UzMlu93LkryOOruE2pxnW"}
+c:["$","script","script-0",{"src":"/qa-labs/_next/static/chunks/01luku1w1f06_.js","async":true}]
+d:["$","$Le",null,{"children":["$","$f",null,{"name":"Next.MetadataOutlet","children":"$@10"}]}]
+10:null

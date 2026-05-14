@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Kata 59 Playground — deliberately broken page</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: system-ui, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+      padding: 2rem;
+      max-width: 56rem;
+      margin: 0 auto;
+    }
+    h1 { font-size: 1.875rem; margin-bottom: 1rem; color: #93c5fd; }
+    p { margin-bottom: 1rem; line-height: 1.6; }
+    .card {
+      background: #1e293b;
+      padding: 1.5rem;
+      border-radius: 0.5rem;
+      margin: 1rem 0;
+    }
+    /*
+      INTENTIONAL BUG #1: no width/height on img → CLS when it loads.
+      INTENTIONAL BUG #2: no aspect-ratio reserved → content pushes down.
+    */
+    button {
+      background: #3b82f6;
+      color: white;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 0.375rem;
+      font-size: 1rem;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <!--
+    INTENTIONAL PERF ISSUES (for the kata to fix):
+    1. The hero image is fetched from /lab/slow with a 1500ms delay,
+       making LCP very late.
+    2. The image has no width/height attributes, so when it eventually
+       loads it pushes everything below it down → CLS.
+    3. The button has a click handler that runs an 800ms synchronous
+       busy-loop → INP / TBT failure.
+  -->
+  <h1 data-testid="title">A deliberately broken page</h1>
+
+  <p data-testid="description">
+    This text appears immediately. The hero image below appears about 1.5 seconds later,
+    and when it does, it pushes this paragraph and all the cards downward.
+    That's a CLS regression. Fix it.
+  </p>
+
+  <!-- BUG #1+#2: slow-loading image without dimensions -->
+  <img
+    data-testid="hero"
+    src="http://localhost:3000/lab/slow?ms=1500"
+    alt="LCP target — loads slowly, pushes content down when it arrives"
+    style="display: block; max-width: 100%; background: #334155;"
+    onerror="this.style.height='320px'; this.style.background='linear-gradient(135deg, #ef4444, #f59e0b)';"
+  />
+
+  <div class="card" data-testid="card-1">
+    <strong>Card 1</strong> — gets pushed down by the image. Notice the layout shift.
+  </div>
+  <div class="card" data-testid="card-2">
+    <strong>Card 2</strong> — also pushed down. Each shift contributes to CLS.
+  </div>
+
+  <button data-testid="slow-button" id="slow-button">
+    Click me — I'll block the main thread for 800ms
+  </button>
+
+  <script>
+    // BUG #3: synchronous busy-loop blocks the main thread → bad INP/TBT
+    document.getElementById('slow-button').addEventListener('click', () => {
+      const start = Date.now();
+      while (Date.now() - start < 800) {
+        // intentionally blocking — DO NOT DO THIS IN PRODUCTION
+      }
+      alert('Blocked for 800ms!');
+    });
+  </script>
+</body>
+</html>

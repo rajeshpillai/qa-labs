@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kata 35: Error Recovery and Retries | QA Labs</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f8fafc; color: #1e293b; padding: 2rem; }
+    .header { background: #0f172a; color: white; padding: 1rem 2rem; margin: -2rem -2rem 2rem; }
+    .header h1 { font-size: 1.25rem; }
+    .kata-badge { display: inline-block; background: #38bdf8; color: #0f172a; font-size: 0.75rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 4px; margin-right: 0.5rem; }
+
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; }
+
+    .card {
+      background: white; border-radius: 8px; padding: 1.5rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .card h3 { font-size: 1rem; margin-bottom: 0.75rem; color: #334155; }
+    .card p { font-size: 0.8rem; color: #64748b; margin-bottom: 1rem; }
+
+    .btn {
+      padding: 0.5rem 1rem; border: none; border-radius: 6px;
+      font-weight: 600; font-size: 0.8rem; cursor: pointer;
+      transition: background 0.2s; margin-right: 0.5rem;
+    }
+    .btn-primary { background: #3b82f6; color: white; }
+    .btn-primary:hover { background: #2563eb; }
+    .btn-primary:disabled { background: #94a3b8; cursor: not-allowed; }
+    .btn-danger { background: #ef4444; color: white; }
+    .btn-secondary { background: #f1f5f9; color: #334155; }
+
+    .result-area {
+      margin-top: 0.75rem; padding: 0.75rem; border-radius: 6px;
+      font-size: 0.8rem; min-height: 2.5rem;
+    }
+    .result-success { background: #dcfce7; color: #166534; }
+    .result-error { background: #fee2e2; color: #991b1b; }
+    .result-loading { background: #f0f9ff; color: #0369a1; }
+    .result-cached { background: #fef3c7; color: #92400e; }
+    .result-empty { background: #f1f5f9; color: #94a3b8; }
+
+    .retry-info {
+      font-size: 0.75rem; color: #64748b; margin-top: 0.5rem;
+    }
+
+    /* Error boundary */
+    .error-boundary {
+      display: none; background: #fee2e2; border: 1px solid #fca5a5;
+      border-radius: 8px; padding: 1rem; text-align: center;
+    }
+    .error-boundary.visible { display: block; }
+    .error-boundary h4 { color: #991b1b; margin-bottom: 0.5rem; }
+    .error-boundary p { color: #b91c1c; font-size: 0.8rem; margin-bottom: 0.75rem; }
+
+    /* Circuit breaker status */
+    .circuit-status {
+      display: inline-block; padding: 0.2rem 0.6rem; border-radius: 10px;
+      font-size: 0.75rem; font-weight: 600;
+    }
+    .circuit-closed { background: #dcfce7; color: #166534; }
+    .circuit-open { background: #fee2e2; color: #991b1b; }
+
+    /* Form section */
+    .form-group { margin-bottom: 0.75rem; }
+    .form-group label { display: block; font-size: 0.8rem; font-weight: 600; color: #475569; margin-bottom: 0.25rem; }
+    .form-group input {
+      width: 100%; padding: 0.5rem; border: 1px solid #cbd5e1;
+      border-radius: 4px; font-size: 0.8rem;
+    }
+
+    .full-width { grid-column: 1 / -1; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <span class="kata-badge">KATA 35</span>
+    <h1>Error Recovery and Retries</h1>
+  </div>
+
+  <div class="grid">
+
+    <!-- Card 1: Random Failure Button -->
+    <div class="card">
+      <h3>Random Failure</h3>
+      <p>This button fails 50% of the time. Click to see if it succeeds or fails.</p>
+      <button class="btn btn-primary" data-testid="random-action-btn" onclick="randomAction()">Perform Action</button>
+      <button class="btn btn-secondary" data-testid="random-retry-btn" onclick="randomAction()" style="display:none">Try Again</button>
+      <div class="result-area result-empty" data-testid="random-result" id="randomResult">Click the button to start</div>
+      <div class="retry-info">Attempts: <span data-testid="random-attempts" id="randomAttempts">0</span></div>
+    </div>
+
+    <!-- Card 2: Error Boundary -->
+    <div class="card">
+      <h3>Error Boundary</h3>
+      <p>Simulates a component crash with an error boundary that catches it.</p>
+      <button class="btn btn-danger" data-testid="crash-btn" onclick="triggerCrash()">Trigger Crash</button>
+      <div id="componentContent" data-testid="component-content">
+        <div class="result-area result-success" style="margin-top:0.75rem">Component is working correctly.</div>
+      </div>
+      <div class="error-boundary" id="errorBoundary" data-testid="error-boundary">
+        <h4>Something went wrong</h4>
+        <p data-testid="error-boundary-message">An unexpected error occurred in this component.</p>
+        <button class="btn btn-primary" data-testid="error-boundary-retry" onclick="recoverFromCrash()">Try Again</button>
+      </div>
+    </div>
+
+    <!-- Card 3: Network Error with Graceful Degradation -->
+    <div class="card">
+      <h3>Network Request (Graceful Degradation)</h3>
+      <p>Fetches data. If the network fails, shows cached data instead.</p>
+      <button class="btn btn-primary" data-testid="fetch-data-btn" onclick="fetchDataWithFallback()">Fetch Data</button>
+      <button class="btn btn-danger" data-testid="simulate-offline-btn" onclick="toggleOffline()">
+        <span data-testid="offline-toggle-label" id="offlineLabel">Go Offline</span>
+      </button>
+      <div class="result-area result-empty" data-testid="fetch-result" id="fetchResult">No data loaded</div>
+      <div class="retry-info">
+        Source: <span data-testid="data-source" id="dataSource">—</span>
+      </div>
+    </div>
+
+    <!-- Card 4: Timeout Simulation -->
+    <div class="card">
+      <h3>Timeout Simulation</h3>
+      <p>Simulates a request that takes too long. Times out after 3 seconds.</p>
+      <button class="btn btn-primary" data-testid="timeout-btn" onclick="timeoutRequest()">Send Request</button>
+      <button class="btn btn-secondary" data-testid="timeout-retry-btn" style="display:none" onclick="timeoutRequest()">Retry</button>
+      <div class="result-area result-empty" data-testid="timeout-result" id="timeoutResult">Not started</div>
+    </div>
+
+    <!-- Card 5: Circuit Breaker -->
+    <div class="card">
+      <h3>Circuit Breaker</h3>
+      <p>Stops retrying after 3 consecutive failures. Reset to try again.</p>
+      <div style="margin-bottom: 0.75rem;">
+        Circuit: <span class="circuit-status circuit-closed" data-testid="circuit-status" id="circuitStatus">CLOSED</span>
+      </div>
+      <button class="btn btn-primary" data-testid="circuit-action-btn" onclick="circuitAction()">Call Service</button>
+      <button class="btn btn-secondary" data-testid="circuit-reset-btn" onclick="resetCircuit()">Reset Circuit</button>
+      <div class="result-area result-empty" data-testid="circuit-result" id="circuitResult">Ready</div>
+      <div class="retry-info">
+        Failures: <span data-testid="circuit-failures" id="circuitFailures">0</span> / 3
+      </div>
+    </div>
+
+    <!-- Card 6: Form with Error Recovery -->
+    <div class="card">
+      <h3>Form Error Recovery</h3>
+      <p>Submit fails on first attempt, succeeds on retry. Form data is preserved.</p>
+      <div class="form-group">
+        <label for="formName">Name</label>
+        <input type="text" id="formName" data-testid="form-name" placeholder="Enter your name">
+      </div>
+      <div class="form-group">
+        <label for="formEmail">Email</label>
+        <input type="email" id="formEmail" data-testid="form-email" placeholder="Enter your email">
+      </div>
+      <button class="btn btn-primary" data-testid="form-submit-btn" onclick="submitForm()">Submit</button>
+      <div class="result-area result-empty" data-testid="form-result" id="formResult">Fill the form and submit</div>
+      <div class="retry-info">Submit attempts: <span data-testid="form-attempts" id="formAttempts">0</span></div>
+    </div>
+
+  </div>
+
+  <script>
+    // ===================================================================
+    // Card 1: Random Failure
+    // The action has a 50% chance of success. This can be overridden by
+    // setting window.__forceResult to 'success' or 'error' for testing.
+    // ===================================================================
+    let randomAttemptCount = 0;
+
+    function randomAction() {
+      randomAttemptCount++;
+      document.getElementById('randomAttempts').textContent = String(randomAttemptCount);
+
+      const result = document.getElementById('randomResult');
+
+      // Check for forced result (used by tests to control randomness).
+      // window.__forceResult can be set to 'success' or 'error'.
+      let success;
+      if (window.__forceResult === 'success') {
+        success = true;
+      } else if (window.__forceResult === 'error') {
+        success = false;
+      } else {
+        success = Math.random() > 0.5;
+      }
+
+      if (success) {
+        result.className = 'result-area result-success';
+        result.textContent = 'Action completed successfully!';
+        document.querySelector('[data-testid="random-retry-btn"]').style.display = 'none';
+      } else {
+        result.className = 'result-area result-error';
+        result.textContent = 'Action failed. Please try again.';
+        document.querySelector('[data-testid="random-retry-btn"]').style.display = 'inline-block';
+      }
+    }
+
+    // ===================================================================
+    // Card 2: Error Boundary
+    // Simulates a component crash — hides the component and shows the
+    // error boundary UI. Clicking "Try Again" recovers the component.
+    // ===================================================================
+    function triggerCrash() {
+      document.getElementById('componentContent').style.display = 'none';
+      document.getElementById('errorBoundary').classList.add('visible');
+    }
+
+    function recoverFromCrash() {
+      document.getElementById('errorBoundary').classList.remove('visible');
+      document.getElementById('componentContent').style.display = 'block';
+    }
+
+    // ===================================================================
+    // Card 3: Network Request with Graceful Degradation
+    // When "online", fetches fresh data. When "offline", shows cached data.
+    // ===================================================================
+    let isOffline = false;
+    const cachedData = { users: 12, revenue: '$34,500', status: 'Cached from 2 hours ago' };
+    const freshData = { users: 15, revenue: '$42,100', status: 'Live data' };
+
+    function toggleOffline() {
+      isOffline = !isOffline;
+      document.getElementById('offlineLabel').textContent = isOffline ? 'Go Online' : 'Go Offline';
+    }
+
+    function fetchDataWithFallback() {
+      const result = document.getElementById('fetchResult');
+      const source = document.getElementById('dataSource');
+
+      result.className = 'result-area result-loading';
+      result.textContent = 'Loading...';
+
+      // Simulate a network delay.
+      setTimeout(() => {
+        if (isOffline) {
+          // Network failed — show cached data as fallback.
+          result.className = 'result-area result-cached';
+          result.textContent = `Users: ${cachedData.users}, Revenue: ${cachedData.revenue} (${cachedData.status})`;
+          source.textContent = 'cache';
+        } else {
+          // Network succeeded — show fresh data.
+          result.className = 'result-area result-success';
+          result.textContent = `Users: ${freshData.users}, Revenue: ${freshData.revenue} (${freshData.status})`;
+          source.textContent = 'network';
+        }
+      }, 500);
+    }
+
+    // ===================================================================
+    // Card 4: Timeout Simulation
+    // Simulates a request that can time out. The request takes a random
+    // duration; if it exceeds 3 seconds, it times out. For testing,
+    // window.__forceTimeout can be set to true/false.
+    // ===================================================================
+    function timeoutRequest() {
+      const result = document.getElementById('timeoutResult');
+      result.className = 'result-area result-loading';
+      result.textContent = 'Request in progress...';
+      document.querySelector('[data-testid="timeout-retry-btn"]').style.display = 'none';
+
+      // Determine if this request should time out.
+      let willTimeout;
+      if (window.__forceTimeout === true) {
+        willTimeout = true;
+      } else if (window.__forceTimeout === false) {
+        willTimeout = false;
+      } else {
+        willTimeout = Math.random() > 0.5;
+      }
+
+      if (willTimeout) {
+        // Simulate a timeout after 3 seconds.
+        setTimeout(() => {
+          result.className = 'result-area result-error';
+          result.textContent = 'Request timed out after 3 seconds.';
+          document.querySelector('[data-testid="timeout-retry-btn"]').style.display = 'inline-block';
+        }, 3000);
+      } else {
+        // Simulate a fast successful response.
+        setTimeout(() => {
+          result.className = 'result-area result-success';
+          result.textContent = 'Request completed successfully!';
+        }, 500);
+      }
+    }
+
+    // ===================================================================
+    // Card 5: Circuit Breaker
+    // After 3 consecutive failures, the circuit "opens" and blocks
+    // further calls until reset. For testing, window.__circuitForceFailure
+    // controls whether calls fail.
+    // ===================================================================
+    let circuitFailureCount = 0;
+    let circuitOpen = false;
+
+    function circuitAction() {
+      if (circuitOpen) {
+        document.getElementById('circuitResult').className = 'result-area result-error';
+        document.getElementById('circuitResult').textContent = 'Circuit is OPEN. Calls are blocked. Reset to try again.';
+        return;
+      }
+
+      // Determine success/failure.
+      let success;
+      if (window.__circuitForceFailure === true) {
+        success = false;
+      } else if (window.__circuitForceFailure === false) {
+        success = true;
+      } else {
+        success = Math.random() > 0.5;
+      }
+
+      const result = document.getElementById('circuitResult');
+
+      if (success) {
+        circuitFailureCount = 0; // Reset on success.
+        result.className = 'result-area result-success';
+        result.textContent = 'Service call succeeded!';
+      } else {
+        circuitFailureCount++;
+        result.className = 'result-area result-error';
+        result.textContent = 'Service call failed. (' + circuitFailureCount + '/3)';
+      }
+
+      document.getElementById('circuitFailures').textContent = String(circuitFailureCount);
+
+      // Open the circuit after 3 failures.
+      if (circuitFailureCount >= 3) {
+        circuitOpen = true;
+        document.getElementById('circuitStatus').textContent = 'OPEN';
+        document.getElementById('circuitStatus').className = 'circuit-status circuit-open';
+        result.textContent = 'Circuit OPEN — too many failures. Calls are blocked.';
+      }
+    }
+
+    function resetCircuit() {
+      circuitFailureCount = 0;
+      circuitOpen = false;
+      document.getElementById('circuitFailures').textContent = '0';
+      document.getElementById('circuitStatus').textContent = 'CLOSED';
+      document.getElementById('circuitStatus').className = 'circuit-status circuit-closed';
+      document.getElementById('circuitResult').className = 'result-area result-empty';
+      document.getElementById('circuitResult').textContent = 'Ready';
+    }
+
+    // ===================================================================
+    // Card 6: Form with Error Recovery
+    // First submit always fails. Second+ submits succeed. Form data is
+    // preserved after failure. For testing, window.__formForceFailure
+    // can override this behavior.
+    // ===================================================================
+    let formAttemptCount = 0;
+
+    function submitForm() {
+      formAttemptCount++;
+      document.getElementById('formAttempts').textContent = String(formAttemptCount);
+
+      const name = document.getElementById('formName').value;
+      const email = document.getElementById('formEmail').value;
+      const result = document.getElementById('formResult');
+
+      // Determine success. Default: first attempt fails, rest succeed.
+      let success;
+      if (window.__formForceFailure === true) {
+        success = false;
+      } else if (window.__formForceFailure === false) {
+        success = true;
+      } else {
+        success = formAttemptCount > 1;
+      }
+
+      if (success) {
+        result.className = 'result-area result-success';
+        result.textContent = 'Form submitted successfully! Name: ' + name + ', Email: ' + email;
+      } else {
+        result.className = 'result-area result-error';
+        result.textContent = 'Server error: Failed to submit. Please try again.';
+      }
+    }
+  </script>
+</body>
+</html>

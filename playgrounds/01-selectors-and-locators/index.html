@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kata 01: Selectors and Locators | QA Labs</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f8fafc;
+      color: #1e293b;
+      padding: 2rem;
+    }
+    .header {
+      background: #0f172a;
+      color: white;
+      padding: 1rem 2rem;
+      margin: -2rem -2rem 2rem;
+    }
+    .header h1 { font-size: 1.25rem; }
+    .header .kata-badge {
+      display: inline-block;
+      background: #38bdf8;
+      color: #0f172a;
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 0.2rem 0.5rem;
+      border-radius: 4px;
+      margin-right: 0.5rem;
+    }
+    .section { margin-bottom: 2rem; padding: 1.5rem; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .section h2 { font-size: 1rem; color: #475569; margin-bottom: 1rem; border-bottom: 1px solid #e2e8f0; padding-bottom: 0.5rem; }
+    label { display: block; margin-bottom: 0.25rem; font-size: 0.875rem; color: #475569; }
+    input, select, textarea {
+      width: 100%;
+      padding: 0.5rem;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      font-size: 0.875rem;
+      margin-bottom: 0.75rem;
+    }
+    input:focus, select:focus, textarea:focus { outline: none; border-color: #38bdf8; box-shadow: 0 0 0 2px rgba(56,189,248,0.2); }
+    button {
+      padding: 0.5rem 1rem;
+      border: none;
+      border-radius: 6px;
+      font-size: 0.875rem;
+      cursor: pointer;
+      margin-right: 0.5rem;
+      margin-bottom: 0.5rem;
+    }
+    .btn-primary { background: #3b82f6; color: white; }
+    .btn-secondary { background: #64748b; color: white; }
+    .btn-danger { background: #ef4444; color: white; }
+    .btn-success { background: #22c55e; color: white; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; }
+    .status-badge {
+      display: inline-block;
+      padding: 0.2rem 0.6rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .status-pending { background: #fef3c7; color: #92400e; }
+    .status-approved { background: #dcfce7; color: #166534; }
+    .status-rejected { background: #fecaca; color: #991b1b; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 0.5rem; text-align: left; border-bottom: 1px solid #e2e8f0; font-size: 0.875rem; }
+    th { color: #64748b; font-weight: 600; }
+    .nav-links { list-style: none; display: flex; gap: 1rem; }
+    .nav-links a { color: #3b82f6; text-decoration: none; font-size: 0.875rem; }
+    .hidden { display: none; }
+    .alert { padding: 0.75rem 1rem; border-radius: 6px; margin-bottom: 1rem; font-size: 0.875rem; }
+    .alert-success { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+    .alert-error { background: #fecaca; color: #991b1b; border: 1px solid #fca5a5; }
+    .card { border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem; margin-bottom: 1rem; }
+    .avatar { width: 40px; height: 40px; border-radius: 50%; background: #e2e8f0; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; color: #475569; }
+    .tooltip-trigger { position: relative; cursor: help; border-bottom: 1px dashed #64748b; }
+    .checkbox-group label, .radio-group label {
+      display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.5rem; cursor: pointer;
+    }
+    .checkbox-group input, .radio-group input { width: auto; margin-bottom: 0; }
+    ul.features { list-style: disc; padding-left: 1.5rem; }
+    ul.features li { margin-bottom: 0.25rem; font-size: 0.875rem; }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header class="header" data-testid="page-header">
+    <span class="kata-badge">KATA 01</span>
+    <h1>KYC Portal - Selectors Practice</h1>
+    <nav>
+      <ul class="nav-links">
+        <li><a href="#" data-testid="nav-dashboard" id="nav-dashboard">Dashboard</a></li>
+        <li><a href="#" data-testid="nav-applications" id="nav-applications">Applications</a></li>
+        <li><a href="#" data-testid="nav-settings" id="nav-settings">Settings</a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <div class="grid">
+
+    <!-- LEFT COLUMN -->
+    <div>
+
+      <!-- SECTION 1: Personal Details Form -->
+      <div class="section" data-testid="personal-details-section">
+        <h2>Personal Details</h2>
+        <div id="form-alert" class="hidden"></div>
+
+        <form id="personal-form" data-testid="personal-form">
+          <label for="full-name">Full Name</label>
+          <input type="text" id="full-name" name="fullName" data-testid="input-full-name" placeholder="Enter your full name" />
+
+          <label for="email">Email Address</label>
+          <input type="email" id="email" name="email" data-testid="input-email" placeholder="you@example.com" />
+
+          <label for="phone">Phone Number</label>
+          <input type="tel" id="phone" name="phone" data-testid="input-phone" placeholder="+1 (555) 000-0000" />
+
+          <label for="dob">Date of Birth</label>
+          <input type="date" id="dob" name="dob" data-testid="input-dob" />
+
+          <label for="country">Country</label>
+          <select id="country" name="country" data-testid="select-country">
+            <option value="">Select country</option>
+            <option value="us">United States</option>
+            <option value="uk">United Kingdom</option>
+            <option value="in">India</option>
+            <option value="sg">Singapore</option>
+            <option value="au">Australia</option>
+          </select>
+
+          <label for="id-type">ID Type</label>
+          <select id="id-type" name="idType" data-testid="select-id-type">
+            <option value="">Select ID type</option>
+            <option value="passport">Passport</option>
+            <option value="driving-license">Driving License</option>
+            <option value="national-id">National ID</option>
+          </select>
+
+          <label for="id-number">ID Number</label>
+          <input type="text" id="id-number" name="idNumber" data-testid="input-id-number" placeholder="Enter ID number" />
+
+          <label for="notes">Additional Notes</label>
+          <textarea id="notes" name="notes" data-testid="textarea-notes" rows="3" placeholder="Any additional information..."></textarea>
+
+          <div class="checkbox-group">
+            <label>
+              <input type="checkbox" name="terms" data-testid="checkbox-terms" />
+              I agree to the Terms and Conditions
+            </label>
+            <label>
+              <input type="checkbox" name="privacy" data-testid="checkbox-privacy" />
+              I accept the Privacy Policy
+            </label>
+            <label>
+              <input type="checkbox" name="marketing" data-testid="checkbox-marketing" />
+              Subscribe to marketing emails
+            </label>
+          </div>
+
+          <div class="radio-group" style="margin-top: 0.5rem;">
+            <p style="font-size: 0.875rem; color: #475569; margin-bottom: 0.5rem;">Account Type</p>
+            <label>
+              <input type="radio" name="accountType" value="individual" data-testid="radio-individual" />
+              Individual
+            </label>
+            <label>
+              <input type="radio" name="accountType" value="business" data-testid="radio-business" />
+              Business
+            </label>
+            <label>
+              <input type="radio" name="accountType" value="joint" data-testid="radio-joint" />
+              Joint Account
+            </label>
+          </div>
+
+          <div style="margin-top: 1rem;">
+            <button type="submit" class="btn-primary" data-testid="btn-submit">Submit Application</button>
+            <button type="reset" class="btn-secondary" data-testid="btn-reset">Reset Form</button>
+          </div>
+        </form>
+      </div>
+
+      <!-- SECTION 2: Nested Elements -->
+      <div class="section" data-testid="nested-section">
+        <h2>Applicant Cards</h2>
+        <div class="card" data-testid="applicant-card-1">
+          <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">
+            <div class="avatar" data-testid="avatar-1">JD</div>
+            <div>
+              <strong data-testid="applicant-name-1">John Doe</strong>
+              <p style="font-size: 0.75rem; color: #64748b;" data-testid="applicant-email-1">john.doe@example.com</p>
+            </div>
+            <span class="status-badge status-approved" data-testid="applicant-status-1">Approved</span>
+          </div>
+          <p style="font-size: 0.875rem;">Risk Score: <strong data-testid="risk-score-1">72</strong>/100</p>
+        </div>
+
+        <div class="card" data-testid="applicant-card-2">
+          <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">
+            <div class="avatar" data-testid="avatar-2">JS</div>
+            <div>
+              <strong data-testid="applicant-name-2">Jane Smith</strong>
+              <p style="font-size: 0.75rem; color: #64748b;" data-testid="applicant-email-2">jane.smith@example.com</p>
+            </div>
+            <span class="status-badge status-pending" data-testid="applicant-status-2">Pending</span>
+          </div>
+          <p style="font-size: 0.875rem;">Risk Score: <strong data-testid="risk-score-2">45</strong>/100</p>
+        </div>
+
+        <div class="card" data-testid="applicant-card-3">
+          <div style="display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem;">
+            <div class="avatar" data-testid="avatar-3">RJ</div>
+            <div>
+              <strong data-testid="applicant-name-3">Raj Kumar</strong>
+              <p style="font-size: 0.75rem; color: #64748b;" data-testid="applicant-email-3">raj.kumar@example.com</p>
+            </div>
+            <span class="status-badge status-rejected" data-testid="applicant-status-3">Rejected</span>
+          </div>
+          <p style="font-size: 0.875rem;">Risk Score: <strong data-testid="risk-score-3">23</strong>/100</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT COLUMN -->
+    <div>
+
+      <!-- SECTION 3: Application Table -->
+      <div class="section" data-testid="applications-table-section">
+        <h2>Recent Applications</h2>
+        <table data-testid="applications-table">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Name</th>
+              <th>Type</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr data-testid="table-row-1">
+              <td data-testid="cell-id-1">KYC-001</td>
+              <td data-testid="cell-name-1">John Doe</td>
+              <td>Individual</td>
+              <td><span class="status-badge status-approved">Approved</span></td>
+              <td><button class="btn-primary" data-testid="btn-view-1" aria-label="View John Doe">View</button></td>
+            </tr>
+            <tr data-testid="table-row-2">
+              <td data-testid="cell-id-2">KYC-002</td>
+              <td data-testid="cell-name-2">Jane Smith</td>
+              <td>Business</td>
+              <td><span class="status-badge status-pending">Pending</span></td>
+              <td><button class="btn-primary" data-testid="btn-view-2" aria-label="View Jane Smith">View</button></td>
+            </tr>
+            <tr data-testid="table-row-3">
+              <td data-testid="cell-id-3">KYC-003</td>
+              <td data-testid="cell-name-3">Raj Kumar</td>
+              <td>Individual</td>
+              <td><span class="status-badge status-rejected">Rejected</span></td>
+              <td><button class="btn-primary" data-testid="btn-view-3" aria-label="View Raj Kumar">View</button></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- SECTION 4: Features List & Buttons -->
+      <div class="section" data-testid="actions-section">
+        <h2>Quick Actions</h2>
+        <button class="btn-primary" data-testid="btn-new-application" role="button">New Application</button>
+        <button class="btn-success" data-testid="btn-approve-all" role="button">Approve All</button>
+        <button class="btn-danger" data-testid="btn-reject-selected" role="button" disabled>Reject Selected</button>
+        <button class="btn-secondary" data-testid="btn-export" role="button">Export CSV</button>
+
+        <h2 style="margin-top: 1.5rem;">Verification Checklist</h2>
+        <ul class="features" data-testid="checklist">
+          <li data-testid="check-identity">Identity Verification</li>
+          <li data-testid="check-address">Address Proof</li>
+          <li data-testid="check-income">Income Verification</li>
+          <li data-testid="check-background">Background Check</li>
+          <li data-testid="check-sanctions">Sanctions Screening</li>
+        </ul>
+      </div>
+
+      <!-- SECTION 5: Search -->
+      <div class="section" data-testid="search-section">
+        <h2>Search Applications</h2>
+        <input type="search" id="search" data-testid="input-search" placeholder="Search by name or ID..." aria-label="Search applications" />
+        <div id="search-results" data-testid="search-results">
+          <p style="color: #94a3b8; font-size: 0.875rem;">Type to search...</p>
+        </div>
+      </div>
+
+      <!-- SECTION 6: Hidden/Disabled Elements -->
+      <div class="section" data-testid="visibility-section">
+        <h2>Element States</h2>
+        <button class="btn-primary" data-testid="btn-toggle-panel" id="toggle-panel">Show Details Panel</button>
+        <div id="details-panel" class="hidden" data-testid="details-panel" style="margin-top: 1rem;">
+          <div class="alert alert-success">
+            <strong>Panel visible!</strong> This panel was hidden and is now shown.
+          </div>
+          <p data-testid="panel-content">Application KYC-001 has been reviewed and approved by the compliance team.</p>
+        </div>
+
+        <div style="margin-top: 1rem;">
+          <p style="font-size: 0.875rem; color: #64748b;" data-testid="counter-label">Button clicked: <strong id="click-count" data-testid="click-count">0</strong> times</p>
+          <button class="btn-secondary" data-testid="btn-counter" id="btn-counter">Click Me</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    // Form submission
+    document.getElementById('personal-form').addEventListener('submit', function(e) {
+      e.preventDefault();
+      const alert = document.getElementById('form-alert');
+      const name = document.getElementById('full-name').value;
+      const email = document.getElementById('email').value;
+
+      if (!name || !email) {
+        alert.className = 'alert alert-error';
+        alert.textContent = 'Please fill in all required fields.';
+        alert.classList.remove('hidden');
+        return;
+      }
+
+      alert.className = 'alert alert-success';
+      alert.textContent = 'Application submitted successfully for ' + name + '!';
+      alert.classList.remove('hidden');
+    });
+
+    // Toggle panel visibility
+    document.getElementById('toggle-panel').addEventListener('click', function() {
+      const panel = document.getElementById('details-panel');
+      const btn = this;
+      if (panel.classList.contains('hidden')) {
+        panel.classList.remove('hidden');
+        btn.textContent = 'Hide Details Panel';
+      } else {
+        panel.classList.add('hidden');
+        btn.textContent = 'Show Details Panel';
+      }
+    });
+
+    // Click counter
+    let count = 0;
+    document.getElementById('btn-counter').addEventListener('click', function() {
+      count++;
+      document.getElementById('click-count').textContent = count;
+    });
+
+    // Search filtering
+    document.getElementById('search').addEventListener('input', function() {
+      const query = this.value.toLowerCase();
+      const results = document.getElementById('search-results');
+      const data = [
+        { id: 'KYC-001', name: 'John Doe', status: 'Approved' },
+        { id: 'KYC-002', name: 'Jane Smith', status: 'Pending' },
+        { id: 'KYC-003', name: 'Raj Kumar', status: 'Rejected' },
+      ];
+
+      if (!query) {
+        results.innerHTML = '<p style="color: #94a3b8; font-size: 0.875rem;">Type to search...</p>';
+        return;
+      }
+
+      const matches = data.filter(d =>
+        d.name.toLowerCase().includes(query) || d.id.toLowerCase().includes(query)
+      );
+
+      if (matches.length === 0) {
+        results.innerHTML = '<p style="color: #94a3b8; font-size: 0.875rem;" data-testid="no-results">No results found.</p>';
+        return;
+      }
+
+      results.innerHTML = matches.map(m =>
+        '<div data-testid="search-result-item" style="padding: 0.5rem 0; border-bottom: 1px solid #e2e8f0; font-size: 0.875rem;">' +
+        '<strong>' + m.id + '</strong> — ' + m.name + ' (' + m.status + ')' +
+        '</div>'
+      ).join('');
+    });
+  </script>
+
+</body>
+</html>
