@@ -5,6 +5,7 @@ import { PanelLeftClose, PanelLeftOpen } from 'lucide-react';
 import { Sidebar } from '@/components/sidebar';
 import { MobileHeader } from '@/components/sidebar-mobile';
 import { ThemeToggle } from '@/components/theme-toggle';
+import { GithubStarLink } from '@/components/github-star-link';
 import type { Phase } from '@/lib/types';
 import { cn } from '@/lib/utils';
 
@@ -28,8 +29,9 @@ export function LayoutWrapper({ phases, children }: LayoutWrapperProps) {
         <Sidebar phases={phases} />
       </aside>
 
-      {/* Desktop top bar: collapse toggle + theme toggle */}
+      {/* Desktop top bar: GitHub star + theme toggle */}
       <div className="hidden lg:flex fixed top-4 right-4 z-30 items-center gap-2">
+        <GithubStarLink />
         <ThemeToggle />
       </div>
 

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { Menu, X, BookOpen } from 'lucide-react';
 import { ThemeToggle } from './theme-toggle';
+import { GithubStarLink } from './github-star-link';
 import { SidebarClient } from './sidebar-client';
 import type { Phase } from '@/lib/types';
 
@@ -52,7 +53,10 @@ export function MobileHeader({ phases }: MobileHeaderProps) {
           </span>
         </Link>
 
-        <ThemeToggle />
+        <div className="flex items-center gap-1.5">
+          <GithubStarLink compact />
+          <ThemeToggle />
+        </div>
       </div>
 
       {/* Spacer for fixed header */}
